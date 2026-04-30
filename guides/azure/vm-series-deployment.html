@@ -1,0 +1,2506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>VM-Series Deployment on Azure | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <div class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">VM-Series on Azure</span>
+  </div>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="index.html" class="active">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="../../quick-ref/index.html">Quick Reference</a>
+  </nav>
+</header>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<!-- ── Sidebar Backdrop (mobile) ──────────────────────────────── -->
+<div class="sidebar-backdrop"></div>
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prerequisites</div>
+    <a href="#prerequisites" data-section="prerequisites">CSP Portal Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Management Platform</div>
+    <a href="#management-config" data-section="management-config">Pick Path (Panorama / SCM)</a>
+    <a href="#review-checkpoint" data-section="review-checkpoint">Review Checkpoint</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Terraform</div>
+    <a href="#hub-vnet" data-section="hub-vnet">Prepare Configuration</a>
+    <a href="#deploy-verify" data-section="deploy-verify">Deploy &amp; Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Spoke VNets</div>
+    <a href="#spoke-onboarding" data-section="spoke-onboarding">Verify &amp; Onboard</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Verify</div>
+    <a href="#verification" data-section="verification">Post-Deployment</a>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">Azure</a>
+  <span class="sep">|</span>
+  VM-Series Deployment
+</div>
+
+<div class="article">
+
+<h1>VM-Series Deployment on Azure</h1>
+<p class="subtitle">End-to-end guide: Panorama configuration through Azure infrastructure to verified traffic inspection</p>
+
+<div class="cloud-links">
+  <a href="../aws/vm-series-deployment.html">AWS Guide</a>
+  <a href="../gcp/index.html">GCP Guide</a>
+</div>
+
+<!-- ── Phase Progress ────────────────────────────────────────── -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#management-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Mgmt Platform
+  </a>
+  <a href="#review-checkpoint" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Review
+  </a>
+  <a href="#hub-vnet" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Terraform Config
+  </a>
+  <a href="#deploy-verify" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Deploy &amp; Verify
+  </a>
+  <a href="#spoke-onboarding" class="progress-phase">
+    <span class="progress-phase-label">Phase 6</span>
+    Spoke VNets
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 7</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide follows a <strong>management-first</strong> approach. All licensing, device groups, templates / folders, and security policy are configured on your management platform — <strong>Panorama</strong> or <strong>Strata Cloud Manager (SCM)</strong> — <em>before</em> any Azure infrastructure is built. This ensures firewalls bootstrap into a fully configured management plane on first boot.</p>
+  <p><strong>Design model:</strong> Hub-and-spoke with Azure Gateway Load Balancer (GWLB) and Internal Load Balancer for east-west inspection. Phase 2 lets you pick the management platform that fits your environment.</p>
+  <p><strong>Deployment method:</strong> All Azure infrastructure (Phases 4–6) should be deployed with <strong>Terraform</strong> using the official <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/azurerm/latest">Palo Alto Networks SWFW Modules for Azure</a>. These modules encode Palo Alto's reference architecture and handle VNet, GWLB, route tables, and VM-Series provisioning with tested, production-ready code.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Skeleton — content pending</div>
+  <p>This guide is a scaffold produced by the <code>/new-guide</code> skill. Each phase below is stubbed with a placeholder pointing to the canonical AWS guide as exemplar. Drafting is the job of the <code>guide-author</code> subagent — invoke it with a <code>&lt;phase_spec&gt;</code> block per phase.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE OVERVIEW                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>Before deploying anything, study the target architecture. This guide covers a <strong>centralized hub-and-spoke design</strong>: a Transit VNet hosts the VM-Series firewalls, and application workloads live in Spoke VNets that connect to the hub via VNet peering. All inbound, outbound, east-west, and on-prem traffic is inspected by the firewalls in the Transit VNet.</p>
+
+<p>The diagrams below are organized into four groups: <strong>deployment models</strong> (the two main firewall layout choices), the <strong>Hub VNet</strong>, the <strong>Spoke VNet</strong>, and end-to-end <strong>traffic flows</strong>.</p>
+
+<p>Each diagram below is collapsed by default — expand the ones you need.</p>
+
+<h3>Deployment Models</h3>
+
+<p>There are two layout choices for how VM-Series firewalls are organized inside the Transit VNet. Pick one before deploying — the choice affects the firewall count, traffic isolation between inbound and OBEW (Outbound + East-West) flows, and how you scale.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Common Model</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A single set of VM-Series firewalls handles <em>all</em> traffic flows — inbound, outbound, east-west, and backhaul to on-prem. The firewalls share UNTRUST and TRUST subnets, sit behind a public Azure Load Balancer (or Application Gateway) on the UNTRUST side, and behind an internal Azure Load Balancer on the TRUST side.</p>
+    <p><strong>When to use:</strong> proof-of-concepts, smaller-scale deployments, or environments where operational simplicity matters more than per-flow isolation. Lower firewall count = lower cost, but inbound and outbound traffic share the same dataplane.</p>
+    <p><strong>Tradeoff:</strong> all flows share one firewall pool. A bandwidth spike in one direction (e.g. heavy inbound) can degrade the others. Scaling means scaling the entire pool together.</p>
+    <img src="diagrams/azure-topology-common-model.png" alt="Common Model topology — Transit VNet 10.51.0.0/24 with a single set of 2 VM-Series firewalls in UNTRUST and TRUST subnets, fronted by a public Load Balancer on the UNTRUST side and an internal Load Balancer on the TRUST side; Management VNet 10.52.0.0/24 hosts Panorama HA pair; spokes connect via VNet peering" loading="lazy">
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Transit Dedicated</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two separate sets of VM-Series firewalls inside the same Transit VNet:</p>
+    <ul>
+      <li><strong>Inbound tier</strong> — dedicated to internet-to-application traffic only.</li>
+      <li><strong>OBEW tier</strong> — dedicated to outbound, east-west, and backhaul (on-prem) traffic.</li>
+    </ul>
+    <p>Each tier has its own UNTRUST/TRUST interfaces and its own load balancers. Because the tiers are isolated at the dataplane level, an inbound bandwidth spike doesn't affect outbound or east-west performance.</p>
+    <p><strong>When to use:</strong> production deployments where inbound and outbound have different scale or performance characteristics, or where you want to size each tier independently. Higher firewall count (typically 4 instead of 2) but each tier scales on its own.</p>
+    <p><strong>Inbound load balancer choice:</strong> the inbound tier can sit behind either a public <strong>Standard Load Balancer (NLB)</strong> for simple L4 inbound, or an <strong>Application Gateway (AppGW)</strong> when you need L7 features (WAF, host-based routing, TLS offload, XFF header injection).</p>
+    <p><em>Inbound tier with Standard Load Balancer (L4):</em></p>
+    <img src="diagrams/azure-topology-dedicated-2tier-nlb.png" alt="Transit Dedicated 2-tier with Standard Load Balancer — 4 VM-Series in Transit VNet 10.51.0.0/24: 2 dedicated to Inbound (top, behind public NLB) and 2 dedicated to OBEW (bottom). Each pair has its own UNTRUST and TRUST interfaces; spokes route 0.0.0.0/0 to the OBEW TRUST internal LB" loading="lazy">
+    <p><em>Inbound tier with Application Gateway (L7):</em></p>
+    <img src="diagrams/azure-topology-dedicated-2tier-appgw.png" alt="Transit Dedicated 2-tier with Application Gateway — same dual-pair Transit VNet layout, but the inbound tier sits behind an Application Gateway instead of a Standard Load Balancer for L7 features such as WAF and TLS offload" loading="lazy">
+    <div class="callout callout-note">
+      <div class="callout-title">When to choose AppGW over NLB</div>
+      <p>Use Application Gateway when you need any of: web application firewall (WAF), TLS offload, host-based or path-based routing, X-Forwarded-For header insertion, or end-to-end TLS to multi-site backends. Use Standard Load Balancer for non-HTTP protocols, lower latency, or when the firewall handles all L7 inspection itself.</p>
+    </div>
+  </div>
+</div>
+
+<h3>Hub VNet (Transit)</h3>
+
+<p>The Transit VNet hosts the VM-Series firewalls and the load balancers that front them. Every traffic flow in this design ultimately passes through here for inspection.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Transit VNet — Subnet Layout</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Transit VNet uses the address space <code>10.51.0.0/24</code>, divided into five <code>/27</code> subnets:</p>
+    <table>
+      <thead>
+        <tr><th>Subnet</th><th>CIDR</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>untrust-lb</code></td><td><code>10.51.0.0/27</code></td><td>Public Load Balancer / Application Gateway frontend</td></tr>
+        <tr><td><code>untrust</code></td><td><code>10.51.0.32/27</code></td><td>VM-Series untrust interface (<code>eth1/1</code>)</td></tr>
+        <tr><td><code>management</code></td><td><code>10.51.0.64/27</code></td><td>VM-Series management interface (<code>eth1/0</code>)</td></tr>
+        <tr><td><code>trust</code></td><td><code>10.51.0.96/27</code></td><td>VM-Series trust interface (<code>eth1/2</code>) and internal TRUST Load Balancer</td></tr>
+        <tr><td><code>gateway</code></td><td><code>10.51.0.128/27</code></td><td>Azure Virtual Network Gateway (for backhaul/VPN to on-prem)</td></tr>
+      </tbody>
+    </table>
+    <p>VM-Series firewalls are deployed across <strong>Availability Zones</strong> (typically zones 1 and 2) for zone-redundant HA. Each firewall has three NICs: management, untrust, and trust.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Management subnet placement</div>
+      <p>This reference layout places the VM-Series management interface inside the Transit VNet's <code>management</code> subnet, while a separate <strong>Management VNet</strong> at <code>10.52.0.0/24</code> hosts the Panorama HA pair and peers with Transit. This isolates the Panorama management plane from data-plane subnets while keeping the firewall mgmt NIC adjacent to the data NICs for simpler routing.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Transit VNet — Route Tables (UDRs)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Azure routes through firewalls using <strong>User-Defined Routes (UDRs)</strong> on each subnet. The UDR table below covers the firewall subnets in the Transit VNet. <em>Blackhole routes</em> (<code>next_hop_type = None</code>) are added on each firewall subnet pointing to the <em>other</em> firewall subnets — this prevents traffic from short-circuiting between subnets without going through the firewall dataplane.</p>
+    <table>
+      <thead>
+        <tr><th>Route Table</th><th>Associated Subnet</th><th>Destination</th><th>Next Hop</th></tr>
+      </thead>
+      <tbody>
+        <tr><td rowspan="2"><code>mgmt-rt</code></td><td rowspan="2"><code>management</code></td><td><code>10.51.0.0/27</code> (untrust-lb)</td><td>None (blackhole)</td></tr>
+        <tr><td><code>10.51.0.96/27</code> (trust)</td><td>None (blackhole)</td></tr>
+        <tr><td rowspan="2"><code>public-rt</code></td><td rowspan="2"><code>untrust</code></td><td><code>10.51.0.64/27</code> (mgmt)</td><td>None (blackhole)</td></tr>
+        <tr><td><code>10.51.0.96/27</code> (trust)</td><td>None (blackhole)</td></tr>
+        <tr><td rowspan="3"><code>private-rt</code></td><td rowspan="3"><code>trust</code></td><td><code>0.0.0.0/0</code></td><td>VM-Series trust interface (e.g. <code>10.51.0.101</code>)</td></tr>
+        <tr><td><code>10.51.0.64/27</code> (mgmt)</td><td>None (blackhole)</td></tr>
+        <tr><td><code>10.51.0.0/27</code> (untrust-lb)</td><td>None (blackhole)</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">TRUST subnet UDR points at the firewall, not the ILB</div>
+      <p>The TRUST subnet's default route (<code>0.0.0.0/0</code>) points to a <strong>VM-Series trust interface IP</strong>, not to the internal Load Balancer. Spoke VNets and the on-prem gateway send traffic to the ILB; the firewall returns inspected traffic, and the TRUST UDR forwards it on. Pointing the TRUST UDR at the ILB itself would create a routing loop.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Transit VNet — Network Security Groups (NSGs)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>NSGs are applied per subnet and act as stateful packet filters. The minimum set:</p>
+    <table>
+      <thead>
+        <tr><th>NSG</th><th>Applied To</th><th>Inbound Rules</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>mgmt-nsg</code></td><td><code>management</code> subnet</td><td>Allow TCP 22, 443 from your admin IP allowlist (e.g. <code>1.1.1.1/32</code>) — replace with your real ranges</td></tr>
+        <tr><td><code>public-nsg</code></td><td><code>untrust</code> subnet</td><td>Permissive (firewall enforces policy on the data plane); typically empty or allow-all from internet</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Replace the placeholder admin IP</div>
+      <p>The reference Terraform uses <code>1.1.1.1/32</code> as a placeholder for the management subnet allowlist. Replace this with your actual jump-host or admin network ranges before deploying — leaving it as <code>1.1.1.1/32</code> means you cannot reach the firewalls.</p>
+    </div>
+  </div>
+</div>
+
+<h3>Spoke VNet</h3>
+
+<p>Spoke VNets host the actual application workloads. They peer with the Transit VNet and route all egress through the firewall TRUST internal Load Balancer.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Spoke VNet — Topology</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each application gets its own Spoke VNet with a dedicated address space, peered with the Transit VNet. Example layout:</p>
+    <table>
+      <thead>
+        <tr><th>Spoke VNet</th><th>Address Space</th><th>Workload Subnet</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>App01</td><td><code>10.61.1.0/24</code></td><td><code>10.61.1.0/26</code> (with internal Application LB at <code>10.61.1.100</code>)</td></tr>
+        <tr><td>App02</td><td><code>10.61.2.0/24</code></td><td><code>10.61.2.0/26</code></td></tr>
+      </tbody>
+    </table>
+    <p>A separate <strong>Management VNet</strong> at <code>10.52.0.0/24</code> hosts the Panorama HA pair (<code>10.52.0.4</code> primary, <code>10.52.0.5</code> secondary) and peers with Transit.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">VNet peering is non-transitive</div>
+      <p>Spoke-to-spoke traffic does <em>not</em> automatically traverse the hub. To force spoke-to-spoke through the firewall, each spoke needs a UDR pointing remote spoke CIDRs (or a default route) at the TRUST internal Load Balancer. Without this, peered spokes would route directly to each other (if their VNets were also peered) or have no path at all.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Spoke VNet — Route Tables (UDRs)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each spoke workload subnet has a UDR that sends all non-local traffic to the TRUST internal Load Balancer in the Transit VNet (<code>10.51.0.100</code> in the reference layout). This forces inspection on every flow leaving the spoke.</p>
+    <table>
+      <thead>
+        <tr><th>Route Table</th><th>Associated Subnet</th><th>Destination</th><th>Next Hop</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>spoke-app-rt</code></td><td>App workload subnet (e.g. <code>10.61.1.0/24</code>)</td><td><code>0.0.0.0/0</code></td><td>VirtualAppliance → <code>10.51.0.100</code> (TRUST ILB)</td></tr>
+      </tbody>
+    </table>
+    <p>Outbound, east-west, and backhaul traffic all use this same default route. Inbound traffic arrives at the workload via the public Load Balancer / AppGW backend pool path, not via UDR.</p>
+  </div>
+</div>
+
+<h3>Traffic Flows</h3>
+
+<p>Five end-to-end flows show how packets traverse the inspection layer in each direction. The flows assume the Common Model layout; the Transit Dedicated model splits the firewall pair (inbound flow uses the dedicated inbound pair; outbound, east-west, backhaul, and management use the OBEW pair) but the route logic is otherwise identical.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Inbound — Internet to Spoke Application</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Internet client → Application Gateway (or public LB) → VM-Series untrust interface → VM-Series trust interface → spoke workload via VNet peering. Source/Destination NAT happens on the firewall so the spoke workload sees the original client source.</p>
+    <img src="diagrams/azure-flow-inbound.png" alt="Inbound traffic flow — internet client (199.167.52.150) hits the public AppGW frontend (191.237.87.98), gets DNAT'd to the VMSERIES-INBOUND backend pool on the untrust subnet (10.51.0.37), traverses the VM-Series, exits the trust interface, and reaches the spoke App01 workload (10.61.1.4) via the App01 internal LB (10.61.1.100) over VNet peering" loading="lazy">
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Outbound — Spoke Application to Internet</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Spoke workload → spoke UDR <code>0.0.0.0/0</code> → TRUST internal Load Balancer (<code>10.51.0.100</code>) → VM-Series trust → VM-Series untrust → public Load Balancer outbound rule (or firewall public IP) → internet. The firewall source-NATs to its own untrust IP on the way out.</p>
+    <img src="diagrams/azure-flow-outbound.png" alt="Outbound traffic flow — spoke workload (10.61.1.4) sends a packet, the spoke UDR 0.0.0.0/0 next-hop sends it to the TRUST ILB (10.51.0.100) over VNet peering, the firewall inspects and source-NATs to its untrust interface (e.g. 10.51.0.39 on an OBEW firewall), then forwards to the internet" loading="lazy">
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>East-West — Spoke to Spoke</span>
+  </div>
+  <div class="collapsible-body">
+    <p>App01 workload → spoke UDR sends remote spoke CIDR to TRUST ILB → VM-Series trust → policy inspection → VM-Series trust → App02 workload via VNet peering. Both halves of the round-trip traverse the firewall.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">VNet peering between spokes is not required</div>
+      <p>You don't need to peer spoke VNets to each other — the hub-spoke peering plus UDRs steer all spoke-to-spoke traffic through the firewall. Direct spoke-to-spoke peering would actually <em>break</em> inspection by giving traffic a more-specific path that bypasses the hub.</p>
+    </div>
+    <img src="diagrams/azure-flow-east-west.png" alt="East-west traffic flow — App01 (10.61.1.x) workload sends traffic to App02 (10.61.2.x) via the spoke UDR's 0.0.0.0/0 next-hop pointing at the TRUST ILB (10.51.0.100); the VM-Series inspects and forwards to App02 via VNet peering" loading="lazy">
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Backhaul — Spoke to On-Prem</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Spoke workload → spoke UDR → TRUST ILB → VM-Series → Gateway subnet (Azure Virtual Network Gateway) → ExpressRoute or VPN tunnel → on-premises network. The Gateway subnet has its own UDRs sending on-prem prefixes back through the TRUST ILB so return traffic is also inspected.</p>
+    <img src="diagrams/azure-flow-backhaul.png" alt="Backhaul traffic flow — spoke workload exits via TRUST ILB (10.51.0.100) to the firewall, then routes to the Azure Virtual Network Gateway in the gateway subnet (10.51.0.128/27) and over BGP/IPsec to the on-prem network (10.63.0.0/24); on-prem return traffic uses gateway-subnet UDRs (10.61.1.0/24 and 10.61.2.0/24 next-hop 10.51.0.100) to traverse the firewall" loading="lazy">
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Management — Panorama and Admin Access</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The VM-Series management interface (<code>eth1/0</code>, on the management subnet) registers to Panorama. Admin access reaches the management interface either directly (with a public IP and NSG allowlist) or via a jump host / Bastion in a peered Management VNet. The management plane is independent from the data plane — management traffic does not traverse the data plane interfaces.</p>
+    <img src="diagrams/azure-flow-management.png" alt="Management traffic flow — VM-Series management interface (eth1/0, 10.51.0.68 in the mgmt subnet 10.51.0.64/27) connects to Panorama HA pair in the Management VNet (10.52.0.4 primary, 10.52.0.5 secondary) over VNet peering; admin access reaches the mgmt interface via NSG allowlist" loading="lazy">
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<p>Complete these one-time setup tasks before configuring Panorama. If you've already completed them, skip to <a href="#management-config">Phase 2</a>.</p>
+
+<!-- Prereq 1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 Activate Software NGFW Credits</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/software-ngfw/activate-credits">Activate Credits</a></p>
+    <p>Before creating deployment profiles or licensing firewalls, you need an active credit pool.</p>
+    <ol>
+      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
+      <li>Navigate to <strong>Products &gt; Software NGFW Credits</strong>.</li>
+      <li>Locate your credit pool authorization code (from your purchase order).</li>
+      <li>Click <strong>Activate</strong> and enter the auth code to fund the credit pool.</li>
+      <li>Verify the credit pool shows available credits for your desired VM-Series model and subscription tier.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      Credit pools are shared across your account. Each firewall deployment consumes credits based on the vCPU count and subscriptions defined in the deployment profile.
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 1b -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 Verify Strata Cloud Manager (SCM) — SCM Deployment</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Strata Cloud Manager provides centralized management for your Palo Alto Networks deployment. It must be provisioned before deployment.</p>
+    <ol>
+      <li>Log in to <a href="https://stratacloud.paloaltonetworks.com">Strata Cloud Manager</a>.</li>
+      <li>Verify your tenant is active and you can access the management console.</li>
+      <li>Under <strong>Products</strong> for your tenant, confirm the following are listed:
+        <ul>
+          <li>Strata Cloud Manager</li>
+          <li>Strata Logging Service</li>
+          <li>Telemetry</li>
+        </ul>
+      </li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>NGFW Management is enabled by default on new tenants — no separate flag request is required.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 1c -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.3 Verify Strata Logging Service (SLS) — Optional</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Strata Logging Service provides centralized log collection and analysis. It must be provisioned before firewalls can forward logs.</p>
+    <ol>
+      <li>In Strata Cloud Manager, navigate to <strong>Settings &gt; Strata Logging Service</strong>.</li>
+      <li>Verify the logging service is active and your log storage allocation is visible.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- Prereq 2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.4 Create a Deployment Profile</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/software-ngfw/create-a-deployment-profile-vm-series">Create a Deployment Profile</a> | <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/software-ngfw/manage-a-deployment-profile">Manage a Deployment Profile</a></p>
+    <p>The deployment profile defines the firewall model, vCPU allocation, and subscriptions that each bootstrapped firewall will receive.</p>
+    <ol>
+      <li>In the Customer Support Portal, go to <strong>Products &gt; Software NGFW Credits</strong>.</li>
+      <li>Select your credit pool and click <strong>Create Deployment Profile</strong>.</li>
+      <li>Configure: <strong>Profile Name</strong>, <strong>Firewall Model</strong>, <strong>vCPU Count</strong>, <strong>Subscriptions</strong>, <strong>Token Count</strong>.</li>
+      <li>Click <strong>Create</strong>. Note the generated <strong>auth code</strong> (format: <code>D1234567</code>).</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Profiles partition by licensing tier and vCPU, not by topology</div>
+      <p>A deployment profile is a license SKU bundle — firewall model, vCPU count, and subscription mix (Threat Prevention, WildFire, URL Filtering, etc.). The <strong>auth code</strong> the profile generates is what each bootstrapping VM-Series presents to license itself.</p>
+      <p>The profile is <em>not</em> a grouping mechanism for region, cloud, function, or topology. Two firewalls in different clouds can share one profile if they have the same shape; two firewalls in the same VNet can need different profiles if their vCPU counts or subscription tiers differ.</p>
+      <p>Rule of thumb: <strong>one profile per distinct (vCPU count + subscription bundle)</strong>. A few common patterns:</p>
+      <ul>
+        <li>All firewalls identical &rarr; one profile, one auth code.</li>
+        <li>Inbound at 4 vCPU, OBEW at 8 vCPU &rarr; two profiles (different vCPU counts).</li>
+        <li>Inbound with extra subscriptions (e.g. Advanced WildFire), internal-only with the base bundle &rarr; two profiles (different subscriptions) even if the vCPU counts match.</li>
+        <li>Same shape deployed across AWS, Azure, and GCP &rarr; one profile shared across all three clouds.</li>
+      </ul>
+      <p>Plan your profile count by walking your firewall inventory and grouping by <em>(vCPU count, subscription mix)</em>. The number of distinct combinations is the number of profiles &mdash; and auth codes &mdash; you need.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.5 Obtain the Auth Code</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the Customer Support Portal, go to <strong>Products &gt; Software NGFW Credits &gt; Deployment Profiles</strong>.</li>
+      <li>Locate your deployment profile and copy the <strong>Auth Code</strong>.</li>
+      <li>You will use this code when creating the Bootstrap Definition on Panorama in <a href="#management-config">Phase 2</a>.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- Prereq 4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.6 Generate Auto-Registration PIN ID and PIN Value</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/vm-series-models/install-a-device-certificate-on-the-vm-series-firewall">Install a Device Certificate on the VM-Series Firewall</a></p>
+    <ol>
+      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
+      <li>Navigate to <strong>Products &gt; VM-Series Auth-Codes</strong>.</li>
+      <li>Click <strong>Generate OTP</strong> or <strong>Create Registration PIN</strong>.</li>
+      <li>Copy both: <strong>PIN ID</strong> (UUID format) and <strong>PIN Value</strong> (hex string).</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      Without a valid PIN, the firewall cannot fetch a device certificate and will fail to authenticate with the licensing infrastructure.
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.7 Accept the Azure Marketplace EULA for VM-Series</span>
+  </div>
+  <div class="collapsible-body">
+    <p>You must accept the Azure Marketplace terms before deploying VM-Series. This is a one-time action per Azure subscription per product offering.</p>
+
+    <h4>Option A: Azure CLI (Fastest)</h4>
+    <p>Accept the terms for the <code>vmseries-flex</code> offer with the plan that matches your license model:</p>
+    <div class="code-block">
+      <pre><code># BYOL
+az vm image terms accept \
+  --publisher paloaltonetworks \
+  --offer vmseries-flex \
+  --plan byol
+
+# Bundle 1 (PAYG)
+az vm image terms accept \
+  --publisher paloaltonetworks \
+  --offer vmseries-flex \
+  --plan bundle1
+
+# Bundle 2 (PAYG)
+az vm image terms accept \
+  --publisher paloaltonetworks \
+  --offer vmseries-flex \
+  --plan bundle2</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Option B: Azure Portal</h4>
+    <ol>
+      <li>Log in to the <a href="https://portal.azure.com">Azure Portal</a> and open <strong>Marketplace</strong>.</li>
+      <li>Search for <strong>Palo Alto Networks VM-Series Next Generation Firewall</strong> and select the offer that matches your license model (BYOL, Bundle 1 PAYG, or Bundle 2 PAYG).</li>
+      <li>Click <strong>Get It Now</strong>, review the terms, and click <strong>Continue</strong> to accept the EULA.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm that the marketplace terms are accepted for your subscription:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>az vm image terms show \
+  --publisher paloaltonetworks \
+  --offer vmseries-flex \
+  --plan byol \
+  --query 'accepted'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Returns <code>true</code> if accepted, <code>false</code> otherwise.</p>
+  </div>
+</div>
+
+<!-- Prereq 8 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.8 Azure Subscription, RBAC &amp; Service Principal for Terraform</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Terraform requires an Azure identity with sufficient privileges to provision all resources (resource groups, VNets, NSGs, route tables, load balancers, public IPs, VMs, storage accounts). You have two options:</p>
+
+    <h4>Option A: Logged-in user (development / Cloud Shell)</h4>
+    <p>The simplest path for development is to authenticate Terraform with your own user account via <code>az login</code>. The user must have <strong>Contributor</strong> on the target subscription (or scoped to a resource group).</p>
+    <div class="code-block">
+      <pre><code>az login
+az account set --subscription "&lt;your-subscription-id&gt;"
+az account show --query '{subscription:name, id:id, tenantId:tenantId}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Option B: Service Principal (Preferred for CI/CD)</h4>
+    <p>Create a Service Principal scoped to the target subscription. This provides a non-interactive identity for automation pipelines.</p>
+    <div class="code-block">
+      <pre><code># Capture your subscription ID first
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+# Create the SP with Contributor on the subscription
+az ad sp create-for-rbac \
+  --name "terraform-vmseries" \
+  --role "Contributor" \
+  --scopes "/subscriptions/${SUBSCRIPTION_ID}"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The command outputs <code>appId</code>, <code>password</code>, and <code>tenant</code>. Export them as environment variables for the AzureRM provider:</p>
+    <div class="code-block">
+      <pre><code>export ARM_CLIENT_ID="&lt;appId&gt;"
+export ARM_CLIENT_SECRET="&lt;password&gt;"
+export ARM_TENANT_ID="&lt;tenant&gt;"
+export ARM_SUBSCRIPTION_ID="&lt;subscriptionId&gt;"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Verify vCPU Quota in Your Region</h4>
+    <p>VM-Series typically runs on the <strong>Standard_DS3_v2</strong> family or higher (4 vCPUs each). Two firewalls in Common Model = 8 vCPUs minimum; four firewalls in Transit Dedicated = 16 vCPUs. Confirm you have quota in your target region:</p>
+    <div class="code-block">
+      <pre><code># Replace 'eastus' with your target region
+az vm list-usage --location eastus --output table | grep -i 'standardDSv2'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>If <code>CurrentValue + new VMs</code> exceeds <code>Limit</code>, request a quota increase via <strong>Subscription &gt; Usage + quotas</strong> in the Azure Portal.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important</div>
+      <p>The initial deployment requires <strong>Contributor or equivalent</strong> on the subscription due to the wide range of resources created. If you also need Terraform to create role assignments or other Service Principals (e.g. for the Panorama Azure plugin), add <strong>User Access Administrator</strong> as well. Scope can be reduced post-deployment.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 9 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.9 Deployment Environment &amp; Tooling</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This guide recommends deploying all Azure infrastructure with <strong>Terraform</strong> using the official Palo Alto Networks Azure modules. Set up one of the following environments before starting Phase 4.</p>
+
+    <h4>Option A: Azure Cloud Shell (Quickest)</h4>
+    <p>Cloud Shell ships with Terraform and the Azure CLI pre-installed. It automatically authenticates as the logged-in portal user — no credentials to configure.</p>
+    <ol>
+      <li>Open <strong>Cloud Shell</strong> from the Azure Portal (top-right toolbar, terminal icon). Choose <strong>Bash</strong> on first launch.</li>
+      <li>Confirm the bundled tools:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>terraform -v
+az --version
+git --version
+az account show</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Option B: Local Workstation or Bastion Host</h4>
+    <p>Install the following tools on your deployment machine (macOS, Linux, or Windows):</p>
+    <table>
+      <tr><th>Tool</th><th>Purpose</th><th>Install</th></tr>
+      <tr><td><strong>Terraform CLI</strong></td><td>Infrastructure provisioning</td><td><a href="https://developer.hashicorp.com/terraform/downloads">developer.hashicorp.com/terraform/downloads</a></td></tr>
+      <tr><td><strong>Azure CLI</strong></td><td>Azure authentication and resource management</td><td><a href="https://learn.microsoft.com/cli/azure/install-azure-cli">learn.microsoft.com/cli/azure/install-azure-cli</a></td></tr>
+      <tr><td><strong>Git</strong></td><td>Version control for Terraform code</td><td><a href="https://git-scm.com/downloads">git-scm.com/downloads</a></td></tr>
+      <tr><td><strong>VS Code</strong> (recommended)</td><td>HCL syntax highlighting, Terraform extension</td><td><a href="https://code.visualstudio.com">code.visualstudio.com</a></td></tr>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm all tools are installed and your Azure identity is correct:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>terraform -v
+az --version
+git --version
+az account show</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 10 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.10 Terraform Remote State Backend</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A remote state backend is critical for team collaboration, maintaining a single source of truth, and preventing concurrent modifications. Azure's <code>azurerm</code> backend uses a Storage Account container — state locking is provided by the native blob lease, so no separate locking table is required.</p>
+
+    <h4>Create the Backend Resources</h4>
+    <p>Create a small bootstrap resource group with a Storage Account and a container for Terraform state. The Storage Account name must be globally unique and 3–24 lowercase alphanumeric characters.</p>
+    <div class="code-block">
+      <pre><code>RG=tfstate-rg
+LOCATION=eastus
+SA=&lt;your-unique-storage-account-name&gt;
+CONTAINER=tfstate
+
+# Resource group
+az group create --name $RG --location $LOCATION
+
+# Storage account (versioned, TLS 1.2 only)
+az storage account create \
+  --name $SA \
+  --resource-group $RG \
+  --location $LOCATION \
+  --sku Standard_LRS \
+  --kind StorageV2 \
+  --min-tls-version TLS1_2 \
+  --allow-blob-public-access false
+
+# Enable blob versioning for state history
+az storage account blob-service-properties update \
+  --account-name $SA \
+  --resource-group $RG \
+  --enable-versioning true
+
+# Container for state
+az storage container create --name $CONTAINER --account-name $SA</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Configure the Backend (backend.tf)</h4>
+    <div class="code-block">
+      <pre><code>terraform {
+  backend "azurerm" {
+    resource_group_name  = "tfstate-rg"
+    storage_account_name = "&lt;your-unique-storage-account-name&gt;"
+    container_name       = "tfstate"
+    key                  = "pan-vmseries/azure/terraform.tfstate"
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>Place the state Storage Account in the <strong>same region</strong> as your deployment to minimize latency. Blob versioning provides state history; the native blob lease handles concurrent-modification locking automatically — no DynamoDB-equivalent is needed.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 11 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.11 Git Repository for Terraform Code</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Store your Terraform configuration in a remote Git repository (GitHub, GitLab, Bitbucket, Azure Repos, etc.) for version control and collaboration.</p>
+    <ol>
+      <li>Create a new repository for your PAN deployment code.</li>
+      <li>Clone it to your deployment machine or Cloud Shell session.</li>
+      <li>Bootstrap your repo from the official Palo Alto Networks reference modules: <a href="https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules" target="_blank" rel="noopener"><code>PaloAltoNetworks/terraform-azurerm-swfw-modules</code></a> (covers VM-Series and Cloud NGFW, plus reference example architectures under <code>examples/</code> — see <code>vmseries_transit_vnet_common</code> and <code>vmseries_transit_vnet_dedicated</code>).</li>
+      <li>For advanced deployments, configure a CI/CD pipeline (GitHub Actions, Azure DevOps Pipelines, GitLab CI, Terraform Cloud) that can authenticate to Azure (via the Service Principal from <a href="#prerequisites">1.8</a>) and run <code>terraform plan</code> / <code>apply</code>.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: MANAGEMENT PLATFORM CONFIGURATION                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="management-config">Phase 2: Management Platform Configuration</h2>
+
+<p>VM-Series can be managed by either <strong>Panorama</strong> (the traditional management appliance) or <strong>Strata Cloud Manager (SCM)</strong> (the SaaS management plane). Pick the path that matches your environment — your selection persists across the page, so all subsequent screenshots, CLI examples, and references will follow your chosen platform.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which path should I pick?</div>
+  <ul>
+    <li><strong>Panorama</strong> — choose if you already operate Panorama in your environment, need on-prem control, or are using the legacy SW Firewall License Plugin for licensing.</li>
+    <li><strong>SCM</strong> — choose for greenfield deployments, cloud-native operations, or if you're consolidating onto Strata's SaaS management plane.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="Panorama">2A &middot; Panorama Path</button>
+    <button class="mgmt-tab" data-plane="SCM">2B &middot; SCM Path</button>
+  </div>
+
+  <!-- ── 2A · Panorama Path ──────────────────────────────────── -->
+  <div class="mgmt-panel active" data-plane="Panorama">
+
+<h3 id="licensing-plugin">Licensing Plugin</h3>
+
+<p>Configure Panorama with the SW Firewall License Plugin, device groups, template stacks, and all firewall policy <strong>before</strong> building any Azure infrastructure.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.1 Install the SW Firewall License Plugin</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/use-panorama-based-software-firewall-license-management">Panorama-Based License Management</a></p>
+    <ol>
+      <li>Log in to Panorama.</li>
+      <li>Navigate to <strong>Panorama &gt; Plugins</strong>.</li>
+      <li>Click <strong>Check Now</strong> to refresh available plugins.</li>
+      <li>Locate <code>sw_fw_license</code>, click <strong>Download</strong>, then <strong>Install</strong>.</li>
+      <li>Verify it appears under <strong>Panorama &gt; SW Firewall License</strong>.</li>
+    </ol>
+    <p><strong>Requirements:</strong> Panorama 10.0.0+, PAN-OS 9.1.0+ on firewalls.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">The same plugin works for AWS and Azure</div>
+      <p>The <code>sw_fw_license</code> plugin is cloud-agnostic — the same plugin handles VM-Series licensing on AWS, Azure, and GCP. You install it once on Panorama and reuse it across all clouds.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.2 Set the Licensing API Key</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/vm-series-models/licensing-api/install-a-license-deactivation-api-key">Install a License Deactivation API Key</a></p>
+    <ol>
+      <li>Obtain the API key from the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a> under <strong>Products &gt; API Key Management</strong>.</li>
+      <li>SSH into Panorama and run:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>request license api-key set key &lt;key&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <code>request license api-key show</code> &mdash; confirms the key is set.
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.3 Create Device Groups</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-device-groups">Manage Device Groups</a></p>
+    <p>Use a parent/child device group hierarchy. Parents hold shared objects; children hold model-specific security and NAT policy. The hierarchy below covers both deployment models from the <a href="#architecture-overview">Architecture Overview</a>:</p>
+    <ul>
+      <li><code>DG-AZ</code> — top-level Azure parent (shared objects across all Azure deployments)</li>
+      <li><code>DG-AZ-COMMON-MODEL</code> — Common Model child (single firewall pair, all flows)</li>
+      <li><code>DG-AZ-TVNET</code> — Transit VNet (Dedicated) parent</li>
+      <li><code>DG-AZ-TVNET-INBOUND-USE</code> — Inbound dedicated tier, US-East region (Logical Router Engine)</li>
+      <li><code>DG-AZ-TVNET-OBEW-USE</code> — OBEW dedicated tier, US-East region (Logical Router Engine)</li>
+      <li><code>DG-AZ-TVNET-INBOUND-ARE-USE</code> — Inbound dedicated, US-East (Advanced Routing Engine)</li>
+      <li><code>DG-AZ-TVNET-OBEW-ARE-USE</code> — OBEW dedicated, US-East (Advanced Routing Engine)</li>
+    </ul>
+    <p>Create them top-down so each child can be assigned to its parent:</p>
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Device Groups</strong>.</li>
+      <li>Click <strong>Add</strong>. Set <strong>Name</strong> to <code>DG-AZ</code>. Click <strong>OK</strong>.</li>
+      <li>Click <strong>Add</strong>. Set <strong>Name</strong> to <code>DG-AZ-COMMON-MODEL</code>, <strong>Parent Device Group</strong> to <code>DG-AZ</code>. Click <strong>OK</strong>.</li>
+      <li>Click <strong>Add</strong>. Set <strong>Name</strong> to <code>DG-AZ-TVNET</code>, <strong>Parent</strong> to <code>DG-AZ</code>. Click <strong>OK</strong>.</li>
+      <li>For each TVNet variant (INBOUND/OBEW × LRE/ARE), click <strong>Add</strong> and set <strong>Parent</strong> to <code>DG-AZ-TVNET</code>:
+        <ul>
+          <li><code>DG-AZ-TVNET-INBOUND-USE</code></li>
+          <li><code>DG-AZ-TVNET-OBEW-USE</code></li>
+          <li><code>DG-AZ-TVNET-INBOUND-ARE-USE</code></li>
+          <li><code>DG-AZ-TVNET-OBEW-ARE-USE</code></li>
+        </ul>
+      </li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Naming Convention</div>
+      <p><strong>Cloud prefix:</strong> <code>AZ</code> for Azure. <strong>Region suffix:</strong> <code>USE</code> for US-East (extend with <code>USW</code>, <code>EUN</code>, etc. as you deploy in other regions). <strong>Routing engine:</strong> <code>ARE</code> tag indicates the device group runs PAN-OS Advanced Routing Engine; absence means legacy Logical Router Engine.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important</div>
+      The Device Group must exist on Panorama <em>before</em> the firewall attempts to bootstrap. If the firewall cannot find its assigned Device Group, registration will fail.
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.4 Create Templates and Template Stacks</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-templates-and-template-stacks">Manage Templates and Template Stacks</a></p>
+    <p>Templates are layered by function and stacked in priority order. The numbering convention (1, 2, 3, 4) indicates priority — higher numbers override settings from lower numbers in the same stack.</p>
+
+    <h4>Create Templates</h4>
+    <p>Navigate to <strong>Panorama &gt; Templates</strong> and create the following templates:</p>
+    <table>
+      <tr><th>#</th><th>Template Name</th><th>Purpose</th></tr>
+      <tr><td>1</td><td><code>1-TPL-AZURE-REGIONAL-EAST-US</code></td><td>Regional settings (log collectors, RADIUS server, region-specific NTP) for the East US region</td></tr>
+      <tr><td>2</td><td><code>2-TPL-AZURE-GLOBAL</code></td><td>Global common settings: admin accounts, DNS, NTP, dynamic updates, login banners, log forwarding profile references</td></tr>
+      <tr><td>3</td><td><code>3-TPL-AZURE-INSTRUMENTATION</code></td><td>Instrumentation settings: SNMP, telemetry, packet captures, debugging hooks (used in TVNet stacks; optional for Common Model)</td></tr>
+      <tr><td>4</td><td><code>4-TPL-AZURE-COMMON-NETWORK</code></td><td>Network config for Common Model: 3 NICs (mgmt + untrust + trust), <strong>2 virtual routers</strong> (AZ-UNTRUST-VR and AZ-TRUST-VR), zone-based static routes</td></tr>
+      <tr><td>4</td><td><code>4-TPL-AZURE-INBOUND-NETWORK</code></td><td>Network config for TVNet Inbound (Logical Router Engine): 3 NICs, <strong>1 virtual router</strong> (AZ-VR), routes for inbound flows</td></tr>
+      <tr><td>4</td><td><code>4-TPL-AZURE-OBEW-NETWORK</code></td><td>Network config for TVNet OBEW (Logical Router Engine): 3 NICs, 1 VR, routes for outbound + east-west + backhaul flows</td></tr>
+      <tr><td>4</td><td><code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code></td><td>Same as INBOUND-NETWORK but using <strong>Advanced Routing Engine</strong> (Logical Router instead of legacy VR)</td></tr>
+      <tr><td>4</td><td><code>4-TPL-AZURE-OBEW-NETWORK-ARE</code></td><td>Same as OBEW-NETWORK but using <strong>Advanced Routing Engine</strong></td></tr>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Template Numbering</div>
+      <p>Templates are numbered for stack priority &mdash; higher numbers take precedence. Template 4 (network) overrides settings from templates 1-3 when there are conflicts.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Pick one network template per stack</div>
+      <p>The <code>4-TPL-AZURE-*-NETWORK</code> templates are alternatives, not additive &mdash; pick the one that matches the deployment model and routing engine for the firewalls in that stack:</p>
+      <ul>
+        <li><code>4-TPL-AZURE-COMMON-NETWORK</code> for the Common Model (single firewall pair)</li>
+        <li><code>4-TPL-AZURE-INBOUND-NETWORK</code> + <code>4-TPL-AZURE-OBEW-NETWORK</code> for TVNet Dedicated with the legacy Logical Router Engine</li>
+        <li><code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code> + <code>4-TPL-AZURE-OBEW-NETWORK-ARE</code> for TVNet Dedicated with Advanced Routing Engine</li>
+      </ul>
+    </div>
+
+    <h4>Create Template Stacks (One per Device Group)</h4>
+    <p>Create a template stack for each device group. Each stack mounts the templates in priority order (top of the list = lowest priority, bottom = highest).</p>
+
+    <table>
+      <tr><th>Stack Name</th><th>Templates (in stack order, top→bottom)</th><th>Assigned Device Group</th></tr>
+      <tr>
+        <td><code>STK-AZ-COMMON-MODEL</code></td>
+        <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>4-TPL-AZURE-COMMON-NETWORK</code></td>
+        <td><code>DG-AZ-COMMON-MODEL</code></td>
+      </tr>
+      <tr>
+        <td><code>STK-AZ-TVNET-INBOUND-USE</code></td>
+        <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-INBOUND-NETWORK</code></td>
+        <td><code>DG-AZ-TVNET-INBOUND-USE</code></td>
+      </tr>
+      <tr>
+        <td><code>STK-AZ-TVNET-OBEW-USE</code></td>
+        <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-OBEW-NETWORK</code></td>
+        <td><code>DG-AZ-TVNET-OBEW-USE</code></td>
+      </tr>
+      <tr>
+        <td><code>STK-AZ-TVNET-INBOUND-ARE-USE</code></td>
+        <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code></td>
+        <td><code>DG-AZ-TVNET-INBOUND-ARE-USE</code></td>
+      </tr>
+      <tr>
+        <td><code>STK-AZ-TVNET-OBEW-ARE-USE</code></td>
+        <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-OBEW-NETWORK-ARE</code></td>
+        <td><code>DG-AZ-TVNET-OBEW-ARE-USE</code></td>
+      </tr>
+    </table>
+
+    <p>For each stack:</p>
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Templates</strong>, click <strong>Add Stack</strong>.</li>
+      <li>Set the <strong>Name</strong> from the table above.</li>
+      <li>Add templates in stack order (the order matters: lower-precedence first).</li>
+      <li>Enable <strong>Auto Push on 1st Connection</strong>.</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Template variables (set per stack)</div>
+      <p>The network templates reference variables for subnet gateway IPs (e.g. <code>$UNTRUST-CM-VR-GW</code>, <code>$TRUST-CM-VR-GW</code> for Common Model; <code>$UNTRUST-GW</code>, <code>$TRUST-GW</code> for TVNet). Define and populate these variables on each stack — see <a href="#management-config">2A.14 Set Template Variables</a>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.5 Create a Bootstrap Definition</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Bootstrap Definition associates a deployment-profile auth code with a friendly name. We use one Bootstrap Definition per deployment tier so each tier's licensing can be tracked and rotated independently:</p>
+    <table>
+      <tr><th>Bootstrap Definition</th><th>Used by Tier</th><th>Auth Code</th><th>Description</th></tr>
+      <tr><td><code>BD-AZ-COMMON</code></td><td>Common Model</td><td><code>D1234567</code></td><td>Common Model deployments</td></tr>
+      <tr><td><code>BD-AZ-TVNET-INBOUND</code></td><td>TVNet Dedicated — Inbound tier</td><td><code>D1234567</code></td><td>TVNet Inbound dedicated tier</td></tr>
+      <tr><td><code>BD-AZ-TVNET-OBEW</code></td><td>TVNet Dedicated — OBEW tier</td><td><code>D1234567</code></td><td>TVNet OBEW dedicated tier</td></tr>
+    </table>
+    <p>For each row in the table:</p>
+    <ol>
+      <li>Go to <strong>Panorama &gt; SW Firewall License &gt; Bootstrap Definitions</strong>.</li>
+      <li>Click <strong>Add</strong>.</li>
+      <li>Enter the <strong>Name</strong> from the table.</li>
+      <li>Paste the <strong>Auth Code</strong> from your deployment profile (created in <a href="#prerequisites">1.4</a>) — format <code>D1234567</code>.</li>
+      <li>Optionally fill <strong>Description</strong> with the credit pool ID for traceability (e.g., <code>Credit Pool ID: 8267823982 — Common Model deployments</code>).</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">One credit pool, multiple BDs</div>
+      <p>The three BDs above all use the <em>same</em> auth code because they draw from a single credit pool. Splitting them by tier (Common / TVNet-Inbound / TVNet-OBEW) gives you cleaner per-tier reporting in the SW Firewall License plugin without requiring separate credit pools. If your accounting model requires distinct pools per tier (e.g., chargeback to different cost centers), provision separate auth codes and use them here.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.6 Configure License Managers (One per Device Group)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A License Manager binds a Device Group to its Template Stack and a Bootstrap Definition. Bootstrapping firewalls reference the License Manager by name to know which DG/Stack to join and which auth code to license against.</p>
+    <p>Create one License Manager per Device Group (5 total for both deployment models, US-East region):</p>
+    <table>
+      <tr><th>License Manager Name</th><th>Device Group</th><th>Template Stack</th><th>Bootstrap Definition</th></tr>
+      <tr><td><code>AZ-COMMON-MODEL</code></td><td><code>DG-AZ-COMMON-MODEL</code></td><td><code>STK-AZ-COMMON-MODEL</code></td><td><code>BD-AZ-COMMON</code></td></tr>
+      <tr><td><code>AZ-TVNET-INBOUND-USE</code></td><td><code>DG-AZ-TVNET-INBOUND-USE</code></td><td><code>STK-AZ-TVNET-INBOUND-USE</code></td><td><code>BD-AZ-TVNET-INBOUND</code></td></tr>
+      <tr><td><code>AZ-TVNET-OBEW-USE</code></td><td><code>DG-AZ-TVNET-OBEW-USE</code></td><td><code>STK-AZ-TVNET-OBEW-USE</code></td><td><code>BD-AZ-TVNET-OBEW</code></td></tr>
+      <tr><td><code>AZ-TVNET-INBOUND-ARE-USE</code></td><td><code>DG-AZ-TVNET-INBOUND-ARE-USE</code></td><td><code>STK-AZ-TVNET-INBOUND-ARE-USE</code></td><td><code>BD-AZ-TVNET-INBOUND</code></td></tr>
+      <tr><td><code>AZ-TVNET-OBEW-ARE-USE</code></td><td><code>DG-AZ-TVNET-OBEW-ARE-USE</code></td><td><code>STK-AZ-TVNET-OBEW-ARE-USE</code></td><td><code>BD-AZ-TVNET-OBEW</code></td></tr>
+    </table>
+
+    <p>For each row:</p>
+    <ol>
+      <li>Go to <strong>Panorama &gt; SW Firewall License &gt; License Managers</strong>.</li>
+      <li>Click <strong>Add</strong>.</li>
+      <li>Fill in the four fields from the table.</li>
+      <li>Set <strong>Auto Deactivate</strong> to <code>Never</code> (for fixed-deployment firewalls — change only for autoscale).</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+
+    <p>After adding all License Managers, click <strong>Commit to Panorama</strong>.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">When to set an Auto Deactivate timer</div>
+      <p>Leave <strong>Auto Deactivate</strong> set to <code>Never</code> for fixed-deployment firewalls (the model in this guide). The timer is only meaningful in <strong>auto-scaling</strong> deployments, where firewall instances come and go on demand &mdash; setting a timer there ensures licenses are released back to the pool when an instance is terminated. With a static deployment, a timer can prematurely deactivate a healthy firewall.</p>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Capture the bootstrap parameters</div>
+      <p>After committing, click <strong>Show Bootstrap Parameters</strong> in the License Manager's Action column for each License Manager you'll deploy firewalls into. Copy the <strong>auth-key</strong> and <strong>plugin-op-commands</strong> &mdash; you will need these in <a href="#spoke-onboarding">Phase 6</a> when bootstrapping VM-Series via Azure custom data. The <code>auth-key</code> is generated by the licensing plugin and is <strong>different</strong> from a manually created VM auth key.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Template Configuration ──────────────────────────────── -->
+
+<h3 id="template-config">Device-Group and Template Configuration</h3>
+
+<p>With the licensing plugin scaffolding in place, configure the actual content that the firewalls will receive when they bootstrap: baseline settings, network interfaces and routing, zones, tags, address objects, security and NAT policy, logging, and template variables. The order matters &mdash; build from the bottom of the stack up.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.7 Configure Common Baseline Settings</span>
+  </div>
+  <div class="collapsible-body">
+    <p>These settings live in <code>2-TPL-AZURE-GLOBAL</code> and are inherited by every stack. Configure them once.</p>
+
+    <h4>DNS, NTP, and Update Server</h4>
+    <p>Navigate to <strong>Device &gt; Setup &gt; Services</strong> in the global template and set:</p>
+    <table>
+      <tr><th>Setting</th><th>Value</th></tr>
+      <tr><td>Primary DNS</td><td><code>8.8.8.8</code> (or your enterprise DNS)</td></tr>
+      <tr><td>Secondary DNS</td><td><code>8.8.4.4</code></td></tr>
+      <tr><td>Primary NTP</td><td><code>0.pool.ntp.org</code></td></tr>
+      <tr><td>Secondary NTP</td><td><code>1.pool.ntp.org</code></td></tr>
+      <tr><td>Update Server</td><td><code>updates.paloaltonetworks.com</code></td></tr>
+    </table>
+
+    <h4>Panorama Server</h4>
+    <p>Navigate to <strong>Device &gt; Setup &gt; Management &gt; Panorama Settings</strong> and set the Primary Panorama Server to your Panorama's mgmt IP (e.g. <code>10.52.0.4</code>). If you have an HA pair, also set the secondary.</p>
+
+    <h4>Admin accounts and login banner</h4>
+    <p>Configure local admin accounts under <strong>Device &gt; Administrators</strong> (or RADIUS/SAML auth profiles for federated admin login). Set a login banner under <strong>Device &gt; Setup &gt; Management &gt; Banners and Messages</strong>.</p>
+
+    <h4>Dynamic Update Schedule</h4>
+    <p>Under <strong>Device &gt; Dynamic Updates</strong>, configure schedules for: Applications and Threats, Antivirus, WildFire, URL Filtering. Use staggered windows so updates do not run simultaneously across content sets.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Where to set log forwarding</div>
+      <p>Log forwarding profile <em>references</em> are configured per-DG in 2A.13 (so they can vary by deployment model). The transport configuration (Strata Logging Service / Cortex Data Lake / syslog endpoints) lives in <code>2-TPL-AZURE-GLOBAL</code> under <strong>Device &gt; Server Profiles</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.8 Configure Interfaces &amp; Routing</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each network template defines the firewall's data-plane interfaces and the virtual router(s) that hold its routes. The Common Model and TVNet templates differ in two ways: <strong>number of virtual routers</strong> (Common = 2, TVNet = 1) and <strong>routing engine</strong> (legacy Logical Router Engine vs Advanced Routing Engine).</p>
+
+    <h4>Common Model — <code>4-TPL-AZURE-COMMON-NETWORK</code></h4>
+
+    <p><strong>Interfaces</strong> (Network &gt; Interfaces &gt; Ethernet):</p>
+    <table>
+      <tr><th>Interface</th><th>Type</th><th>IP Assignment</th><th>Comment</th></tr>
+      <tr><td><code>ethernet1/1</code></td><td>Layer3</td><td>DHCP Client</td><td>UNTRUST (untagged)</td></tr>
+      <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td>DHCP Client</td><td>TRUST</td></tr>
+      <tr><td><code>loopback.51</code></td><td>Loopback</td><td>Static (Azure ILB health-probe target)</td><td>used by AZ-TRUST-VR for health probe origination</td></tr>
+    </table>
+
+    <p><strong>Virtual Routers</strong> (Network &gt; Virtual Routers) — two VRs create an air-gap between the inbound and OBEW paths:</p>
+    <table>
+      <tr><th>VR Name</th><th>Interfaces</th><th>Static Routes</th></tr>
+      <tr>
+        <td><code>AZ-UNTRUST-VR</code></td>
+        <td><code>ethernet1/1</code></td>
+        <td>
+          <code>DEFAULT</code>: <code>0.0.0.0/0</code> → <code>$UNTRUST-CM-VR-GW</code><br>
+          <code>AZ-UNTRUST-PROBE</code>: <code>168.63.129.16/32</code> → <code>$UNTRUST-CM-VR-GW</code><br>
+          <code>RFC-1918-10/172/192</code>: black-hole (next-hop None)
+        </td>
+      </tr>
+      <tr>
+        <td><code>AZ-TRUST-VR</code></td>
+        <td><code>ethernet1/2</code>, <code>loopback.51</code></td>
+        <td>
+          <code>RFC-1918-10</code>: <code>10.0.0.0/8</code> → <code>$TRUST-CM-VR-GW</code><br>
+          <code>RFC-1918-172</code>: <code>172.16.0.0/12</code> → <code>$TRUST-CM-VR-GW</code><br>
+          <code>RFC-1918-192</code>: <code>192.168.0.0/16</code> → <code>$TRUST-CM-VR-GW</code><br>
+          <code>AZURE-PROBE</code>: <code>168.63.129.16/32</code> → <code>$TRUST-CM-VR-GW</code><br>
+          <code>DEFAULT</code>: black-hole (next-hop None &mdash; trust VR has no internet path)
+        </td>
+      </tr>
+    </table>
+
+    <h4>TVNet INBOUND — <code>4-TPL-AZURE-INBOUND-NETWORK</code> (Logical Router Engine)</h4>
+
+    <p><strong>Interfaces:</strong></p>
+    <table>
+      <tr><th>Interface</th><th>Type</th><th>IP Assignment</th><th>Comment</th></tr>
+      <tr><td><code>ethernet1/1</code></td><td>Layer3</td><td>DHCP Client</td><td>INTERNET (untagged)</td></tr>
+      <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td>DHCP Client</td><td>TRUST</td></tr>
+    </table>
+
+    <p><strong>Virtual Router</strong> &mdash; single VR <code>AZ-VR</code> contains both interfaces:</p>
+    <table>
+      <tr><th>Route Name</th><th>Destination</th><th>Next Hop</th></tr>
+      <tr><td><code>DEFAULT</code></td><td><code>0.0.0.0/0</code></td><td><code>$UNTRUST-GW</code></td></tr>
+      <tr><td><code>AZURE-PROBE</code></td><td><code>168.63.129.16/32</code></td><td><code>$UNTRUST-GW</code></td></tr>
+      <tr><td><code>RFC-1918-10</code></td><td><code>10.0.0.0/8</code></td><td><code>$TRUST-GW</code></td></tr>
+    </table>
+
+    <h4>TVNet OBEW — <code>4-TPL-AZURE-OBEW-NETWORK</code> (Logical Router Engine)</h4>
+
+    <p><strong>Interfaces:</strong> same as TVNet INBOUND &mdash; <code>ethernet1/1</code> on INTERNET zone, <code>ethernet1/2</code> on TRUST zone, both DHCP.</p>
+
+    <p><strong>Virtual Router</strong> <code>AZ-VR</code>:</p>
+    <table>
+      <tr><th>Route Name</th><th>Destination</th><th>Next Hop</th></tr>
+      <tr><td><code>DEFAULT</code></td><td><code>0.0.0.0/0</code></td><td><code>$UNTRUST-GW</code></td></tr>
+      <tr><td><code>RFC-1918-10</code></td><td><code>10.0.0.0/8</code></td><td><code>$TRUST-GW</code></td></tr>
+      <tr><td><code>AZURE-PROBE</code></td><td><code>168.63.129.16/32</code></td><td><code>$TRUST-GW</code></td></tr>
+    </table>
+
+    <h4>TVNet — Advanced Routing Engine variants</h4>
+
+    <p>The <code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code> and <code>4-TPL-AZURE-OBEW-NETWORK-ARE</code> templates use PAN-OS <strong>Advanced Routing Engine</strong> (Logical Router) instead of the legacy Virtual Router. The route entries are identical to the LRE templates above &mdash; only the navigation differs:</p>
+    <ul>
+      <li>Configure under <strong>Network &gt; Routing &gt; Logical Routers</strong> (instead of Network &gt; Virtual Routers)</li>
+      <li>Each Logical Router supports the same static-route definitions, plus richer features (BGP, OSPFv3, BFD) that LRE does not</li>
+      <li>Enable Advanced Routing once per stack under <strong>Device &gt; Setup &gt; Management &gt; Advanced Routing</strong> &mdash; this is a stack-wide commit-required toggle</li>
+    </ul>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Azure Health Probe IP <code>168.63.129.16</code></div>
+      <p>Azure load balancers (both public NLB and internal ILB) probe firewall health from the well-known IP <code>168.63.129.16</code>. The firewall must (1) have a route back to this IP via the relevant subnet gateway, and (2) have a security rule allowing it &mdash; covered in <a href="#management-config">2A.11</a>. Without the route, probes timeout and Azure marks the firewall unhealthy, dropping it from the LB pool.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Two VRs in Common Model — why?</div>
+      <p>The Common Model uses two virtual routers (<code>AZ-UNTRUST-VR</code> and <code>AZ-TRUST-VR</code>) so the routing tables for the inbound (untrust) side and the OBEW (trust) side are completely separate. This prevents accidental route leakage between zones and forces all traffic to pass through the firewall's policy engine when crossing zones (instead of being routed within a single VR). The TVNet model already gets this isolation by physical separation (two distinct firewall sets), so a single VR per firewall is sufficient.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.9 Configure Security Zones</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Zone names differ between Common Model and TVNet by convention. Configure under <strong>Network &gt; Zones</strong> in each network template:</p>
+
+    <table>
+      <tr><th>Network Template</th><th>Zone</th><th>Type</th><th>Interfaces</th></tr>
+      <tr><td rowspan="3"><code>4-TPL-AZURE-COMMON-NETWORK</code></td><td><code>UNTRUST</code></td><td>Layer3</td><td><code>ethernet1/1</code></td></tr>
+      <tr><td><code>TRUST</code></td><td>Layer3</td><td><code>ethernet1/2</code></td></tr>
+      <tr><td><code>LOOPBACK</code></td><td>Layer3</td><td><code>loopback.51</code></td></tr>
+      <tr><td rowspan="2"><code>4-TPL-AZURE-INBOUND-NETWORK</code><br>(and <code>-ARE</code> variant)</td><td><code>INTERNET</code></td><td>Layer3</td><td><code>ethernet1/1</code></td></tr>
+      <tr><td><code>TRUST</code></td><td>Layer3</td><td><code>ethernet1/2</code></td></tr>
+      <tr><td rowspan="2"><code>4-TPL-AZURE-OBEW-NETWORK</code><br>(and <code>-ARE</code> variant)</td><td><code>INTERNET</code></td><td>Layer3</td><td><code>ethernet1/1</code></td></tr>
+      <tr><td><code>TRUST</code></td><td>Layer3</td><td><code>ethernet1/2</code></td></tr>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Why the naming difference?</div>
+      <p>The Common Model carries internet-facing services (the firewalls hold inbound NAT for published apps), so <code>UNTRUST</code> conveys "outside-of-trust-domain" semantics. TVNet Inbound and OBEW are scale-tier deployments where <code>INTERNET</code> more clearly signals "the wild" since each tier handles only one direction of traffic. Either name works &mdash; pick one convention per project and apply it consistently. Security policy in 2A.11 references these zone names, so renaming after the fact requires touching every rule.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.10 Configure Tags</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Tags are reused across address objects, security rules, and NAT rules to enable filtering and bulk operations. Decide the taxonomy <em>before</em> creating policy &mdash; retro-tagging hundreds of objects is painful.</p>
+
+    <p>Configure under <strong>Objects &gt; Tags</strong> in the <code>shared</code> location. Suggested baseline:</p>
+    <table>
+      <tr><th>Tag Group</th><th>Examples</th><th>Purpose</th></tr>
+      <tr><td>Cloud</td><td><code>azure</code>, <code>aws</code>, <code>gcp</code></td><td>Identifies the target cloud</td></tr>
+      <tr><td>Region</td><td><code>azure-eastus</code>, <code>azure-westeurope</code></td><td>Geographic scope</td></tr>
+      <tr><td>Environment</td><td><code>prod</code>, <code>stage</code>, <code>dev</code>, <code>TESTING</code></td><td>Lifecycle classification</td></tr>
+      <tr><td>Direction</td><td><code>INBOUND</code>, <code>OUTBOUND</code>, <code>EAST-WEST</code></td><td>Traffic direction (used on rules and NAT)</td></tr>
+      <tr><td>Workload</td><td><code>app-web</code>, <code>DMZ</code>, <code>INFRASTRUCTURE</code>, <code>INTERNAL</code></td><td>Workload class</td></tr>
+      <tr><td>Action</td><td><code>BLOCK</code>, <code>APP-ID</code>, <code>REVIEW</code>, <code>REMOVE ME</code></td><td>Operational hints</td></tr>
+    </table>
+
+    <p>Every non-trivial address object should carry at minimum a <strong>Cloud</strong>, <strong>Region</strong>, and <strong>Environment</strong> tag. Every rule should also carry a <strong>Direction</strong> tag.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.11 Configure Address Objects &amp; Security Policy</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Address objects and policy live in two layers: <strong>shared</strong> (objects that span all DGs) and <strong>per-DG</strong> (model-specific or environment-specific objects and rules).</p>
+
+    <h4>Address Object Naming Convention</h4>
+    <p>Use a prefix that encodes the object type. This makes rules self-documenting:</p>
+    <table>
+      <tr><th>Prefix</th><th>Pattern</th><th>Example</th></tr>
+      <tr><td><code>H-</code></td><td>Single host</td><td><code>H-168.63.129.16</code> (Azure health probe)<br><code>H-10.61.1.4</code> (a published spoke workload)</td></tr>
+      <tr><td><code>N-</code></td><td>Network range</td><td><code>N-10.51.0.0-28</code> (a /28 Transit subnet range)</td></tr>
+      <tr><td><em>name</em></td><td>Service-specific friendly name</td><td><code>AD-SERVER</code>, <code>SCM-LOG-COLLECTOR</code></td></tr>
+    </table>
+
+    <p>Required shared objects to create up-front:</p>
+    <ul>
+      <li><code>H-168.63.129.16</code> &mdash; Azure load-balancer health-probe IP (referenced by AZURE-PROBE rules in every model)</li>
+      <li>Spoke workload IPs (one <code>H-x.x.x.x</code> per published app, or <code>N-x.x.x.x-y</code> per spoke subnet)</li>
+      <li>Admin/jump-host source IPs for the few rules that need to reach the firewalls or published apps from corporate</li>
+    </ul>
+
+    <h4>Per-DG Security Policy Patterns</h4>
+
+    <p><strong>Common Model (<code>DG-AZ-COMMON-MODEL</code>) — minimal rule set:</strong></p>
+    <table>
+      <tr><th>Rule</th><th>From</th><th>To</th><th>Source</th><th>Destination</th><th>Service / Action</th></tr>
+      <tr><td><code>AZURE-PROBE-UNTRUST</code></td><td>UNTRUST</td><td>UNTRUST</td><td><code>H-168.63.129.16</code></td><td>any</td><td>any / allow</td></tr>
+      <tr><td><code>AZURE-PROBE-TRUST</code></td><td>TRUST</td><td>TRUST</td><td><code>H-168.63.129.16</code></td><td>any</td><td>any / allow</td></tr>
+      <tr><td><code>INBOUND-PUBLISHED-APP</code></td><td>UNTRUST</td><td>TRUST</td><td>your client allowlist</td><td><code>H-10.61.1.4</code></td><td>application-default / allow + log</td></tr>
+      <tr><td><code>OUTBOUND</code></td><td>TRUST</td><td>UNTRUST</td><td>spoke CIDRs</td><td>any</td><td>application-default / allow + log</td></tr>
+    </table>
+
+    <p><strong>TVNet INBOUND (<code>DG-AZ-TVNET-INBOUND-USE</code>) — inbound only:</strong></p>
+    <table>
+      <tr><th>Rule</th><th>From</th><th>To</th><th>Source</th><th>Destination</th><th>Action</th></tr>
+      <tr><td><code>AZURE-PROBE-UNTRUST</code></td><td>INTERNET</td><td>INTERNET</td><td><code>H-168.63.129.16</code></td><td>any</td><td>allow</td></tr>
+      <tr><td><code>DNAT-1-INBOUND-POL</code></td><td>INTERNET</td><td>TRUST</td><td>your client allowlist</td><td><code>H-10.61.1.4</code></td><td>allow + log</td></tr>
+      <tr><td><code>DNAT-2-INBOUND-POL</code></td><td>INTERNET</td><td>TRUST</td><td>your client allowlist</td><td><code>H-10.61.2.4</code></td><td>allow + log</td></tr>
+    </table>
+
+    <p><strong>TVNet OBEW (<code>DG-AZ-TVNET-OBEW-USE</code>) — outbound + east-west:</strong></p>
+    <table>
+      <tr><th>Rule</th><th>From</th><th>To</th><th>Source</th><th>Destination</th><th>Action</th></tr>
+      <tr><td><code>AZURE-PROBE</code></td><td>TRUST</td><td>TRUST</td><td><code>H-168.63.129.16</code></td><td>any</td><td>allow</td></tr>
+      <tr><td><code>AZURE-INTERNAL</code></td><td>TRUST</td><td>TRUST</td><td>RFC1918</td><td>RFC1918</td><td>allow + log (east-west)</td></tr>
+      <tr><td><code>AZURE-OUT</code></td><td>TRUST</td><td>INTERNET</td><td>spoke CIDRs</td><td>any</td><td>allow + log (outbound)</td></tr>
+    </table>
+
+    <h4>Profile Groups</h4>
+    <p>Reference one of the shared profile groups (<code>default</code>, <code>alert</code>, <code>Outbound</code>, <code>Inbound</code>, <code>Internal</code>, <code>Alert-Only</code>) on every <em>allow</em> rule that handles application traffic. The profile group attaches Antivirus, Anti-Spyware, Vulnerability, URL Filtering, File Blocking, Data Filtering, and WildFire profiles in one shot &mdash; rather than wiring them up per-rule.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Always tag the policy and add log forwarding</div>
+      <p>Apply the relevant <strong>tags</strong> from 2A.10 (e.g. <code>azure</code>, <code>azure-eastus</code>, <code>prod</code>, <code>INBOUND</code>) and select the <strong>log forwarding profile</strong> on every rule. Untagged rules are nearly impossible to filter or bulk-edit later, and rules without log forwarding produce no telemetry in the Strata Logging Service.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.12 Configure NAT Policy</span>
+  </div>
+  <div class="collapsible-body">
+    <p>NAT in this design uses two patterns: <strong>destination NAT</strong> for inbound traffic to published spoke workloads (because the public LB / AppGW frontend IP is different from the spoke workload IP), and <strong>source NAT</strong> for outbound traffic so the firewall's untrust IP becomes the source on the wire.</p>
+
+    <h4>Common Model NAT (<code>DG-AZ-COMMON-MODEL</code>)</h4>
+    <table>
+      <tr><th>Rule</th><th>Pre-NAT From / To</th><th>Source NAT</th><th>Destination NAT</th><th>Use</th></tr>
+      <tr><td><code>DNAT-1-INBOUND-1-80-1</code></td><td>UNTRUST → UNTRUST</td><td>dynamic-ip-and-port (interface address)</td><td>translate to <code>H-10.61.1.4</code> (port 80)</td><td>Inbound HTTP to published web app</td></tr>
+      <tr><td><code>DNAT-2-INBOUND-22-1</code></td><td>UNTRUST → UNTRUST</td><td>dynamic-ip-and-port (interface address)</td><td>translate to <code>H-10.61.1.4</code> (port 22)</td><td>Inbound SSH for admin/jump access</td></tr>
+      <tr><td><code>TRUST-OUT</code></td><td>TRUST → UNTRUST</td><td>dynamic-ip-and-port (interface address)</td><td>&mdash;</td><td>Outbound source NAT (firewall untrust IP becomes source on egress)</td></tr>
+    </table>
+
+    <h4>TVNet INBOUND NAT (<code>DG-AZ-TVNET-INBOUND-USE</code>)</h4>
+    <table>
+      <tr><th>Rule</th><th>Pre-NAT From / To</th><th>Source NAT</th><th>Destination NAT</th></tr>
+      <tr><td><code>DNAT-1-INBOUND</code></td><td>INTERNET → INTERNET</td><td>dynamic-ip-and-port</td><td><code>H-10.61.1.4</code></td></tr>
+      <tr><td><code>DNAT-2-INBOUND-1</code></td><td>INTERNET → INTERNET</td><td>dynamic-ip-and-port</td><td><code>H-10.61.2.4</code></td></tr>
+    </table>
+
+    <h4>TVNet OBEW NAT (<code>DG-AZ-TVNET-OBEW-USE</code>)</h4>
+    <table>
+      <tr><th>Rule</th><th>Pre-NAT From / To</th><th>Source NAT</th><th>Destination NAT</th></tr>
+      <tr><td><code>NAT-OUT</code></td><td>TRUST → INTERNET</td><td>dynamic-ip-and-port</td><td>&mdash;</td></tr>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Why DNAT rules are From/To = same zone</div>
+      <p>Azure's NAT rules in this design use <strong>pre-NAT zones</strong>: the From and To zones are evaluated <em>before</em> destination translation. The packet arrives on the UNTRUST/INTERNET interface destined for the firewall's own untrust IP (the LB frontend resolves to it via DNAT in Azure). The PAN-OS NAT rule then DNATs to the spoke workload. Even though the post-NAT path leads into TRUST, the rule's From/To are both UNTRUST/INTERNET because that's what the original packet header looks like. The matching <em>security</em> rule (in 2A.11) uses the post-NAT zone for the destination (TRUST), which is the standard PAN-OS pattern.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.13 Configure Logging</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Configure the firewall to forward traffic, threat, URL, WildFire, and system logs to Strata Logging Service (or a syslog/SNMP endpoint of your choice).</p>
+
+    <h4>Server profiles (in <code>2-TPL-AZURE-GLOBAL</code>)</h4>
+    <p>Under <strong>Device &gt; Server Profiles</strong>, create the transports your environment uses:</p>
+    <ul>
+      <li><strong>Strata Logging Service</strong> &mdash; auto-configured if the firewall is licensed for SLS and the device certificate is installed (the SLS server profile is implicit)</li>
+      <li><strong>Syslog</strong> &mdash; for sending to on-prem SIEM (Splunk, QRadar, Sentinel)</li>
+      <li><strong>SNMP Trap</strong> &mdash; for sending alerts to NMS</li>
+    </ul>
+
+    <h4>Log Forwarding Profile (in <code>shared</code>)</h4>
+    <p>Under <strong>Objects &gt; Log Forwarding</strong>, create a profile that sends each log type to the appropriate destination(s):</p>
+    <table>
+      <tr><th>Log Type</th><th>Filter</th><th>Forward to</th></tr>
+      <tr><td>Traffic</td><td><code>(action eq allow) or (action eq deny)</code></td><td>SLS, Syslog</td></tr>
+      <tr><td>Threat</td><td>any</td><td>SLS, Syslog</td></tr>
+      <tr><td>URL</td><td>any</td><td>SLS</td></tr>
+      <tr><td>WildFire Submissions</td><td>any</td><td>SLS</td></tr>
+      <tr><td>Data Filtering</td><td>any</td><td>SLS, Syslog</td></tr>
+      <tr><td>System</td><td><code>severity geq medium</code></td><td>SLS, Syslog, SNMP</td></tr>
+    </table>
+
+    <h4>Reference the profile on every allow rule</h4>
+    <p>In each per-DG security policy (2A.11), set the rule's <strong>Log Forwarding</strong> field to the shared log forwarding profile. Without this, allowed traffic produces no logs &mdash; even though the rule has <em>Log at Session End</em> enabled, the logs go nowhere.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.14 Set Template Variables</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each template stack defines values for the gateway-IP variables referenced inside the network templates. The variables differ between Common Model and TVNet by naming convention.</p>
+
+    <h4>Common Model Stack (<code>STK-AZ-COMMON-MODEL</code>)</h4>
+    <table>
+      <tr><th>Variable</th><th>Type</th><th>Example Value</th><th>Source</th></tr>
+      <tr><td><code>$UNTRUST-CM-VR-GW</code></td><td>IP / netmask</td><td><code>10.51.0.33</code></td><td>First usable IP of the UNTRUST subnet (e.g. <code>10.51.0.32/27</code> → <code>.33</code>)</td></tr>
+      <tr><td><code>$TRUST-CM-VR-GW</code></td><td>IP / netmask</td><td><code>10.51.0.97</code></td><td>First usable IP of the TRUST subnet</td></tr>
+      <tr><td><code>$PANORAMA-1</code></td><td>IP / netmask</td><td><code>10.52.0.4</code></td><td>Panorama mgmt IP</td></tr>
+    </table>
+
+    <h4>TVNet Stacks (INBOUND, OBEW; LRE and ARE variants)</h4>
+    <table>
+      <tr><th>Variable</th><th>Type</th><th>Example Value</th></tr>
+      <tr><td><code>$UNTRUST-GW</code></td><td>IP / netmask</td><td>First usable IP of the INTERNET subnet</td></tr>
+      <tr><td><code>$TRUST-GW</code></td><td>IP / netmask</td><td>First usable IP of the TRUST subnet</td></tr>
+    </table>
+
+    <p>Set values under <strong>Panorama &gt; Templates &gt; (stack) &gt; Variables</strong>.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Get the gateway IPs from Azure, not from convention</div>
+      <p>Azure subnets reserve the first three usable IPs (<code>.0</code> network, <code>.1</code> default gateway, <code>.2</code> and <code>.3</code> Azure DNS). The firewall reaches its subnet gateway via <code>.1</code> &mdash; <em>not</em> <code>.4</code> or whatever the firewall NIC was assigned. Verify the gateway IP for each subnet from the Azure Portal (<strong>Subnet &gt; Overview &gt; Address range</strong>) or from <code>az network vnet subnet show</code> output.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.15 Commit to Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Commit all changes to Panorama before deploying any infrastructure. The commit validates the entire configuration tree and surfaces errors that would otherwise only appear at firewall bootstrap time.</p>
+
+    <ol>
+      <li>Click <strong>Commit</strong> in the top-right of the Panorama UI.</li>
+      <li>Select <strong>Commit to Panorama</strong>.</li>
+      <li>Review the change summary &mdash; expect to see new device groups, templates, stacks, license managers, and bootstrap definitions.</li>
+      <li>Click <strong>Commit</strong> and wait for completion.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After the commit succeeds:</p>
+      <ul>
+        <li><strong>Panorama &gt; Device Groups</strong> &mdash; all 7 DGs present (<code>DG-AZ</code>, <code>DG-AZ-COMMON-MODEL</code>, <code>DG-AZ-TVNET</code>, and 4 TVNet leaves)</li>
+        <li><strong>Panorama &gt; Templates</strong> &mdash; all 8 templates and 5 stacks present</li>
+        <li><strong>Panorama &gt; SW Firewall License &gt; License Managers</strong> &mdash; all 5 LMs in <em>Active</em> state, each able to <strong>Show Bootstrap Parameters</strong></li>
+      </ul>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Do not push to devices yet</div>
+      <p>Use only <strong>Commit to Panorama</strong>, not <strong>Commit and Push</strong>. There are no firewalls to push to yet &mdash; they will receive this configuration via the licensing plugin's bootstrap process when they come up in <a href="#spoke-onboarding">Phase 6</a>.</p>
+    </div>
+  </div>
+</div>
+
+  </div><!-- end 2A panel -->
+
+  <!-- ── 2B · SCM Path ────────────────────────────────────────── -->
+  <div class="mgmt-panel" data-plane="SCM">
+    <h3>2B SCM Path — Coming Soon</h3>
+    <p>The SCM-managed equivalent of Phase 2A is being authored. Track parity items: tenant/workspace setup, folder &amp; snippet structure, baseline/network/security snippets, device onboarding, license provisioning via SCM, push &amp; verify.</p>
+  </div>
+
+</div><!-- /.mgmt-tabs -->
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: REVIEW CHECKPOINT                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="review-checkpoint">Phase 3: Review Checkpoint</h2>
+
+<p>Before building any Azure infrastructure, verify all Panorama configuration is complete and collect the bootstrap parameters you'll need for VM-Series launch.</p>
+
+<div class="callout callout-success">
+  <div class="callout-title">Panorama Readiness Checklist</div>
+  <ul>
+    <li>&#9744; Credit pool active, deployment profile created with auth code</li>
+    <li>&#9744; SW Firewall License plugin installed (<code>sw_fw_license</code>)</li>
+    <li>&#9744; Licensing API key set (<code>request license api-key show</code> confirms)</li>
+    <li>&#9744; 3 bootstrap definitions created: <code>BD-AZ-COMMON</code>, <code>BD-AZ-TVNET-INBOUND</code>, <code>BD-AZ-TVNET-OBEW</code></li>
+    <li>&#9744; 5 license managers configured: <code>AZ-COMMON-MODEL</code>, <code>AZ-TVNET-INBOUND-USE</code>, <code>AZ-TVNET-OBEW-USE</code>, <code>AZ-TVNET-INBOUND-ARE-USE</code>, <code>AZ-TVNET-OBEW-ARE-USE</code></li>
+    <li>&#9744; Each LM has Auto-Deactivate set to <code>Never</code></li>
+    <li>&#9744; 7 device groups created: <code>DG-AZ</code>, <code>DG-AZ-COMMON-MODEL</code>, <code>DG-AZ-TVNET</code>, <code>DG-AZ-TVNET-INBOUND-USE</code>, <code>DG-AZ-TVNET-OBEW-USE</code>, <code>DG-AZ-TVNET-INBOUND-ARE-USE</code>, <code>DG-AZ-TVNET-OBEW-ARE-USE</code></li>
+    <li>&#9744; 8 templates created (<code>1-TPL-AZURE-REGIONAL-EAST-US</code>, <code>2-TPL-AZURE-GLOBAL</code>, <code>3-TPL-AZURE-INSTRUMENTATION</code>, plus the 5 network templates)</li>
+    <li>&#9744; 5 template stacks created (<code>STK-AZ-COMMON-MODEL</code> + 4 TVNet stacks)</li>
+    <li>&#9744; Each stack has <strong>Auto Push on 1st Connection</strong> enabled</li>
+    <li>&#9744; Common Model template has 3 NICs (<code>ethernet1/1</code>, <code>ethernet1/2</code>, <code>loopback.51</code>) and 2 VRs (<code>AZ-UNTRUST-VR</code>, <code>AZ-TRUST-VR</code>)</li>
+    <li>&#9744; TVNet templates each have 2 NICs (<code>ethernet1/1</code>, <code>ethernet1/2</code>) and 1 VR (<code>AZ-VR</code>) — or one Logical Router for ARE variants</li>
+    <li>&#9744; Common Model has zones <code>UNTRUST</code>, <code>TRUST</code>, <code>LOOPBACK</code>; TVNet templates have zones <code>INTERNET</code>, <code>TRUST</code></li>
+    <li>&#9744; Static routes for Azure Health Probe (<code>168.63.129.16/32</code>) present in every network template</li>
+    <li>&#9744; <code>DG-AZ-COMMON-MODEL</code> has security policy (AZURE-PROBE rules + inbound DNAT permit + OUTBOUND)</li>
+    <li>&#9744; <code>DG-AZ-COMMON-MODEL</code> has NAT policy (<code>DNAT-1-INBOUND-1-80-1</code>, <code>DNAT-2-INBOUND-22-1</code>, <code>TRUST-OUT</code>)</li>
+    <li>&#9744; TVNet INBOUND DG has DNAT NAT and INBOUND-POL security rules</li>
+    <li>&#9744; TVNet OBEW DG has <code>NAT-OUT</code> NAT and AZURE-PROBE / AZURE-INTERNAL / AZURE-OUT security rules</li>
+    <li>&#9744; Log forwarding profile created in <code>shared</code> and attached to every <em>allow</em> security rule</li>
+    <li>&#9744; Template variables set per stack (<code>$UNTRUST-CM-VR-GW</code>/<code>$TRUST-CM-VR-GW</code>/<code>$PANORAMA-1</code> for Common; <code>$UNTRUST-GW</code>/<code>$TRUST-GW</code> for TVNet)</li>
+    <li>&#9744; Panorama committed successfully (Commit to Panorama, no errors)</li>
+    <li>&#9744; PIN ID and PIN Value recorded</li>
+    <li>&#9744; Azure Marketplace EULA accepted for <code>paloaltonetworks/vmseries-flex</code> (<code>az vm image terms show</code> returns <code>true</code>)</li>
+    <li>&#9744; Strata Cloud Manager (SCM) tenant active with NGFW Management enabled</li>
+    <li>&#9744; Strata Logging Service (SLS) provisioned</li>
+    <li>&#9744; Azure subscription identified, Service Principal created with Contributor role (<code>az ad sp create-for-rbac</code>) — or logged-in user has Contributor</li>
+    <li>&#9744; vCPU quota verified in target region for the firewall VM size (8 vCPU min for Common Model, 16 for TVNet Dedicated)</li>
+    <li>&#9744; Terraform CLI, Azure CLI, and Git installed (or using Azure Cloud Shell)</li>
+    <li>&#9744; Storage Account + container created for Terraform state, with blob versioning enabled</li>
+    <li>&#9744; Git repository created for Terraform code, bootstrapped from <code>terraform-azurerm-swfw-modules</code></li>
+  </ul>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Collect Bootstrap Parameters</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Go to <strong>Panorama &gt; SW Firewall License &gt; License Managers</strong> and click <strong>Show Bootstrap Parameters</strong> on each License Manager you'll deploy firewalls into. Record these values &mdash; you'll need them when launching VM-Series instances in <a href="#spoke-onboarding">Phase 6</a> via Azure custom data.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Use the deployment checklist</div>
+      <p>Fill in <code>reference/deployment-checklist.md</code> as you walk this section. It captures every operator-specific bootstrap value plus the non-bootstrap items you'll need in Phase 4 (subscription ID, region, name prefix, SSH key, admin source CIDR, customer prefix). Hand the completed sheet to whoever runs <code>terraform apply</code>.</p>
+    </div>
+
+    <p>Capture per License Manager:</p>
+    <table>
+      <tr><th>Parameter</th><th>Source</th><th>Your Value</th></tr>
+      <tr><td><code>auth-key</code></td><td>License Manager → Show Bootstrap Parameters</td><td><em>(copy from Panorama)</em></td></tr>
+      <tr><td><code>plugin-op-commands</code></td><td>License Manager → Show Bootstrap Parameters</td><td><em>(copy from Panorama)</em></td></tr>
+      <tr><td><code>panorama-server</code></td><td><strong>Customer / your network</strong> — IP/FQDN reachable from the FW mgmt subnet via VNet peering, ExpressRoute, or VPN</td><td><em>e.g., 10.52.0.4</em></td></tr>
+      <tr><td><code>panorama-server-2</code></td><td><strong>Customer / your network</strong> — secondary Panorama (HA peer)</td><td><em>e.g., 10.52.0.5</em></td></tr>
+      <tr><td><code>dgname</code></td><td>Device Group name (Phase 2A.3)</td><td><em>e.g., DG-AZ-COMMON-MODEL</em></td></tr>
+      <tr><td><code>tplname</code></td><td>Template Stack name (Phase 2A.4)</td><td><em>e.g., STK-AZ-COMMON-MODEL</em></td></tr>
+      <tr><td><code>vm-series-auto-registration-pin-id</code></td><td>CSP Portal (Phase 1.6)</td><td><em>(UUID)</em></td></tr>
+      <tr><td><code>vm-series-auto-registration-pin-value</code></td><td>CSP Portal (Phase 1.6)</td><td><em>(hex string)</em></td></tr>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Pre-flight check before <code>terraform apply</code></div>
+      <ul>
+        <li><code>panorama-server</code> / <code>panorama-server-2</code> are <strong>reachable from the planned firewall management subnet</strong> via VNet peering, ExpressRoute, or VPN. If not, the firewall will boot but never register.</li>
+        <li><code>dgname</code> and <code>tplname</code> <strong>exist</strong> in Panorama and are not already in use by another tenant on a shared Panorama.</li>
+        <li><code>auth-key</code> hasn't been rotated since you copied it (rotation invalidates older keys).</li>
+        <li>Azure outbound on TCP 443 is permitted from the firewall management subnet to <code>updates.paloaltonetworks.com</code> and the licensing endpoints &mdash; otherwise the licensing handshake will fail even if Panorama registration succeeds.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: PREPARE TERRAFORM                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="hub-vnet">Phase 4: Prepare Terraform Configuration</h2>
+
+<p>Phase 4 builds the Azure Terraform configuration that will deploy your Hub VNet, VM-Series firewalls, load balancers, route tables, and (optionally) test spokes. The deployment uses the official <a href="https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules" target="_blank" rel="noopener">PaloAltoNetworks/terraform-azurerm-swfw-modules</a> reference modules and example projects.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Pick your deployment model first</div>
+  <p>Phase 4 splits into two paths — pick the one that matches the architecture you committed to in <a href="#architecture-overview">Architecture Overview</a> and the Device Group / Bootstrap Definition you built in Phase 2A:</p>
+  <ul>
+    <li><strong>Path 4A — Common Model</strong>: 2 firewalls handling all flows. Uses the <code>vmseries_transit_vnet_common</code> example. Bootstrap maps to <code>BD-AZ-COMMON</code>.</li>
+    <li><strong>Path 4B — TVNet Dedicated</strong>: 4 firewalls split into a 2-firewall Inbound tier and a 2-firewall OBEW tier. Uses the <code>vmseries_transit_vnet_dedicated</code> example. Bootstrap maps to <code>BD-AZ-TVNET-INBOUND</code> and <code>BD-AZ-TVNET-OBEW</code>.</li>
+  </ul>
+  <p>Both paths share the same setup steps (4.1–4.3) and the same target IP schema (<code>10.51.0.0/24</code> Transit, <code>10.61.1.0/24</code> + <code>10.61.2.0/24</code> spokes).</p>
+</div>
+
+<h3>Phase 4 Shared Setup</h3>
+<p>Run these three steps regardless of which path you take.</p>
+
+<!-- 4.1 Clone -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 Clone the Terraform Modules Repository</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Clone the official Palo Alto Networks Azure modules into your workspace, then copy the example you'll customize into your Git repo from Phase 1.11.</p>
+    <div class="code-block">
+      <pre><code># Clone the upstream modules repo (read-only reference)
+git clone https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules.git ~/swfw-modules-ref
+
+# In your own deployment repo (from Phase 1.11), create a project directory
+mkdir -p pan-vmseries-azure &amp;&amp; cd pan-vmseries-azure
+
+# Copy ONE example as your starting point — choose A or B
+# A: Common Model
+cp -r ~/swfw-modules-ref/examples/vmseries_transit_vnet_common/* ./
+
+# B: TVNet Dedicated
+# cp -r ~/swfw-modules-ref/examples/vmseries_transit_vnet_dedicated/* ./
+
+# Rename example.tfvars to terraform.tfvars so Terraform auto-loads it
+mv example.tfvars terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The example brings in <code>main.tf</code>, <code>variables.tf</code>, <code>versions.tf</code>, <code>terraform.tfvars</code> (renamed from <code>example.tfvars</code>), bootstrap templates (<code>templates/bootstrap_*.tmpl</code>), and a sample <code>init-cfg.txt</code>. <code>main.tf</code> wires together all the modules (vnet, load_balancer, bootstrap, vmseries, test_infrastructure) — you generally do <strong>not</strong> edit it; everything is driven from <code>terraform.tfvars</code>.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Pin the module version</div>
+      <p>The cloned <code>main.tf</code> references modules with relative paths (<code>../../modules/vmseries</code>). For production, replace those with versioned registry sources — e.g. <code>source = "PaloAltoNetworks/swfw-modules/azurerm//modules/vmseries"</code> with a <code>version</code> pin. This insulates you from upstream breakage.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 4.2 Backend -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.2 Configure Remote State Backend</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Wire Terraform to the Azure Storage Account you created in <a href="#prerequisites">Phase 1.10</a>. The <code>azurerm</code> backend uses the storage account's blob lease for state locking — no separate locking table is required.</p>
+
+    <h4>If You Skipped Phase 1.10 — Create the Backend Now</h4>
+    <p>The Storage Account must exist before <code>terraform init</code>. If you haven't created it yet, run:</p>
+    <div class="code-block">
+      <pre><code>RG=tfstate-rg
+LOCATION=eastus
+SA=&lt;your-unique-storage-account-name&gt;   # 3–24 lowercase alphanumeric, globally unique
+CONTAINER=tfstate
+
+az group create --name $RG --location $LOCATION
+
+az storage account create \
+  --name $SA \
+  --resource-group $RG \
+  --location $LOCATION \
+  --sku Standard_LRS \
+  --kind StorageV2 \
+  --min-tls-version TLS1_2 \
+  --allow-blob-public-access false
+
+az storage account blob-service-properties update \
+  --account-name $SA \
+  --resource-group $RG \
+  --enable-versioning true
+
+az storage container create --name $CONTAINER --account-name $SA</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Create <code>backend.tf</code></h4>
+    <p>In your project directory (alongside <code>main.tf</code>), create a new file:</p>
+    <div class="code-block">
+      <pre><code># backend.tf
+terraform {
+  backend "azurerm" {
+    resource_group_name  = "tfstate-rg"
+    storage_account_name = "&lt;your-unique-storage-account-name&gt;"
+    container_name       = "tfstate"
+    key                  = "pan-vmseries/azure/terraform.tfstate"
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Use a distinct <code>key</code> per environment (e.g. <code>pan-vmseries/azure/dev/terraform.tfstate</code>, <code>.../prod/terraform.tfstate</code>) so dev and prod state files don't collide in the same container.</p>
+
+    <h4>Initialize the Backend</h4>
+    <p>Authenticate to Azure with the Service Principal from Phase 1.8 (<code>ARM_CLIENT_ID</code> / <code>ARM_CLIENT_SECRET</code> / <code>ARM_TENANT_ID</code> / <code>ARM_SUBSCRIPTION_ID</code> exported in your shell), then:</p>
+    <div class="code-block">
+      <pre><code>terraform init</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You should see <em>"Successfully configured the backend 'azurerm'!"</em> and <em>"Terraform has been successfully initialized!"</em> in the output. A blob named <code>pan-vmseries/azure/terraform.tfstate</code> will appear in your container after the first <code>terraform plan</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 4.3 Provider + General -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.3 Configure Provider and General Settings</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The example's <code>versions.tf</code> already declares the <code>azurerm</code> provider. You only need to set the general-settings block at the top of <code>terraform.tfvars</code> and define the VM-Series admin credentials.</p>
+
+    <h4>General Settings</h4>
+    <p>Replace the <code># GENERAL</code> section at the top of <code>terraform.tfvars</code>:</p>
+    <div class="code-block">
+      <pre><code># GENERAL
+
+subscription_id     = null   # SP credentials are passed via ARM_* env vars; leave null
+region              = "East US"
+resource_group_name = "rg-az-vmseries-use"
+name_prefix         = "az-use-"
+
+tags = {
+  "environment"  = "prod"     # or "dev" / "lab"
+  "owner"        = "network-security-team"
+  "cost-center"  = "1234"
+  "createdBy"    = "Terraform"
+  "managedBy"    = "PaloAltoNetworks/terraform-azurerm-swfw-modules"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><code>name_prefix</code> is prepended to every Azure resource name created by the example (so resources land as e.g. <code>az-use-transit</code>, <code>az-use-public-lb</code>). Keep it short — Azure has tight name-length limits on Storage Accounts and load balancers.</p>
+
+    <h4>VM-Series Admin Credentials (Username / Password)</h4>
+    <p>This deployment uses <strong>password-based</strong> authentication for the VM-Series admin user, not SSH keys. Add a variable declaration to your <code>variables.tf</code> (or create one if the example doesn't have it):</p>
+    <div class="code-block">
+      <pre><code># variables.tf — add this block
+variable "vmseries_password" {
+  description = "Initial admin password for the VM-Series. Set via TF_VAR_vmseries_password env var, never check this into git."
+  type        = string
+  sensitive   = true
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Then in <code>terraform.tfvars</code>, the <code>authentication</code> block goes inside <code>vmseries_universal</code> (4A.5 / 4B.5 will reference this):</p>
+    <div class="code-block">
+      <pre><code># Add this inside vmseries_universal {} — see 4A.5 / 4B.5
+authentication = {
+  username                        = "panadmin"
+  password                        = var.vmseries_password
+  disable_password_authentication = false
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Export the password to your shell before running <code>terraform plan</code> / <code>apply</code>:</p>
+    <div class="code-block">
+      <pre><code>export TF_VAR_vmseries_password='&lt;a strong password meeting Azure complexity rules&gt;'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Azure password complexity rules</div>
+      <p>Azure VM admin passwords must be 12–123 characters, contain at least one uppercase, one lowercase, one digit, and one special character, and cannot contain the username. Weak passwords cause the VM to fail provisioning with a cryptic <code>OSProvisioningTimedOut</code> error.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4A — COMMON MODEL                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h3 id="phase-4a-common">Phase 4A: Common Model Path</h3>
+
+<p>Use this path if your Phase 2A configuration targets <code>DG-AZ-COMMON-MODEL</code> / <code>STK-AZ-COMMON-MODEL</code> / <code>BD-AZ-COMMON</code>. The Common Model deploys <strong>2 VM-Series firewalls</strong> in a single Transit VNet that handle inbound, outbound, east-west, and backhaul traffic.</p>
+
+<!-- 4A.1 Choose Common -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4A.1 Confirm the Common Example is Loaded</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If you skipped step 4.1 (or copied the wrong example), reset your project directory:</p>
+    <div class="code-block">
+      <pre><code>cd pan-vmseries-azure
+rm -rf templates/ files/ main.tf variables.tf versions.tf terraform.tfvars init-cfg.sample.txt
+cp -r ~/swfw-modules-ref/examples/vmseries_transit_vnet_common/* ./
+mv example.tfvars terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Verify you have these files in your project directory:</p>
+    <div class="code-block">
+      <pre><code>ls -1
+# main.tf
+# variables.tf
+# versions.tf
+# terraform.tfvars
+# templates/bootstrap_common.tmpl
+# files/init-cfg.sample.txt</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- 4A.2 VNets -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4A.2 Define Transit VNet, Subnets, NSGs, and Route Tables</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Replace the <code>vnets = { ... }</code> block in <code>terraform.tfvars</code> with the canonical Common Model layout. The Transit VNet uses <code>10.51.0.0/24</code> carved into five <code>/27</code> subnets — see <a href="#architecture-overview">Architecture Overview → Hub VNet</a> for the full table.</p>
+
+    <h4>Subnet Carving Reference</h4>
+    <table>
+      <tr><th>Subnet Key</th><th>CIDR</th><th>Purpose</th></tr>
+      <tr><td><code>untrust-lb</code></td><td><code>10.51.0.0/27</code></td><td>Public Load Balancer / AppGW frontend</td></tr>
+      <tr><td><code>untrust</code></td><td><code>10.51.0.32/27</code></td><td>VM-Series untrust interface (<code>eth1/1</code>)</td></tr>
+      <tr><td><code>management</code></td><td><code>10.51.0.64/27</code></td><td>VM-Series management interface (<code>eth1/0</code>)</td></tr>
+      <tr><td><code>trust</code></td><td><code>10.51.0.96/27</code></td><td>VM-Series trust interface (<code>eth1/2</code>) and TRUST internal LB</td></tr>
+      <tr><td><code>gateway</code></td><td><code>10.51.0.128/27</code></td><td>(Optional) Azure Virtual Network Gateway for backhaul</td></tr>
+    </table>
+
+    <h4>tfvars Block</h4>
+    <div class="code-block">
+      <pre><code># NETWORK
+
+vnets = {
+  "transit" = {
+    name          = "transit"
+    address_space = ["10.51.0.0/24"]
+
+    network_security_groups = {
+      "management" = {
+        name = "mgmt-nsg"
+        rules = {
+          mgmt_inbound = {
+            name                       = "vmseries-management-allow-inbound"
+            priority                   = 100
+            direction                  = "Inbound"
+            access                     = "Allow"
+            protocol                   = "Tcp"
+            source_address_prefixes    = ["&lt;your-admin-source-cidr&gt;/32"]   # TODO: corp / jump-host CIDR
+            source_port_range          = "*"
+            destination_address_prefix = "10.51.0.64/27"
+            destination_port_ranges    = ["22", "443"]
+          }
+        }
+      }
+      "public" = { name = "public-nsg" }   # Auto-rules added by load_balancer module
+    }
+
+    route_tables = {
+      "management" = {
+        name = "mgmt-rt"
+        routes = {
+          "untrust_blackhole" = { name = "untrust-blackhole-udr", address_prefix = "10.51.0.32/27", next_hop_type = "None" }
+          "trust_blackhole"   = { name = "trust-blackhole-udr",   address_prefix = "10.51.0.96/27", next_hop_type = "None" }
+        }
+      }
+      "public" = {
+        name = "public-rt"
+        routes = {
+          "mgmt_blackhole"  = { name = "mgmt-blackhole-udr",  address_prefix = "10.51.0.64/27", next_hop_type = "None" }
+          "trust_blackhole" = { name = "trust-blackhole-udr", address_prefix = "10.51.0.96/27", next_hop_type = "None" }
+        }
+      }
+      "private" = {
+        name = "private-rt"
+        routes = {
+          "default" = {
+            name                = "default-udr"
+            address_prefix      = "0.0.0.0/0"
+            next_hop_type       = "VirtualAppliance"
+            next_hop_ip_address = "10.51.0.100"   # TRUST internal LB (set in 4A.3)
+          }
+          "mgmt_blackhole"   = { name = "mgmt-blackhole-udr",    address_prefix = "10.51.0.64/27", next_hop_type = "None" }
+          "untrust_blackhole" = { name = "untrust-blackhole-udr", address_prefix = "10.51.0.32/27", next_hop_type = "None" }
+        }
+      }
+    }
+
+    subnets = {
+      "untrust-lb" = {
+        name                       = "untrust-lb-snet"
+        address_prefixes           = ["10.51.0.0/27"]
+        network_security_group_key = "public"
+        route_table_key            = "public"
+      }
+      "untrust" = {
+        name                       = "untrust-snet"
+        address_prefixes           = ["10.51.0.32/27"]
+        network_security_group_key = "public"
+        route_table_key            = "public"
+      }
+      "management" = {
+        name                            = "mgmt-snet"
+        address_prefixes                = ["10.51.0.64/27"]
+        network_security_group_key      = "management"
+        route_table_key                 = "management"
+        enable_storage_service_endpoint = true   # required for bootstrap storage access
+      }
+      "trust" = {
+        name             = "trust-snet"
+        address_prefixes = ["10.51.0.96/27"]
+        route_table_key  = "private"
+      }
+    }
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Why blackhole routes?</div>
+      <p>The blackhole UDRs (<code>next_hop_type = "None"</code>) prevent direct subnet-to-subnet traffic inside the Transit VNet, forcing every flow that crosses zones to traverse a VM-Series firewall via the load balancer. Without these, Azure's default <em>system route</em> would let mgmt talk to trust directly — bypassing inspection.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 4A.3 LBs -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4A.3 Define Load Balancers</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two Standard Load Balancers: <strong>public</strong> on the untrust side (DNATs inbound traffic to the firewall pair) and <strong>private</strong> on the trust side (HA-ports on the TRUST internal LB at <code>10.51.0.100</code>, the next-hop for spoke and mgmt-VNet UDRs).</p>
+
+    <div class="code-block">
+      <pre><code># LOAD BALANCING
+
+load_balancers = {
+  "public" = {
+    name = "public-lb"
+    nsg_auto_rules_settings = {
+      nsg_vnet_key = "transit"
+      nsg_key      = "public"
+      source_ips   = ["&lt;your-public-client-cidr&gt;/32"]   # TODO: who can hit the published apps
+    }
+    health_probes = {
+      http = {
+        name         = "http-probe"
+        protocol     = "Http"
+        request_path = "/unauth/php/health.php"   # served by VM-Series mgmt-plane
+      }
+    }
+    frontend_ips = {
+      "app1" = {
+        name             = "app1"
+        public_ip_name   = "public-lb-app1-pip"
+        create_public_ip = true
+        in_rules = {
+          "balanceHttp" = {
+            name             = "HTTP"
+            protocol         = "Tcp"
+            port             = 80
+            health_probe_key = "http"
+          }
+        }
+      }
+    }
+  }
+  "private" = {
+    name     = "private-lb"
+    vnet_key = "transit"
+    health_probes = {
+      http = {
+        name         = "http-probe"
+        protocol     = "Http"
+        request_path = "/unauth/php/health.php"
+      }
+    }
+    frontend_ips = {
+      "ha-ports" = {
+        name               = "private-vmseries"
+        subnet_key         = "trust"
+        private_ip_address = "10.51.0.100"   # MUST match the next-hop in spoke and Transit private-rt UDRs
+        in_rules = {
+          HA_PORTS = {
+            name             = "HA-ports"
+            port             = 0
+            protocol         = "All"
+            health_probe_key = "http"
+          }
+        }
+      }
+    }
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">The TRUST ILB IP is wired into many places</div>
+      <p><code>10.51.0.100</code> must match exactly: the Transit <code>private-rt</code> default route (4A.2), every spoke UDR default route (Phase 6), and any backhaul gateway-subnet UDRs. If you change it here, find &amp; replace everywhere.</p>
+    </div>
+
+    <h4>(Optional) Application Gateway in Place of Public LB</h4>
+    <p>If you prefer Azure Application Gateway (Layer 7 / WAF) over the Standard LB for inbound, also add an <code>appgws = {}</code> block (the example tfvars contains a working sample) and add an <code>appgw</code> subnet to the <code>vnets</code> block (e.g. <code>10.51.0.160/27</code>). See <code>example.tfvars</code> for the full structure — too large to inline here.</p>
+  </div>
+</div>
+
+<!-- 4A.4 Bootstrap Storage -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4A.4 (Optional) Define Bootstrap Storage</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Bootstrap Storage is only required if you choose the <strong>full bootstrap</strong> method (uploading <code>init-cfg.txt</code> + a bootstrap XML template to a Storage Account). For Panorama Software Firewall License (<code>sw_fw_license</code>) plugin bootstrap — which is what Phase 2A configured — this section is <strong>not required</strong> and you can skip to 4A.5.</p>
+
+    <p>If you do want full bootstrap (e.g., for offline / disconnected scenarios), uncomment and edit the <code>bootstrap_storages</code> block in <code>terraform.tfvars</code>:</p>
+    <div class="code-block">
+      <pre><code>bootstrap_storages = {
+  "bootstrap" = {
+    name = "azuselbtstrp01"   # TODO: must be globally unique, 3–24 lowercase alphanumeric
+    storage_network_security = {
+      vnet_key            = "transit"
+      allowed_subnet_keys = ["management"]
+      allowed_public_ips  = ["&lt;deployment-machine-public-ip&gt;/32"]
+    }
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>You'd then reference this in <code>vmseries_universal.bootstrap_package</code> instead of <code>bootstrap_options</code> (4A.5).</p>
+    <div class="callout callout-note">
+      <div class="callout-title">This guide uses Panorama-plugin bootstrap</div>
+      <p>Phase 2A wired the License Manager (<code>LM-AZ-COMMON-MODEL</code>) and bootstrap definition (<code>BD-AZ-COMMON</code>) on Panorama. The cleanest path is to use those values in <code>vmseries_universal.bootstrap_options</code> below — full bootstrap from Storage Account is an alternative, not a complement.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 4A.5 VM-Series -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4A.5 Define VM-Series Instances</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Replace the <code># VM-SERIES</code> section with the Common Model 2-firewall layout. <code>bootstrap_options</code> wires each firewall to the <code>LM-AZ-COMMON-MODEL</code> License Manager from Phase 2A.</p>
+
+    <h4>Bootstrap Parameters Recap</h4>
+    <p>Pull these from your Phase 3 checklist (or directly from Panorama → <strong>Plugins → Software Firewall License → LM-AZ-COMMON-MODEL → Show Bootstrap Parameters</strong>):</p>
+    <table>
+      <tr><th>Bootstrap key</th><th>Source</th><th>Common Model value</th></tr>
+      <tr><td><code>panorama-server</code></td><td>Your Panorama mgmt IP</td><td><code>10.52.0.4</code></td></tr>
+      <tr><td><code>panorama-server-2</code></td><td>HA peer</td><td><code>10.52.0.5</code></td></tr>
+      <tr><td><code>tplname</code></td><td>Template Stack from 2A.4</td><td><code>STK-AZ-COMMON-MODEL</code></td></tr>
+      <tr><td><code>dgname</code></td><td>Device Group from 2A.3</td><td><code>DG-AZ-COMMON-MODEL</code></td></tr>
+      <tr><td><code>auth-key</code></td><td>From <em>Show Bootstrap Parameters</em></td><td><code>&lt;copy from Panorama&gt;</code></td></tr>
+      <tr><td><code>plugin-op-commands</code></td><td>From <em>Show Bootstrap Parameters</em></td><td><code>advance-routing:enable,panorama-licensing-mode-on</code></td></tr>
+    </table>
+
+    <h4>tfvars Block</h4>
+    <div class="code-block">
+      <pre><code># VM-SERIES
+
+vmseries_universal = {
+  version = "11.1.607"
+  size    = "Standard_DS3_v2"
+
+  authentication = {
+    username                        = "panadmin"
+    password                        = var.vmseries_password
+    disable_password_authentication = false
+  }
+
+  bootstrap_options = {
+    type               = "dhcp-client"
+    plugin-op-commands = "advance-routing:enable,panorama-licensing-mode-on"
+    panorama-server    = "10.52.0.4"                              # Panorama HA primary
+    panorama-server-2  = "10.52.0.5"                              # Panorama HA secondary
+    tplname            = "STK-AZ-COMMON-MODEL"
+    dgname             = "DG-AZ-COMMON-MODEL"
+    auth-key           = "&lt;auth-key from LM-AZ-COMMON-MODEL Show Bootstrap Parameters&gt;"
+  }
+}
+
+vmseries = {
+  "fw-1" = {
+    name     = "az-use-fw01"
+    vnet_key = "transit"
+    virtual_machine = { zone = 1 }
+    interfaces = [
+      { name = "fw01-mgmt",    subnet_key = "management", ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = true } } },
+      { name = "fw01-untrust", subnet_key = "untrust",    ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = true } }, load_balancer_key = "public" },
+      { name = "fw01-trust",   subnet_key = "trust",      ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = false } }, load_balancer_key = "private" }
+    ]
+  }
+  "fw-2" = {
+    name     = "az-use-fw02"
+    vnet_key = "transit"
+    virtual_machine = { zone = 2 }
+    interfaces = [
+      { name = "fw02-mgmt",    subnet_key = "management", ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = true } } },
+      { name = "fw02-untrust", subnet_key = "untrust",    ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = true } }, load_balancer_key = "public" },
+      { name = "fw02-trust",   subnet_key = "trust",      ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = false } }, load_balancer_key = "private" }
+    ]
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Both firewalls bootstrap to the SAME License Manager</div>
+      <p>In Common Model, both <code>fw-1</code> and <code>fw-2</code> use the identical <code>auth-key</code> from <code>LM-AZ-COMMON-MODEL</code>. The plugin auto-allocates licenses from the BD-AZ-COMMON pool to whichever firewall checks in. Don't try to use different auth-keys per firewall.</p>
+    </div>
+
+    <h4>Public IPs on Mgmt and Untrust</h4>
+    <p>The example creates public IPs on both the mgmt interface (so you can SSH in for break-fix) and the untrust interface (for outbound source-NAT egress when a public LB outbound rule isn't used). Lock down access via the management NSG (4A.2) and your security policy in Panorama. For mgmt-VNet-only access (no public mgmt IP), set <code>create_public_ip = false</code> on the mgmt interface and reach the firewalls via VNet peering / Bastion.</p>
+  </div>
+</div>
+
+<!-- 4A.6 Test Spokes -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4A.6 (Optional) Define Test Spoke Infrastructure</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The example ships a <code>test_infrastructure</code> block that creates two test spoke VNets (App01 and App02) with Linux VMs and Azure Bastion hosts — useful for end-to-end traffic-flow validation in Phase 7. If your spokes already exist (or you'll deploy them separately in Phase 6), <strong>delete the <code>test_infrastructure</code> block</strong>.</p>
+
+    <h4>Aligned with the 10.61.1/2.x Spoke Schema</h4>
+    <div class="code-block">
+      <pre><code># TEST INFRASTRUCTURE
+
+test_infrastructure = {
+  "app1_testenv" = {
+    vnets = {
+      "app1" = {
+        name          = "app1-vnet"
+        address_space = ["10.61.1.0/24"]
+        hub_vnet_name = "transit"   # name_prefix is auto-prepended
+        network_security_groups = {
+          "app1" = {
+            name = "app1-nsg"
+            rules = {
+              from_bastion = {
+                name                       = "app1-allow-bastion"
+                priority                   = 100
+                direction                  = "Inbound"
+                access                     = "Allow"
+                protocol                   = "Tcp"
+                source_address_prefix      = "10.61.1.64/26"
+                source_port_range          = "*"
+                destination_address_prefix = "*"
+                destination_port_range     = "*"
+              }
+              web_inbound = {
+                name                       = "app1-web-allow-inbound"
+                priority                   = 110
+                direction                  = "Inbound"
+                access                     = "Allow"
+                protocol                   = "Tcp"
+                source_address_prefixes    = ["&lt;public-client-cidr&gt;/32"]
+                source_port_range          = "*"
+                destination_address_prefix = "10.61.1.0/26"
+                destination_port_ranges    = ["80", "443"]
+              }
+            }
+          }
+        }
+        route_tables = {
+          nva = {
+            name = "app1-rt"
+            routes = {
+              "toNVA" = {
+                name                = "toNVA-udr"
+                address_prefix      = "0.0.0.0/0"
+                next_hop_type       = "VirtualAppliance"
+                next_hop_ip_address = "10.51.0.100"   # TRUST ILB
+              }
+            }
+          }
+        }
+        subnets = {
+          "vms"     = { name = "vms-snet",            address_prefixes = ["10.61.1.0/26"],  network_security_group_key = "app1", route_table_key = "nva" }
+          "bastion" = { name = "AzureBastionSubnet",  address_prefixes = ["10.61.1.64/26"] }
+        }
+      }
+    }
+    spoke_vms = { "app1_vm" = { name = "app1-vm", vnet_key = "app1", subnet_key = "vms" } }
+    bastions  = { "app1_bastion" = { name = "app1-bastion", vnet_key = "app1", subnet_key = "bastion" } }
+  }
+  "app2_testenv" = {
+    vnets = {
+      "app2" = {
+        name          = "app2-vnet"
+        address_space = ["10.61.2.0/24"]
+        hub_vnet_name = "transit"
+        network_security_groups = {
+          "app2" = {
+            name = "app2-nsg"
+            rules = {
+              from_bastion = {
+                name = "app2-allow-bastion", priority = 100, direction = "Inbound", access = "Allow", protocol = "Tcp"
+                source_address_prefix      = "10.61.2.64/26"
+                source_port_range          = "*"
+                destination_address_prefix = "*"
+                destination_port_range     = "*"
+              }
+            }
+          }
+        }
+        route_tables = {
+          nva = {
+            name = "app2-rt"
+            routes = {
+              "toNVA" = { name = "toNVA-udr", address_prefix = "0.0.0.0/0", next_hop_type = "VirtualAppliance", next_hop_ip_address = "10.51.0.100" }
+            }
+          }
+        }
+        subnets = {
+          "vms"     = { name = "vms-snet",           address_prefixes = ["10.61.2.0/26"],  network_security_group_key = "app2", route_table_key = "nva" }
+          "bastion" = { name = "AzureBastionSubnet", address_prefixes = ["10.61.2.64/26"] }
+        }
+      }
+    }
+    spoke_vms = { "app2_vm" = { name = "app2-vm", vnet_key = "app2", subnet_key = "vms" } }
+    bastions  = { "app2_bastion" = { name = "app2-bastion", vnet_key = "app2", subnet_key = "bastion" } }
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Bastion is per-spoke and pricey</div>
+      <p>An Azure Bastion host runs ~$140/month per spoke. For a long-lived deployment, use a single shared Bastion in the hub or mgmt VNet instead — the example creates one per spoke for self-contained demos. Set <code>bastions = {}</code> to suppress them.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 4A.7 Validate -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4A.7 Format, Validate, and Plan</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run the standard Terraform sanity checks before <code>apply</code>. Ensure your Azure SP env vars and <code>TF_VAR_vmseries_password</code> are exported.</p>
+    <div class="code-block">
+      <pre><code>terraform fmt -recursive
+terraform validate
+terraform plan -out=tfplan</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A clean Common Model plan should show roughly <strong>50–70 resources to add, 0 to change, 0 to destroy</strong> — including 1 resource group, 1 VNet, 4 subnets, 3 route tables, 2 NSGs, 2 load balancers, 6 NICs (3 per firewall × 2 firewalls), 2 VMs, and a few public IPs. If the plan shows <em>any</em> destroy or fails validation, do not proceed to Phase 5 — fix tfvars first.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Common plan-time errors</div>
+      <ul>
+        <li><strong><code>InvalidAuthenticationToken</code></strong> — Azure SP env vars not exported, or expired secret.</li>
+        <li><strong><code>StorageAccountAlreadyTaken</code></strong> — change <code>bootstrap_storages.bootstrap.name</code>; it must be globally unique.</li>
+        <li><strong><code>SubnetNotFound</code> referencing <code>private</code></strong> — the example uses key <code>private</code>; this guide renamed it to <code>trust</code> in 4A.2. Make sure the LB <code>subnet_key = "trust"</code> matches.</li>
+        <li><strong>VM password complexity</strong> — see callout in 4.3.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4B — TVNET DEDICATED                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h3 id="phase-4b-dedicated">Phase 4B: TVNet Dedicated Path</h3>
+
+<p>Use this path if your Phase 2A configuration targets the <code>DG-AZ-TVNET-INBOUND-USE</code> + <code>DG-AZ-TVNET-OBEW-USE</code> device groups (or their <code>-ARE</code> variants). TVNet Dedicated deploys <strong>4 VM-Series firewalls</strong> in a single Transit VNet — 2 dedicated to inbound traffic and 2 dedicated to outbound + east-west — for better tier isolation and per-tier scaling.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Same VNet, separated at the firewall layer</div>
+  <p>Both firewall pairs share one Transit VNet and one set of subnets. The "dedicated" comes from the <em>firewall role and bootstrap mapping</em>: 2 firewalls bootstrap to <code>BD-AZ-TVNET-INBOUND</code> and join inbound load-balancer pools; 2 bootstrap to <code>BD-AZ-TVNET-OBEW</code> and provide HA-ports for spoke default routes.</p>
+</div>
+
+<!-- 4B.1 Choose Dedicated -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4B.1 Confirm the Dedicated Example is Loaded</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If you copied the wrong example in 4.1, reset:</p>
+    <div class="code-block">
+      <pre><code>cd pan-vmseries-azure
+rm -rf templates/ files/ main.tf variables.tf versions.tf terraform.tfvars init-cfg.sample.txt
+cp -r ~/swfw-modules-ref/examples/vmseries_transit_vnet_dedicated/* ./
+mv example.tfvars terraform.tfvars
+
+ls -1
+# main.tf
+# variables.tf
+# versions.tf
+# terraform.tfvars
+# templates/bootstrap_inbound.tmpl
+# templates/bootstrap_obew.tmpl
+# files/init-cfg.sample.txt</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- 4B.2 VNets -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4B.2 Define Transit VNet, Subnets, NSGs, and Route Tables</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Dedicated example uses the <strong>same 4-subnet structure</strong> as Common (mgmt, untrust, trust, untrust-lb) — both firewall pairs share the Transit VNet. Subnet sizing has more room when you carry 4 firewalls: keep the Architecture Overview's <code>/27</code> carving for headroom, or tighten to <code>/28</code> if you're sure the deployment won't grow.</p>
+
+    <p>Use the <strong>same <code>vnets = { ... }</code> block from 4A.2</strong> — no changes required. The dedicated firewalls are added in 4B.5 to share these subnets.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Why no separate inbound/OBEW subnets?</div>
+      <p>Azure Standard Load Balancer backend pools are scoped to a NIC, not a subnet. The example puts all 4 firewalls' untrust NICs in <code>untrust-snet</code> and all 4 trust NICs in <code>trust-snet</code>; the public LB only health-probes the <em>inbound</em> NICs into its backend pool, and the private LB only health-probes the <em>OBEW</em> NICs. Subnet separation isn't required and would only complicate routing.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 4B.3 LBs -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4B.3 Define Load Balancers (Per Tier)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Same shape as the Common example: one <strong>public LB</strong> (DNATs inbound traffic to the Inbound firewalls' untrust NICs only) and one <strong>private LB</strong> with HA-ports at <code>10.51.0.100</code> (sends spoke / mgmt-VNet trust traffic to the OBEW firewalls' trust NICs only).</p>
+
+    <p>Use the <strong>same <code>load_balancers = { ... }</code> block from 4A.3</strong>. The per-tier separation comes from which firewall NIC is added to which LB backend (configured in 4B.5 via <code>load_balancer_key</code> on each interface).</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Inbound firewall NICs → public LB only; OBEW firewall NICs → private LB only</div>
+      <p>This is what makes the deployment "dedicated" — see 4B.5. If you accidentally add Inbound firewall NICs to the private LB, OBEW spoke traffic will start flowing through Inbound firewalls and break the tier isolation.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 4B.4 Bootstrap Storage -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4B.4 (Optional) Define Bootstrap Storage</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Same guidance as 4A.4 — <strong>skip this step</strong> if you're using the Panorama <code>sw_fw_license</code> plugin bootstrap method (which is what Phase 2A configured). The Dedicated example's bootstrap templates (<code>templates/bootstrap_inbound.tmpl</code> and <code>templates/bootstrap_obew.tmpl</code>) are only used with the full bootstrap method.</p>
+  </div>
+</div>
+
+<!-- 4B.5 VM-Series 4x -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4B.5 Define VM-Series Instances (4 Firewalls)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This is where Dedicated diverges from Common. You define <strong>4 firewalls</strong> with two distinct bootstrap mappings — Inbound firewalls go to <code>LM-AZ-TVNET-INBOUND-USE</code>, OBEW firewalls go to <code>LM-AZ-TVNET-OBEW-USE</code>. The Dedicated example tfvars puts <code>bootstrap_options</code> <em>inside</em> each firewall's <code>virtual_machine</code> block (rather than in <code>vmseries_universal</code>) precisely so each firewall can have a different bootstrap.</p>
+
+    <h4>Bootstrap Parameters Recap</h4>
+    <table>
+      <tr><th>Tier</th><th>License Manager</th><th>tplname</th><th>dgname</th><th>BD</th></tr>
+      <tr><td>Inbound</td><td><code>LM-AZ-TVNET-INBOUND-USE</code></td><td><code>STK-AZ-TVNET-INBOUND-USE</code></td><td><code>DG-AZ-TVNET-INBOUND-USE</code></td><td><code>BD-AZ-TVNET-INBOUND</code></td></tr>
+      <tr><td>OBEW</td><td><code>LM-AZ-TVNET-OBEW-USE</code></td><td><code>STK-AZ-TVNET-OBEW-USE</code></td><td><code>DG-AZ-TVNET-OBEW-USE</code></td><td><code>BD-AZ-TVNET-OBEW</code></td></tr>
+    </table>
+    <p>If you're using the <code>-ARE</code> (Advanced Routing Engine) variants, replace the stack and DG names with their <code>-ARE-</code> equivalents. <code>auth-key</code> and <code>plugin-op-commands</code> values come from each LM's <em>Show Bootstrap Parameters</em> on Panorama.</p>
+
+    <h4>tfvars Block</h4>
+    <div class="code-block">
+      <pre><code># VM-SERIES
+
+ngfw_metrics = { name = "metrics" }   # CloudWatch-equivalent for Azure Monitor
+
+vmseries_universal = {
+  version = "11.1.607"
+  size    = "Standard_DS3_v2"
+
+  authentication = {
+    username                        = "panadmin"
+    password                        = var.vmseries_password
+    disable_password_authentication = false
+  }
+  # NOTE: bootstrap_options is per-firewall in this example, NOT in _universal
+}
+
+vmseries = {
+  # ─────── INBOUND TIER (BD-AZ-TVNET-INBOUND, LM-AZ-TVNET-INBOUND-USE) ───────
+  "fw-in-1" = {
+    name     = "az-use-tvnet-in-fw01"
+    vnet_key = "transit"
+    virtual_machine = {
+      zone = 1
+      bootstrap_options = {
+        type               = "dhcp-client"
+        plugin-op-commands = "advance-routing:enable,panorama-licensing-mode-on"
+        panorama-server    = "10.52.0.4"
+        panorama-server-2  = "10.52.0.5"
+        tplname            = "STK-AZ-TVNET-INBOUND-USE"
+        dgname             = "DG-AZ-TVNET-INBOUND-USE"
+        auth-key           = "&lt;auth-key from LM-AZ-TVNET-INBOUND-USE&gt;"
+      }
+    }
+    interfaces = [
+      { name = "in-fw01-mgmt",    subnet_key = "management", ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = true } } },
+      { name = "in-fw01-untrust", subnet_key = "untrust",    ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = true } }, load_balancer_key = "public" },   # ← Inbound NIC in PUBLIC LB
+      { name = "in-fw01-trust",   subnet_key = "trust",      ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = false } } }                               # ← NOT in private LB
+    ]
+  }
+  "fw-in-2" = {
+    name     = "az-use-tvnet-in-fw02"
+    vnet_key = "transit"
+    virtual_machine = {
+      zone = 2
+      bootstrap_options = {
+        type               = "dhcp-client"
+        plugin-op-commands = "advance-routing:enable,panorama-licensing-mode-on"
+        panorama-server    = "10.52.0.4"
+        panorama-server-2  = "10.52.0.5"
+        tplname            = "STK-AZ-TVNET-INBOUND-USE"
+        dgname             = "DG-AZ-TVNET-INBOUND-USE"
+        auth-key           = "&lt;auth-key from LM-AZ-TVNET-INBOUND-USE&gt;"
+      }
+    }
+    interfaces = [
+      { name = "in-fw02-mgmt",    subnet_key = "management", ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = true } } },
+      { name = "in-fw02-untrust", subnet_key = "untrust",    ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = true } }, load_balancer_key = "public" },
+      { name = "in-fw02-trust",   subnet_key = "trust",      ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = false } } }
+    ]
+  }
+
+  # ─────── OBEW TIER (BD-AZ-TVNET-OBEW, LM-AZ-TVNET-OBEW-USE) ───────
+  "fw-obew-1" = {
+    name     = "az-use-tvnet-obew-fw01"
+    vnet_key = "transit"
+    virtual_machine = {
+      zone = 1
+      bootstrap_options = {
+        type               = "dhcp-client"
+        plugin-op-commands = "advance-routing:enable,panorama-licensing-mode-on"
+        panorama-server    = "10.52.0.4"
+        panorama-server-2  = "10.52.0.5"
+        tplname            = "STK-AZ-TVNET-OBEW-USE"
+        dgname             = "DG-AZ-TVNET-OBEW-USE"
+        auth-key           = "&lt;auth-key from LM-AZ-TVNET-OBEW-USE&gt;"
+      }
+    }
+    interfaces = [
+      { name = "obew-fw01-mgmt",    subnet_key = "management", ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = true } } },
+      { name = "obew-fw01-untrust", subnet_key = "untrust",    ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = true } } },                              # ← NOT in public LB
+      { name = "obew-fw01-trust",   subnet_key = "trust",      ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = false } }, load_balancer_key = "private" }   # ← OBEW NIC in PRIVATE LB
+    ]
+  }
+  "fw-obew-2" = {
+    name     = "az-use-tvnet-obew-fw02"
+    vnet_key = "transit"
+    virtual_machine = {
+      zone = 2
+      bootstrap_options = {
+        type               = "dhcp-client"
+        plugin-op-commands = "advance-routing:enable,panorama-licensing-mode-on"
+        panorama-server    = "10.52.0.4"
+        panorama-server-2  = "10.52.0.5"
+        tplname            = "STK-AZ-TVNET-OBEW-USE"
+        dgname             = "DG-AZ-TVNET-OBEW-USE"
+        auth-key           = "&lt;auth-key from LM-AZ-TVNET-OBEW-USE&gt;"
+      }
+    }
+    interfaces = [
+      { name = "obew-fw02-mgmt",    subnet_key = "management", ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = true } } },
+      { name = "obew-fw02-untrust", subnet_key = "untrust",    ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = true } } },
+      { name = "obew-fw02-trust",   subnet_key = "trust",      ip_configurations = { primary-ip = { name = "primary-ip", primary = true, create_public_ip = false } }, load_balancer_key = "private" }
+    ]
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">The load_balancer_key per interface IS the tier separation</div>
+      <p>Notice the asymmetry: <strong>Inbound</strong> firewalls have <code>load_balancer_key = "public"</code> on their <code>untrust</code> NIC (and nothing on their trust NIC). <strong>OBEW</strong> firewalls have <code>load_balancer_key = "private"</code> on their <code>trust</code> NIC (and nothing on their untrust NIC). This is what makes the public LB DNAT only to Inbound firewalls and the private LB HA-ports only to OBEW firewalls. Get this wrong and tier isolation breaks.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 4B.6 Test Spokes -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4B.6 (Optional) Define Test Spoke Infrastructure</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Use the <strong>same <code>test_infrastructure = { ... }</code> block from 4A.6</strong> — the spoke topology and UDR next-hop (<code>10.51.0.100</code>) are identical regardless of Common vs Dedicated, because the spokes only know about the TRUST internal LB, not which firewalls sit behind it.</p>
+  </div>
+</div>
+
+<!-- 4B.7 Validate -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4B.7 Format, Validate, and Plan</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>terraform fmt -recursive
+terraform validate
+terraform plan -out=tfplan</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A clean Dedicated plan should show roughly <strong>80–110 resources to add</strong> (4 firewalls × 3 NICs each = 12 NICs alone, plus 4 VMs, 8 public IPs, the same VNet/subnet/LB/NSG plumbing as Common). Confirm the plan output groups the firewalls into the expected tier mapping by checking <code>module.vmseries["fw-in-1"]</code> through <code>fw-obew-2</code>. If you only see 2 firewalls, you're still on the Common example — re-do 4B.1.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Tier-mapping sanity check</div>
+      <p>In the plan, look for the <code>load_balancer_backend_address_pool_association</code> resources. You should see exactly <strong>2 associations to the public LB</strong> (the two Inbound untrust NICs) and <strong>2 associations to the private LB</strong> (the two OBEW trust NICs). Any other count = tier mapping is wrong.</p>
+    </div>
+  </div>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Phase 4 complete — proceed to Phase 5</div>
+  <p>Once <code>terraform plan</code> shows the expected resource counts and no errors, you're ready to deploy. Don't run <code>terraform apply</code> from Phase 4 — Phase 5 walks through deployment with the right Panorama-side timing (License Manager must be active before firewalls boot for the bootstrap to land licenses correctly).</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: DEPLOY & VERIFY                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="deploy-verify">Phase 5: Deploy &amp; Verify Infrastructure</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run <code>terraform apply</code>, then verify in the Azure portal: hub VNet, GWLB and backend pool, route tables, NSGs, VM-Series instances, bootstrap success. Reference AWS Phase 5 (line ~2434) for the verification table pattern.</p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 6: SPOKE VNETS                                         -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="spoke-onboarding">Phase 6: Spoke VNet Verification &amp; Onboarding</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Per-spoke onboarding flow: peering to hub, route table updates, GWLB endpoint association, NSG configuration, validation traffic. Reference AWS Phase 6 (line ~2644) for the per-application onboarding pattern.</p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 7: POST-DEPLOYMENT VERIFICATION                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="verification">Phase 7: Post-Deployment Verification</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <p>End-to-end traffic flow validation. Confirm logs in Panorama / SCM monitor view, traceroute through firewalls, GWLB health checks green. Reference AWS Phase 7 (line ~2729).</p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                              -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Top failure modes for Azure VM-Series deployments. Reference AWS Troubleshooting (line ~2777) for the structure: each failure mode in its own collapsible with symptoms, root cause, remediation.</p>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="download-md-btn" id="downloadMdBtn" onclick="downloadAsMarkdown()">&#8681; Markdown</button>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>
