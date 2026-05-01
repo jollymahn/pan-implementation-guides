@@ -178,12 +178,31 @@ function initMgmtTabs() {
             p.classList.toggle('active', p.dataset.plane === plane);
           });
         });
+
+        // Show/hide standalone mgmt-conditional elements outside tab containers
+        if (groupName === 'mgmt') {
+          document.querySelectorAll('.mgmt-conditional[data-plane]').forEach(el => {
+            el.style.display = el.dataset.plane === plane ? '' : 'none';
+          });
+        }
       });
     });
   });
 }
 
-document.addEventListener('DOMContentLoaded', initMgmtTabs);
+// On load, also apply mgmt-conditional visibility from saved preference
+function initMgmtConditional() {
+  const saved = localStorage.getItem(MGMT_STORAGE_PREFIX + 'mgmt');
+  if (!saved) return;
+  document.querySelectorAll('.mgmt-conditional[data-plane]').forEach(el => {
+    el.style.display = el.dataset.plane === saved ? '' : 'none';
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initMgmtTabs();
+  initMgmtConditional();
+});
 
 // ── HTML to Markdown converter ─────────────────────────────────────
 function htmlToMarkdown(el) {
