@@ -122,11 +122,6 @@
   <p><strong>Deployment method:</strong> All Azure infrastructure (Phases 4–6) should be deployed with <strong>Terraform</strong> using the official <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/azurerm/latest">Palo Alto Networks SWFW Modules for Azure</a>. These modules encode Palo Alto's reference architecture and handle VNet, GWLB, route tables, and VM-Series provisioning with tested, production-ready code.</p>
 </div>
 
-<div class="callout callout-warning">
-  <div class="callout-title">Skeleton — content pending</div>
-  <p>This guide is a scaffold produced by the <code>/new-guide</code> skill. Each phase below is stubbed with a placeholder pointing to the canonical AWS guide as exemplar. Drafting is the job of the <code>guide-author</code> subagent — invoke it with a <code>&lt;phase_spec&gt;</code> block per phase.</p>
-</div>
-
 <!-- ════════════════════════════════════════════════════════════ -->
 <!--  ARCHITECTURE OVERVIEW                                        -->
 <!-- ════════════════════════════════════════════════════════════ -->
@@ -1747,7 +1742,7 @@ vnets = {
             direction                  = "Inbound"
             access                     = "Allow"
             protocol                   = "Tcp"
-            source_address_prefixes    = ["&lt;your-admin-source-cidr&gt;/32"]   # TODO: corp / jump-host CIDR
+            source_address_prefixes    = ["&lt;your-admin-source-cidr&gt;/32"]   # Replace with your admin source CIDR(s)
             source_port_range          = "*"
             destination_address_prefix = "10.51.0.64/27"
             destination_port_ranges    = ["22", "443"]
@@ -1843,7 +1838,7 @@ load_balancers = {
     nsg_auto_rules_settings = {
       nsg_vnet_key = "transit"
       nsg_key      = "public"
-      source_ips   = ["&lt;your-public-client-cidr&gt;/32"]   # TODO: who can hit the published apps
+      source_ips   = ["&lt;your-public-client-cidr&gt;/32"]   # Replace with allowed client CIDR(s)
     }
     health_probes = {
       http = {
@@ -1921,7 +1916,7 @@ load_balancers = {
     <div class="code-block">
       <pre><code>bootstrap_storages = {
   "bootstrap" = {
-    name = "azuselbtstrp01"   # TODO: must be globally unique, 3–24 lowercase alphanumeric
+    name = "azuselbtstrp01"   # Must be globally unique, 3–24 lowercase alphanumeric
     storage_network_security = {
       vnet_key            = "transit"
       allowed_subnet_keys = ["management"]
@@ -2435,14 +2430,209 @@ terraform plan -out=tfplan</code></pre>
 
 <h2 id="deploy-verify">Phase 5: Deploy &amp; Verify Infrastructure</h2>
 
+<p>With the Terraform configuration customized, deploy the entire infrastructure in a single <code>terraform apply</code>. The SWFW modules handle resource ordering and dependency resolution automatically.</p>
+
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Phase content: see guide-author subagent</span>
+    <span>5.1 Initialize &amp; Plan</span>
   </div>
   <div class="collapsible-body">
-    <p>Run <code>terraform apply</code>, then verify in the Azure portal: hub VNet, GWLB and backend pool, route tables, NSGs, VM-Series instances, bootstrap success. Reference AWS Phase 5 (line ~2434) for the verification table pattern.</p>
+    <div class="code-block">
+      <pre><code># Initialize Terraform (downloads modules and providers)
+terraform init
+
+# Review the execution plan
+terraform plan -var-file=terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Review the plan output carefully. For the <strong>dedicated</strong> model, expect approximately <strong>80–120 resources</strong> to be created, including VNets, subnets, route tables, NSGs, load balancers, VM-Series instances, and storage accounts. For the <strong>common</strong> model, expect <strong>50–80 resources</strong>.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Pre-Flight Checklist</div>
+      <p>Before applying, confirm:</p>
+      <ul>
+        <li>Azure Marketplace offer is accepted (Phase 1)</li>
+        <li>Panorama is reachable from the VM-Series management subnet via VNet peering, ExpressRoute, or backhaul VPN</li>
+        <li>License Managers are committed and active on Panorama</li>
+        <li>Bootstrap parameters (<code>auth-key</code>, <code>dgname</code>, <code>tplname</code>, <code>plugin-op-commands</code>) are correct in <code>terraform.tfvars</code></li>
+        <li>Device certificate registration PIN is valid and not expired</li>
+      </ul>
+    </div>
   </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.2 Apply</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>terraform apply -var-file=terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Type <code>yes</code> to confirm. Deployment takes approximately <strong>15–25 minutes</strong>. The VM-Series instances need an additional <strong>10–15 minutes</strong> after creation to complete bootstrap and register with Panorama.</p>
+
+    <h4>Terraform Outputs</h4>
+    <p>After apply completes, Terraform outputs the key access information:</p>
+    <div class="code-block">
+      <pre><code># View outputs
+terraform output
+
+# Key outputs:
+# vmseries_mgmt_ips     — Management IPs for each firewall
+# lb_frontend_ips       — Public and internal load balancer frontends
+# storage_account_names — Bootstrap storage accounts (if used)</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.3 Verify Resource Groups &amp; VNets</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Navigate to <strong>Azure Portal &gt; Resource Groups</strong>. Confirm the resource group(s) exist and contain the expected resources.</p>
+
+    <p>Navigate to <strong>Virtual Networks</strong>. Verify the Transit VNet:</p>
+    <table>
+      <tr><th>Property</th><th>Expected</th></tr>
+      <tr><td>Address space</td><td>Your Transit VNet CIDR (e.g., <code>10.51.0.0/24</code>)</td></tr>
+      <tr><td>Subnets</td><td>5 subnets: untrust-lb, untrust, trust, management, public (dedicated) or 3 subnets (common)</td></tr>
+      <tr><td>Peerings</td><td>Peering to Panorama VNet (status: Connected), peerings to spoke VNets</td></tr>
+    </table>
+
+    <p>Navigate to <strong>Route Tables</strong>. Verify the key route tables:</p>
+    <ul>
+      <li><strong>Management RT:</strong> blackhole routes for untrust and trust subnets (next hop: None)</li>
+      <li><strong>Trust RT:</strong> default route <code>0.0.0.0/0</code> &rarr; internal LB frontend IP</li>
+      <li><strong>Spoke RTs:</strong> default route <code>0.0.0.0/0</code> &rarr; internal LB frontend IP (via VNet peering)</li>
+    </ul>
+
+    <p>Navigate to <strong>Network Security Groups</strong>. Verify:</p>
+    <ul>
+      <li><strong>Management NSG:</strong> allows inbound TCP 22, 443 from your admin CIDR; allows inbound/outbound TCP 3978 and 28443 between management subnet and Panorama</li>
+      <li><strong>Public NSG:</strong> allows inbound traffic matching your load balancer rules</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.4 Verify Load Balancers</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Navigate to <strong>Azure Portal &gt; Load Balancers</strong>.</p>
+
+    <h4>Public Load Balancer (Inbound)</h4>
+    <table>
+      <tr><th>Property</th><th>Expected</th></tr>
+      <tr><td>Type</td><td>Public</td></tr>
+      <tr><td>SKU</td><td>Standard</td></tr>
+      <tr><td>Frontend IP</td><td>Public IP assigned</td></tr>
+      <tr><td>Backend pool</td><td>Inbound-tier untrust NICs (2 for dedicated, all for common)</td></tr>
+      <tr><td>Health probe</td><td>HTTP on <code>/unauth/php/health.php</code> — status: healthy</td></tr>
+    </table>
+
+    <h4>Internal Load Balancer (OBEW / East-West)</h4>
+    <table>
+      <tr><th>Property</th><th>Expected</th></tr>
+      <tr><td>Type</td><td>Internal</td></tr>
+      <tr><td>SKU</td><td>Standard</td></tr>
+      <tr><td>Frontend IP</td><td>Private IP in trust subnet</td></tr>
+      <tr><td>Backend pool</td><td>OBEW-tier trust NICs (2 for dedicated, all for common)</td></tr>
+      <tr><td>HA Ports rule</td><td>Enabled (all ports, all protocols)</td></tr>
+      <tr><td>Health probe</td><td>TCP 443 — status: healthy</td></tr>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Health Probe Timing</div>
+      <p>Backend pool members will show <strong>unhealthy</strong> until the VM-Series instances complete bootstrap (10–15 minutes after VM creation). Wait for bootstrap to finish before troubleshooting health probes.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.5 Verify VM-Series Instances</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Navigate to <strong>Azure Portal &gt; Virtual Machines</strong>. Filter by your resource group.</p>
+
+    <h4>Instance Checks</h4>
+    <table>
+      <tr><th>Property</th><th>Expected</th></tr>
+      <tr><td>Status</td><td>Running</td></tr>
+      <tr><td>Size</td><td>Standard_D3_v2 or your chosen size</td></tr>
+      <tr><td>Count</td><td>4 (dedicated: 2 inbound + 2 OBEW) or 2 (common)</td></tr>
+    </table>
+
+    <h4>Network Interface Checks</h4>
+    <p>Select each VM and click <strong>Networking &gt; Network settings</strong>. Verify three NICs attached:</p>
+    <table>
+      <tr><th>NIC</th><th>Subnet</th><th>Purpose</th><th>Check</th></tr>
+      <tr><td>mgmt</td><td>management</td><td>Management (eth0)</td><td>Private IP assigned, NSG attached</td></tr>
+      <tr><td>untrust</td><td>untrust</td><td>Dataplane untrust (ethernet1/1)</td><td>IP forwarding: <strong>enabled</strong></td></tr>
+      <tr><td>trust</td><td>trust</td><td>Dataplane trust (ethernet1/2)</td><td>IP forwarding: <strong>enabled</strong></td></tr>
+    </table>
+
+    <h4>Boot Diagnostics</h4>
+    <p>Select each VM &rarr; <strong>Help &gt; Boot diagnostics</strong>. The serial console output shows bootstrap progress. Look for:</p>
+    <ul>
+      <li><code>Bootstrap successfully completed</code> — bootstrap finished</li>
+      <li><code>Initializing Panorama connection</code> — firewall is connecting to Panorama</li>
+      <li><code>Auto-commit completed</code> — Panorama push succeeded</li>
+    </ul>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Bootstrap Timing</div>
+      <p>VM-Series takes <strong>10–15 minutes</strong> to complete bootstrap after the Azure VM reaches <code>Running</code> state. During this time, the firewall will not respond to health probes and management access will fail. Check <strong>Boot diagnostics</strong> for progress.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.6 Verify Panorama Registration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>After 10–15 minutes, check Panorama for firewall registration.</p>
+
+    <h4>Managed Devices</h4>
+    <p>Navigate to <strong>Panorama &gt; Managed Devices &gt; Summary</strong>. Each firewall should appear with:</p>
+    <table>
+      <tr><th>Column</th><th>Expected</th></tr>
+      <tr><td>Connected</td><td>Yes (green)</td></tr>
+      <tr><td>Device Group</td><td>Correct DG (e.g., <code>DG-AZ-TVNET-INBOUND-CLD</code>)</td></tr>
+      <tr><td>Template Stack</td><td>Correct stack (e.g., <code>STK-AZ-TVNET-INBOUND</code>)</td></tr>
+      <tr><td>Software Version</td><td>Expected PAN-OS version</td></tr>
+    </table>
+
+    <h4>License Manager</h4>
+    <p>Navigate to <strong>Panorama &gt; SW Firewall License &gt; License Managers</strong>. Click each License Manager and verify firewalls appear in the device list with an active license status.</p>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Firewalls not appearing?</div>
+      <p>If no firewalls appear after 15 minutes:</p>
+      <ol>
+        <li>Verify <strong>VNet peering</strong> between the Panorama VNet and Transit VNet is <strong>Connected</strong> on both sides</li>
+        <li>Check the management subnet <strong>NSG</strong> allows TCP 3978 and 28443 to/from Panorama</li>
+        <li>Verify there is no <strong>route asymmetry</strong> — the management route table should not send Panorama-bound traffic through the firewalls</li>
+        <li>Check <strong>Boot diagnostics</strong> on the VM for bootstrap errors</li>
+      </ol>
+      <p>See <a href="#troubleshooting">Troubleshooting</a> for detailed resolution steps.</p>
+    </div>
+  </div>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Phase 5 complete — proceed to Phase 6</div>
+  <p>All VM-Series instances are running, registered with Panorama, assigned to the correct Device Groups and Template Stacks, and licensed. Load balancer health probes are healthy. The security infrastructure is ready for spoke traffic.</p>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════ -->
@@ -2451,13 +2641,75 @@ terraform plan -out=tfplan</code></pre>
 
 <h2 id="spoke-onboarding">Phase 6: Spoke VNet Verification &amp; Onboarding</h2>
 
+<p>With the security infrastructure deployed and firewalls bootstrapped, verify the spoke VNet configuration and prepare to onboard application workloads.</p>
+
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Phase content: see guide-author subagent</span>
+    <span>6.1 Verify Spoke VNet Peering</span>
   </div>
   <div class="collapsible-body">
-    <p>Per-spoke onboarding flow: peering to hub, route table updates, GWLB endpoint association, NSG configuration, validation traffic. Reference AWS Phase 6 (line ~2644) for the per-application onboarding pattern.</p>
+    <p>Navigate to <strong>Azure Portal &gt; Virtual Networks &gt; [Spoke VNet] &gt; Peerings</strong>. Verify peering to the Transit VNet:</p>
+    <table>
+      <tr><th>Property</th><th>Expected</th></tr>
+      <tr><td>Peering status</td><td>Connected</td></tr>
+      <tr><td>Allow forwarded traffic</td><td>Enabled</td></tr>
+      <tr><td>Allow gateway transit (hub side)</td><td>Enabled (if using VPN/ER gateway)</td></tr>
+      <tr><td>Use remote gateways (spoke side)</td><td>Enabled (if using VPN/ER gateway)</td></tr>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Peering must be Connected on both sides</div>
+      <p>VNet peering is a two-way resource. If either side shows <code>Initiated</code> instead of <code>Connected</code>, traffic will not flow. Verify the peering exists in both the spoke VNet and the Transit VNet.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.2 Verify Spoke Routing</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Navigate to <strong>Azure Portal &gt; Route Tables</strong>. Find the route table associated with the spoke application subnet(s).</p>
+
+    <h4>Spoke Application Subnet Route Table</h4>
+    <table>
+      <tr><th>Destination</th><th>Next Hop Type</th><th>Next Hop Address</th><th>Effect</th></tr>
+      <tr><td><code>0.0.0.0/0</code></td><td>Virtual appliance</td><td>Internal LB frontend IP</td><td>All outbound traffic inspected by VM-Series</td></tr>
+    </table>
+
+    <p>The default route sends all spoke-originated traffic to the internal load balancer in the Transit VNet, which distributes it across the OBEW-tier firewalls for inspection.</p>
+
+    <h4>Effective Routes</h4>
+    <p>To verify routing is working end-to-end, check <strong>effective routes</strong> on a spoke VM's NIC:</p>
+    <ol>
+      <li>Navigate to the spoke VM &rarr; <strong>Networking &gt; Network settings</strong></li>
+      <li>Click the NIC &rarr; <strong>Effective routes</strong></li>
+      <li>Confirm <code>0.0.0.0/0</code> shows next hop as the internal LB IP (not <code>Internet</code>)</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.3 Onboarding Additional Spoke VNets</span>
+  </div>
+  <div class="collapsible-body">
+    <p>To add new spoke VNets to the inspected architecture, add entries to the Terraform configuration:</p>
+    <ol>
+      <li><strong>Add a VNet block</strong> in the <code>vnets</code> variable with subnets and NSGs matching the existing spoke pattern.</li>
+      <li><strong>Add VNet peering</strong> between the new spoke and the Transit VNet (both directions).</li>
+      <li><strong>Add a route table</strong> with the default route (<code>0.0.0.0/0</code>) pointing to the internal LB frontend IP as a virtual appliance next hop.</li>
+      <li><strong>Associate the route table</strong> with the spoke application subnet(s).</li>
+      <li>Run <code>terraform plan</code> to review and <code>terraform apply</code> to deploy.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Inbound vs. Outbound-Only Spokes</div>
+      <p>If a spoke VNet only needs outbound and east-west inspection (no inbound internet traffic), you only need the VNet peering and the UDR pointing to the internal LB. For spokes that also need inbound traffic inspection, configure the public load balancer with additional frontend IPs and NAT rules directing inbound traffic to the firewall untrust interfaces.</p>
+    </div>
   </div>
 </div>
 
@@ -2467,14 +2719,57 @@ terraform plan -out=tfplan</code></pre>
 
 <h2 id="verification">Phase 7: Post-Deployment Verification</h2>
 
-<div class="collapsible">
-  <div class="collapsible-header">
-    <span class="chevron">&#9654;</span>
-    <span>Phase content: see guide-author subagent</span>
-  </div>
-  <div class="collapsible-body">
-    <p>End-to-end traffic flow validation. Confirm logs in Panorama / SCM monitor view, traceroute through firewalls, GWLB health checks green. Reference AWS Phase 7 (line ~2729).</p>
-  </div>
+<h3>Panorama Verification</h3>
+<ol>
+  <li><strong>Panorama &gt; Managed Devices &gt; Summary</strong> &mdash; confirm each firewall appears with <code>Connected: Yes</code>.</li>
+  <li>Verify correct Device Group and Template Stack assignment for each firewall.</li>
+  <li>Check <strong>Panorama &gt; SW Firewall License &gt; License Managers</strong> &mdash; firewalls should show as licensed with active subscriptions.</li>
+</ol>
+
+<h3>CLI Verification</h3>
+<p>SSH to each firewall's management IP (via VNet peering from a jump host or Panorama network) and run:</p>
+<div class="code-block">
+  <pre><code># System status and PAN-OS version
+show system info
+
+# License status — all subscriptions should show as active
+request license info
+
+# Panorama connection — should show "connected"
+show panorama-status
+
+# Routing table — verify default route and trust/untrust interfaces
+show routing route
+
+# Bootstrap log details
+debug logview component bts_details</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<h3>Azure Verification</h3>
+<ol>
+  <li><strong>Load Balancer health probes</strong> &mdash; all backend pool members show <code>healthy</code></li>
+  <li><strong>VNet Peerings</strong> &mdash; all peerings show <code>Connected</code> on both sides</li>
+  <li><strong>Route Tables</strong> &mdash; spoke UDRs point to internal LB, management RT has blackhole routes</li>
+  <li><strong>NSGs</strong> &mdash; management NSG allows Panorama ports (3978, 28443), admin access (22, 443)</li>
+</ol>
+
+<h3>Traffic Flow Test</h3>
+<ol>
+  <li>From a spoke VM, run <code>curl -I https://example.com</code> to generate outbound traffic.</li>
+  <li>On Panorama, navigate to <strong>Monitor &gt; Traffic</strong> and filter by the spoke VM's source IP.</li>
+  <li>Confirm the traffic log shows the session was inspected by a firewall in the OBEW tier.</li>
+</ol>
+
+<div class="callout callout-success">
+  <div class="callout-title">Success Criteria</div>
+  <ul>
+    <li><code>show system info</code> shows expected hostname, PAN-OS version, and operational mode</li>
+    <li><code>request license info</code> shows all subscriptions as active</li>
+    <li>Firewall appears in Panorama under correct Device Group and Template Stack</li>
+    <li>Load balancer health probes show all firewalls as healthy</li>
+    <li>Test outbound traffic from a spoke VM &mdash; traffic logs appear on the firewall and in Panorama Monitor</li>
+  </ul>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════ -->
@@ -2486,10 +2781,150 @@ terraform plan -out=tfplan</code></pre>
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Phase content: see guide-author subagent</span>
+    <span>Bootstrap Failures</span>
   </div>
   <div class="collapsible-body">
-    <p>Top failure modes for Azure VM-Series deployments. Reference AWS Troubleshooting (line ~2777) for the structure: each failure mode in its own collapsible with symptoms, root cause, remediation.</p>
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>Firewall stuck at 192.168.1.1</td><td>Bootstrap failed &mdash; reverted to factory defaults</td><td>Check custom data syntax, verify no spaces around <code>=</code> signs in bootstrap parameters. In Azure Portal, check the VM's <strong>Export template</strong> to confirm custom data was passed correctly.</td></tr>
+      <tr><td>Firewall boots but not in Panorama</td><td>Cannot reach Panorama on ports 3978 / 28443</td><td>Verify VNet peering, NSGs, and routing between management subnet and Panorama. See <em>Panorama Connectivity</em> below.</td></tr>
+      <tr><td>Licensed but wrong DG / Template Stack</td><td><code>dgname</code> or <code>tplname</code> mismatch</td><td>Verify exact names match what exists on Panorama (case-sensitive). Check the custom data bootstrap string.</td></tr>
+      <tr><td>Device certificate failure</td><td>Invalid or expired registration PIN</td><td>Generate a new PIN in the Customer Support Portal. Update <code>vm-series-auto-registration-pin-id</code> and <code>pin-value</code> in terraform.tfvars.</td></tr>
+      <tr><td>Content version mismatch</td><td>Content version incompatible with PAN-OS version</td><td>Ensure the minimum content version required for the target PAN-OS is available. Check <code>debug logview component bts_details</code> for details.</td></tr>
+    </table>
+
+    <h4>General Troubleshooting Steps</h4>
+    <ol>
+      <li><strong>Check the bootstrap log:</strong> <code>debug logview component bts_details</code></li>
+      <li><strong>Verify custom data:</strong> In the Azure Portal, navigate to the VM &rarr; <strong>Export template</strong> to confirm the bootstrap string was passed correctly.</li>
+      <li><strong>Review boot diagnostics:</strong> VM &rarr; <strong>Help &gt; Boot diagnostics</strong> for serial console output.</li>
+      <li><strong>Check init-cfg.txt formatting:</strong> No spaces around <code>=</code>, no trailing whitespace, no BOM characters.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Panorama Connectivity</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Firewalls must be able to reach Panorama on <strong>TCP 3978</strong> (management) and <strong>TCP 28443</strong> (device certificate). The most common cause of registration failure is missing or misconfigured network connectivity between the firewall management subnet and Panorama.</p>
+
+    <h4>Connectivity Checklist</h4>
+    <ol>
+      <li><strong>VNet peering:</strong> If Panorama is in a separate VNet, verify peering exists and shows <code>Connected</code> on both sides. This is the most common issue.</li>
+      <li><strong>ExpressRoute / VPN:</strong> If Panorama is on-premises, verify the ExpressRoute circuit or VPN tunnel is up and the management subnet has a route to Panorama's IP.</li>
+      <li><strong>NSG on management subnet:</strong> Must allow outbound TCP 3978 and 28443 to Panorama's IP. Must also allow the return traffic inbound.</li>
+      <li><strong>NSG on Panorama side:</strong> Must allow inbound TCP 3978 and 28443 from the firewall management subnet CIDR.</li>
+      <li><strong>Route table:</strong> The management subnet route table must have a route that reaches Panorama &mdash; do <em>not</em> route management traffic through the firewalls themselves (circular dependency).</li>
+    </ol>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Internet access for licensing</div>
+      <p>Firewalls also need outbound internet access from the management interface to reach <code>updates.paloaltonetworks.com</code> for device certificate registration and content updates. This can be provided via a <strong>NAT Gateway</strong> on the management subnet (preferred) or a public IP on the management NIC (not recommended &mdash; tighten the NSG if you must).</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>NSG Blocking Management Access</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Azure NSGs are stateful but have a default <strong>deny-all inbound</strong> rule. If you cannot reach the firewall management interface:</p>
+    <ol>
+      <li>Navigate to the management NIC &rarr; <strong>Effective security rules</strong> to see which rules are being evaluated.</li>
+      <li>Verify the management NSG has explicit <strong>Allow</strong> rules for:
+        <ul>
+          <li>TCP 22 (SSH) and 443 (HTTPS) from your admin source CIDR</li>
+          <li>TCP 3978 and 28443 to/from Panorama's IP</li>
+        </ul>
+      </li>
+      <li>Check rule <strong>priority</strong> &mdash; a lower-numbered deny rule will override a higher-numbered allow rule.</li>
+      <li>Check <strong>NSG flow logs</strong> (if enabled) to see whether traffic is being allowed or denied.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Load Balancer Health Check Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>Backend pool members stuck in <code>unhealthy</code></td><td>Firewall still bootstrapping</td><td>Wait 10–15 minutes after VM creation. Check boot diagnostics for bootstrap progress.</td></tr>
+      <tr><td>Public LB health probe failing</td><td>Health probe blocked or misconfigured</td><td>Verify the probe path (<code>/unauth/php/health.php</code>) is correct. Ensure the untrust interface management profile allows HTTPS. Check the untrust NSG allows the probe traffic.</td></tr>
+      <tr><td>Internal LB health probe failing</td><td>Trust interface not responding</td><td>Verify the trust interface is up (<code>show interface ethernet1/2</code>). Ensure the interface management profile allows the probe protocol. Check the trust subnet NSG.</td></tr>
+      <tr><td>Intermittent health checks</td><td>Firewall overloaded or rebooting</td><td>Check firewall CPU/memory. Verify the VM size is adequate for your traffic volume.</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>License Manager Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>Firewall not appearing in License Manager</td><td>Bootstrap <code>plugin-op-commands</code> missing or incorrect</td><td>Verify <code>plugin-op-commands</code> includes <code>advance-routing:enable,panorama-licensing-mode-on</code>. Redeploy with corrected custom data.</td></tr>
+      <tr><td>License Manager shows device but no license</td><td>Insufficient license entitlements in the auth code pool</td><td>Check the auth code pool in the Customer Support Portal. Add more entitlements if needed.</td></tr>
+      <tr><td>"Delicensed" after reboot</td><td>Panorama connectivity lost during license refresh</td><td>Restore connectivity to Panorama. The license plugin will re-license automatically.</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Traffic Not Flowing Through Firewalls</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li><strong>Check VNet peering:</strong> Spoke-to-hub peering must be <code>Connected</code> with <strong>Allow forwarded traffic</strong> enabled.</li>
+      <li><strong>Check route tables:</strong> Spoke subnet UDR must have <code>0.0.0.0/0</code> &rarr; internal LB frontend IP as virtual appliance next hop. Verify the UDR is associated with the correct subnet.</li>
+      <li><strong>Check effective routes:</strong> On the spoke VM's NIC, verify <code>Effective routes</code> shows the internal LB as the next hop for <code>0.0.0.0/0</code> (not <code>Internet</code>).</li>
+      <li><strong>Check IP forwarding:</strong> Must be <strong>enabled</strong> on both the untrust and trust NICs of every VM-Series instance. Azure drops forwarded packets if IP forwarding is disabled.</li>
+      <li><strong>Check firewall routing:</strong> <code>show routing route</code> should show a default route via the untrust interface and trust-side routes for spoke subnets.</li>
+      <li><strong>Check security policy:</strong> Verify Panorama has pushed the correct security policy to the firewall. <code>show running security-policy</code> should show allow rules for the expected traffic.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Plugin IP-Tag Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If multiple plugins are installed on Panorama and one or more is unconfigured, IP-tag forwarding may be blocked. This affects Dynamic Address Group membership and security policy enforcement.</p>
+
+    <h4>Symptoms</h4>
+    <ul>
+      <li>Dynamic Address Groups on the firewall are empty despite matching IP-tag registrations on Panorama</li>
+      <li>Security policies using DAGs are not matching traffic as expected</li>
+    </ul>
+
+    <h4>Resolution</h4>
+    <p><strong>Option 1:</strong> Uninstall unconfigured plugins. Navigate to <strong>Panorama &gt; Plugins</strong>, select the unconfigured plugin, and click <strong>Uninstall</strong>.</p>
+    <p><strong>Option 2:</strong> Unblock device push for each unconfigured plugin on each Panorama instance:</p>
+    <div class="code-block">
+      <pre><code># Unblock push for the unconfigured plugin
+request plugins dau plugin-name &lt;plugin-name&gt; unblock-device-push yes
+
+# To revert:
+request plugins dau plugin-name &lt;plugin-name&gt; unblock-device-push no</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Not persistent across reboots</div>
+      <p>The <code>unblock-device-push</code> command does not survive Panorama restarts. Re-execute after any reboot. For Panorama HA, run on <strong>both</strong> instances.</p>
+    </div>
   </div>
 </div>
 
