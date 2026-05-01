@@ -1,0 +1,2229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>VM-Series Deployment on GCP | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <div class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">VM-Series on GCP</span>
+  </div>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="index.html" class="active">GCP</a>
+    <a href="../../quick-ref/index.html">Quick Reference</a>
+  </nav>
+</header>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<div class="sidebar-backdrop"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prerequisites</div>
+    <a href="#prerequisites" data-section="prerequisites">CSP Portal Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Management Platform</div>
+    <a href="#management-config" data-section="management-config">Pick Path (Panorama / SCM)</a>
+    <a href="#licensing-plugin" data-section="licensing-plugin">Licensing Plugin</a>
+    <a href="#template-config" data-section="template-config">Device-Group &amp; Template Config</a>
+    <a href="#scm-path" data-section="scm-path">2B SCM Path</a>
+    <a href="#review-checkpoint" data-section="review-checkpoint">Review Checkpoint</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Terraform</div>
+    <a href="#security-vpc" data-section="security-vpc">Prepare Configuration</a>
+    <a href="#deploy-verify" data-section="deploy-verify">Deploy &amp; Verify</a>
+    <a href="#console-verify" data-section="console-verify">Console Verification</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Spoke VPCs</div>
+    <a href="#spoke-verify" data-section="spoke-verify">Verify &amp; Onboard</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Verify</div>
+    <a href="#verification" data-section="verification">Post-Deployment</a>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#ip-schema" data-section="ip-schema">IP Schema</a>
+    <a href="#reference-tfvars" data-section="reference-tfvars">Reference tfvars</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">GCP</a>
+  <span class="sep">|</span>
+  VM-Series Deployment
+</div>
+
+<div class="article">
+
+<h1>VM-Series Deployment on GCP</h1>
+<p class="subtitle">End-to-end guide: Panorama configuration through GCP infrastructure to verified traffic inspection</p>
+
+<div class="cloud-links">
+  <a href="../aws/vm-series-deployment.html">AWS Guide</a>
+  <a href="../azure/vm-series-deployment.html">Azure Guide</a>
+</div>
+
+<!-- ── Phase Progress ────────────────────────────────────────── -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#management-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Mgmt Platform
+  </a>
+  <a href="#review-checkpoint" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Review
+  </a>
+  <a href="#security-vpc" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Terraform Config
+  </a>
+  <a href="#deploy-verify" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Deploy &amp; Verify
+  </a>
+  <a href="#spoke-verify" class="progress-phase">
+    <span class="progress-phase-label">Phase 6</span>
+    Spoke VPCs
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 7</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide follows a <strong>management-first</strong> approach. All licensing, device groups, templates, and security policy are configured on your management platform &mdash; <strong>Panorama</strong> or <strong>Strata Cloud Manager (SCM)</strong> &mdash; <em>before</em> any GCP infrastructure is built. This ensures firewalls bootstrap into a fully configured management plane on first boot.</p>
+  <p><strong>Design model:</strong> VPC Peering hub-and-spoke with ILB sandwich architecture. Two topology options are documented: <strong>common-firewall</strong> (single firewall set for all traffic) and <strong>dedicated-inbound</strong> (separate inbound and outbound/east-west firewall sets). Phase 2 lets you pick the management platform that fits your environment.</p>
+  <p><strong>Deployment method:</strong> All GCP infrastructure (Phases 4&ndash;6) is deployed with <strong>Terraform</strong> using the official <a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules">Palo Alto Networks SWFW Modules for GCP</a>. These modules encode the reference architecture and handle VPC, load balancer, VPC peering, and VM-Series provisioning with tested, production-ready code.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE OVERVIEW                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>Before deploying anything, study the target architecture. GCP uses an <strong>ILB sandwich</strong> pattern for traffic inspection &mdash; fundamentally different from AWS (GWLB with Geneve encapsulation) and Azure (Gateway Load Balancer). Understanding this architecture is critical before configuring Panorama or writing Terraform.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">GCP has no Gateway Load Balancer</div>
+  <p>Unlike AWS and Azure, GCP does not offer a Gateway Load Balancer. Traffic inspection uses an <strong>Internal Load Balancer (ILB) sandwich</strong>: an External NLB for inbound traffic and an Internal NLB for outbound and east-west traffic, with VM-Series firewalls as backends for both. Because the GCP ILB can only forward traffic to <strong>nic0</strong> of backend instances, <strong>management interface swap</strong> is required &mdash; nic0 becomes the dataplane interface (ethernet1/1) and nic1 becomes the management interface.</p>
+</div>
+
+<h3>Topology Options</h3>
+
+<p>The GCP Terraform modules support two primary topologies. Both use VPC Peering to connect spoke VPCs to a central trust VPC.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Common-Firewall Topology</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A single set of VM-Series firewalls handles all traffic flows: outbound, east-west, and inbound. The default deployment creates:</p>
+    <ul>
+      <li><strong>5 VPC networks:</strong> Management (<code>10.10.10.0/28</code>), Untrust (<code>10.10.11.0/28</code>), Trust (<code>10.10.12.0/28</code>), Spoke-1 (<code>192.168.1.0/28</code>), Spoke-2 (<code>192.168.2.0/28</code>)</li>
+      <li><strong>2 VM-Series firewalls</strong> in separate zones (e.g., <code>us-east1-b</code> and <code>us-east1-c</code>)</li>
+      <li><strong>1 Internal NLB</strong> at <code>10.10.12.5</code> in the trust VPC (outbound + east-west traffic)</li>
+      <li><strong>1 External Regional NLB</strong> with a public IP (inbound traffic)</li>
+      <li><strong>VPC Peering</strong> between trust VPC and each spoke VPC</li>
+      <li><strong>2 test Linux VMs</strong> in the spoke VPCs for connectivity testing</li>
+    </ul>
+    <p>This topology is suitable for most deployments, proof-of-concept environments, and moderate traffic volumes. Approximately <strong>96 Terraform resources</strong> are created.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Terraform example</div>
+      <p><a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules/tree/main/examples/vpc_peering_common"><code>examples/vpc_peering_common</code></a> in the official module repository.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Dedicated-Inbound Topology</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Separates inbound traffic handling from outbound and east-west. The deployment creates:</p>
+    <ul>
+      <li><strong>Same 5 VPC networks</strong> as the common topology</li>
+      <li><strong>4 VM-Series firewalls:</strong> 2 for inbound (behind a Global HTTP Load Balancer) and 2 for outbound/east-west (behind the Internal NLB)</li>
+      <li><strong>1 Internal NLB</strong> in the trust VPC (outbound + east-west)</li>
+      <li><strong>1 Global HTTP Load Balancer</strong> with managed instance group backends (inbound)</li>
+    </ul>
+    <p>This topology is appropriate for high-volume inbound traffic, production-scale deployments where inbound and outbound security policies diverge significantly, or when the inbound tier needs independent scaling. Approximately <strong>104 Terraform resources</strong> are created.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Terraform example</div>
+      <p><a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules/tree/main/examples/vpc_peering_dedicated"><code>examples/vpc_peering_dedicated</code></a> in the official module repository.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Traffic Flows</span>
+  </div>
+  <div class="collapsible-body">
+    <h4>Outbound (Spoke to Internet)</h4>
+    <p>A spoke VM sends traffic to the internet. The spoke VPC has its default internet route deleted; a custom route (<code>0.0.0.0/0</code>) with the ILB IP (<code>10.10.12.5</code>) as next-hop is imported via VPC Peering. Traffic flows:</p>
+    <ol>
+      <li>Spoke VM &rarr; VPC Peering &rarr; Trust VPC ILB (<code>10.10.12.5</code>)</li>
+      <li>ILB selects a VM-Series backend (forwarding to <strong>nic0</strong> = ethernet1/1 after mgmt-interface-swap)</li>
+      <li>VM-Series inspects the traffic, applies security policy</li>
+      <li>Post-inspection: firewall routes traffic out the untrust interface (ethernet1/1 or default route) to the internet via the Untrust VPC default route</li>
+      <li>Return traffic follows the reverse path through the firewall</li>
+    </ol>
+
+    <h4>East-West (Spoke to Spoke)</h4>
+    <p>A VM in Spoke-1 communicates with a VM in Spoke-2. Both spokes peer with the trust VPC:</p>
+    <ol>
+      <li>Spoke-1 VM &rarr; VPC Peering &rarr; Trust VPC ILB</li>
+      <li>ILB &rarr; VM-Series (inspects with east-west policy)</li>
+      <li>VM-Series routes the packet back through the trust interface to Spoke-2 via VPC Peering</li>
+    </ol>
+
+    <h4>Inbound (Internet to Spoke)</h4>
+    <p>An external client connects to an application in a spoke VPC:</p>
+    <ol>
+      <li>External client &rarr; External NLB public IP</li>
+      <li>External NLB &rarr; VM-Series nic0 (untrust/dataplane interface after swap)</li>
+      <li>VM-Series inspects with inbound policy, then forwards to the spoke via the trust interface and VPC Peering</li>
+      <li>Return traffic: spoke VM &rarr; ILB &rarr; VM-Series &rarr; External NLB &rarr; client</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">ILB sandwich architecture</div>
+      <p>The key architectural difference from AWS/Azure: there is no Geneve encapsulation or overlay. Traffic is forwarded at <strong>Layer 3</strong> through the ILB to the VM-Series nic0 interface. The firewall performs standard routing between its trust and untrust interfaces. VPC Peering with exported custom routes provides the spoke-to-hub connectivity that AWS achieves with Transit Gateway.</p>
+    </div>
+  </div>
+</div>
+
+<h3>Design Decision: Common vs. Dedicated</h3>
+
+<table>
+  <thead>
+    <tr><th>Factor</th><th>Common-Firewall</th><th>Dedicated-Inbound</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Firewall count</td><td>2</td><td>4</td></tr>
+    <tr><td>Inbound load balancer</td><td>External Regional NLB</td><td>Global HTTP Load Balancer</td></tr>
+    <tr><td>Outbound/east-west load balancer</td><td>Internal NLB</td><td>Internal NLB</td></tr>
+    <tr><td>Independent inbound scaling</td><td>No &mdash; all traffic shares same FW set</td><td>Yes &mdash; inbound FWs scale independently</td></tr>
+    <tr><td>Policy separation</td><td>All policies on one device group</td><td>Separate DGs for inbound vs. outbound/east-west</td></tr>
+    <tr><td>Resource count</td><td>~96</td><td>~104</td></tr>
+    <tr><td>Best for</td><td>Most deployments, POC, moderate traffic</td><td>High inbound volume, strict policy separation</td></tr>
+  </tbody>
+</table>
+
+<h3>Interface Mapping with Management Interface Swap</h3>
+
+<p>Management interface swap is <strong>required</strong> for any deployment using the Internal Load Balancer. The swap reassigns nic0 from management to dataplane.</p>
+
+<table>
+  <thead>
+    <tr><th>PAN-OS Interface</th><th>GCP NIC (Default)</th><th>GCP NIC (After Swap)</th><th>VPC Network</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Management</td><td>nic0 (eth0)</td><td><strong>nic1 (eth1)</strong></td><td>fw-mgmt-vpc</td></tr>
+    <tr><td>ethernet1/1 (untrust)</td><td>nic1 (eth1)</td><td><strong>nic0 (eth0)</strong> &larr; ILB sends here</td><td>fw-untrust-vpc</td></tr>
+    <tr><td>ethernet1/2 (trust)</td><td>nic2 (eth2)</td><td>nic2 (eth2)</td><td>fw-trust-vpc</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Minimum 2 NICs required for swap</div>
+  <p>If a VM-Series instance is launched with only 1 network interface and <code>mgmt-interface-swap</code> is enabled, the firewall boots into <strong>maintenance mode</strong>. The Terraform modules create 3 NICs by default (untrust, management, trust) &mdash; do not reduce this below 2.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<p>Complete these one-time setup tasks before configuring Panorama. If already completed, skip to <a href="#management-config">Phase 2</a>.</p>
+
+<!-- Prereq 1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 GCP Project &amp; Billing</span>
+  </div>
+  <div class="collapsible-body">
+    <p>All GCP resources are created within a single project. The project must have billing enabled and the required APIs activated.</p>
+    <ol>
+      <li>Log in to the <a href="https://console.cloud.google.com">Google Cloud Console</a>.</li>
+      <li>Create a new project or select an existing project for the security deployment.</li>
+      <li>Ensure billing is linked to the project under <strong>Billing &gt; Account Management</strong>.</li>
+      <li>Enable the required APIs:
+        <ul>
+          <li><strong>Compute Engine API</strong> (<code>compute.googleapis.com</code>)</li>
+          <li><strong>Cloud Storage API</strong> (<code>storage.googleapis.com</code>)</li>
+          <li><strong>Cloud Monitoring API</strong> (<code>monitoring.googleapis.com</code>)</li>
+        </ul>
+      </li>
+    </ol>
+    <div class="code-block">
+      <pre><code># Enable APIs via gcloud CLI
+gcloud services enable compute.googleapis.com \
+  storage.googleapis.com \
+  monitoring.googleapis.com \
+  --project=YOUR_PROJECT_ID</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Project quotas</div>
+      <p>Verify sufficient quotas under <strong>IAM &amp; Admin &gt; Quotas</strong> for CPU, VPC networks (default: 5 per project &mdash; the common topology uses all 5), firewall rules, and static IPs in your target region. Request increases before deploying if needed.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>gcloud projects describe YOUR_PROJECT_ID</code> &mdash; confirm <code>lifecycleState: ACTIVE</code>. Run <code>gcloud services list --enabled --project=YOUR_PROJECT_ID</code> and confirm all three APIs appear.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 IAM &amp; Service Accounts</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Terraform modules create a dedicated service account for the VM-Series instances. Verify that your deployment identity (the account running <code>terraform apply</code>) has sufficient privileges, and understand what the VM-Series service account needs.</p>
+
+    <h4>Deployment Identity (Terraform)</h4>
+    <p>The account running Terraform needs <strong>Owner</strong> or equivalent privileges for the initial deployment. This scope can be reduced post-deployment.</p>
+
+    <h4>VM-Series Service Account</h4>
+    <p>The Terraform modules create a service account (<code>sa-vmseries-01</code>) with these roles:</p>
+    <table>
+      <tr><th>Role</th><th>Purpose</th></tr>
+      <tr><td><code>roles/compute.networkViewer</code></td><td>Read network configuration for VM Monitoring and DAGs</td></tr>
+      <tr><td><code>roles/logging.logWriter</code></td><td>Write logs to Cloud Logging</td></tr>
+      <tr><td><code>roles/monitoring.metricWriter</code></td><td>Publish custom PAN-OS metrics to Cloud Monitoring</td></tr>
+      <tr><td><code>roles/monitoring.viewer</code></td><td>Read monitoring data</td></tr>
+      <tr><td><code>roles/viewer</code></td><td>General read access to project resources</td></tr>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Bootstrap bucket access</div>
+      <p>The bootstrap module automatically grants <code>storage.objectViewer</code> on the GCS bootstrap bucket to the VM-Series service account. No manual IAM binding is required.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>gcloud auth list</code> to confirm your active account. Run <code>gcloud projects get-iam-policy YOUR_PROJECT_ID --flatten="bindings[].members"</code> and verify your identity has the necessary roles.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.3 Generate SSH Key Pair</span>
+  </div>
+  <div class="collapsible-body">
+    <p>An SSH key is required for initial access to the VM-Series firewall management interface. GCP VM-Series instances accept exactly one key at deployment time.</p>
+    <div class="code-block">
+      <pre><code>ssh-keygen -t rsa -b 4096 -f ~/.ssh/gcp-vmseries-key -C "admin"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The public key must be formatted as: <code>admin:ssh-rsa AAAA... admin</code></p>
+    <p>Both the <code>admin:</code> prefix and the trailing <code>admin</code> comment are <strong>mandatory</strong>. Display the correctly formatted key:</p>
+    <div class="code-block">
+      <pre><code>echo "admin:$(cat ~/.ssh/gcp-vmseries-key.pub)"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Corrupted key = delete and redeploy</div>
+      <p>If the SSH key is malformed (extra spaces, missing prefix/suffix, wrong algorithm), the firewall will deploy but SSH access will fail. The only recovery is to <strong>delete the VM-Series instance and redeploy</strong>. The VPC networks survive deletion &mdash; only the firewall instance and firewall rules must be recreated.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The output of <code>echo "admin:$(cat ~/.ssh/gcp-vmseries-key.pub)"</code> should start with <code>admin:ssh-rsa AAAA</code> and end with <code>admin</code>. No line breaks or extra whitespace.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.4 Select VM-Series Image</span>
+  </div>
+  <div class="collapsible-body">
+    <p>VM-Series images are published in the <code>paloaltonetworksgcp-public</code> project. List available images to identify the correct version for your deployment.</p>
+    <div class="code-block">
+      <pre><code>gcloud compute images list \
+  --project paloaltonetworksgcp-public \
+  --no-standard-images \
+  --filter="name~vmseries"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Image naming convention:</p>
+    <table>
+      <tr><th>Image Name Pattern</th><th>License Model</th></tr>
+      <tr><td><code>vmseries-flex-byol-&lt;version&gt;</code></td><td>Flex BYOL (Software NGFW Credits)</td></tr>
+      <tr><td><code>vmseries-bundle1-&lt;version&gt;</code></td><td>PAYG Bundle 1</td></tr>
+      <tr><td><code>vmseries-bundle2-&lt;version&gt;</code></td><td>PAYG Bundle 2</td></tr>
+    </table>
+    <p>The Terraform module defaults to <code>vmseries-flex-byol-10210h9</code>. For PAN-OS 11.1, select an image matching <code>vmseries-flex-byol-1110*</code>.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>gcloud compute images list</code> command returns a table with image names, project, and status. Locate the image version matching your target PAN-OS release. Record the exact image name for Phase 4.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.5 Activate Software NGFW Credits</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/software-ngfw/activate-credits">Activate Credits</a></p>
+    <p>Before creating deployment profiles or licensing firewalls, activate your credit pool.</p>
+    <ol>
+      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
+      <li>Navigate to <strong>Products &gt; Software NGFW Credits</strong>.</li>
+      <li>Locate your credit pool authorization code (from your purchase order).</li>
+      <li>Click <strong>Activate</strong> and enter the auth code to fund the credit pool.</li>
+      <li>Verify the credit pool shows available credits for your desired VM-Series model and subscription tier.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>Credit pools are shared across your account. Each firewall deployment consumes credits based on the vCPU count and subscriptions defined in the deployment profile.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <strong>Software NGFW Credits</strong> page shows your pool with a positive available credit balance.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 6 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.6 Create a Deployment Profile</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/software-ngfw/create-a-deployment-profile-vm-series">Create a Deployment Profile</a></p>
+    <p>The deployment profile defines the firewall model, vCPU allocation, and subscriptions that each bootstrapped firewall receives.</p>
+    <ol>
+      <li>In the Customer Support Portal, go to <strong>Products &gt; Software NGFW Credits</strong>.</li>
+      <li>Select your credit pool and click <strong>Create Deployment Profile</strong>.</li>
+      <li>Configure:
+        <table>
+          <tr><th>Field</th><th>Recommended Value</th></tr>
+          <tr><td><strong>Profile Name</strong></td><td><code>GCP-Security</code></td></tr>
+          <tr><td><strong>Firewall Type</strong></td><td>VM-Series</td></tr>
+          <tr><td><strong>PAN-OS Version</strong></td><td>PAN-OS 10.0.4+</td></tr>
+          <tr><td><strong>vCPU Count</strong></td><td>4 (matches <code>n2-standard-4</code>)</td></tr>
+          <tr><td><strong>Token Count</strong></td><td>2 (common topology) or 4 (dedicated topology)</td></tr>
+          <tr><td><strong>Security Use Cases</strong></td><td>Data Center/Cloud Inbound + Outbound</td></tr>
+        </table>
+      </li>
+      <li>Click <strong>Create</strong>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Profiles partition by vCPU count and subscription bundle, not by topology</div>
+      <p>A deployment profile is a license SKU bundle. Two firewalls in different clouds can share one profile if they have the same vCPU count and subscriptions. Two firewalls in the same VPC can need different profiles if their vCPU counts or subscription tiers differ. Rule of thumb: <strong>one profile per distinct (vCPU count + subscription bundle)</strong>.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The deployment profile appears under <strong>Current Deployment Profiles</strong> with an auto-generated auth code (format: <code>D1234567</code>).</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 7 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.7 Obtain the Auth Code</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the Customer Support Portal, go to <strong>Products &gt; Software NGFW Credits &gt; Deployment Profiles</strong>.</li>
+      <li>Locate your deployment profile and copy the <strong>Auth Code</strong>.</li>
+      <li>Store this code securely &mdash; it is used when creating the Bootstrap Definition on Panorama in <a href="#licensing-plugin">Phase 2</a> and in the Terraform bootstrap options in <a href="#security-vpc">Phase 4</a>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The auth code is a string in the format <code>D1234567</code>. Record it alongside your deployment profile name.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 8 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.8 VPC Network Planning</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Plan the 5 VPC networks before deploying. Each VM-Series network interface must be in a <strong>different VPC network</strong> (GCP requirement &mdash; no two NICs can share a VPC). Subnet CIDRs must not overlap.</p>
+    <table>
+      <tr><th>VPC Network</th><th>Subnet Name</th><th>Default CIDR</th><th>Purpose</th></tr>
+      <tr><td><code>fw-mgmt-vpc</code></td><td><code>fw-mgmt-sub</code></td><td><code>10.10.10.0/28</code></td><td>VM-Series management interface (nic1 after swap)</td></tr>
+      <tr><td><code>fw-untrust-vpc</code></td><td><code>fw-untrust-sub</code></td><td><code>10.10.11.0/28</code></td><td>VM-Series untrust/dataplane interface (nic0 after swap)</td></tr>
+      <tr><td><code>fw-trust-vpc</code></td><td><code>fw-trust-sub</code></td><td><code>10.10.12.0/28</code></td><td>VM-Series trust interface, ILB frontend</td></tr>
+      <tr><td><code>fw-spoke1-vpc</code></td><td><code>fw-spoke1-sub</code></td><td><code>192.168.1.0/28</code></td><td>Spoke 1 workloads</td></tr>
+      <tr><td><code>fw-spoke2-vpc</code></td><td><code>fw-spoke2-sub</code></td><td><code>192.168.2.0/28</code></td><td>Spoke 2 workloads</td></tr>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">GCP default: 5 VPC networks per project</div>
+      <p>The default quota allows 5 VPC networks per project. The common topology uses exactly 5. If adding more spokes, request a quota increase under <strong>IAM &amp; Admin &gt; Quotas</strong> before deploying.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All 5 CIDRs are non-overlapping and fit within your organization's IP address plan. Record these values for Phase 4.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 9 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.9 Panorama Connectivity</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Firewalls contact Panorama during bootstrap to register and pull configuration. Ensure network reachability between the management VPC (<code>10.10.10.0/28</code>) and your Panorama instance.</p>
+    <table>
+      <tr><th>Port</th><th>Direction</th><th>Purpose</th></tr>
+      <tr><td><code>TCP/3978</code></td><td>FW &rarr; Panorama</td><td>Device registration and management</td></tr>
+      <tr><td><code>TCP/28443</code></td><td>FW &rarr; Panorama</td><td>Log forwarding</td></tr>
+    </table>
+    <p>Common connectivity options:</p>
+    <ul>
+      <li><strong>Cloud VPN</strong> &mdash; site-to-site VPN between the management VPC and the on-premises network hosting Panorama</li>
+      <li><strong>Cloud Interconnect</strong> &mdash; dedicated or partner interconnect for private connectivity</li>
+      <li><strong>Panorama on GCP</strong> &mdash; deploy Panorama in the same or a peered VPC</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>From a test VM in the management VPC subnet, confirm reachability to the Panorama IP on ports <code>3978</code> and <code>28443</code>. If Panorama is not yet reachable, establish the connectivity path before proceeding to Phase 2.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 10 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.10 Terraform Prerequisites</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Install the required tools on your deployment machine (local workstation, Cloud Shell, or bastion host).</p>
+    <table>
+      <tr><th>Tool</th><th>Version</th><th>Install</th></tr>
+      <tr><td><strong>Terraform CLI</strong></td><td>&gt;= 1.3, &lt; 2.0</td><td><a href="https://developer.hashicorp.com/terraform/downloads">developer.hashicorp.com/terraform/downloads</a></td></tr>
+      <tr><td><strong>Google Cloud SDK</strong></td><td>Latest</td><td><a href="https://cloud.google.com/sdk/docs/install">cloud.google.com/sdk/docs/install</a></td></tr>
+      <tr><td><strong>Git</strong></td><td>Latest</td><td><a href="https://git-scm.com/downloads">git-scm.com/downloads</a></td></tr>
+    </table>
+    <p>Authenticate with GCP:</p>
+    <div class="code-block">
+      <pre><code># Authenticate for Terraform
+gcloud auth application-default login
+
+# Set default project
+gcloud config set project YOUR_PROJECT_ID</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Google Cloud Shell</div>
+      <p>Cloud Shell includes the <code>gcloud</code> CLI and automatically authenticates with the logged-in console user. Install Terraform in Cloud Shell if not already present. Cloud Shell sessions persist your home directory across sessions.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm all tools are installed and your GCP identity is correct:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>terraform -v
+gcloud --version
+git --version
+gcloud auth list
+gcloud config get-value project</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 11 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.11 Clone Terraform Modules</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>git clone https://github.com/PaloAltoNetworks/terraform-google-swfw-modules.git
+cd terraform-google-swfw-modules</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The repository contains reusable modules under <code>modules/</code> and reference architectures under <code>examples/</code>. Phase 4 uses one of these examples as the starting point.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>examples/</code> directory contains <code>vpc_peering_common/</code> and <code>vpc_peering_dedicated/</code>. List them with <code>ls examples/</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 12 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.12 Generate Auto-Registration PIN</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/vm-series-models/install-a-device-certificate-on-the-vm-series-firewall">Install a Device Certificate</a></p>
+    <p>The auto-registration PIN enables the firewall to fetch a device certificate during bootstrap. Without it, the firewall cannot authenticate with the licensing infrastructure.</p>
+    <ol>
+      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
+      <li>Navigate to <strong>Products &gt; VM-Series Auth-Codes</strong>.</li>
+      <li>Click <strong>Generate OTP</strong> or <strong>Create Registration PIN</strong>.</li>
+      <li>Copy both values: <strong>PIN ID</strong> (UUID format) and <strong>PIN Value</strong> (hex string).</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both the PIN ID and PIN Value are recorded. These are used in the Terraform <code>bootstrap_options</code> block in Phase 4.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: MANAGEMENT PLATFORM CONFIGURATION                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="management-config">Phase 2: Management Platform Configuration</h2>
+
+<p>VM-Series can be managed by either <strong>Panorama</strong> (on-premises or cloud-hosted management appliance) or <strong>Strata Cloud Manager (SCM)</strong> (SaaS management plane). Pick the path that matches your environment.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which path should I pick?</div>
+  <ul>
+    <li><strong>Panorama</strong> &mdash; choose if you already operate Panorama in your environment, need on-premises control, or are using the SW Firewall License Plugin for licensing.</li>
+    <li><strong>SCM</strong> &mdash; choose for greenfield deployments, cloud-native operations, or if consolidating onto Strata's SaaS management plane.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="Panorama">2A &middot; Panorama Path</button>
+    <button class="mgmt-tab" data-plane="SCM">2B &middot; SCM Path</button>
+  </div>
+
+  <!-- ── 2A · Panorama Path ──────────────────────────────────── -->
+  <div class="mgmt-panel active" data-plane="Panorama">
+
+<h3 id="licensing-plugin">Licensing Plugin</h3>
+
+<p>Configure Panorama with the SW Firewall License Plugin, device groups, template stacks, and all firewall policy <strong>before</strong> building any GCP infrastructure.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.1 Install the SW Firewall License Plugin</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/use-panorama-based-software-firewall-license-management">Panorama-Based License Management</a></p>
+    <ol>
+      <li>Log in to Panorama.</li>
+      <li>Navigate to <strong>Panorama &gt; Plugins</strong>.</li>
+      <li>Click <strong>Check Now</strong> to refresh available plugins.</li>
+      <li>Locate <code>sw_fw_license</code>, click <strong>Download</strong>, then <strong>Install</strong>.</li>
+      <li>Verify it appears under <strong>Panorama &gt; SW Firewall License</strong>.</li>
+    </ol>
+    <p><strong>Requirements:</strong> Panorama 10.0.0+, PAN-OS 9.1.0+ on managed firewalls.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <strong>SW Firewall License</strong> menu appears under the <strong>Panorama</strong> tab with sub-items: Bootstrap Definitions, License Managers.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.2 Set the Licensing API Key</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/vm-series-models/licensing-api/install-a-license-deactivation-api-key">Install a License Deactivation API Key</a></p>
+    <ol>
+      <li>Obtain the API key from the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a> under <strong>Products &gt; API Key Management</strong>.</li>
+      <li>SSH into Panorama and run:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>request license api-key set key &lt;key&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>request license api-key show</code> &mdash; confirms the key is set.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.3 Create Device Group</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-device-groups">Manage Device Groups</a></p>
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Device Groups</strong>.</li>
+      <li>Click <strong>Add</strong>.</li>
+      <li>Set <strong>Name</strong> to <code>DG-GCP-SECURITY</code>.</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important</div>
+      <p>The Device Group must exist on Panorama <em>before</em> the firewall attempts to bootstrap. If the firewall cannot find its assigned Device Group, registration fails.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>DG-GCP-SECURITY</code> appears in the Device Groups list under <strong>Panorama &gt; Device Groups</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Template Configuration ────────────────────────────────── -->
+
+<h3 id="template-config">Device-Group and Template Configuration</h3>
+
+<p>Configure the firewall's interfaces, zones, security policy, NAT, and logging. All configuration is pushed to the firewalls when they bootstrap and connect to Panorama.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.4 Create Templates and Template Stack</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-templates-and-template-stacks">Manage Templates and Template Stacks</a></p>
+
+    <h4>Create Template</h4>
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Templates</strong>.</li>
+      <li>Click <strong>Add</strong>. Set <strong>Name</strong> to <code>TPL-GCP-NETWORK</code>. Click <strong>OK</strong>.</li>
+    </ol>
+
+    <h4>Create Template Stack</h4>
+    <ol>
+      <li>Click <strong>Add Stack</strong>.</li>
+      <li>Set <strong>Name</strong> to <code>STK-GCP-SECURITY</code>.</li>
+      <li>Add template: <code>TPL-GCP-NETWORK</code>.</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Template Variables</div>
+      <p>For GCP deployments, the trust and untrust gateway IPs are the first usable address in each subnet (e.g., <code>10.10.11.1</code> for untrust, <code>10.10.12.1</code> for trust). These can be configured as <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-templates-and-template-stacks/configure-template-or-template-stack-variables">template variables</a> if managing firewalls across multiple zones with different gateways.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>STK-GCP-SECURITY</code> appears under <strong>Panorama &gt; Templates</strong> with <code>TPL-GCP-NETWORK</code> listed as a member template.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.5 Configure Zones</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create the security zones for the trust and untrust interfaces.</p>
+    <ol>
+      <li>Select template <code>TPL-GCP-NETWORK</code> from the Template dropdown.</li>
+      <li>Navigate to <strong>Network &gt; Zones</strong>.</li>
+      <li>Click <strong>Add</strong>. Set <strong>Name</strong> to <code>trust</code>, <strong>Type</strong> to <code>Layer3</code>. Click <strong>OK</strong>.</li>
+      <li>Click <strong>Add</strong>. Set <strong>Name</strong> to <code>untrust</code>, <strong>Type</strong> to <code>Layer3</code>. Click <strong>OK</strong>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Two zones (<code>trust</code> and <code>untrust</code>) appear under <strong>Network &gt; Zones</strong> with Type <code>Layer3</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.6 Configure Interfaces</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Configure the dataplane interfaces. With management interface swap enabled, ethernet1/1 maps to nic0 (the interface that receives ILB and External NLB traffic).</p>
+    <ol>
+      <li>Select template <code>TPL-GCP-NETWORK</code>.</li>
+      <li>Navigate to <strong>Network &gt; Interfaces</strong>.</li>
+      <li>Click <code>ethernet1/1</code>. Configure:
+        <table>
+          <tr><th>Setting</th><th>Value</th></tr>
+          <tr><td>Interface Type</td><td><code>Layer3</code></td></tr>
+          <tr><td>Zone</td><td><code>untrust</code></td></tr>
+          <tr><td>Virtual Router</td><td><code>default</code></td></tr>
+          <tr><td>IPv4 &gt; Type</td><td><code>DHCP Client</code></td></tr>
+        </table>
+      </li>
+      <li>Click <code>ethernet1/2</code>. Configure:
+        <table>
+          <tr><th>Setting</th><th>Value</th></tr>
+          <tr><td>Interface Type</td><td><code>Layer3</code></td></tr>
+          <tr><td>Zone</td><td><code>trust</code></td></tr>
+          <tr><td>Virtual Router</td><td><code>default</code></td></tr>
+          <tr><td>IPv4 &gt; Type</td><td><code>DHCP Client</code></td></tr>
+        </table>
+      </li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Interface mapping with management interface swap</div>
+      <p>After swap, <code>ethernet1/1</code> maps to <strong>nic0</strong> (the untrust VPC). This is the interface where the ILB sends outbound/east-west traffic and the External NLB sends inbound traffic. <code>ethernet1/2</code> maps to <strong>nic2</strong> (the trust VPC). Management moves to nic1. Ensure zone assignments match this mapping.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both interfaces appear in the <strong>Network &gt; Interfaces</strong> table with Layer3 type, DHCP client, and correct zone assignments.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.7 Configure Virtual Router</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Configure the default virtual router with a default route and redistribute connected routes.</p>
+    <ol>
+      <li>Navigate to <strong>Network &gt; Virtual Routers</strong>.</li>
+      <li>Click <code>default</code> (or create one if it does not exist).</li>
+      <li>Under <strong>Static Routes</strong>, click <strong>Add</strong>:
+        <table>
+          <tr><th>Field</th><th>Value</th></tr>
+          <tr><td>Name</td><td><code>default-route</code></td></tr>
+          <tr><td>Destination</td><td><code>0.0.0.0/0</code></td></tr>
+          <tr><td>Interface</td><td><code>ethernet1/1</code></td></tr>
+          <tr><td>Next Hop</td><td>IP Address: <code>10.10.11.1</code> (untrust subnet gateway)</td></tr>
+        </table>
+      </li>
+      <li>Under <strong>Redistribution Profile</strong>, enable redistribution of connected routes for the trust interface so the firewall knows about the trust subnet.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Gateway IPs on GCP</div>
+      <p>GCP assigns the first usable IP in each subnet as the default gateway. For <code>10.10.11.0/28</code>, the gateway is <code>10.10.11.1</code>. For <code>10.10.12.0/28</code>, it is <code>10.10.12.1</code>.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>default</code> virtual router shows a static route <code>0.0.0.0/0</code> via <code>ethernet1/1</code> with next-hop <code>10.10.11.1</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.8 Configure Management Interface Profile</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The ILB and External NLB health checks probe the VM-Series on port 80 (HTTP) at the path <code>/php/login.php</code>. An interface management profile must allow HTTP on the dataplane interface that receives health check traffic.</p>
+    <ol>
+      <li>Navigate to <strong>Network &gt; Network Profiles &gt; Interface Mgmt</strong>.</li>
+      <li>Click <strong>Add</strong>. Set <strong>Name</strong> to <code>allow-health-check</code>.</li>
+      <li>Under <strong>Network Services</strong>, check <strong>HTTP</strong> (port 80).</li>
+      <li>Click <strong>OK</strong>.</li>
+      <li>Return to <strong>Network &gt; Interfaces &gt; ethernet1/1</strong>.</li>
+      <li>Under <strong>Advanced &gt; Other Info</strong>, set <strong>Management Profile</strong> to <code>allow-health-check</code>.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Health check path</div>
+      <p>Both the ILB and External NLB use HTTP GET to <code>/php/login.php</code> on port <code>80</code>. This is the default PAN-OS login page. If HTTP is not enabled on the interface management profile, health checks fail and the load balancers mark the firewall as unhealthy.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The management profile <code>allow-health-check</code> appears under <strong>Interface Mgmt</strong> with HTTP enabled, and is assigned to <code>ethernet1/1</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.9 Configure Security Policy</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create security rules to allow the three traffic flows: outbound, east-west, and inbound. These are configured in device group <code>DG-GCP-SECURITY</code>.</p>
+    <ol>
+      <li>Navigate to <strong>Policies &gt; Security</strong> (in <code>DG-GCP-SECURITY</code>).</li>
+      <li>Create the following rules:</li>
+    </ol>
+    <table>
+      <tr><th>Rule Name</th><th>Source Zone</th><th>Source Address</th><th>Destination Zone</th><th>Destination Address</th><th>Action</th></tr>
+      <tr><td><code>GCP-OUTBOUND</code></td><td><code>trust</code></td><td><code>any</code></td><td><code>untrust</code></td><td><code>any</code></td><td>Allow</td></tr>
+      <tr><td><code>GCP-EAST-WEST</code></td><td><code>trust</code></td><td><code>any</code></td><td><code>trust</code></td><td><code>any</code></td><td>Allow</td></tr>
+      <tr><td><code>GCP-INBOUND</code></td><td><code>untrust</code></td><td><code>any</code></td><td><code>trust</code></td><td><code>any</code></td><td>Allow</td></tr>
+    </table>
+    <ol start="3">
+      <li>Modify the default <strong>intrazone-default</strong> rule: set Action to <code>Deny</code> and enable <strong>Log at Session End</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Security profiles</div>
+      <p>Attach security profiles (Antivirus, Anti-Spyware, Vulnerability Protection, URL Filtering, WildFire) to each allow rule. For a tested baseline set, import the <a href="https://github.com/PaloAltoNetworks/iron-skillet/tree/panos_v11.0">Iron Skillet</a> day-1 security profile groups via <code>panorama/snippets/</code>.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Broad rules for initial deployment</div>
+      <p>The rules above use <code>any/any</code> for initial deployment and traffic flow validation. Tighten source/destination addresses, applications, and services after confirming end-to-end traffic flow in Phase 7.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Three security rules appear under <strong>Policies &gt; Security</strong> in <code>DG-GCP-SECURITY</code>. The intrazone-default rule shows <code>Deny</code> with logging enabled.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.10 Configure NAT Policy</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create a source NAT rule for outbound traffic. The firewall translates the source address of spoke traffic to the untrust interface IP before sending it to the internet.</p>
+    <ol>
+      <li>Navigate to <strong>Policies &gt; NAT</strong> (in <code>DG-GCP-SECURITY</code>).</li>
+      <li>Click <strong>Add</strong>. Configure:</li>
+    </ol>
+    <table>
+      <tr><th>Tab</th><th>Field</th><th>Value</th></tr>
+      <tr><td>General</td><td>Name</td><td><code>GCP-OUTBOUND-SNAT</code></td></tr>
+      <tr><td>Original Packet</td><td>Source Zone</td><td><code>trust</code></td></tr>
+      <tr><td>Original Packet</td><td>Destination Zone</td><td><code>untrust</code></td></tr>
+      <tr><td>Original Packet</td><td>Destination Interface</td><td><code>ethernet1/1</code></td></tr>
+      <tr><td>Translated Packet</td><td>Source Translation Type</td><td><code>Dynamic IP And Port</code></td></tr>
+      <tr><td>Translated Packet</td><td>Address Type</td><td><code>Interface Address</code></td></tr>
+      <tr><td>Translated Packet</td><td>Interface</td><td><code>ethernet1/1</code></td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The NAT rule <code>GCP-OUTBOUND-SNAT</code> appears under <strong>Policies &gt; NAT</strong> with source translation set to dynamic IP and port on <code>ethernet1/1</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.11 Configure Log Forwarding</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Configure a log forwarding profile to send firewall logs to Strata Logging Service (SLS) or a syslog server.</p>
+    <ol>
+      <li>Navigate to <strong>Objects &gt; Log Forwarding</strong> (in <code>DG-GCP-SECURITY</code>).</li>
+      <li>Click <strong>Add</strong>. Set <strong>Name</strong> to <code>default</code>.</li>
+      <li>Add match list entries for the log types you want to forward (Traffic, Threat, URL, WildFire, etc.).</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: The magic lowercase <code>default</code> keyword</div>
+      <p>Naming the Log Forwarding Profile exactly <code>default</code> (lowercase, case-sensitive) causes PAN-OS to auto-attach it to all <strong>new</strong> security rules created in this device group. This is not retroactive &mdash; existing rules must be updated manually. The same behavior applies to Security Profile Groups named <code>default</code>.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The log forwarding profile <code>default</code> appears under <strong>Objects &gt; Log Forwarding</strong> with match list entries for Traffic, Threat, and other relevant log types.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.12 Configure Licensing &mdash; Bootstrap Definition &amp; License Manager</span>
+  </div>
+  <div class="collapsible-body">
+    <h4>Create Bootstrap Definition</h4>
+    <ol>
+      <li>Go to <strong>Panorama &gt; SW Firewall License &gt; Bootstrap Definitions</strong>.</li>
+      <li>Click <strong>Add</strong>.</li>
+      <li>Enter <strong>Name</strong>: <code>bsd-gcp-security</code>.</li>
+      <li>Enter the <strong>Auth Code</strong> from your deployment profile (<a href="#prerequisites">Phase 1.7</a>).</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+
+    <h4>Create License Manager</h4>
+    <ol>
+      <li>Go to <strong>Panorama &gt; SW Firewall License &gt; License Managers</strong>.</li>
+      <li>Click <strong>Add</strong>.</li>
+      <li>Configure:
+        <table>
+          <tr><th>Field</th><th>Value</th></tr>
+          <tr><td><strong>Name</strong></td><td><code>lm-gcp-security</code></td></tr>
+          <tr><td><strong>Device Group</strong></td><td><code>DG-GCP-SECURITY</code></td></tr>
+          <tr><td><strong>Template Stack</strong></td><td><code>STK-GCP-SECURITY</code></td></tr>
+          <tr><td><strong>Bootstrap Definition</strong></td><td><code>bsd-gcp-security</code></td></tr>
+          <tr><td><strong>Auto Deactivate</strong></td><td><code>Never</code></td></tr>
+        </table>
+      </li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Auto Deactivate</div>
+      <p>Leave <strong>Auto Deactivate</strong> set to <code>Never</code> for fixed-deployment firewalls. The timer is only meaningful in <strong>auto-scaling</strong> deployments where firewall instances come and go on demand.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The bootstrap definition and license manager appear under <strong>Panorama &gt; SW Firewall License</strong>. Click <strong>Show Bootstrap Parameters</strong> in the License Manager's Action column to verify.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.13 Generate VM Auth Key</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The VM auth key enables firewalls to register with Panorama during bootstrap without manual intervention.</p>
+    <ol>
+      <li>SSH into Panorama CLI.</li>
+      <li>Run:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>request bootstrap vm-auth-key generate lifetime 8760</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The <code>lifetime</code> parameter is in hours. <code>8760</code> = 1 year.</p>
+    <ol start="3">
+      <li>Copy and securely store the generated key. This value is used in the Terraform <code>bootstrap_options</code> block as <code>vm-auth-key</code>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The command outputs a key string. Verify by running <code>request bootstrap vm-auth-key show</code> &mdash; the key should appear with its expiration date.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.14 Commit to Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <strong>Commit &gt; Commit to Panorama</strong>.</li>
+      <li>Click <strong>Commit</strong>.</li>
+      <li>Wait for the commit to complete successfully.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important</div>
+      <p>Do <strong>not</strong> push to devices yet. There are no firewalls to push to. The commit saves all configuration to Panorama so that when firewalls bootstrap and register, Panorama has a complete configuration ready to push.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The commit completes with no errors. The task manager shows <code>Status: Completed</code>.</p>
+    </div>
+  </div>
+</div>
+
+  </div><!-- mgmt-panel Panorama -->
+
+  <!-- ── 2B · SCM Path ───────────────────────────────────────── -->
+  <div class="mgmt-panel" data-plane="SCM">
+
+<h3 id="scm-path">2B SCM Path</h3>
+
+<p>For SCM-managed deployments, the GCP Terraform configuration works identically to the Panorama path &mdash; the bootstrap parameters differ but the infrastructure is the same.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2B.1 SCM Bootstrap Configuration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Instead of Panorama IP and VM auth key, provide SCM-specific bootstrap parameters in the Terraform <code>bootstrap_options</code> block:</p>
+    <div class="code-block">
+      <pre><code>bootstrap_options = {
+  type                                  = "dhcp-client"
+  mgmt-interface-swap                   = "enable"
+  panorama-server                       = "cloud"
+  dgname                                = "your-scm-folder-name"
+  vm-series-auto-registration-pin-id    = "your-pin-id"
+  vm-series-auto-registration-pin-value = "your-pin-value"
+  authcodes                             = "D1234567"
+  plugin-op-commands                    = "advance-routing:enable"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Key differences from the Panorama path:</p>
+    <ul>
+      <li><code>panorama-server</code> is set to the literal string <code>cloud</code> (not an IP address)</li>
+      <li><code>dgname</code> references the SCM folder name (not a Panorama device group)</li>
+      <li><code>tplname</code> is omitted &mdash; SCM does not use template stacks</li>
+      <li><code>vm-auth-key</code> is omitted &mdash; SCM uses the auto-registration PIN instead</li>
+      <li><code>authcodes</code> is required in the bootstrap options (the deployment profile auth code)</li>
+    </ul>
+    <p>All other steps in this guide (VPC creation, ILB configuration, spoke peering) are identical regardless of management platform. Proceed to <a href="#review-checkpoint">Phase 3</a> after configuring your SCM folder with zones, interfaces, security policy, and NAT policy matching the Panorama path above.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm that your SCM folder contains zones (<code>trust</code>, <code>untrust</code>), security rules (outbound, east-west, inbound), a NAT rule (outbound SNAT), and a log forwarding profile.</p>
+    </div>
+  </div>
+</div>
+
+  </div><!-- mgmt-panel SCM -->
+</div><!-- mgmt-tabs -->
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: REVIEW CHECKPOINT                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="review-checkpoint">Phase 3: Review Checkpoint</h2>
+
+<p>Before building any GCP infrastructure, verify all management platform configuration is complete and collect the bootstrap parameters needed for VM-Series launch.</p>
+
+<div class="callout callout-success">
+  <div class="callout-title">Readiness Checklist</div>
+  <ul>
+    <li>&#9744; Credit pool active, deployment profile created with auth code</li>
+    <li>&#9744; Auto-registration PIN ID and PIN Value recorded</li>
+    <li>&#9744; SSH key pair generated in correct format (<code>admin:ssh-rsa ... admin</code>)</li>
+    <li>&#9744; VM-Series image name identified (e.g., <code>vmseries-flex-byol-1110*</code>)</li>
+    <li>&#9744; GCP project created with Compute Engine, Cloud Storage, and Monitoring APIs enabled</li>
+    <li>&#9744; VPC network CIDRs planned (5 non-overlapping subnets)</li>
+    <li>&#9744; Panorama reachable from management VPC on ports 3978 and 28443</li>
+    <li>&#9744; SW Firewall License plugin installed on Panorama</li>
+    <li>&#9744; Licensing API key set</li>
+    <li>&#9744; Bootstrap definition created with deployment profile auth code</li>
+    <li>&#9744; License manager configured (DG + template stack + BSD)</li>
+    <li>&#9744; Device group <code>DG-GCP-SECURITY</code> has security policy (outbound, east-west, inbound rules)</li>
+    <li>&#9744; Device group has NAT policy (outbound SNAT)</li>
+    <li>&#9744; Template has interfaces (ethernet1/1 untrust, ethernet1/2 trust) with DHCP</li>
+    <li>&#9744; Interface management profile with HTTP enabled, assigned to ethernet1/1</li>
+    <li>&#9744; Virtual router with default route via ethernet1/1</li>
+    <li>&#9744; Log forwarding profile created and attached to security rules</li>
+    <li>&#9744; VM auth key generated (Panorama path) or SCM folder configured (SCM path)</li>
+    <li>&#9744; Panorama committed successfully</li>
+    <li>&#9744; Terraform CLI, gcloud CLI, and Git installed</li>
+    <li>&#9744; Terraform modules repository cloned</li>
+  </ul>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Collect Bootstrap Parameters</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Record these values &mdash; they are entered into <code>terraform.tfvars</code> in <a href="#security-vpc">Phase 4</a>.</p>
+    <table>
+      <tr><th>Parameter</th><th>Source</th><th>Your Value</th></tr>
+      <tr><td><code>panorama-server</code></td><td>Your Panorama IP (or <code>cloud</code> for SCM)</td><td><em>(record yours)</em></td></tr>
+      <tr><td><code>panorama-server-2</code></td><td>Secondary Panorama IP (if HA)</td><td><em>(record yours)</em></td></tr>
+      <tr><td><code>dgname</code></td><td>Device Group: <code>DG-GCP-SECURITY</code></td><td><em>(record yours)</em></td></tr>
+      <tr><td><code>tplname</code></td><td>Template Stack: <code>STK-GCP-SECURITY</code></td><td><em>(record yours)</em></td></tr>
+      <tr><td><code>vm-auth-key</code></td><td>Generated in 2A.13</td><td><em>(record yours)</em></td></tr>
+      <tr><td><code>authcodes</code></td><td>Deployment profile auth code</td><td><em>(record yours)</em></td></tr>
+      <tr><td><code>vm-series-auto-registration-pin-id</code></td><td>CSP Portal (Phase 1.12)</td><td><em>(record yours)</em></td></tr>
+      <tr><td><code>vm-series-auto-registration-pin-value</code></td><td>CSP Portal (Phase 1.12)</td><td><em>(record yours)</em></td></tr>
+      <tr><td><code>ssh_keys</code></td><td>Public key (Phase 1.3)</td><td><em>(record yours)</em></td></tr>
+      <tr><td><code>project</code></td><td>GCP project ID</td><td><em>(record yours)</em></td></tr>
+      <tr><td><code>region</code></td><td>Target region (e.g., <code>us-east1</code>)</td><td><em>(record yours)</em></td></tr>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Pre-flight check before <code>terraform apply</code></div>
+      <ul>
+        <li><code>panorama-server</code> is reachable from the management VPC subnet.</li>
+        <li><code>dgname</code> and <code>tplname</code> exist on Panorama and match exactly (case-sensitive).</li>
+        <li><code>vm-auth-key</code> has not expired since generation.</li>
+        <li><code>ssh_keys</code> includes the <code>admin:</code> prefix and trailing <code>admin</code> comment.</li>
+      </ul>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every row in the table above has a recorded value. All pre-flight checks pass.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: PREPARE TERRAFORM CONFIGURATION                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="security-vpc">Phase 4: Prepare Terraform Configuration</h2>
+
+<p>The GCP infrastructure is deployed using Terraform with the official <a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules">Palo Alto Networks SWFW Modules for GCP</a>. This phase walks through selecting the example, customizing the <code>terraform.tfvars</code>, and preparing for deployment.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 Choose Example Topology</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Navigate to the cloned repository and select the example matching your chosen topology from the <a href="#architecture-overview">Architecture Overview</a>.</p>
+    <table>
+      <tr><th>Topology</th><th>Example Directory</th><th>Resources Created</th></tr>
+      <tr><td>Common-Firewall</td><td><code>examples/vpc_peering_common/</code></td><td>~96</td></tr>
+      <tr><td>Dedicated-Inbound</td><td><code>examples/vpc_peering_dedicated/</code></td><td>~104</td></tr>
+    </table>
+    <div class="code-block">
+      <pre><code># For common-firewall topology (recommended for most deployments)
+cd terraform-google-swfw-modules/examples/vpc_peering_common
+
+# For dedicated-inbound topology
+# cd terraform-google-swfw-modules/examples/vpc_peering_dedicated</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The directory contains <code>main.tf</code>, <code>variables.tf</code>, <code>outputs.tf</code>, and <code>example.tfvars</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.2 Copy tfvars</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>cp example.tfvars terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>All customization happens in <code>terraform.tfvars</code>. The original <code>example.tfvars</code> remains untouched as a reference.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>terraform.tfvars</code> exists in the example directory alongside <code>example.tfvars</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.3 Configure Project &amp; Region</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Open <code>terraform.tfvars</code> and set the project and region:</p>
+    <div class="code-block">
+      <pre><code>project     = "your-gcp-project-id"
+region      = "us-east1"
+name_prefix = ""</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Region and zone alignment</div>
+      <p>The <code>region</code> here must match the subnet regions in the <code>networks</code> block and the VM-Series zones in the <code>vmseries</code> block. Each firewall's <code>zone</code> (e.g., <code>us-east1-b</code>) must be within this region.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>project</code> matches the output of <code>gcloud config get-value project</code>. <code>region</code> matches the region used in Phase 1.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.4 Configure SSH Keys</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Set the SSH key in the <code>vmseries_common</code> block:</p>
+    <div class="code-block">
+      <pre><code>vmseries_common = {
+  ssh_keys = "admin:ssh-rsa AAAA...your-key-here... admin"
+  # ... other settings
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Exact format required</div>
+      <p>The key must begin with <code>admin:ssh-rsa </code> and end with <code> admin</code>. No line breaks, no extra whitespace. A malformed key renders the firewall inaccessible via SSH &mdash; the only recovery is to delete and redeploy.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>ssh_keys</code> value starts with <code>admin:ssh-rsa AAAA</code> and ends with <code>admin</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.5 Configure Networks</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Review the <code>networks</code> block in <code>terraform.tfvars</code>. The default CIDRs match the <a href="#ip-schema">IP Schema</a>. Update the management VPC <code>source_ranges</code> to include your administrator IP range:</p>
+    <div class="code-block">
+      <pre><code>networks = {
+  fw-mgmt-vpc = {
+    # ...
+    firewall_rules = {
+      allow-mgmt-ingress = {
+        name             = "allow-mgmt-ingress"
+        source_ranges    = ["YOUR.ADMIN.IP/32"]  # Replace with your IP
+        priority         = "1000"
+        allowed_protocol = "all"
+        allowed_ports    = []
+      }
+    }
+  }
+  # ... (untrust, trust, spoke1, spoke2 blocks)
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Untrust VPC firewall rules</div>
+      <p>The untrust VPC <code>source_ranges</code> must include GCP health check ranges (<code>35.191.0.0/16</code>, <code>209.85.152.0/22</code>, <code>209.85.204.0/22</code>) for ILB and NLB health probes to reach the firewall. Add your application client IP ranges as well for inbound traffic.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All 5 VPC networks have non-overlapping CIDRs. The management VPC <code>source_ranges</code> includes your admin IP. The untrust VPC includes GCP health check ranges.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.6 Configure VM-Series Bootstrap</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Set the bootstrap options in the <code>vmseries_common</code> block. These parameters are passed to each firewall as instance metadata and control how the firewall configures itself on first boot.</p>
+    <div class="code-block">
+      <pre><code>vmseries_common = {
+  ssh_keys            = "admin:ssh-rsa AAAA...your-key... admin"
+  vmseries_image      = "vmseries-flex-byol-1110h3"
+  machine_type        = "n2-standard-4"
+  min_cpu_platform    = "Intel Cascade Lake"
+  service_account_key = "sa-vmseries-01"
+  bootstrap_options = {
+    type                                  = "dhcp-client"
+    mgmt-interface-swap                   = "enable"
+    panorama-server                       = "10.255.0.4"
+    panorama-server-2                     = "10.255.0.5"
+    tplname                               = "STK-GCP-SECURITY"
+    dgname                                = "DG-GCP-SECURITY"
+    vm-auth-key                           = "your-vm-auth-key"
+    authcodes                             = "D1234567"
+    vm-series-auto-registration-pin-id    = "your-pin-id"
+    vm-series-auto-registration-pin-value = "your-pin-value"
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Also set per-firewall DNS in the individual <code>vmseries</code> blocks:</p>
+    <div class="code-block">
+      <pre><code>vmseries = {
+  fw-vmseries-01 = {
+    # ...
+    bootstrap_options = {
+      dns-primary   = "169.254.169.254"
+      dns-secondary = "8.8.8.8"
+    }
+    # ...
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">GCP metadata DNS</div>
+      <p><code>169.254.169.254</code> is the GCP metadata server, which resolves internal DNS names and forwards to Google Public DNS. Use it as the primary DNS for simplest configuration. Substitute customer-preferred DNS servers if required by organizational policy.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: <code>mgmt-interface-swap</code> is critical</div>
+      <p>The <code>mgmt-interface-swap = "enable"</code> parameter <strong>must</strong> be set in the bootstrap options. Without it, the ILB sends traffic to nic0 (management) instead of a dataplane interface, and all load-balanced traffic is silently dropped.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All bootstrap parameters from the <a href="#review-checkpoint">Phase 3 checklist</a> are present in the <code>vmseries_common.bootstrap_options</code> block. <code>mgmt-interface-swap</code> is set to <code>enable</code>. <code>vmseries_image</code> points to the PAN-OS version selected in Phase 1.4.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.7 Configure Load Balancers</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Review the load balancer configuration in <code>terraform.tfvars</code>. The defaults are correct for most deployments.</p>
+    <h4>Internal Load Balancer (Outbound + East-West)</h4>
+    <div class="code-block">
+      <pre><code>lbs_internal = {
+  internal-lb = {
+    name              = "internal-lb"
+    health_check_port = "80"
+    backends          = ["fw-vmseries-01", "fw-vmseries-02"]
+    ip_address        = "10.10.12.5"
+    subnetwork_key    = "fw-trust-sub"
+    vpc_network_key   = "fw-trust-vpc"
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <h4>External Load Balancer (Inbound)</h4>
+    <div class="code-block">
+      <pre><code>lbs_external = {
+  external-lb = {
+    name     = "external-lb"
+    backends = ["fw-vmseries-01", "fw-vmseries-02"]
+    rules = {
+      all-ports = {
+        ip_protocol = "L3_DEFAULT"
+      }
+    }
+    http_health_check_port         = "80"
+    http_health_check_request_path = "/php/login.php"
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Health check details</div>
+      <p>Both load balancers probe <code>/php/login.php</code> on port <code>80</code>. This path returns the PAN-OS login page when the firewall is operational. The interface management profile configured in <a href="#template-config">Step 2A.8</a> must allow HTTP on the dataplane interface for health checks to pass.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The ILB IP (<code>10.10.12.5</code>) is within the trust subnet CIDR (<code>10.10.12.0/28</code>). Both load balancers reference all VM-Series instances as backends. Health check port is <code>80</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.8 Review Full tfvars</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Before applying, do a final review of the complete <code>terraform.tfvars</code> file. Confirm these critical values:</p>
+    <table>
+      <tr><th>Setting</th><th>Where in tfvars</th><th>Verify</th></tr>
+      <tr><td><code>project</code></td><td>Top-level</td><td>Matches your GCP project ID</td></tr>
+      <tr><td><code>region</code></td><td>Top-level</td><td>Matches all subnet regions and VM zones</td></tr>
+      <tr><td><code>ssh_keys</code></td><td><code>vmseries_common</code></td><td>Format: <code>admin:ssh-rsa ... admin</code></td></tr>
+      <tr><td><code>vmseries_image</code></td><td><code>vmseries_common</code></td><td>Valid image name from Phase 1.4</td></tr>
+      <tr><td><code>mgmt-interface-swap</code></td><td><code>bootstrap_options</code></td><td>Set to <code>enable</code></td></tr>
+      <tr><td><code>panorama-server</code></td><td><code>bootstrap_options</code></td><td>Reachable Panorama IP (or <code>cloud</code> for SCM)</td></tr>
+      <tr><td><code>dgname</code></td><td><code>bootstrap_options</code></td><td>Matches device group on Panorama exactly</td></tr>
+      <tr><td><code>tplname</code></td><td><code>bootstrap_options</code></td><td>Matches template stack on Panorama exactly</td></tr>
+      <tr><td><code>source_ranges</code></td><td><code>networks.fw-mgmt-vpc</code></td><td>Your admin IP, not <code>1.1.1.1/32</code></td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All placeholder values (<code>&lt;PROJECT_ID&gt;</code>, <code>&lt;YOUR_SSH_KEY&gt;</code>, <code>1.1.1.1/32</code>) have been replaced with real values. No <code>TODO</code> markers remain in the file.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: DEPLOY & VERIFY                                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="deploy-verify">Phase 5: Deploy &amp; Verify Infrastructure</h2>
+
+<p>With the Terraform configuration customized, deploy the entire infrastructure in a single <code>terraform apply</code>. The modules handle resource ordering and dependency resolution automatically.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 Terraform Init</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>terraform init</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Downloads the Google provider and all referenced modules.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Output includes <em>"Terraform has been successfully initialized!"</em> with no errors. The <code>.terraform/</code> directory is created.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.2 Terraform Plan</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>terraform plan -out=tfplan</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Review the plan output. For the common topology, expect approximately <strong>96 resources</strong> to be created. For the dedicated topology, expect approximately <strong>104 resources</strong>.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Pre-flight checklist</div>
+      <ul>
+        <li>SSH key is correctly formatted</li>
+        <li>Panorama is reachable from the management VPC subnet</li>
+        <li>Bootstrap parameters (dgname, tplname, vm-auth-key) are correct</li>
+        <li>GCP project quotas are sufficient for the resource count</li>
+      </ul>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The plan shows <code>Plan: ~96 to add, 0 to change, 0 to destroy</code> (common) or <code>Plan: ~104 to add</code> (dedicated). No errors in the plan output. The <code>tfplan</code> file is saved.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.3 Terraform Apply</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>terraform apply tfplan</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Deployment takes approximately <strong>5&ndash;10 minutes</strong>. The VM-Series instances need an additional <strong>10&ndash;15 minutes</strong> after creation to complete bootstrap and register with Panorama.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Output ends with <code>Apply complete! Resources: N added, 0 changed, 0 destroyed.</code></p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.4 Capture Outputs</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>terraform output</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Record the key outputs:</p>
+    <table>
+      <tr><th>Output</th><th>Description</th></tr>
+      <tr><td><code>vmseries_public_ips</code></td><td>Management public IPs for SSH access (nic1 after swap)</td></tr>
+      <tr><td><code>vmseries_private_ips</code></td><td>Private IPs for all interfaces (nic0=untrust, nic1=mgmt, nic2=trust)</td></tr>
+      <tr><td><code>lbs_external_ips</code></td><td>External NLB public IP (inbound traffic entry point)</td></tr>
+      <tr><td><code>lbs_internal_ips</code></td><td>Internal NLB private IP (should be <code>10.10.12.5</code>)</td></tr>
+      <tr><td><code>linux_vm_ips</code></td><td>Spoke VM private IPs for testing</td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All output sections are populated with IP addresses. The ILB IP matches the configured value (<code>10.10.12.5</code>). Each VM-Series instance has a public IP for management access.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.5 Wait for Bootstrap</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Allow <strong>10&ndash;15 minutes</strong> after <code>terraform apply</code> completes for the VM-Series to finish bootstrapping. Then SSH to the management IP:</p>
+    <div class="code-block">
+      <pre><code>ssh -i ~/.ssh/gcp-vmseries-key admin@&lt;MGMT_PUBLIC_IP&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>SSH connection succeeds and you are presented with the PAN-OS CLI prompt: <code>admin@PA-VM&gt;</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.6 Verify Bootstrap Status</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run these commands on the firewall CLI to verify bootstrap completed successfully:</p>
+    <div class="code-block">
+      <pre><code># Check bootstrap status
+show system bootstrap status
+
+# Check system info (PAN-OS version, hostname)
+show system info
+
+# Check Panorama connectivity
+show panorama-status
+
+# Verify management interface swap
+debug show vm-series interfaces all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <ul>
+        <li><code>show system bootstrap status</code> &rarr; <strong>Auto-commit Successful</strong></li>
+        <li><code>show system info</code> &rarr; correct PAN-OS version and hostname</li>
+        <li><code>show panorama-status</code> &rarr; <strong>Connected</strong></li>
+        <li><code>debug show vm-series interfaces all</code> &rarr; confirms nic0 = ethernet1/1, nic1 = mgt</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ── Console Verification ──────────────────────────────────── -->
+
+<h2 id="console-verify">Phase 5 (cont.): Console Verification</h2>
+
+<p>After bootstrap completes, verify the deployment from the GCP Console and Panorama.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.7 Verify VM Instances</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Navigate to <strong>Compute Engine &gt; VM instances</strong> in the GCP Console.</p>
+    <table>
+      <tr><th>Property</th><th>Expected</th></tr>
+      <tr><td>Instance count</td><td>2 (common) or 4 (dedicated)</td></tr>
+      <tr><td>Status</td><td>Running (green checkmark)</td></tr>
+      <tr><td>Machine type</td><td><code>n2-standard-4</code></td></tr>
+      <tr><td>Zones</td><td>One instance per zone (e.g., <code>us-east1-b</code>, <code>us-east1-c</code>)</td></tr>
+      <tr><td>Network interfaces</td><td>3 per instance (untrust nic0, mgmt nic1, trust nic2)</td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All VM-Series instances show <code>Running</code> status with 3 network interfaces each.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.8 Verify Instance Groups</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Navigate to <strong>Compute Engine &gt; Instance groups</strong>. The Terraform modules create unmanaged instance groups (one per zone) to serve as load balancer backends.</p>
+    <table>
+      <tr><th>Property</th><th>Expected</th></tr>
+      <tr><td>Type</td><td>Unmanaged</td></tr>
+      <tr><td>Network</td><td><code>fw-untrust-vpc</code> (nic0 network after swap)</td></tr>
+      <tr><td>Instances</td><td>1 VM-Series per group</td></tr>
+      <tr><td>Named ports</td><td><code>http:80</code>, <code>https:443</code></td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Instance groups exist for each zone with the correct VM-Series instance and named ports.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.9 Verify ILB Health</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Navigate to <strong>Network services &gt; Load balancing</strong>. Click the internal load balancer (<code>internal-lb</code>).</p>
+    <ol>
+      <li>Under <strong>Backend</strong>, verify both VM-Series instances are listed.</li>
+      <li>Check the <strong>Health</strong> column &mdash; both backends should show <code>Healthy</code>.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Allow 10&ndash;15 minutes</div>
+      <p>Health checks may show <code>Unhealthy</code> while the firewall is still bootstrapping. Wait for <code>show system bootstrap status</code> to report <code>Auto-commit Successful</code> before troubleshooting health check failures.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both backends show <code>Healthy</code> in the ILB health status.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.10 Verify External NLB</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Under <strong>Network services &gt; Load balancing</strong>, click the external load balancer (<code>external-lb</code>).</p>
+    <ol>
+      <li>Verify the <strong>Frontend</strong> shows a public IP address.</li>
+      <li>Verify both VM-Series instances appear as healthy backends.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The external NLB has a public frontend IP and both backends are <code>Healthy</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.11 Verify VPC Peering</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Navigate to <strong>VPC network &gt; VPC network peering</strong>.</p>
+    <table>
+      <tr><th>Peering</th><th>Local Network</th><th>Peer Network</th><th>Status</th></tr>
+      <tr><td><code>trust-to-spoke1</code></td><td><code>fw-trust-vpc</code></td><td><code>fw-spoke1-vpc</code></td><td><code>Active</code></td></tr>
+      <tr><td><code>trust-to-spoke2</code></td><td><code>fw-trust-vpc</code></td><td><code>fw-spoke2-vpc</code></td><td><code>Active</code></td></tr>
+    </table>
+    <p>Click each peering and verify:</p>
+    <ul>
+      <li><strong>Export custom routes:</strong> Enabled (trust exports the ILB route to spokes)</li>
+      <li><strong>Import custom routes:</strong> Enabled (trust imports spoke subnet routes)</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both peerings show <code>Active</code> status with custom route exchange enabled in both directions.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.12 Verify Routes</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Navigate to <strong>VPC network &gt; Routes</strong>. Filter by each VPC and verify the critical routes:</p>
+
+    <h4>Trust VPC</h4>
+    <table>
+      <tr><th>Route Name</th><th>Destination</th><th>Next Hop</th></tr>
+      <tr><td><code>fw-default-trust</code></td><td><code>0.0.0.0/0</code></td><td>Internal NLB (<code>10.10.12.5</code>)</td></tr>
+    </table>
+
+    <h4>Spoke VPCs (imported via peering)</h4>
+    <table>
+      <tr><th>Route</th><th>Destination</th><th>Next Hop</th></tr>
+      <tr><td>Peering route</td><td><code>0.0.0.0/0</code></td><td>Imported from trust VPC (ILB next-hop)</td></tr>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">How spoke traffic reaches the firewall</div>
+      <p>The trust VPC has a custom route <code>0.0.0.0/0 &rarr; ILB</code>. Because VPC peering is configured with <code>export_custom_routes = true</code> on the trust side and <code>import_custom_routes = true</code> on the spoke side, the spoke VPCs inherit this default route. The spoke VPCs have <code>delete_default_routes_on_create = true</code>, so the only default route is the imported one pointing to the ILB. This forces all spoke traffic through the firewall.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The trust VPC shows the <code>fw-default-trust</code> route. Each spoke VPC shows an imported peering route with destination <code>0.0.0.0/0</code> and next hop pointing to the ILB.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.13 Panorama Verification</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Managed Devices &gt; Summary</strong>.</li>
+      <li>Confirm each VM-Series firewall appears with correct:
+        <ul>
+          <li>Device Group: <code>DG-GCP-SECURITY</code></li>
+          <li>Template Stack: <code>STK-GCP-SECURITY</code></li>
+          <li>Connection status: <code>Connected</code></li>
+        </ul>
+      </li>
+      <li>Navigate to <strong>Panorama &gt; SW Firewall License &gt; License Managers</strong>.</li>
+      <li>Verify firewalls show as <code>Licensed</code>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All deployed firewalls appear in Panorama as connected and licensed under the correct device group and template stack.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.14 Commit &amp; Push from Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Push the configuration to the newly registered firewalls.</p>
+    <ol>
+      <li>Navigate to <strong>Commit &gt; Push to Devices</strong>.</li>
+      <li>Select <code>DG-GCP-SECURITY</code>.</li>
+      <li>Check <strong>Force Template Values</strong> to overwrite any local admin password with the Panorama-managed password.</li>
+      <li>Click <strong>Push</strong>.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Set admin password</div>
+      <p>The first push with <strong>Force Template Values</strong> is critical for setting the admin password. After the push completes, access the firewall Web UI at <code>https://&lt;MGMT_PUBLIC_IP&gt;</code> using the Panorama-managed credentials.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The push completes with <code>Status: Completed</code> for all firewalls. No warnings or errors in the push log.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 6: SPOKE VPC VERIFICATION & ONBOARDING                -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="spoke-verify">Phase 6: Spoke VPC Verification &amp; Onboarding</h2>
+
+<p>With the security infrastructure deployed and firewalls bootstrapped, verify end-to-end traffic flows from the spoke VPCs.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.1 Verify Spoke VMs</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Terraform modules deploy test Linux VMs in each spoke VPC. Connect via GCP IAP (Identity-Aware Proxy) tunneling &mdash; the spoke VMs have no public IPs.</p>
+    <div class="code-block">
+      <pre><code># SSH to spoke-1 VM via IAP
+gcloud compute ssh spoke1-vm --zone=us-east1-b --tunnel-through-iap
+
+# SSH to spoke-2 VM via IAP
+gcloud compute ssh spoke2-vm --zone=us-east1-b --tunnel-through-iap</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">IAP tunneling</div>
+      <p>GCP IAP tunneling (<code>--tunnel-through-iap</code>) creates an SSH tunnel through Google's infrastructure without requiring a public IP on the target VM. The spoke VPC firewall rules include <code>35.235.240.0/20</code> (IAP source range) to enable this access method.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>SSH connection succeeds to both spoke VMs. You are presented with a Linux shell prompt.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.2 Test Outbound Traffic</span>
+  </div>
+  <div class="collapsible-body">
+    <p>From a spoke VM, test outbound internet connectivity. Traffic should flow through the ILB &rarr; VM-Series &rarr; internet.</p>
+    <div class="code-block">
+      <pre><code># Test internet connectivity
+curl -s ifconfig.me
+
+# Test DNS resolution
+nslookup google.com
+
+# Test ICMP
+ping -c 3 8.8.8.8</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>After running these commands, check the firewall traffic logs:</p>
+    <div class="code-block">
+      <pre><code># On the firewall CLI
+show log traffic</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Or on Panorama: <strong>Monitor &gt; Logs &gt; Traffic</strong> for <code>DG-GCP-SECURITY</code>.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>curl ifconfig.me</code> returns a public IP (the untrust interface IP or NLB IP). Traffic logs on the firewall show sessions from the spoke VM's private IP (<code>192.168.1.2</code>) to the internet destination, matching the <code>GCP-OUTBOUND</code> security rule.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.3 Test East-West Traffic</span>
+  </div>
+  <div class="collapsible-body">
+    <p>From spoke-1, test connectivity to spoke-2. Traffic should flow through the ILB &rarr; VM-Series &rarr; spoke-2.</p>
+    <div class="code-block">
+      <pre><code># From spoke1-vm, ping spoke2-vm
+ping -c 3 192.168.2.2</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Ping succeeds from spoke-1 (<code>192.168.1.2</code>) to spoke-2 (<code>192.168.2.2</code>). Traffic logs on the firewall show sessions matching the <code>GCP-EAST-WEST</code> security rule with source zone <code>trust</code> and destination zone <code>trust</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.4 Onboard Additional Spoke VPCs</span>
+  </div>
+  <div class="collapsible-body">
+    <p>To add a new spoke VPC to the inspected architecture:</p>
+    <ol>
+      <li>Add a new VPC network block in the <code>networks</code> variable with a non-overlapping CIDR.</li>
+      <li>Add a VPC peering entry in the <code>vpc_peerings</code> variable connecting <code>fw-trust-vpc</code> to the new spoke with custom route exchange enabled.</li>
+      <li>Optionally add a Linux test VM in the <code>linux_vms</code> variable.</li>
+      <li>Run <code>terraform plan</code> to review and <code>terraform apply</code> to deploy.</li>
+    </ol>
+    <p>The new spoke automatically inherits the default route (<code>0.0.0.0/0 &rarr; ILB</code>) from the trust VPC via peering, so all traffic flows through the firewall.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">VPC network quota</div>
+      <p>GCP defaults to 5 VPC networks per project. Adding spoke VPCs beyond the initial 2 requires a quota increase. Request this under <strong>IAM &amp; Admin &gt; Quotas</strong> before deploying.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The new spoke VPC is peered with the trust VPC, has the imported default route pointing to the ILB, and a test VM can reach the internet and other spokes through the firewall.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 7: POST-DEPLOYMENT VERIFICATION                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="verification">Phase 7: Post-Deployment Verification</h2>
+
+<h3>Panorama Verification</h3>
+<ol>
+  <li><strong>Panorama &gt; Managed Devices &gt; Summary</strong> &mdash; confirm each firewall appears as connected.</li>
+  <li>Verify correct Device Group (<code>DG-GCP-SECURITY</code>) and Template Stack (<code>STK-GCP-SECURITY</code>) assignment.</li>
+  <li>Check <strong>Panorama &gt; SW Firewall License &gt; License Managers</strong> &mdash; firewalls should show as licensed.</li>
+</ol>
+
+<h3>CLI Verification</h3>
+<div class="code-block">
+  <pre><code># System status and PAN-OS version
+show system info
+
+# License status — all subscriptions should show active
+request license info
+
+# Panorama connection — should show "connected"
+show panorama-status
+
+# Routing table — should show default route and spoke prefixes
+show routing route
+
+# Bootstrap log details
+debug logview component bts_details</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<h3>GCP Console Verification</h3>
+<ol>
+  <li><strong>Compute Engine &gt; VM instances</strong> &mdash; all VM-Series instances running</li>
+  <li><strong>Network services &gt; Load balancing</strong> &mdash; ILB and External NLB backends healthy</li>
+  <li><strong>VPC network &gt; VPC network peering</strong> &mdash; all peerings active</li>
+  <li><strong>VPC network &gt; Routes</strong> &mdash; ILB next-hop route present in trust VPC, imported in spoke VPCs</li>
+  <li><strong>Cloud Monitoring &gt; Metrics Explorer</strong> &mdash; search for <code>custom.googleapis.com/VMSeries/</code> to confirm PAN-OS metrics are publishing</li>
+</ol>
+
+<div class="callout callout-success">
+  <div class="callout-title">Success Criteria</div>
+  <ul>
+    <li><code>show system info</code> shows expected hostname, PAN-OS version, and operational mode</li>
+    <li><code>request license info</code> shows all subscriptions as active</li>
+    <li>Firewalls appear in Panorama under correct Device Group and Template Stack</li>
+    <li>ILB and External NLB show all backends as healthy</li>
+    <li>Outbound traffic from spoke VMs reaches the internet (traffic logs visible on firewall)</li>
+    <li>East-west traffic between spoke VMs succeeds (traffic logs visible on firewall)</li>
+    <li>VPC peerings are active with custom route exchange enabled</li>
+  </ul>
+</div>
+
+<!-- ── Troubleshooting ───────────────────────────────────────── -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Bootstrap Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>Firewall stuck at <code>192.168.1.1</code></td><td>Bootstrap failed &mdash; reverted to factory defaults</td><td>Check instance metadata for syntax errors. Verify GCS bucket is accessible from the VM. Check serial console output via <strong>Compute Engine &gt; VM instances &gt; Serial port</strong>.</td></tr>
+      <tr><td>Firewall boots but does not appear in Panorama</td><td>Cannot reach Panorama on port <code>3978</code></td><td>Verify network path between management VPC and Panorama (VPN, Interconnect, or same VPC). Check GCP firewall rules on the management VPC allow egress to the Panorama IP.</td></tr>
+      <tr><td>Licensed but wrong DG/TS</td><td><code>dgname</code> or <code>tplname</code> mismatch</td><td>Verify exact names match Panorama (case-sensitive). Correct in <code>terraform.tfvars</code> bootstrap_options and redeploy.</td></tr>
+      <tr><td>Device certificate failure</td><td>Invalid or expired PIN</td><td>Generate new PIN in Customer Support Portal. Update <code>vm-series-auto-registration-pin-id</code> and <code>pin-value</code> in <code>terraform.tfvars</code>.</td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After resolving, run <code>show system bootstrap status</code> and confirm <code>Auto-commit Successful</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>ILB Health Check Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>Backends stuck in <code>Unhealthy</code></td><td>Firewall still bootstrapping</td><td>Wait 10&ndash;15 minutes. Verify bootstrap status via SSH.</td></tr>
+      <tr><td>Backends remain <code>Unhealthy</code> after bootstrap</td><td>Interface management profile missing HTTP</td><td>Verify <code>allow-health-check</code> profile is assigned to <code>ethernet1/1</code> and HTTP is enabled. Push from Panorama.</td></tr>
+      <tr><td>Backends remain <code>Unhealthy</code> with correct profile</td><td>GCP firewall rules blocking health check probes</td><td>Verify the untrust VPC firewall rule includes source ranges <code>35.191.0.0/16</code>, <code>209.85.152.0/22</code>, <code>209.85.204.0/22</code> with port 80 allowed.</td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>ILB backend health status shows <code>Healthy</code> in the GCP Console under <strong>Network services &gt; Load balancing</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>VPC Peering Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>Peering status: <code>Inactive</code></td><td>Peering created on one side only</td><td>Terraform creates both sides. If manually created, ensure both local and peer peering entries exist.</td></tr>
+      <tr><td>Spoke VM has no default route</td><td>Custom route export/import not enabled</td><td>Verify both <code>export_custom_routes</code> and <code>import_custom_routes</code> are <code>true</code> on both sides of the peering.</td></tr>
+      <tr><td>Spoke traffic does not reach firewall</td><td>Spoke VPC default internet route not deleted</td><td>Verify <code>delete_default_routes_on_create = true</code> on the spoke VPCs. If the default route exists, it takes precedence over the imported peering route.</td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both peerings show <code>Active</code> in the GCP Console. Spoke VPCs show an imported route <code>0.0.0.0/0</code> pointing to the ILB.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Management Interface Swap Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>Firewall in maintenance mode</td><td>Swap enabled with only 1 NIC</td><td>Ensure the instance has at least 2 network interfaces. Delete and redeploy if needed.</td></tr>
+      <tr><td>SSH to management IP fails</td><td>Connecting to nic0 (dataplane after swap) instead of nic1 (management)</td><td>Use the public IP assigned to <strong>nic1</strong> (management VPC), not nic0 (untrust VPC). Check <code>terraform output vmseries_public_ips</code> &mdash; key <code>"1"</code> is the management IP.</td></tr>
+      <tr><td>Cannot confirm swap status from GCP Console</td><td>GCP does not expose swap state</td><td>SSH to the firewall and run <code>debug show vm-series interfaces all</code> to verify interface mapping.</td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>debug show vm-series interfaces all</code> shows nic0 mapped to ethernet1/1 and nic1 mapped to mgt.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>SSH Key Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>SSH connection refused</td><td>Key format incorrect</td><td>Verify key starts with <code>admin:ssh-rsa </code> and ends with <code> admin</code>. No line breaks or extra whitespace.</td></tr>
+      <tr><td>Permission denied</td><td>Wrong private key</td><td>Ensure the private key file matches the public key in <code>terraform.tfvars</code>.</td></tr>
+      <tr><td>Key corrupted in metadata</td><td>Copy/paste error with special characters</td><td>Delete the VM-Series instance and redeploy with a corrected key. Networks survive deletion.</td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>SSH connection succeeds with <code>ssh -i &lt;key&gt; admin@&lt;MGMT_IP&gt;</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>GCP Firewall Rules</span>
+  </div>
+  <div class="collapsible-body">
+    <p>GCP VPC firewall rules (not to be confused with VM-Series security policy) control which traffic reaches the VM-Series instances. Common issues:</p>
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>Cannot reach management UI</td><td>Management VPC firewall rule too restrictive</td><td>Verify <code>allow-mgmt-ingress</code> includes your admin source IP in <code>source_ranges</code>.</td></tr>
+      <tr><td>Health checks fail</td><td>Untrust VPC missing health check source ranges</td><td>Add <code>35.191.0.0/16</code>, <code>209.85.152.0/22</code>, <code>209.85.204.0/22</code> to the untrust firewall rule.</td></tr>
+      <tr><td>IAP SSH to spoke VMs fails</td><td>Spoke VPC missing IAP source range</td><td>Add <code>35.235.240.0/20</code> to the spoke VPC firewall rules.</td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Navigate to <strong>VPC network &gt; Firewall</strong> in the GCP Console and verify rules exist for each VPC with the correct source ranges and protocols.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Traffic Not Flowing Through Firewalls</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li><strong>Check VPC routes:</strong> The trust VPC must have a route <code>0.0.0.0/0 &rarr; ILB</code>. Spoke VPCs must have this route imported via peering.</li>
+      <li><strong>Check VPC peering:</strong> Both peerings must be <code>Active</code> with custom route exchange enabled.</li>
+      <li><strong>Check spoke default route deletion:</strong> Spoke VPCs must have <code>delete_default_routes_on_create = true</code>. If the Google default internet route still exists, it takes precedence and traffic bypasses the firewall.</li>
+      <li><strong>Check <code>can_ip_forward</code>:</strong> The VM-Series instances must have IP forwarding enabled. The Terraform module sets <code>can_ip_forward = true</code> by default.</li>
+      <li><strong>Check firewall routing:</strong> Run <code>show routing route</code> on the firewall CLI. Verify a default route via ethernet1/1 (untrust gateway) and routes to spoke subnets via ethernet1/2 (trust).</li>
+      <li><strong>Check security policy:</strong> Run <code>show log traffic</code> to see if sessions are being created. If traffic is denied, check the matching rule and adjust policy.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After resolving, spoke VMs can reach the internet (<code>curl ifconfig.me</code> returns an IP) and other spokes (<code>ping 192.168.2.2</code> succeeds). Traffic logs appear on the firewall.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Plugin IP-Tag Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If multiple plugins are installed on Panorama and one or more is unconfigured, IP-tag forwarding may be blocked.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Workaround 1</div>
+      <p>Uninstall unconfigured plugins: <strong>Panorama &gt; Plugins</strong> &gt; select plugin &gt; <strong>Uninstall</strong>.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Workaround 2</div>
+      <p>Unblock device push:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>request plugins dau plugin-name &lt;plugin-name&gt; unblock-device-push yes</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Important</div>
+      <p>These commands are <strong>not persistent across reboots</strong> and must be re-executed after any Panorama restart. For HA pairs, run on <strong>each</strong> Panorama instance.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>IP-tag information appears on the managed firewalls after the unblock command.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Reference ─────────────────────────────────────────────── -->
+
+<h2 id="ip-schema">Reference: IP Schema</h2>
+
+<p>The default IP addressing from the Terraform example <code>vpc_peering_common</code>. All CIDRs use <code>/28</code> subnets (14 usable IPs each). GCP reserves the first usable address in each subnet as the gateway.</p>
+
+<table>
+  <thead>
+    <tr><th>VPC Network</th><th>Subnet CIDR</th><th>Gateway</th><th>FW-01 IP</th><th>FW-02 IP</th><th>Other</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>fw-mgmt-vpc</code></td><td><code>10.10.10.0/28</code></td><td><code>10.10.10.1</code></td><td><code>10.10.10.2</code></td><td><code>10.10.10.3</code></td><td>&mdash;</td></tr>
+    <tr><td><code>fw-untrust-vpc</code></td><td><code>10.10.11.0/28</code></td><td><code>10.10.11.1</code></td><td><code>10.10.11.2</code></td><td><code>10.10.11.3</code></td><td>&mdash;</td></tr>
+    <tr><td><code>fw-trust-vpc</code></td><td><code>10.10.12.0/28</code></td><td><code>10.10.12.1</code></td><td><code>10.10.12.2</code></td><td><code>10.10.12.3</code></td><td>ILB: <code>10.10.12.5</code></td></tr>
+    <tr><td><code>fw-spoke1-vpc</code></td><td><code>192.168.1.0/28</code></td><td><code>192.168.1.1</code></td><td>&mdash;</td><td>&mdash;</td><td>spoke1-vm: <code>192.168.1.2</code></td></tr>
+    <tr><td><code>fw-spoke2-vpc</code></td><td><code>192.168.2.0/28</code></td><td><code>192.168.2.1</code></td><td>&mdash;</td><td>&mdash;</td><td>spoke2-vm: <code>192.168.2.2</code></td></tr>
+  </tbody>
+</table>
+
+<h3>Network Interface Mapping (After Management Interface Swap)</h3>
+
+<table>
+  <thead>
+    <tr><th>GCP NIC</th><th>PAN-OS Interface</th><th>VPC Network</th><th>FW-01 Private IP</th><th>FW-02 Private IP</th><th>Public IP</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>nic0</td><td>ethernet1/1 (untrust)</td><td><code>fw-untrust-vpc</code></td><td><code>10.10.11.2</code></td><td><code>10.10.11.3</code></td><td>Yes (ephemeral)</td></tr>
+    <tr><td>nic1</td><td>Management</td><td><code>fw-mgmt-vpc</code></td><td><code>10.10.10.2</code></td><td><code>10.10.10.3</code></td><td>Yes (ephemeral)</td></tr>
+    <tr><td>nic2</td><td>ethernet1/2 (trust)</td><td><code>fw-trust-vpc</code></td><td><code>10.10.12.2</code></td><td><code>10.10.12.3</code></td><td>No</td></tr>
+  </tbody>
+</table>
+
+<h3>Load Balancer Summary</h3>
+
+<table>
+  <thead>
+    <tr><th>Load Balancer</th><th>Type</th><th>Frontend</th><th>Backends</th><th>Health Check</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>internal-lb</code></td><td>Internal NLB</td><td><code>10.10.12.5</code> (trust VPC)</td><td>fw-vmseries-01, fw-vmseries-02</td><td>HTTP :80</td></tr>
+    <tr><td><code>external-lb</code></td><td>External Regional NLB</td><td>Public IP (auto-assigned)</td><td>fw-vmseries-01, fw-vmseries-02</td><td>HTTP :80 <code>/php/login.php</code></td></tr>
+  </tbody>
+</table>
+
+<!-- ── Reference tfvars ──────────────────────────────────────── -->
+
+<h2 id="reference-tfvars">Reference: tfvars Files</h2>
+
+<p>The upstream Terraform modules include complete <code>example.tfvars</code> files for each topology. These files serve as the starting point &mdash; copy to <code>terraform.tfvars</code> and customize with your values.</p>
+
+<table>
+  <tr><th>SWFW Example</th><th>Topology</th><th>When to Use</th></tr>
+  <tr><td><a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules/tree/main/examples/vpc_peering_common"><code>vpc_peering_common</code></a></td><td>Common-Firewall (2 FWs, ILB + External NLB)</td><td>Most deployments, POC, moderate traffic (this guide's default)</td></tr>
+  <tr><td><a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules/tree/main/examples/vpc_peering_dedicated"><code>vpc_peering_dedicated</code></a></td><td>Dedicated-Inbound (4 FWs, ILB + Global HTTP LB)</td><td>High inbound volume, strict policy separation between inbound and outbound</td></tr>
+  <tr><td><a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules/tree/main/examples/vpc_peering_common_with_autoscale"><code>vpc_peering_common_with_autoscale</code></a></td><td>Common + Managed Instance Group autoscaling</td><td>Dynamic workloads requiring automatic scale-out</td></tr>
+  <tr><td><a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules/tree/main/examples/vmseries_ha"><code>vmseries_ha</code></a></td><td>Active/Passive HA pair</td><td>Single-pair HA with dedicated HA2 VPC for state sync</td></tr>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">How to use</div>
+  <ol>
+    <li>Clone the upstream SWFW modules and <code>cd</code> into the matching example directory (<a href="#security-vpc">Step 4.1</a>).</li>
+    <li>Copy <code>example.tfvars</code> to <code>terraform.tfvars</code>.</li>
+    <li>Search for placeholder values (<code>&lt;PROJECT_ID&gt;</code>, <code>&lt;YOUR_SSH_KEY&gt;</code>, <code>1.1.1.1/32</code>) and replace with your deployment values. Uncomment the Panorama or SCM bootstrap options block.</li>
+    <li>Follow <a href="#security-vpc">Phase 4</a> for the complete configuration walkthrough.</li>
+  </ol>
+</div>
+
+<h3>Bootstrap Options Quick Reference</h3>
+
+<table>
+  <thead>
+    <tr><th>Parameter</th><th>Description</th><th>Panorama</th><th>SCM</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>type</code></td><td>IP assignment method</td><td><code>dhcp-client</code></td><td><code>dhcp-client</code></td></tr>
+    <tr><td><code>mgmt-interface-swap</code></td><td>Swap nic0 to dataplane</td><td><code>enable</code></td><td><code>enable</code></td></tr>
+    <tr><td><code>panorama-server</code></td><td>Primary Panorama IP or <code>cloud</code></td><td>IP address</td><td><code>cloud</code></td></tr>
+    <tr><td><code>panorama-server-2</code></td><td>Secondary Panorama IP</td><td>IP address</td><td>&mdash;</td></tr>
+    <tr><td><code>dgname</code></td><td>Device group or SCM folder</td><td>DG name</td><td>Folder name</td></tr>
+    <tr><td><code>tplname</code></td><td>Template stack name</td><td>Stack name</td><td>&mdash;</td></tr>
+    <tr><td><code>vm-auth-key</code></td><td>Panorama VM auth key</td><td>Key string</td><td>&mdash;</td></tr>
+    <tr><td><code>authcodes</code></td><td>Deployment profile auth code</td><td>Auth code</td><td>Auth code</td></tr>
+    <tr><td><code>vm-series-auto-registration-pin-id</code></td><td>Device certificate PIN ID</td><td>UUID</td><td>UUID</td></tr>
+    <tr><td><code>vm-series-auto-registration-pin-value</code></td><td>Device certificate PIN value</td><td>Hex string</td><td>Hex string</td></tr>
+    <tr><td><code>dns-primary</code></td><td>Primary DNS server</td><td><code>169.254.169.254</code></td><td><code>169.254.169.254</code></td></tr>
+    <tr><td><code>dns-secondary</code></td><td>Secondary DNS server</td><td><code>8.8.8.8</code></td><td><code>8.8.8.8</code></td></tr>
+  </tbody>
+</table>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>
