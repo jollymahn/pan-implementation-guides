@@ -2283,22 +2283,25 @@ pwd
     <table>
       <tr><th>Folder Name</th><th>Parent Folder</th><th>Purpose</th></tr>
       <tr><td><code>AWS</code></td><td>All Firewalls</td><td>Top-level cloud container</td></tr>
-      <tr><td><code>Combined</code></td><td>AWS</td><td>Design-level &mdash; holds shared network and policy config</td></tr>
-      <tr><td><code>AZ-a</code></td><td>Combined</td><td>Per-AZ folder &mdash; AZ-specific overrides (routes, subinterfaces)</td></tr>
-      <tr><td><code>AZ-b</code></td><td>Combined</td><td>Per-AZ folder &mdash; AZ-specific overrides (routes, subinterfaces)</td></tr>
+      <tr><td><code>Combined-CLD</code></td><td>AWS</td><td>Design-level &mdash; holds shared network and policy config</td></tr>
+      <tr><td><code>AZ-a-CLD</code></td><td>Combined-CLD</td><td>Per-AZ folder &mdash; AZ-specific overrides (routes, subinterfaces)</td></tr>
+      <tr><td><code>AZ-b-CLD</code></td><td>Combined-CLD</td><td>Per-AZ folder &mdash; AZ-specific overrides (routes, subinterfaces)</td></tr>
     </table>
 
     <p>For each folder: click <strong>Add Folder</strong> &gt; enter the <strong>Name</strong> &gt; select the <strong>Parent</strong> from the list &gt; click <strong>Create</strong>.</p>
 
     <div class="callout callout-warning">
       <div class="callout-title">Folder Names Are Bootstrap Parameters</div>
-      <p>The <code>dgname</code> parameter in the bootstrap user-data must match the AZ folder name <strong>exactly</strong> (case-sensitive). If you name your AZ folders <code>AZ-a</code> and <code>AZ-b</code>, the Terraform bootstrap options must use <code>dgname = "AZ-a"</code> and <code>dgname = "AZ-b"</code> respectively. A mismatch means the firewall boots but never receives its configuration.</p>
+      <p>The <code>dgname</code> parameter in the bootstrap user-data must match the AZ folder name <strong>exactly</strong> (case-sensitive). If you name your AZ folders <code>AZ-a-CLD</code> and <code>AZ-b-CLD</code>, the Terraform bootstrap options must use <code>dgname = "AZ-a-CLD"</code> and <code>dgname = "AZ-b-CLD"</code> respectively. A mismatch means the firewall boots but never receives its configuration.</p>
     </div>
 
     <div class="callout callout-note">
       <div class="callout-title">Inheritance Model</div>
-      <p>Configuration flows downward: settings at the <code>AWS</code> folder (e.g., DNS, NTP) are inherited by <code>Combined</code>, which inherits to <code>AZ-a</code> and <code>AZ-b</code>. Per-AZ folders override only what differs &mdash; static route next-hops, subinterfaces, and zone variable values.</p>
+      <p>Configuration flows downward: settings at the <code>AWS</code> folder (e.g., DNS, NTP) are inherited by <code>Combined-CLD</code>, which inherits to <code>AZ-a-CLD</code> and <code>AZ-b-CLD</code>. Per-AZ folders override only what differs &mdash; static route next-hops, subinterfaces, and zone variable values.</p>
     </div>
+
+    <p><em>Your folder hierarchy should look like this:</em></p>
+    <img src="screenshots/aws-scm-folder-hierarchy.png" alt="SCM Folder Management showing AWS > Combined-CLD > AZ-a-CLD, AZ-b-CLD hierarchy" loading="lazy">
   </div>
 </div>
 
@@ -2333,6 +2336,9 @@ pwd
       <div class="callout-title">AWS VPC DNS</div>
       <p><code>169.254.169.253</code> is the Amazon-provided DNS server available in every VPC. Using it ensures name resolution works without any additional configuration, regardless of which AZ or subnet the firewall sits in.</p>
     </div>
+
+    <p><em>Verify your service settings match (inherited at the Combined-CLD folder level):</em></p>
+    <img src="screenshots/aws-scm-service-settings.png" alt="SCM Device Setup showing DNS 169.254.169.253 and NTP servers inherited from AWS folder" loading="lazy">
   </div>
 </div>
 
@@ -2361,9 +2367,9 @@ pwd
 
     <p>For each: <strong>Add Variable</strong> &gt; Type: <strong>Zone</strong> &gt; Name &gt; Value: <strong>None</strong> &gt; <strong>Save</strong>.</p>
 
-    <h4>Part 2 &mdash; Create Zones (Combined Folder)</h4>
+    <h4>Part 2 &mdash; Create Zones (Combined-CLD Folder)</h4>
     <ol>
-      <li>Select the <strong>Combined</strong> folder.</li>
+      <li>Select the <strong>Combined-CLD</strong> folder.</li>
       <li>Navigate to <strong>Device &gt; Zones</strong>.</li>
       <li>Create three zones:</li>
     </ol>
@@ -2377,26 +2383,32 @@ pwd
 
     <h4>Part 3 &mdash; Override Zone Variables (Per-AZ)</h4>
     <ol>
-      <li>Select the <strong>AZ-a</strong> folder.</li>
+      <li>Select the <strong>AZ-a-CLD</strong> folder.</li>
       <li>Navigate to the resolved variables section.</li>
       <li>Override each zone variable to map to the corresponding zone name:</li>
     </ol>
 
     <table>
-      <tr><th>Variable</th><th>Override Value (AZ-a)</th><th>Override Value (AZ-b)</th></tr>
+      <tr><th>Variable</th><th>Override Value (AZ-a-CLD)</th><th>Override Value (AZ-b-CLD)</th></tr>
       <tr><td><code>ZONE-PUBLIC</code></td><td><code>public</code></td><td><code>public</code></td></tr>
       <tr><td><code>ZONE-PRIVATE</code></td><td><code>private</code></td><td><code>private</code></td></tr>
       <tr><td><code>ZONE-INTERNAL</code></td><td><code>internal</code></td><td><code>internal</code></td></tr>
     </table>
 
     <ol start="4">
-      <li>Repeat for the <strong>AZ-b</strong> folder with the same override values.</li>
+      <li>Repeat for the <strong>AZ-b-CLD</strong> folder with the same override values.</li>
     </ol>
 
     <div class="callout callout-note">
       <div class="callout-title">Why Variables Instead of Direct Zone References?</div>
       <p>Zone variables are defined at global scope so they can be referenced by products across the Strata platform (Prisma Access, NGFW, etc.). Security policy snippets use <code>$ZONE-PUBLIC</code> instead of <code>public</code> directly, which allows the same snippet to work across folders where zone names might differ. For this deployment the overrides are identical across AZs, but the variable indirection is required for snippet evaluation.</p>
     </div>
+
+    <p><em>At the AWS folder level, you should see your zone variables alongside the inherited interface variables:</em></p>
+    <img src="screenshots/aws-scm-variables.png" alt="SCM Manage Variables at AWS folder showing ZONE-PUBLIC, ZONE-PRIVATE, ZONE-INTERNAL zone variables and eth-internet, eth-local interface variables" loading="lazy">
+
+    <p><em>At the Combined-CLD folder level, the &ldquo;Used In&rdquo; column confirms where each variable is referenced:</em></p>
+    <img src="screenshots/aws-scm-variables-combined.png" alt="SCM Manage Variables at Combined-CLD folder showing variable references with Used In column" loading="lazy">
   </div>
 </div>
 
@@ -2407,11 +2419,11 @@ pwd
     <span>2B.6 Configure Interfaces &amp; Routing</span>
   </div>
   <div class="collapsible-body">
-    <p>SCM uses named interfaces (<code>$internal</code>, <code>$public</code>) that map to physical interfaces at the device level (controlled by <code>mgmt-interface-swap</code>). Shared interface config lives at the <code>Combined</code> folder; per-AZ overrides (subinterfaces, static routes, router linking) live at the AZ folders.</p>
+    <p>SCM uses named interfaces (<code>$internal</code>, <code>$public</code>) that map to physical interfaces at the device level (controlled by <code>mgmt-interface-swap</code>). Shared interface config lives at the <code>Combined-CLD</code> folder; per-AZ overrides (subinterfaces, static routes, router linking) live at the AZ folders.</p>
 
-    <h4>Part 1 &mdash; Configure Interfaces (Combined Folder)</h4>
+    <h4>Part 1 &mdash; Configure Interfaces (Combined-CLD Folder)</h4>
     <ol>
-      <li>Select the <strong>Combined</strong> folder.</li>
+      <li>Select the <strong>Combined-CLD</strong> folder.</li>
       <li>Navigate to <strong>Device &gt; Interfaces</strong>.</li>
       <li>Create two interfaces:</li>
     </ol>
@@ -2440,7 +2452,7 @@ pwd
 
     <h4>Part 2 &mdash; Create Private Subinterface (Per-AZ)</h4>
     <ol>
-      <li>Select the <strong>AZ-a</strong> folder.</li>
+      <li>Select the <strong>AZ-a-CLD</strong> folder.</li>
       <li>Navigate to <strong>Device &gt; Interfaces</strong>.</li>
       <li>Select the <code>$internal</code> interface.</li>
       <li>Click <strong>Add Interface &gt; Add Sub Interface</strong>.</li>
@@ -2455,7 +2467,7 @@ pwd
         </table>
       </li>
       <li>Click <strong>Save</strong>.</li>
-      <li>Repeat for the <strong>AZ-b</strong> folder with the same settings.</li>
+      <li>Repeat for the <strong>AZ-b-CLD</strong> folder with the same settings.</li>
     </ol>
 
     <div class="callout callout-note">
@@ -2465,14 +2477,14 @@ pwd
 
     <h4>Part 3 &mdash; Create Static Routes (Per-AZ)</h4>
     <ol>
-      <li>Select the <strong>AZ-a</strong> folder.</li>
+      <li>Select the <strong>AZ-a-CLD</strong> folder.</li>
       <li>Navigate to <strong>Device &gt; Routing</strong>.</li>
       <li>Create a logical router named <code>aws-default-a</code>.</li>
       <li>Add three static routes to cover all RFC-1918 space:</li>
     </ol>
 
     <table>
-      <tr><th>Route Name</th><th>Destination</th><th>Next Hop (AZ-a)</th><th>Next Hop (AZ-b)</th></tr>
+      <tr><th>Route Name</th><th>Destination</th><th>Next Hop (AZ-a-CLD)</th><th>Next Hop (AZ-b-CLD)</th></tr>
       <tr><td><code>rfc1918-10</code></td><td><code>10.0.0.0/8</code></td><td><code>10.51.0.65</code></td><td><code>10.51.1.65</code></td></tr>
       <tr><td><code>rfc1918-172</code></td><td><code>172.16.0.0/12</code></td><td><code>10.51.0.65</code></td><td><code>10.51.1.65</code></td></tr>
       <tr><td><code>rfc1918-192</code></td><td><code>192.168.0.0/16</code></td><td><code>10.51.0.65</code></td><td><code>10.51.1.65</code></td></tr>
@@ -2481,7 +2493,7 @@ pwd
     <p>For each route: <strong>Add Static Route</strong> &gt; Name &gt; Destination &gt; Next Hop: <strong>IP Address</strong> &gt; enter the gateway IP &gt; <strong>Add</strong>.</p>
 
     <ol start="5">
-      <li>Repeat for the <strong>AZ-b</strong> folder: create logical router <code>aws-default-b</code> with the same three routes using the AZ-b next-hop IPs.</li>
+      <li>Repeat for the <strong>AZ-b-CLD</strong> folder: create logical router <code>aws-default-b</code> with the same three routes using the AZ-b-CLD next-hop IPs.</li>
     </ol>
 
     <div class="callout callout-warning">
@@ -2491,12 +2503,12 @@ pwd
 
     <h4>Part 4 &mdash; Link Interfaces to Routers (Per-AZ)</h4>
     <ol>
-      <li>In the <strong>AZ-a</strong> folder, navigate to <strong>Device &gt; Interfaces</strong>.</li>
+      <li>In the <strong>AZ-a-CLD</strong> folder, navigate to <strong>Device &gt; Interfaces</strong>.</li>
       <li>For each interface, assign the logical router:</li>
     </ol>
 
     <table>
-      <tr><th>Interface</th><th>Logical Router (AZ-a)</th><th>Logical Router (AZ-b)</th></tr>
+      <tr><th>Interface</th><th>Logical Router (AZ-a-CLD)</th><th>Logical Router (AZ-b-CLD)</th></tr>
       <tr><td><code>$internal</code></td><td><code>aws-default-a</code></td><td><code>aws-default-b</code></td></tr>
       <tr><td><code>$internal.1</code></td><td><code>aws-default-a</code></td><td><code>aws-default-b</code></td></tr>
       <tr><td><code>$public</code></td><td><code>aws-default-a</code></td><td><code>aws-default-b</code></td></tr>
@@ -2504,8 +2516,11 @@ pwd
 
     <ol start="3">
       <li>Select each interface &gt; set <strong>Logical Router</strong> &gt; <strong>Save</strong>.</li>
-      <li>Repeat for the <strong>AZ-b</strong> folder.</li>
+      <li>Repeat for the <strong>AZ-b-CLD</strong> folder.</li>
     </ol>
+
+    <p><em>The Interfaces page at the Combined-CLD folder level shows the inherited cloud-managed interfaces:</em></p>
+    <img src="screenshots/aws-scm-interfaces.png" alt="SCM Interfaces showing $eth-internet and $eth-local Layer 3 interfaces inherited from All Firewalls" loading="lazy">
   </div>
 </div>
 
@@ -2520,20 +2535,20 @@ pwd
 
     <h4>Part 1 &mdash; Create Address Objects</h4>
     <ol>
-      <li>Select the <strong>Combined</strong> folder.</li>
+      <li>Select the <strong>Combined-CLD</strong> folder.</li>
       <li>Navigate to <strong>Objects &gt; Address &gt; Addresses</strong>.</li>
       <li>Create address objects for the GWLB subnets (health-check probe sources):</li>
     </ol>
 
     <table>
       <tr><th>Name</th><th>Type</th><th>Value</th><th>Purpose</th></tr>
-      <tr><td><code>AWS-GWLB-Subnet-AZ-A</code></td><td>IP Netmask</td><td><code>10.51.0.48/28</code></td><td>GWLB subnet in AZ-A</td></tr>
-      <tr><td><code>AWS-GWLB-Subnet-AZ-B</code></td><td>IP Netmask</td><td><code>10.51.1.48/28</code></td><td>GWLB subnet in AZ-B</td></tr>
+      <tr><td><code>GWLB-AZ-a-CLD</code></td><td>IP Netmask</td><td><code>10.0.10.0/24</code></td><td>GWLB subnet in AZ-a</td></tr>
+      <tr><td><code>GWLB-AZ-b-CLD</code></td><td>IP Netmask</td><td><code>10.0.20.0/24</code></td><td>GWLB subnet in AZ-b</td></tr>
     </table>
 
     <ol start="4">
       <li>Navigate to <strong>Objects &gt; Address &gt; Address Groups</strong>.</li>
-      <li>Create address group <code>AWS-GWLB-Subnets</code> containing both address objects.</li>
+      <li>Create address group <code>GWLB-Subnets-CLD</code> containing both address objects.</li>
     </ol>
 
     <div class="callout callout-note">
@@ -2541,15 +2556,18 @@ pwd
       <p>The CIDRs above use the <a href="#ip-schema">canonical IP schema</a> (<code>gwlb</code> subnet group). If your Terraform <code>tfvars</code> uses different CIDRs for the GWLB subnets, update these address objects to match.</p>
     </div>
 
+    <p><em>Your address objects should look like this:</em></p>
+    <img src="screenshots/aws-scm-address-objects.png" alt="SCM Addresses showing GWLB-AZ-a-CLD and GWLB-AZ-b-CLD address objects in Combined-CLD folder" loading="lazy">
+
     <h4>Part 2 &mdash; Create Security Policy Snippets</h4>
     <p>Navigate to <strong>Snippets &gt; Add Snippet</strong>. Create four centralized-scope snippets, each containing one pre-rule:</p>
 
     <table>
       <tr><th>Snippet Name</th><th>Rule Name</th><th>Source Zone</th><th>Dest Zone</th><th>Source</th><th>Destination</th><th>App</th><th>Action</th></tr>
-      <tr><td><code>Policy-AWS-HealthCheck</code></td><td><code>allow-health-check</code></td><td><code>$ZONE-INTERNAL</code></td><td><code>$ZONE-INTERNAL</code></td><td><code>AWS-GWLB-Subnets</code></td><td>any</td><td>any</td><td>Allow</td></tr>
-      <tr><td><code>Policy-AWS-Outbound</code></td><td><code>allow-outbound</code></td><td><code>$ZONE-PRIVATE</code></td><td><code>$ZONE-PUBLIC</code></td><td>any</td><td>any</td><td>any</td><td>Allow</td></tr>
-      <tr><td><code>Policy-AWS-EastWest</code></td><td><code>allow-east-west</code></td><td><code>$ZONE-PRIVATE</code></td><td><code>$ZONE-PRIVATE</code></td><td>any</td><td>any</td><td>any</td><td>Allow</td></tr>
-      <tr><td><code>Policy-AWS-Deny-All</code></td><td><code>deny-all</code></td><td>any</td><td>any</td><td>any</td><td>any</td><td>any</td><td>Deny</td></tr>
+      <tr><td><code>Policy-AWS-HealthCheck</code></td><td><code>HealthCheck-Allow-CLD</code></td><td><code>$ZONE-INTERNAL</code></td><td><code>$ZONE-INTERNAL</code></td><td><code>GWLB-Subnets-CLD</code></td><td>any</td><td>any</td><td>Allow</td></tr>
+      <tr><td><code>Policy-AWS-Outbound</code></td><td><code>Outbound-Allow-CLD</code></td><td><code>$ZONE-PRIVATE</code></td><td><code>$ZONE-PUBLIC</code></td><td>any</td><td>any</td><td>any</td><td>Allow</td></tr>
+      <tr><td><code>Policy-AWS-EastWest</code></td><td><code>EastWest-Allow-CLD</code></td><td><code>$ZONE-PRIVATE</code></td><td><code>$ZONE-PRIVATE</code></td><td>any</td><td>any</td><td>any</td><td>Allow</td></tr>
+      <tr><td><code>Policy-AWS-Deny-All</code></td><td><code>Deny-All-CLD</code></td><td>any</td><td>any</td><td>any</td><td>any</td><td>any</td><td>Deny</td></tr>
     </table>
 
     <p>For each snippet:</p>
@@ -2559,8 +2577,8 @@ pwd
       <li>Click into the snippet to add a security rule.</li>
       <li>Navigate to <strong>Security Policy &gt; Add Rule</strong>.</li>
       <li>Configure the rule fields per the table above.</li>
-      <li>For the <code>deny-all</code> rule, enable <strong>Log at Session End</strong> for visibility into blocked traffic.</li>
-      <li>For the <code>allow-health-check</code> rule, <strong>disable logging</strong> (high-frequency probes generate noise with no security value).</li>
+      <li>For the <code>Deny-All-CLD</code> rule, enable <strong>Log at Session End</strong> for visibility into blocked traffic.</li>
+      <li>For the <code>HealthCheck-Allow-CLD</code> rule, <strong>disable logging</strong> (high-frequency probes generate noise with no security value).</li>
     </ol>
 
     <div class="callout callout-warning">
@@ -2568,9 +2586,9 @@ pwd
       <p>The outbound and east-west rules above are intentionally broad (<code>any</code> source/destination/application) to ensure traffic flows during initial validation. After confirming end-to-end connectivity in Phase 7, tighten these rules to match your application requirements &mdash; restrict source addresses to known VPC CIDRs, limit applications to those actually in use, and add security profile groups.</p>
     </div>
 
-    <h4>Part 3 &mdash; Associate Snippets with the Combined Folder</h4>
+    <h4>Part 3 &mdash; Associate Snippets with the Combined-CLD Folder</h4>
     <ol>
-      <li>Select the <strong>Combined</strong> folder.</li>
+      <li>Select the <strong>Combined-CLD</strong> folder.</li>
       <li>Navigate to <strong>Configuration Snippets</strong>.</li>
       <li>Click the edit cog &gt; click the <strong>+</strong> button.</li>
       <li>Select each snippet: <code>Policy-AWS-HealthCheck</code>, <code>Policy-AWS-Outbound</code>, <code>Policy-AWS-EastWest</code>, <code>Policy-AWS-Deny-All</code>.</li>
@@ -2579,7 +2597,7 @@ pwd
 
     <h4>Part 4 &mdash; Set Snippet Ordering</h4>
     <ol>
-      <li>In the <strong>Combined</strong> folder, navigate to <strong>Security Policy</strong>.</li>
+      <li>In the <strong>Combined-CLD</strong> folder, navigate to <strong>Security Policy</strong>.</li>
       <li>In the <strong>Centralized &mdash; Pre Rules</strong> pane, drag the snippets into this order:</li>
     </ol>
 
@@ -2595,6 +2613,9 @@ pwd
       <div class="callout-title">Pre-Rules Are Non-Overrideable</div>
       <p>All snippet rules are <strong>pre-rules</strong>, meaning they are evaluated before any local device rules and cannot be overridden on the firewall itself. This ensures centralized policy enforcement regardless of local configuration.</p>
     </div>
+
+    <p><em>Your security policy should show four pre-rules in the Combined-CLD folder:</em></p>
+    <img src="screenshots/aws-scm-security-rules.png" alt="SCM Security Policy showing HealthCheck-Allow-CLD, Outbound-Allow-CLD, EastWest-Allow-CLD, and Deny-All-CLD rules" loading="lazy">
   </div>
 </div>
 
@@ -2616,7 +2637,7 @@ pwd
 
     <p>If using <strong>overlay routing</strong>, create an outbound SNAT rule:</p>
     <ol>
-      <li>Select the <strong>Combined</strong> folder.</li>
+      <li>Select the <strong>Combined-CLD</strong> folder.</li>
       <li>Navigate to <strong>Policies &gt; NAT</strong>.</li>
       <li>Click <strong>Add Rule</strong> and configure:</li>
     </ol>
@@ -2636,41 +2657,16 @@ pwd
 
     <div class="callout callout-note">
       <div class="callout-title">SIEM Integration</div>
-      <p>If you need to forward logs to an external SIEM (Splunk, Sentinel, etc.), configure a log forwarding profile under <strong>Objects &gt; Log Forwarding</strong> in the <code>Combined</code> folder and attach it to your security policy rules. This is in addition to SLS, not a replacement.</p>
+      <p>If you need to forward logs to an external SIEM (Splunk, Sentinel, etc.), configure a log forwarding profile under <strong>Objects &gt; Log Forwarding</strong> in the <code>Combined-CLD</code> folder and attach it to your security policy rules. This is in addition to SLS, not a replacement.</p>
     </div>
   </div>
 </div>
 
-<!-- ─── 2B.9 Internet Security Zone Fix ──────────────────────── -->
+<!-- ─── 2B.9 Push Configuration & Verify ────────────────────── -->
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>2B.9 Internet Security Zone Fix</span>
-  </div>
-  <div class="collapsible-body">
-    <p>SCM's Internet Security feature requires zone assignments for inbound and outbound directions. Without this fix, pushing configuration fails with a validation error.</p>
-    <ol>
-      <li>Select the <strong>Combined</strong> folder.</li>
-      <li>Navigate to <strong>Security Services &gt; Internet Security</strong>.</li>
-      <li>Click the <strong>edit cog</strong> &gt; <strong>Customize</strong>.</li>
-      <li>Set <strong>Inbound Zone</strong> to: <strong>any (any zone)</strong>.</li>
-      <li>Set <strong>Outbound Zone</strong> to: <strong>$ZONE-PUBLIC</strong>.</li>
-      <li>Click <strong>Save</strong>.</li>
-      <li><strong>Repeat</strong> for each NGFW folder under Combined (<code>AZ-a</code>, <code>AZ-b</code>).</li>
-    </ol>
-
-    <div class="callout callout-danger">
-      <div class="callout-title">Required &mdash; Push Fails Without This</div>
-      <p>If you skip this step, pushing configuration fails with <code>"internet is not a valid reference"</code>. This error occurs because the Internet Security feature defaults to a zone named <code>internet</code> which does not exist in the firewall's zone configuration. Setting Inbound to <code>any</code> and Outbound to <code>$ZONE-PUBLIC</code> resolves the reference.</p>
-    </div>
-  </div>
-</div>
-
-<!-- ─── 2B.10 Push Configuration & Verify ────────────────────── -->
-<div class="collapsible">
-  <div class="collapsible-header">
-    <span class="chevron">&#9654;</span>
-    <span>2B.10 Push Configuration &amp; Verify</span>
+    <span>2B.9 Push Configuration &amp; Verify</span>
   </div>
   <div class="collapsible-body">
     <p>Push the configuration to validate that all folders, snippets, variables, and references resolve cleanly. No firewalls exist yet &mdash; this push validates the configuration itself.</p>
@@ -2678,7 +2674,7 @@ pwd
       <li>Navigate to <strong>Configuration &gt; NGFW and Prisma Access</strong>.</li>
       <li>Click <strong>Push Config</strong> &gt; <strong>Push</strong>.</li>
       <li>Set <strong>Admin Scope</strong> to: <strong>All Admins</strong>.</li>
-      <li>In the push-target table, select the <strong>Combined</strong> folder.</li>
+      <li>In the push-target table, select <strong>All</strong> (required for first push; subsequent pushes can target specific folders).</li>
       <li>Click <strong>Push</strong>.</li>
       <li>Wait for the job to complete.</li>
       <li>Verify the <strong>Result</strong> column shows a <strong>green OK</strong>.</li>
@@ -2693,13 +2689,12 @@ pwd
       <div class="callout-title">Verification Checklist</div>
       <ul>
         <li>&#9744; Push completed with green OK &mdash; no validation errors</li>
-        <li>&#9744; <strong>System Settings &gt; Folder Management</strong> shows: <code>All Firewalls &gt; AWS &gt; Combined &gt; AZ-a</code>, <code>AZ-b</code></li>
-        <li>&#9744; <strong>Combined</strong> folder has 3 zones: <code>internal</code>, <code>private</code>, <code>public</code></li>
-        <li>&#9744; <strong>Combined</strong> folder has 2 interfaces: <code>$internal</code> (with <code>Health-Checks</code> mgmt profile), <code>$public</code></li>
+        <li>&#9744; <strong>System Settings &gt; Folder Management</strong> shows: <code>All Firewalls &gt; AWS &gt; Combined-CLD &gt; AZ-a-CLD</code>, <code>AZ-b-CLD</code></li>
+        <li>&#9744; <strong>Combined-CLD</strong> folder has 3 zones: <code>internal</code>, <code>private</code>, <code>public</code></li>
+        <li>&#9744; <strong>Combined-CLD</strong> folder has 2 interfaces: <code>$eth-local</code>, <code>$eth-internet</code> (inherited from All Firewalls)</li>
         <li>&#9744; Each AZ folder has subinterface <code>$internal.1</code> and a logical router with 3 RFC-1918 routes</li>
-        <li>&#9744; 4 security policy snippets associated and ordered: HealthCheck &rarr; Outbound &rarr; EastWest &rarr; Deny-All</li>
+        <li>&#9744; 4 security pre-rules ordered: HealthCheck-Allow-CLD &rarr; Outbound-Allow-CLD &rarr; EastWest-Allow-CLD &rarr; Deny-All-CLD</li>
         <li>&#9744; Zone variables overridden in both AZ folders</li>
-        <li>&#9744; Internet Security zone fix applied to Combined + both AZ folders</li>
         <li>&#9744; Auth code from deployment profile saved for <code>terraform.tfvars</code></li>
         <li>&#9744; Registration PIN ID and PIN Value saved for <code>terraform.tfvars</code></li>
       </ul>
@@ -2754,10 +2749,10 @@ pwd
     <li>&#9744; Credit pool active, deployment profile created with <strong>Strata Cloud Manager</strong> selected (not Panorama)</li>
     <li>&#9744; Auth code saved from deployment profile</li>
     <li>&#9744; Registration PIN generated &mdash; PIN ID and PIN Value saved</li>
-    <li>&#9744; Folder hierarchy created: <code>All Firewalls &gt; AWS &gt; Combined &gt; AZ-a</code>, <code>AZ-b</code></li>
+    <li>&#9744; Folder hierarchy created: <code>All Firewalls &gt; AWS &gt; Combined-CLD &gt; AZ-a-CLD</code>, <code>AZ-b-CLD</code></li>
     <li>&#9744; Baseline settings configured at AWS folder (DNS: <code>169.254.169.253</code>, NTP)</li>
     <li>&#9744; Zone variables created at Global scope (<code>ZONE-PUBLIC</code>, <code>ZONE-PRIVATE</code>, <code>ZONE-INTERNAL</code>)</li>
-    <li>&#9744; Zones created at Combined folder (<code>internal</code>, <code>private</code>, <code>public</code>)</li>
+    <li>&#9744; Zones created at Combined-CLD folder (<code>internal</code>, <code>private</code>, <code>public</code>)</li>
     <li>&#9744; Zone variables overridden in both AZ folders</li>
     <li>&#9744; Interfaces configured: <code>$internal</code> (with <code>Health-Checks</code> mgmt profile), <code>$public</code></li>
     <li>&#9744; Per-AZ subinterface <code>$internal.1</code> created</li>
@@ -2766,7 +2761,6 @@ pwd
     <li>&#9744; GWLB subnet address objects and address group created</li>
     <li>&#9744; 4 security policy snippets created, associated, and ordered (HealthCheck &rarr; Outbound &rarr; EastWest &rarr; Deny-All)</li>
     <li>&#9744; NAT rule configured (overlay only) or skipped (non-overlay)</li>
-    <li>&#9744; Internet Security zone fix applied (Combined + both AZ folders)</li>
     <li>&#9744; Configuration pushed and validated &mdash; green OK</li>
     <li>&#9744; AWS Marketplace subscription accepted</li>
     <li>&#9744; AWS IAM identity configured (role or programmatic user with admin privileges)</li>
@@ -2825,7 +2819,7 @@ pwd
     <table>
       <tr><th>Parameter</th><th>Source</th><th>Your Value</th></tr>
       <tr><td><code>panorama-server</code></td><td>Always <code>cloud</code> for SCM</td><td><code>cloud</code></td></tr>
-      <tr><td><code>dgname</code></td><td>AZ folder name (Phase 2B.3) &mdash; case-sensitive, one per AZ</td><td><em>e.g., <code>AZ-a</code> / <code>AZ-b</code></em></td></tr>
+      <tr><td><code>dgname</code></td><td>AZ folder name (Phase 2B.3) &mdash; case-sensitive, one per AZ</td><td><em>e.g., <code>AZ-a-CLD</code> / <code>AZ-b-CLD</code></em></td></tr>
       <tr><td><code>authcodes</code></td><td>Deployment profile auth code (Phase 2B.1)</td><td><em>(from CSP)</em></td></tr>
       <tr><td><code>vm-series-auto-registration-pin-id</code></td><td>Registration PIN ID (Phase 2B.2)</td><td><em>(UUID)</em></td></tr>
       <tr><td><code>vm-series-auto-registration-pin-value</code></td><td>Registration PIN Value (Phase 2B.2)</td><td><em>(hex string)</em></td></tr>
@@ -3354,7 +3348,7 @@ global_tags = {
       mgmt-interface-swap                   = "enable"
       plugin-op-commands                    = "advance-routing:enable,aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable"
       panorama-server                       = "cloud"                    # Tells FW to register with SCM
-      dgname                                = "AZ-a"                    # SCM folder name (case-sensitive)
+      dgname                                = "AZ-a-CLD"                # SCM folder name (case-sensitive)
       dns-primary                           = "169.254.169.253"
       authcodes                             = "YOUR-AUTH-CODE"           # From deployment profile
       vm-series-auto-registration-pin-id    = "YOUR-PIN-ID"             # From CSP → Device Certificates
@@ -3371,11 +3365,11 @@ global_tags = {
       <div class="callout-title">SCM Bootstrap Differences</div>
       <ul>
         <li><code>panorama-server = "cloud"</code> &mdash; not an IP address. This tells the firewall to register with Strata Cloud Manager.</li>
-        <li><code>dgname</code> is the <strong>SCM folder name</strong> (e.g., <code>AZ-a</code>), not a Panorama Device Group name.</li>
+        <li><code>dgname</code> is the <strong>SCM folder name</strong> (e.g., <code>AZ-a-CLD</code>), not a Panorama Device Group name.</li>
         <li>No <code>tplname</code> &mdash; SCM does not use templates.</li>
         <li>No <code>auth-key</code> &mdash; replaced by <code>vm-series-auto-registration-pin-id</code> and <code>pin-value</code>.</li>
         <li>No <code>panorama-licensing-mode-on</code> in <code>plugin-op-commands</code> &mdash; SCM handles licensing natively.</li>
-        <li>Each AZ firewall needs a <strong>different <code>dgname</code></strong> &mdash; <code>AZ-a</code> for one, <code>AZ-b</code> for the other.</li>
+        <li>Each AZ firewall needs a <strong>different <code>dgname</code></strong> &mdash; <code>AZ-a-CLD</code> for one, <code>AZ-b-CLD</code> for the other.</li>
       </ul>
     </div>
     </div>
