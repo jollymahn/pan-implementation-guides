@@ -358,23 +358,46 @@ gcloud services enable compute.googleapis.com \
   </div>
   <div class="collapsible-body">
     <p>An SSH key is required for initial access to the VM-Series firewall management interface. GCP VM-Series instances accept exactly one key at deployment time.</p>
+
+    <h4>Step 1: Generate the key pair</h4>
     <div class="code-block">
-      <pre><code>ssh-keygen -t rsa -b 4096 -f ~/.ssh/gcp-vmseries-key -C "admin"</code></pre>
+      <pre><code>ssh-keygen -t rsa -b 4096 -f ~/.ssh/gcp-vmseries-key -C "admin" -N ""</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
-    <p>The public key must be formatted as: <code>admin:ssh-rsa AAAA... admin</code></p>
-    <p>Both the <code>admin:</code> prefix and the trailing <code>admin</code> comment are <strong>mandatory</strong>. Display the correctly formatted key:</p>
+
+    <h4>Step 2: Add the public key to your GCP project</h4>
+    <p>This makes the key available to all VM instances in the project that allow project-wide SSH keys:</p>
+    <div class="code-block">
+      <pre><code>gcloud compute project-info add-metadata --metadata-from-file ssh-keys=&lt;(echo "admin:$(cat ~/.ssh/gcp-vmseries-key.pub)")</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Appending to existing project SSH keys</div>
+      <p>The command above <strong>replaces</strong> all project-wide SSH keys. If your project already has SSH keys configured for other users or instances, append instead:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>gcloud compute project-info describe --format='value(commonInstanceMetadata.items.filter(key:ssh-keys).firstof(value))' > /tmp/existing-keys.txt && echo "admin:$(cat ~/.ssh/gcp-vmseries-key.pub)" >> /tmp/existing-keys.txt && gcloud compute project-info add-metadata --metadata-from-file ssh-keys=/tmp/existing-keys.txt</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Step 3: Verify the key format</h4>
+    <p>The public key must be formatted as <code>admin:ssh-rsa AAAA... admin</code>. Both the <code>admin:</code> prefix and the trailing <code>admin</code> comment are <strong>mandatory</strong> for VM-Series.</p>
     <div class="code-block">
       <pre><code>echo "admin:$(cat ~/.ssh/gcp-vmseries-key.pub)"</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
+
     <div class="callout callout-danger">
       <div class="callout-title">Corrupted key = delete and redeploy</div>
       <p>If the SSH key is malformed (extra spaces, missing prefix/suffix, wrong algorithm), the firewall will deploy but SSH access will fail. The only recovery is to <strong>delete the VM-Series instance and redeploy</strong>. The VPC networks survive deletion &mdash; only the firewall instance and firewall rules must be recreated.</p>
     </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The output of <code>echo "admin:$(cat ~/.ssh/gcp-vmseries-key.pub)"</code> should start with <code>admin:ssh-rsa AAAA</code> and end with <code>admin</code>. No line breaks or extra whitespace.</p>
+      <p>The output of <code>echo "admin:$(cat ~/.ssh/gcp-vmseries-key.pub)"</code> should start with <code>admin:ssh-rsa AAAA</code> and end with <code>admin</code>. No line breaks or extra whitespace. Confirm the key is in the project metadata with:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>gcloud compute project-info describe --format='value(commonInstanceMetadata.items.filter(key:ssh-keys).firstof(value))' | grep admin</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
   </div>
 </div>
@@ -659,7 +682,7 @@ cd terraform-google-swfw-modules</code></pre>
     <ol>
       <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
       <li>Navigate to <strong>Products &gt; VM-Series Auth-Codes</strong>.</li>
-      <li>Click <strong>Generate OTP</strong> or <strong>Create Registration PIN</strong>.</li>
+      <li>Click <strong>Create Registration PIN</strong>.</li>
       <li>Copy both values: <strong>PIN ID</strong> (UUID format) and <strong>PIN Value</strong> (hex string).</li>
     </ol>
     <div class="callout callout-success">
