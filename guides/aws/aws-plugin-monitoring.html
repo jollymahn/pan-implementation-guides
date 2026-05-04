@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>AWS Plugin for VPC Monitoring | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <div class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AWS Plugin Monitoring</span>
+  </div>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="index.html" class="active">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="../../quick-ref/index.html">Quick Reference</a>
+  </nav>
+</header>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<div class="sidebar-backdrop"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prerequisites</div>
+    <a href="#prerequisites" data-section="prerequisites">Planning Checklist</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">IAM Setup</div>
+    <a href="#iam-setup" data-section="iam-setup">IAM Roles &amp; Permissions</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Plugin</div>
+    <a href="#install-plugin" data-section="install-plugin">Install the Plugin</a>
+    <a href="#configure-plugin" data-section="configure-plugin">Configure the Plugin</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Policy</div>
+    <a href="#dynamic-address-groups" data-section="dynamic-address-groups">Dynamic Address Groups</a>
+    <a href="#security-policy" data-section="security-policy">Security Policy</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Verify</div>
+    <a href="#verification" data-section="verification">Verification</a>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#cli-reference" data-section="cli-reference">CLI Reference</a>
+    <a href="#monitored-attributes" data-section="monitored-attributes">Monitored Attributes</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AWS</a>
+  <span class="sep">|</span>
+  AWS Plugin for VPC Monitoring
+</div>
+
+<div class="article">
+
+<h1>AWS Plugin for VPC Resource Monitoring</h1>
+<p class="subtitle">Configure the Panorama AWS Plugin to dynamically monitor EC2 instances, map metadata to IP tags, and enforce security policy through Dynamic Address Groups</p>
+
+<div class="cloud-links">
+  <a href="vm-series-deployment.html">AWS VM-Series Guide</a>
+  <a href="panorama-deployment.html">AWS Panorama Guide</a>
+</div>
+
+<!-- ── Phase Progress ────────────────────────────────────────── -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#iam-setup" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    IAM Configuration
+  </a>
+  <a href="#install-plugin" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Install Plugin
+  </a>
+  <a href="#configure-plugin" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Configure Plugin
+  </a>
+  <a href="#dynamic-address-groups" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Dynamic Address Groups
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 6</span>
+    Verification
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide configures the <strong>AWS Plugin for Panorama</strong> to monitor EC2 instance metadata across AWS VPCs and push IP-to-tag mappings to managed firewalls. Firewalls consume these tags through <strong>Dynamic Address Groups</strong> referenced in security policy &mdash; enabling policy that adapts automatically as EC2 instances are created, terminated, or re-tagged.</p>
+  <p><strong>Prerequisite:</strong> Panorama must already be deployed, licensed, and managing VM-Series firewalls organized into Device Groups. If Panorama is not yet deployed, complete the <a href="panorama-deployment.html">Panorama Deployment Guide</a> first.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE OVERVIEW                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>The AWS plugin runs as a daemon on Panorama. It polls AWS VPCs at a configurable interval (default 60 seconds), retrieves EC2 instance metadata, creates IP-to-tag mappings from predefined and user-defined attributes, and pushes those tags to firewalls in specified Device Groups. Firewalls use the tags in Dynamic Address Groups referenced by security policy rules &mdash; creating policy that automatically adapts as the cloud environment changes.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Data Flow Pipeline</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Tag information flows through five stages from AWS to the firewall dataplane:</p>
+
+    <table>
+      <thead>
+        <tr><th>Stage</th><th>Component</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1. Poll</td><td>Tag Retrieval Daemon</td><td>Queries AWS APIs for EC2/ELB metadata across configured VPCs</td></tr>
+        <tr><td>2. Process</td><td>Tag Processing Daemon</td><td>Filters invalid tags, computes diff from previous poll</td></tr>
+        <tr><td>3. Push</td><td>Panorama configd</td><td>Sends incremental tag updates to firewalls in Notify Group device groups</td></tr>
+        <tr><td>4. Register</td><td>Firewall userid</td><td>Registers IP-to-tag mappings, updates Dynamic Address Groups</td></tr>
+        <tr><td>5. Enforce</td><td>Firewall dataplane</td><td>Security policy rules using DAGs automatically match updated IPs</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Plugin capacity</div>
+      <p>The AWS plugin version 3.0.1 or later supports monitoring EC2 instances for up to 1,000 AWS VPCs across AWS Commercial, AWS GovCloud, and AWS China regions. Panorama cannot be deployed on AWS China; provide AWS credentials for China regions instead of using an instance profile.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Pull model &mdash; not push</div>
+      <p>The plugin operates on a pull model &mdash; Panorama actively polls AWS. AWS never pushes data to Panorama or the firewalls. Only metadata is retrieved; no traffic or logs flow through this channel.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm understanding of the five-stage pipeline before proceeding. Each remaining section of this guide configures one or more stages in this flow.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<p>Gather requirements and make design decisions before configuring IAM or installing the plugin.</p>
+
+<!-- Prereq 1.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1: Verify Panorama Minimum Requirements</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama resource requirements scale with the number of monitored VPCs and the tag density per IP address.</p>
+
+    <table>
+      <thead>
+        <tr><th>Memory</th><th>CPUs</th><th>Monitored VPCs</th><th>Tag Capacity</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>16 GB</td><td>4</td><td>1&ndash;100</td><td>10,000 IPs &times; 13 tags each</td></tr>
+        <tr><td>32 GB</td><td>8</td><td>100&ndash;500</td><td>5,000 IPs &times; 25 tags each</td></tr>
+        <tr><td>64 GB</td><td>16</td><td>500&ndash;1,000</td><td>5,000 IPs &times; 25 tags each</td></tr>
+      </tbody>
+    </table>
+
+    <p>Additional requirements:</p>
+    <ul>
+      <li>PAN-OS <code>10.0.5</code> or later on Panorama</li>
+      <li>AWS Plugin version <code>3.0.1</code> or later</li>
+      <li>Active support license on Panorama</li>
+      <li>Device management license for managed firewalls</li>
+      <li>Valid support license on managed firewalls</li>
+    </ul>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Log in to Panorama. Navigate to <strong>Panorama &gt; Dashboard</strong> and confirm the PAN-OS version is <code>10.0.5</code> or later. Check <strong>Panorama &gt; Support</strong> to confirm the support license is active.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 1.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2: Gather AWS Information</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Collect the following information from the AWS Console before starting IAM or plugin configuration:</p>
+
+    <ul>
+      <li><strong>VPC IDs</strong> for each VPC to monitor (AWS Console &gt; VPC Dashboard &gt; Your VPCs)</li>
+      <li><strong>AWS Account IDs</strong> for each account containing monitored VPCs</li>
+      <li><strong>AWS Regions</strong> where monitored VPCs are located</li>
+      <li><strong>Panorama deployment location</strong> &mdash; on AWS (EC2) or on-premises &mdash; this determines the authentication method</li>
+      <li><strong>EC2 instance tags</strong> &mdash; tag EC2 instances with the key-value pairs to use in security policy before enabling monitoring</li>
+      <li><strong>Duplicate IP check</strong> &mdash; identify any overlapping IP addresses across monitored VPCs</li>
+    </ul>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Duplicate IPs across VPCs</div>
+      <p>Duplicate IP addresses across monitored VPCs cause metadata to be appended together or swapped between instances. This may produce unexpected results in policy enforcement. Duplicate IPs are logged to <code>plugin_aws_ret.log</code> on Panorama.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All VPC IDs, Account IDs, and region names are recorded and accessible. EC2 instances in those VPCs have the tag key-value pairs intended for security policy.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 1.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3: Choose an Authentication Method</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The authentication method depends on where Panorama is deployed and whether monitored VPCs are in the same or different AWS accounts.</p>
+
+    <table>
+      <thead>
+        <tr><th>Option</th><th>When to Use</th><th>Credentials on Panorama</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1. IAM Credentials</td><td>Panorama not on AWS, single account</td><td>Access Key ID + Secret Access Key</td></tr>
+        <tr><td>2. IAM Credentials + Assume Role</td><td>Panorama not on AWS, cross-account</td><td>Access Key + Secret Key + Role ARN</td></tr>
+        <tr><td>3. Instance Profile</td><td>Panorama on AWS, same account</td><td>None (automatic via instance profile)</td></tr>
+        <tr><td>4. Instance Profile + Assume Role</td><td>Panorama on AWS, cross-account</td><td>Role ARN only</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>If Panorama is deployed on AWS, use Instance Profile (Option 3 or 4) &mdash; it eliminates the need to store AWS credentials on Panorama and is the most secure approach. Record the chosen option number; the IAM setup phase references it directly.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 1.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4: Confirm Firewall Readiness</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The plugin pushes tags to firewalls through Panorama Device Groups. Confirm the following before proceeding:</p>
+
+    <ul>
+      <li>Firewalls are added as managed devices on Panorama (<strong>Panorama &gt; Managed Devices &gt; Summary</strong>)</li>
+      <li>Firewalls are organized into Device Groups (<strong>Panorama &gt; Device Groups</strong>)</li>
+      <li>Target Device Groups are <strong>not</strong> already attached to another Notify Group&rsquo;s parent Device Group</li>
+    </ul>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Navigate to <strong>Panorama &gt; Managed Devices &gt; Summary</strong>. All target firewalls show <code>Connected</code> status. Navigate to <strong>Panorama &gt; Device Groups</strong> and confirm the intended Device Groups exist with firewalls assigned.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: IAM ROLES & PERMISSIONS                           -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="iam-setup">Phase 2: IAM Roles and Permissions</h2>
+
+<p>Create the IAM resources required for Panorama to authenticate with AWS and retrieve EC2 metadata. Complete only the option matching the authentication method chosen in <a href="#prerequisites">Step 1.3</a>.</p>
+
+<!-- IAM 2.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.1: Define the Required IAM Permissions</span>
+  </div>
+  <div class="collapsible-body">
+    <p>All authentication options use the same minimum permission set. This policy grants read-only access to EC2 instance metadata and ELB attributes &mdash; no write permissions.</p>
+
+    <div class="code-block">
+      <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PanoramaVMMonitoring",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeVpcEndpoints",
+        "ec2:DescribeSubnets",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeLoadBalancerAttributes",
+        "elasticloadbalancing:DescribeTags"
+      ],
+      "Resource": "*"
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Minimum permission set</div>
+      <p>The EC2 Describe actions retrieve instance metadata (IPs, tags, VPC, subnet, security group). The ELB Describe actions retrieve load balancer attributes for tagging. All actions are read-only &mdash; the plugin never modifies AWS resources.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Save this JSON as a local file or keep it accessible. It is referenced in every authentication option below.</p>
+    </div>
+  </div>
+</div>
+
+<!-- IAM 2.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.2: Option 1 &mdash; IAM Credentials (Single Account)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Use this option when Panorama is <strong>not</strong> deployed on AWS and all monitored VPCs are in a single AWS account.</p>
+
+    <ol>
+      <li>Open AWS Console &gt; <strong>IAM</strong> &gt; <strong>Policies</strong> &gt; <strong>Create Policy</strong>.</li>
+      <li>Select the <strong>JSON</strong> tab and paste the permission policy from <a href="#iam-setup">Step 2.1</a>.</li>
+      <li>Click <strong>Next</strong>, name the policy <code>PanoramaVMMonitoring</code>, and click <strong>Create policy</strong>.</li>
+      <li>Navigate to <strong>IAM</strong> &gt; <strong>Users</strong> &gt; <strong>Create user</strong>.</li>
+      <li>Enter <code>panorama-monitoring</code> as the user name. Do not enable console access.</li>
+      <li>On the Permissions page, select <strong>Attach policies directly</strong> and attach <code>PanoramaVMMonitoring</code>.</li>
+      <li>Click <strong>Create user</strong>.</li>
+      <li>Open the new user &gt; <strong>Security credentials</strong> &gt; <strong>Create access key</strong>.</li>
+      <li>Select <strong>Third-party service</strong> as the use case, acknowledge the warning, and click <strong>Create access key</strong>.</li>
+      <li>Copy the <strong>Access Key ID</strong> and <strong>Secret Access Key</strong>.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Store credentials securely</div>
+      <p>The Secret Access Key is shown only once during creation. Store it in a secure vault. If lost, delete the access key and create a new one.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The IAM user <code>panorama-monitoring</code> appears under <strong>IAM &gt; Users</strong> with the <code>PanoramaVMMonitoring</code> policy attached. An active access key exists under <strong>Security credentials</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- IAM 2.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.3: Option 2 &mdash; IAM Credentials + Assume Role (Cross-Account)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Use this option when Panorama is <strong>not</strong> deployed on AWS and monitored VPCs span multiple AWS accounts. This requires configuration in both accounts.</p>
+
+    <h4>On Account 1 (monitored account &mdash; where EC2 instances are)</h4>
+    <ol>
+      <li>Navigate to <strong>IAM</strong> &gt; <strong>Roles</strong> &gt; <strong>Create role</strong>.</li>
+      <li>Select <strong>Another AWS account</strong> as the trusted entity.</li>
+      <li>Enter Account 2&rsquo;s Account ID (the account where Panorama credentials are stored).</li>
+      <li>Attach the <code>PanoramaVMMonitoring</code> policy from <a href="#iam-setup">Step 2.1</a>.</li>
+      <li>Name the role (e.g., <code>PanoramaMonitoringRole</code>) and click <strong>Create role</strong>.</li>
+      <li>Copy the <strong>Role ARN</strong> (e.g., <code>arn:aws:iam::111111111111:role/PanoramaMonitoringRole</code>).</li>
+    </ol>
+
+    <p>The trust policy on this role should look like:</p>
+    <div class="code-block">
+      <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::ACCOUNT-2-ID:root"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>On Account 2 (Panorama&rsquo;s credentials account)</h4>
+    <ol>
+      <li>Create an IAM user (e.g., <code>panorama-monitoring</code>).</li>
+      <li>Attach an inline or managed policy allowing <code>sts:AssumeRole</code>:</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::ACCOUNT-1-ID:role/PanoramaMonitoringRole"
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <ol start="3">
+      <li>Create access keys for this user and save the Access Key ID and Secret Access Key.</li>
+      <li>On Panorama, enter the Access Key ID and Secret Key from Account 2, and provide the Role ARN from Account 1 in the Monitoring Definition.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Multiple monitored accounts</div>
+      <p>Repeat the Account 1 steps for each additional monitored account. Each account needs its own IAM role with Account 2 as a trusted entity. Create a separate Monitoring Definition on Panorama for each account&rsquo;s Role ARN.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>On Account 1: the role <code>PanoramaMonitoringRole</code> exists with the VM Monitoring policy and Account 2 as a trusted entity. On Account 2: the IAM user has an active access key and the <code>sts:AssumeRole</code> policy referencing Account 1&rsquo;s role.</p>
+    </div>
+  </div>
+</div>
+
+<!-- IAM 2.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.4: Option 3 &mdash; Instance Profile (Same Account)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Use this option when Panorama runs as an EC2 instance in the <strong>same AWS account</strong> as the monitored VPCs. No credentials are stored on Panorama.</p>
+
+    <ol>
+      <li>Navigate to <strong>IAM</strong> &gt; <strong>Roles</strong> &gt; <strong>Create role</strong>.</li>
+      <li>Select <strong>AWS service</strong> as the trusted entity and choose <strong>EC2</strong>.</li>
+      <li>Attach the <code>PanoramaVMMonitoring</code> policy from <a href="#iam-setup">Step 2.1</a>.</li>
+      <li>Name the role (e.g., <code>PanoramaInstanceProfile</code>) and click <strong>Create role</strong>.</li>
+      <li>Navigate to <strong>EC2</strong> &gt; <strong>Instances</strong>, select the Panorama instance.</li>
+      <li>Click <strong>Actions</strong> &gt; <strong>Security</strong> &gt; <strong>Modify IAM role</strong>.</li>
+      <li>Select the <code>PanoramaInstanceProfile</code> role and click <strong>Update IAM role</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Instance profile auto-creation</div>
+      <p>When creating an IAM role using the AWS Console, AWS automatically creates an instance profile with the same name. When Panorama launches with this role, the instance profile is automatically associated.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>In the EC2 Console, select the Panorama instance and check the <strong>Security</strong> tab. The <strong>IAM Role</strong> field shows <code>PanoramaInstanceProfile</code>. On Panorama, select <code>Instance Profile</code> as the Account Type &mdash; no credentials are needed.</p>
+    </div>
+  </div>
+</div>
+
+<!-- IAM 2.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.5: Option 4 &mdash; Instance Profile + Assume Role (Cross-Account)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Use this option when Panorama runs as an EC2 instance on AWS but monitored VPCs are in <strong>different AWS accounts</strong>.</p>
+
+    <h4>On Account 1 (monitored account &mdash; where EC2 instances are)</h4>
+    <ol>
+      <li>Navigate to <strong>IAM</strong> &gt; <strong>Roles</strong> &gt; <strong>Create role</strong>.</li>
+      <li>Select <strong>Another AWS account</strong> as the trusted entity.</li>
+      <li>Enter Account 2&rsquo;s (Panorama&rsquo;s) Account ID.</li>
+      <li>Attach the <code>PanoramaVMMonitoring</code> policy from <a href="#iam-setup">Step 2.1</a>.</li>
+      <li>Name the role and click <strong>Create role</strong>.</li>
+      <li>Copy the <strong>Role ARN</strong>.</li>
+    </ol>
+
+    <h4>On Account 2 (Panorama&rsquo;s account)</h4>
+    <ol>
+      <li>Create an IAM role with <strong>EC2</strong> as the trusted entity.</li>
+      <li>Attach an <code>sts:AssumeRole</code> policy referencing Account 1&rsquo;s Role ARN.</li>
+      <li>Attach the instance profile to the Panorama EC2 instance (same process as <a href="#iam-setup">Step 2.4</a>, steps 5&ndash;7).</li>
+    </ol>
+
+    <p>For each additional monitored account, create a role on that account with the VM Monitoring policy and add Account 2 as a trusted entity.</p>
+
+    <p>On Panorama:</p>
+    <ul>
+      <li>Select <code>Instance Profile</code> as Account Type</li>
+      <li>Enter the Role ARN from Account 1 in the Monitoring Definition</li>
+    </ul>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Panorama EC2 instance has an instance profile attached (visible in the EC2 Console &gt; Security tab). On Account 1, the monitoring role lists Account 2 as a trusted entity. The Role ARN from Account 1 is recorded for use in the Monitoring Definition.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: INSTALL PLUGIN                                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="install-plugin">Phase 3: Install the AWS Plugin</h2>
+
+<p>Download and install the AWS plugin on Panorama. This is a one-time operation per Panorama instance (or HA pair).</p>
+
+<!-- Install 3.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.1: Download and Install</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Log in to the Panorama web interface.</li>
+      <li>Navigate to <strong>Panorama &gt; Plugins</strong>.</li>
+      <li>Click <strong>Check Now</strong> to refresh the plugin list from the Palo Alto Networks update server.</li>
+      <li>Locate <code>aws</code> in the list. Download the latest <code>3.x</code> version.</li>
+      <li>After the download completes, click <strong>Install</strong>.</li>
+      <li>Wait for Panorama to refresh. The AWS plugin appears on the Plugins tab.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Maintenance window</div>
+      <p>Install or uninstall plugins during a planned maintenance window. Installing (or uninstalling) a plugin requires a Panorama reboot if another cloud plugin is already installed.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: No downgrade from v2.0+</div>
+      <p>After installing the AWS plugin v2.0 or later, downgrading to v1.0 is not supported.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The plugin appears in the <strong>Panorama &gt; Plugins</strong> list with status <code>Installed</code> and the expected version number.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Install 3.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.2: Verify Installation</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Dashboard</strong>. Check the General Information widget for the plugin version.</li>
+      <li>Navigate to <strong>Panorama &gt; Plugins &gt; AWS</strong>. Confirm the plugin management interface loads.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Panorama HA</div>
+      <p>If Panorama is configured for HA, install the same plugin version on both peers and attach the same instance profile (if applicable) to both Panorama EC2 instances.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <strong>Panorama &gt; Plugins &gt; AWS</strong> navigation item is visible and loads the Setup, Monitoring Definition, and Notify Group tabs.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Install 3.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.3: Commit (HA Only)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Synchronize the plugin installation to the passive Panorama peer.</p>
+
+    <ol>
+      <li>Navigate to <strong>Commit &gt; Commit to Panorama</strong>.</li>
+      <li>Click <strong>Commit</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Unconfigured plugins blocking tag push</div>
+      <p>If multiple Panorama plugins are installed and one is not configured, Panorama will not forward IP-tag information to unconfigured plugins. Either uninstall unused plugins, or run the following command to unblock:</p>
+    </div>
+
+    <div class="code-block">
+      <pre><code>request plugins dau plugin-name &lt;plugin-name&gt; unblock-device-push yes</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The commit completes without errors. On the passive Panorama peer, <strong>Panorama &gt; Plugins &gt; AWS</strong> shows the same installed version.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: CONFIGURE PLUGIN                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="configure-plugin">Phase 4: Configure the AWS Plugin</h2>
+
+<p>Enable monitoring, create Notify Groups, add IAM credentials, and define which VPCs to monitor. Complete these steps in order &mdash; each depends on the previous.</p>
+
+<!-- Config 4.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1: Enable Monitoring</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Plugins &gt; AWS &gt; Setup &gt; General</strong>.</li>
+      <li>Check <strong>Enable Monitoring</strong>.</li>
+      <li>Set <strong>Monitoring Interval</strong> (default: <code>60</code> seconds).</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Monitoring interval trade-off</div>
+      <p>The monitoring interval determines how frequently Panorama polls AWS for metadata changes. Lower values increase API call volume to AWS. 60 seconds is recommended for most deployments.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <strong>Enable Monitoring</strong> checkbox is checked and the interval value is displayed in the General settings panel.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Config 4.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.2: Create Notify Group</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A Notify Group defines which Device Groups (and their firewalls) receive IP-to-tag mappings from the plugin.</p>
+
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Plugins &gt; AWS &gt; Setup &gt; Notify Groups</strong>.</li>
+      <li>Click <strong>Add</strong>.</li>
+      <li>Enter a <strong>Name</strong> (e.g., <code>NG-Production</code>).</li>
+      <li>Select <strong>Device Groups</strong> &mdash; choose all Device Groups whose firewalls should receive tags.</li>
+      <li>Select tags: <strong>Select All 32 Tags</strong> (default) or <strong>Custom Tags</strong> to select specific predefined and user-defined tags.</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Device Group assignment rules</div>
+      <p>Think through Device Groups carefully:</p>
+      <ul>
+        <li>A Monitoring Definition can include only one Notify Group &mdash; select all relevant Device Groups within it</li>
+        <li>To unregister tags from a firewall in a Notify Group, delete the Monitoring Definition</li>
+        <li>To register tags to all virtual systems on a multi-vsys firewall, add each virtual system to a separate device group and assign all to the Notify Group</li>
+      </ul>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Custom Tags for large deployments</div>
+      <p>When monitoring a large number of EC2 instances, use Custom Tags to select only the tags needed for security policy. This reduces memory consumption on both Panorama and the firewalls.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Notify Group appears in the list with the correct Device Groups and tag selection displayed.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Config 4.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.3: Add IAM Role</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Register the IAM credentials or instance profile that the plugin uses to authenticate with AWS.</p>
+
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Plugins &gt; AWS &gt; Setup &gt; IAM Role</strong>.</li>
+      <li>Click <strong>Add</strong>.</li>
+      <li>Enter a <strong>Name</strong> and optional <strong>Description</strong>.</li>
+      <li>Select <strong>Account Type</strong>:
+        <ul>
+          <li><strong>Instance Profile</strong> &mdash; if Panorama runs on AWS with an attached instance profile (Options 3 or 4 from <a href="#prerequisites">Step 1.3</a>)</li>
+          <li><strong>AWS Account Credentials</strong> &mdash; if Panorama is not on AWS or explicit credentials are required (Options 1 or 2)</li>
+        </ul>
+      </li>
+      <li>(For AWS Account Credentials) Enter the <strong>Access Key ID</strong> and <strong>Secret Access Key</strong>. Confirm the secret key.</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">AWS GovCloud region setting</div>
+      <p>For AWS GovCloud, set the AWS region using the CLI before adding the IAM role:</p>
+    </div>
+
+    <div class="code-block">
+      <pre><code>request plugins aws set-aws-region region &lt;aws-govcloud-region&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>After adding, the IAM Roles list shows a validation status icon:</p>
+    <table>
+      <thead>
+        <tr><th>Color</th><th>Status</th><th>Meaning</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Green</td><td>Valid</td><td>Credentials verified for monitoring</td></tr>
+        <tr><td>Orange</td><td>Valid for Monitoring</td><td>Credentials work for monitoring but not deployments (expected for monitoring-only roles)</td></tr>
+        <tr><td>Red</td><td>Invalid</td><td>Credentials failed validation &mdash; check Access Key and permissions</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The IAM Role entry appears in the list with a <strong>Green</strong> or <strong>Orange</strong> validation status. Red status indicates a credential or permission problem &mdash; revisit <a href="#iam-setup">Phase 2</a>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Config 4.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.4: Create Monitoring Definition</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A Monitoring Definition ties together an IAM role, a set of AWS regions and VPCs, and a Notify Group. Create one Monitoring Definition per AWS account being monitored.</p>
+
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Plugins &gt; AWS &gt; Monitoring Definition &gt; General</strong>.</li>
+      <li>Click <strong>Add</strong>.</li>
+      <li>Enter a <strong>Name</strong> and optional <strong>Description</strong>.</li>
+      <li>Select the <strong>IAM Role</strong> created in <a href="#configure-plugin">Step 4.3</a>.</li>
+      <li>Select <strong>AWS Regions</strong>:
+        <ul>
+          <li><strong>All</strong> &mdash; monitor all AWS regions</li>
+          <li><strong>Select</strong> &mdash; choose specific regions from the Member search bar</li>
+        </ul>
+      </li>
+      <li>(Optional) Enter a <strong>Role ARN</strong> if using Assume Role for cross-account access (Options 2 or 4).</li>
+      <li>Select the <strong>Notify Group</strong> created in <a href="#configure-plugin">Step 4.2</a>.</li>
+      <li>Check <strong>Enable</strong>.</li>
+      <li>Click <strong>OK</strong>.</li>
+      <li>Switch to the <strong>VPC IDs</strong> tab.</li>
+      <li>Click <strong>Add</strong> and enter VPC IDs from the AWS VPC Dashboard.</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">GovCloud monitoring definitions</div>
+      <p>For AWS GovCloud, configure the AWS region under the monitoring definition using CLI:</p>
+    </div>
+
+    <div class="code-block">
+      <pre><code>set plugins aws monitoring-definition &lt;name&gt; aws-regions &lt;aws-govcloud-region&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Monitoring Definition appears in the list with the correct IAM Role, region selection, Notify Group, and VPC IDs. The <strong>Enable</strong> checkbox is checked.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Config 4.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.5: Commit and Validate</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Commit the plugin configuration to activate monitoring and validate connectivity to AWS.</p>
+
+    <ol>
+      <li>Navigate to <strong>Commit &gt; Commit to Panorama</strong>. Click <strong>Commit</strong>.</li>
+      <li>After the commit completes, return to <strong>Panorama &gt; Plugins &gt; AWS &gt; Monitoring Definition</strong>.</li>
+      <li>Verify the <strong>Status</strong> column shows <code>Success</code>.</li>
+      <li>Click <strong>Validate</strong> to confirm Panorama can authenticate and communicate with the configured VPCs.</li>
+    </ol>
+
+    <p>If status shows failure:</p>
+    <ul>
+      <li>Verify the VPC ID is correct (check for typos)</li>
+      <li>Verify the IAM credentials or role have the required permissions from <a href="#iam-setup">Step 2.1</a></li>
+      <li>Verify Panorama has outbound internet connectivity to AWS API endpoints</li>
+      <li>Check <code>plugin_aws_ret.log</code> for detailed error messages</li>
+    </ul>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After commit, the plugin begins polling AWS immediately. Within one monitoring interval (default 60 seconds), the Status column changes to <code>Success</code> with IP-to-tag mappings populated. The Validate button confirms connectivity.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: DYNAMIC ADDRESS GROUPS                            -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="dynamic-address-groups">Phase 5: Create Dynamic Address Groups</h2>
+
+<p>Dynamic Address Groups (DAGs) use tag match criteria to automatically include IPs that carry matching tags. Create DAGs on Panorama, then reference them in security policy rules.</p>
+
+<!-- DAG 5.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.1: Create a Dynamic Address Group</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <strong>Objects &gt; Address Groups</strong> (in the Device Group selected in the Notify Group).</li>
+      <li>Click <strong>Add</strong>.</li>
+      <li>Enter a <strong>Name</strong> (e.g., <code>DAG-WebServers</code>).</li>
+      <li>Set <strong>Type</strong> to <code>Dynamic</code>.</li>
+      <li>In the <strong>Match</strong> field, enter the tag match criteria.</li>
+    </ol>
+
+    <p>Tag match criteria examples:</p>
+    <div class="code-block">
+      <pre><code>'aws.ec2.tag.Environment.Production'
+
+'aws.ec2.vpc-id.vpc-0abc123def456'
+
+'aws.ec2.subnet-id.subnet-0abc123' and 'aws.ec2.tag.Role.WebServer'
+
+'aws.ec2.tag.Environment.Production' or 'aws.ec2.tag.Environment.Staging'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <ol start="6">
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Match criteria syntax</div>
+      <p>Wrap each tag value in single quotes. Use <code>and</code> / <code>or</code> operators for boolean logic. Boolean operations require PAN-OS 9.1.6 or later.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">DAG behavior difference: Panorama vs. firewall</div>
+      <p>DAGs on Panorama always show associated IPs. On firewalls, DAGs only show IPs when the DAG is referenced in an active security policy rule.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The DAG appears in <strong>Objects &gt; Address Groups</strong> with Type <code>Dynamic</code> and the match criteria displayed in the Match column.</p>
+    </div>
+  </div>
+</div>
+
+<!-- DAG 5.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.2: Verify DAG Population</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm that the DAG resolves to the expected IP addresses on Panorama.</p>
+
+    <ol>
+      <li>Navigate to <strong>Objects &gt; Address Groups</strong>.</li>
+      <li>Find the DAG and click <strong>more</strong> in the Addresses column.</li>
+      <li>Verify the expected IPs appear in the list.</li>
+    </ol>
+
+    <p>If no IPs appear:</p>
+    <ul>
+      <li>Confirm the tag name in the match criteria matches exactly &mdash; run <code>show object registered-ip all</code> on a firewall in the Notify Group to see actual tag names</li>
+      <li>Confirm the Device Group is in the Notify Group</li>
+      <li>Confirm the Monitoring Definition status is <code>Success</code></li>
+      <li>Wait at least one monitoring interval after the initial commit</li>
+    </ul>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Clicking <strong>more</strong> on the DAG shows the private IP addresses of EC2 instances matching the tag criteria. The IP count matches the number of running instances with the specified tags in AWS.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5 (cont): SECURITY POLICY                           -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="security-policy">Phase 6: Create Security Policy Rules</h2>
+
+<p>Reference Dynamic Address Groups in security policy rules. When DAG membership changes (new EC2 instances, tag changes), policy enforcement updates automatically &mdash; no commit required for tag updates.</p>
+
+<!-- Policy 6.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.1: Reference DAGs in Policy</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <strong>Policies &gt; Security</strong> (in the appropriate Device Group).</li>
+      <li>Click <strong>Add</strong> to create a new rule, or select an existing rule to modify.</li>
+      <li>In the <strong>Source</strong> or <strong>Destination</strong> field, click <strong>Add</strong> and select the Dynamic Address Group.</li>
+      <li>Configure the rest of the rule: application, service, action, and logging.</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+
+    <p>Example rule &mdash; allow web traffic from tagged web servers:</p>
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Source</td><td><code>DAG-WebServers</code></td></tr>
+        <tr><td>Destination</td><td>Any</td></tr>
+        <tr><td>Application</td><td><code>web-browsing</code>, <code>ssl</code></td></tr>
+        <tr><td>Action</td><td>Allow</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The security rule appears in the policy rulebase with the DAG name displayed in the Source or Destination column.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Policy 6.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.2: Push to Firewalls</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <strong>Commit &gt; Push to Devices</strong>.</li>
+      <li>Select the Device Groups containing the DAGs and policy rules.</li>
+      <li>Click <strong>Push</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Tags push automatically</div>
+      <p>Tags are pushed automatically via the plugin &mdash; no commit or push is needed for tag updates. However, DAG definitions and security policy rules must be pushed via <strong>Commit &gt; Push to Devices</strong>.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Device Group recursion</div>
+      <p>By default, tags are only pushed to Device Groups directly specified in the Notify Group. To propagate tags to child Device Groups, run:</p>
+    </div>
+
+    <div class="code-block">
+      <pre><code>debug dau settings device-group recursive yes</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The push completes with status <code>Completed</code> for all target Device Groups. No errors appear in the push results.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 7: VERIFICATION                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="verification">Phase 7: Verification</h2>
+
+<p>Confirm the full pipeline is working &mdash; from AWS metadata retrieval through to security policy enforcement on the firewall dataplane.</p>
+
+<!-- Verify 7.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 7.1: Verify on Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run these commands on the Panorama CLI to confirm the plugin is polling and processing tags.</p>
+
+    <p>Check monitoring definition status:</p>
+    <div class="code-block">
+      <pre><code>show plugins aws vm-mon-status</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Expected output shows Mon-Def Name, VPC, Status (<code>Success</code>), and Last Updated Time.</p>
+
+    <p>Check tag retrieval counters:</p>
+    <div class="code-block">
+      <pre><code>show plugins aws counters</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>View DAGs on Panorama:</p>
+    <div class="code-block">
+      <pre><code>set system setting target device-group &lt;DG-NAME&gt;
+show object dynamic-address-group all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>show plugins aws vm-mon-status</code> shows <code>Success</code> for all Monitoring Definitions with a recent Last Updated timestamp. <code>show plugins aws counters</code> shows non-zero retrieval counts.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Verify 7.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 7.2: Verify on Firewall</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run these commands on a managed firewall&rsquo;s CLI to confirm tags arrived and DAGs are populated.</p>
+
+    <p>View all registered IPs and tags:</p>
+    <div class="code-block">
+      <pre><code>show object registered-ip all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>View DAG membership:</p>
+    <div class="code-block">
+      <pre><code>show object dynamic-address-group all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Expected output shows the DAG name, filter (tag match criteria), and member IPs.</p>
+
+    <p>Check security policy is using DAGs:</p>
+    <div class="code-block">
+      <pre><code>show running security-policy</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>View IP-tag registration and unregistration events:</p>
+    <div class="code-block">
+      <pre><code>show log iptag direction equal backward</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>show object registered-ip all</code> displays IPs with AWS tags. <code>show object dynamic-address-group all</code> shows DAGs with member IPs matching the filter. <code>show running security-policy</code> shows the DAG-based rules with resolved members.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Verify 7.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 7.3: Verify Tag Updates (End-to-End)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the full pipeline updates dynamically when EC2 instances change.</p>
+
+    <ol>
+      <li>In the AWS Console, tag a new EC2 instance (or modify an existing tag) with a key-value pair matching a DAG filter.</li>
+      <li>Wait one monitoring interval (default 60 seconds).</li>
+      <li>On Panorama CLI, check the timestamp updated:</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>show plugins aws vm-mon-status</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <ol start="4">
+      <li>On the firewall CLI, verify the new IP and tag appear:</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>show object registered-ip all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <ol start="5">
+      <li>Verify DAG membership updated:</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>show object dynamic-address-group all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The new instance IP appears in the registered-ip list with the expected tags, the DAG membership includes the new IP, and security policy allows or denies traffic as expected. The full pipeline &mdash; from AWS tag change to firewall policy enforcement &mdash; completes within one monitoring interval.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                            -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<p>Common failure modes and their diagnostic steps. Work through the pipeline stages in order: retrieval, processing, push, registration.</p>
+
+<!-- TS 8.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.1: Monitoring Definition Status Shows Failure</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Common causes:</p>
+    <ul>
+      <li>Invalid IAM credentials (expired or wrong access keys)</li>
+      <li>Missing IAM permissions (verify policy matches <a href="#iam-setup">Step 2.1</a>)</li>
+      <li>Incorrect VPC ID (typo or wrong region)</li>
+      <li>Panorama cannot reach AWS API endpoints (check outbound connectivity on ports <code>443</code>)</li>
+      <li>AWS region not set for GovCloud</li>
+    </ul>
+
+    <p>Check the retrieval log for detailed errors:</p>
+    <div class="code-block">
+      <pre><code>less plugins-log plugin_aws_ret.log</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After fixing the root cause and committing, the Monitoring Definition status changes to <code>Success</code> and <code>plugin_aws_ret.log</code> shows successful retrieval entries.</p>
+    </div>
+  </div>
+</div>
+
+<!-- TS 8.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.2: Tags Not Appearing on Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Check the retrieval and processing logs:</p>
+
+    <div class="code-block">
+      <pre><code>tail follow yes plugins-log plugin_aws_ret.log</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="code-block">
+      <pre><code>tail follow yes plugins-log plugin_aws_proc.log</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Common causes:</p>
+    <ul>
+      <li>EC2 instance is stopped (must be <code>running</code> to be included)</li>
+      <li>Tag name exceeds 128 characters (silently ignored)</li>
+      <li>Tag contains unsupported special characters</li>
+      <li>Monitoring Definition is disabled</li>
+    </ul>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After resolving the issue, <code>plugin_aws_ret.log</code> shows the instance being retrieved and <code>plugin_aws_proc.log</code> shows tags being processed without errors.</p>
+    </div>
+  </div>
+</div>
+
+<!-- TS 8.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.3: Tags on Panorama But Not on Firewall</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Tags are visible on Panorama but not reaching the firewall. Check the push pipeline:</p>
+
+    <p>On Panorama:</p>
+    <div class="code-block">
+      <pre><code>tail follow yes mp-log configd.log</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="code-block">
+      <pre><code>tail follow yes mp-log ms.log</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>On firewall:</p>
+    <div class="code-block">
+      <pre><code>tail follow yes mp-log userid.log</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Common causes:</p>
+    <ul>
+      <li>Firewall not in a Device Group listed in the Notify Group</li>
+      <li>Device Group recursion not enabled (tags only go to directly listed Device Groups)</li>
+      <li>32 tags/IP limit exceeded &mdash; the firewall silently drops additional tags
+        <ul>
+          <li>Check: <code>less mp-log useridd.log</code> for <code>total number of tags exceeds the limit 32</code></li>
+        </ul>
+      </li>
+      <li>Firewall also receiving tags from VM Information Source (VIS) &mdash; combined total exceeds 32
+        <ul>
+          <li>Solution: Disable VIS if using the Panorama plugin</li>
+        </ul>
+      </li>
+    </ul>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After resolving the issue, <code>show object registered-ip all</code> on the firewall shows the expected IPs and tags. If the 32-tag limit was the cause, <code>useridd.log</code> no longer shows limit-exceeded warnings.</p>
+    </div>
+  </div>
+</div>
+
+<!-- TS 8.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.4: DAG Shows No IPs on Firewall</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The DAG exists on the firewall but shows no member IPs.</p>
+
+    <ul>
+      <li>The DAG must be referenced in an active security policy rule</li>
+      <li>If the DAG is not used in any policy, the firewall shows <code>members: (not in use)</code></li>
+    </ul>
+
+    <div class="code-block">
+      <pre><code>show object dynamic-address-group all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Firewall DAG behavior</div>
+      <p>Unlike Panorama, firewalls only populate DAGs that are actively referenced in security policy rules. This is by design to conserve memory.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After adding the DAG to a security policy rule and pushing, <code>show object dynamic-address-group all</code> shows member IPs under the DAG.</p>
+    </div>
+  </div>
+</div>
+
+<!-- TS 8.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.5: HA Failover Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <h4>Panorama HA</h4>
+    <ul>
+      <li>Active Panorama does <strong>not</strong> sync IP-tag mappings to the passive peer</li>
+      <li>On failover, the newly active Panorama triggers a full sync from AWS</li>
+      <li>If any Monitoring Definition fails to reconnect, a system log is generated:</li>
+    </ul>
+
+    <div class="code-block">
+      <pre><code>Unable to process accounts after HA switch-over; user-intervention required.</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <ul>
+      <li>Tags retrieved before failover are retained on firewalls until Panorama reconnects and updates them</li>
+      <li>Resolution: Log in to newly active Panorama, fix invalid Monitoring Definitions, and commit</li>
+    </ul>
+
+    <h4>Firewall HA</h4>
+    <ul>
+      <li>Panorama pushes tags to both active and passive firewalls</li>
+      <li>On firewall failover, the newly active firewall already has current IP-tag mappings</li>
+    </ul>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After Panorama HA failover, <code>show plugins aws vm-mon-status</code> on the newly active peer shows <code>Success</code> for all Monitoring Definitions. After firewall failover, <code>show object registered-ip all</code> on the newly active firewall shows current tags.</p>
+    </div>
+  </div>
+</div>
+
+<!-- TS 8.6 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.6: Enable Debug Logging</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Enable debug logging for deep troubleshooting. Always disable after investigation is complete.</p>
+
+    <p>Enable debug on Panorama:</p>
+    <div class="code-block">
+      <pre><code>request plugins debug level high plugin-name aws
+debug management-server on debug
+debug management-server set all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Key log files on Panorama:</p>
+    <table>
+      <thead>
+        <tr><th>Log File</th><th>Contents</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>plugin_aws_ret.log</code></td><td>IP address and tag retrieval from AWS</td></tr>
+        <tr><td><code>plugin_aws_proc.log</code></td><td>Tag processing and push to configd</td></tr>
+        <tr><td><code>plugin_aws.log</code></td><td>Plugin configuration, daemons, tag-to-IP mappings (debug mode)</td></tr>
+        <tr><td><code>configd.log</code></td><td>Revision diffs, push to management server</td></tr>
+        <tr><td><code>ms.log</code></td><td>XML-API calls to firewalls</td></tr>
+      </tbody>
+    </table>
+
+    <p>Enable debug on firewall:</p>
+    <div class="code-block">
+      <pre><code>debug user-id on debug
+debug user-id set all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Key log files on firewall:</p>
+    <table>
+      <thead>
+        <tr><th>Log File</th><th>Contents</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>userid.log</code></td><td>IP-to-tag registration events</td></tr>
+        <tr><td><code>devsrv.log</code></td><td>DAG incremental updates pushed to dataplane</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Disable debug logging after troubleshooting</div>
+      <p>Debug logging generates significant output and can impact performance. Always disable when investigation is complete:</p>
+    </div>
+
+    <p>On Panorama:</p>
+    <div class="code-block">
+      <pre><code>debug management-server on info
+request plugins debug level off plugin-name aws</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>On firewall:</p>
+    <div class="code-block">
+      <pre><code>debug user-id on info</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After disabling, confirm debug is off: <code>debug management-server show</code> on Panorama should show <code>info</code> level. The plugin debug level reverts to <code>off</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  CLI REFERENCE                                              -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="cli-reference">CLI Quick Reference</h2>
+
+<p>Commonly used commands for managing and troubleshooting the AWS plugin, organized by scope.</p>
+
+<!-- CLI 9.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>9.1: Panorama Plugin Commands</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>show plugins aws vm-mon-status</code></td><td>Monitoring Definition status and last update time</td></tr>
+        <tr><td><code>show plugins aws counters</code></td><td>Plugin counter statistics</td></tr>
+        <tr><td><code>request plugins aws sync</code></td><td>Force manual sync with AWS (full re-pull)</td></tr>
+        <tr><td><code>request plugins debug level high plugin-name aws</code></td><td>Enable debug logging</td></tr>
+        <tr><td><code>request plugins debug level off plugin-name aws</code></td><td>Disable debug logging</td></tr>
+        <tr><td><code>request plugins dau plugin-name aws unblock-device-push yes</code></td><td>Unblock tag push when other plugins are stalled</td></tr>
+        <tr><td><code>request plugins aws set-aws-region region &lt;region&gt;</code></td><td>Set AWS region (GovCloud)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>show plugins aws vm-mon-status</code> to confirm the plugin is active and <code>show plugins aws counters</code> to check retrieval and push statistics.</p>
+    </div>
+  </div>
+</div>
+
+<!-- CLI 9.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>9.2: DAU (Dynamic Address Update) Commands</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>debug dau show job-queue-info</code></td><td>Show enqueue/dequeue job history with timestamps</td></tr>
+        <tr><td><code>debug dau show tags dgs-and-revs table-name dfas</code></td><td>Show revision numbers per device group</td></tr>
+        <tr><td><code>debug dau show tags store-tags-ip-rev revision &lt;rev&gt; device-group &lt;dg&gt;</code></td><td>Decompress revision for inspection</td></tr>
+        <tr><td><code>debug dau settings device-group recursive yes</code></td><td>Propagate tags to child device groups</td></tr>
+        <tr><td><code>debug dau clear database device-group &lt;dg&gt;</code></td><td>Clear tag database for a device group</td></tr>
+        <tr><td><code>debug dau show stats</code></td><td>Show DAU statistics</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>debug dau show stats</code> to see the current DAU state. Non-zero enqueue and dequeue counts indicate tags are flowing through the pipeline.</p>
+    </div>
+  </div>
+</div>
+
+<!-- CLI 9.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>9.3: Firewall Verification Commands</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>show object registered-ip all</code></td><td>All registered IPs and their tags</td></tr>
+        <tr><td><code>show object dynamic-address-group all</code></td><td>All DAGs with member IPs</td></tr>
+        <tr><td><code>show running security-policy</code></td><td>Active security policy with resolved DAG members</td></tr>
+        <tr><td><code>show log iptag ip in &lt;ip&gt;</code></td><td>Registration/unregistration events for a specific IP</td></tr>
+        <tr><td><code>show log iptag tag_name equal &lt;tag&gt;</code></td><td>Registration events for a specific tag</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>show object registered-ip all</code> on any managed firewall to confirm IP-to-tag mappings are present and current.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  MONITORED ATTRIBUTES                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="monitored-attributes">Monitored Attributes</h2>
+
+<p>The plugin creates tags from two sources: predefined attributes (always available for every EC2 instance) and user-defined tags (from AWS EC2 instance tags configured by administrators).</p>
+
+<!-- Attributes 10.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>10.1: Predefined Tags</span>
+  </div>
+  <div class="collapsible-body">
+    <p>These tags are automatically generated from EC2 instance metadata. No AWS-side tagging is required.</p>
+
+    <table>
+      <thead>
+        <tr><th>Tag Name</th><th>Description</th><th>Format Example</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>aws.ec2.ami-id</code></td><td>AMI ID</td><td><code>aws.ec2.ami-id.ami-0abc123</code></td></tr>
+        <tr><td><code>aws.ec2.availability-zone</code></td><td>Availability Zone</td><td><code>aws.ec2.availability-zone.us-east-1a</code></td></tr>
+        <tr><td><code>aws.ec2.account-number.ownerId</code></td><td>AWS Account ID</td><td><code>aws.ec2.account-number.ownerId.123456789012</code></td></tr>
+        <tr><td><code>aws.ec2.iam-instance-profile</code></td><td>IAM Instance Profile</td><td><code>aws.ec2.iam-instance-profile.MyProfile</code></td></tr>
+        <tr><td><code>aws.ec2.instance-id</code></td><td>EC2 Instance ID</td><td><code>aws.ec2.instance-id.i-0abc123</code></td></tr>
+        <tr><td><code>aws.ec2.instance-state</code></td><td>Instance State</td><td><code>aws.ec2.instance-state.running</code></td></tr>
+        <tr><td><code>aws.ec2.instance-type</code></td><td>Instance Type</td><td><code>aws.ec2.instance-type.t3.micro</code></td></tr>
+        <tr><td><code>aws.ec2.placement.group-name</code></td><td>Placement Group</td><td><code>aws.ec2.placement.group-name.MyGroup</code></td></tr>
+        <tr><td><code>aws.ec2.sg-id</code></td><td>Security Group ID</td><td><code>aws.ec2.sg-id.sg-0abc123</code></td></tr>
+        <tr><td><code>aws.ec2.sg-name</code></td><td>Security Group Name</td><td><code>aws.ec2.sg-name.my-sg</code></td></tr>
+        <tr><td><code>aws.ec2.sshkey-name</code></td><td>SSH Key Name</td><td><code>aws.ec2.sshkey-name.my-key</code></td></tr>
+        <tr><td><code>aws.ec2.subnet-id</code></td><td>Subnet ID</td><td><code>aws.ec2.subnet-id.subnet-0abc123</code></td></tr>
+        <tr><td><code>aws.ec2.vpc-id</code></td><td>VPC ID</td><td><code>aws.ec2.vpc-id.vpc-0abc123</code></td></tr>
+        <tr><td><code>aws.lb.lb-name</code></td><td>Load Balancer Name</td><td><code>aws.lb.lb-name.my-alb</code></td></tr>
+        <tr><td><code>aws.endpoint-id</code></td><td>VPC Endpoint ID</td><td><code>aws.endpoint-id.vpce-0abc123</code></td></tr>
+        <tr><td><code>aws.ec2.architecture</code></td><td>CPU Architecture</td><td><code>aws.ec2.architecture.x86_64</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>show object registered-ip all</code> on a managed firewall. Each registered IP should have predefined tags matching the format examples above.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Attributes 10.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>10.2: User-Defined Tags</span>
+  </div>
+  <div class="collapsible-body">
+    <p>User-defined tags map directly to AWS EC2 instance tags (key-value pairs configured on the instance in the AWS Console or via API).</p>
+
+    <p>Format: <code>aws.ec2.tag.&lt;key&gt;.&lt;value&gt;</code></p>
+
+    <p>Example: If an EC2 instance has tag Key=<code>Environment</code>, Value=<code>Production</code>, the plugin creates:</p>
+
+    <div class="code-block">
+      <pre><code>aws.ec2.tag.Environment.Production</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Limits:</p>
+    <ul>
+      <li>Maximum 18 user-defined tags per IP (beyond 18, first-come-first-served from the AWS API response)</li>
+      <li>Combined with 14 predefined tags = 32 total tags per IP (firewall limit enforced by the userid process)</li>
+      <li>Tag name + value must not exceed 128 characters</li>
+    </ul>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: 32 tags/IP limit</div>
+      <p>The 32 tags-per-IP limit is enforced by the firewall&rsquo;s userid process. If an IP has more than 32 tags (e.g., from both the AWS plugin and VM Information Source), the 33rd tag is silently dropped. Disable VM Information Source if using the Panorama plugin to avoid hitting this limit.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>show object registered-ip all</code> on a managed firewall. User-defined tags appear in the format <code>aws.ec2.tag.&lt;key&gt;.&lt;value&gt;</code> alongside the predefined tags for each IP.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>
