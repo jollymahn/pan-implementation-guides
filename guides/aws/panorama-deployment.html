@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Panorama Deployment on AWS | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <div class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">Panorama on AWS</span>
+  </div>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="index.html" class="active">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="../../quick-ref/index.html">Quick Reference</a>
+  </nav>
+</header>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<div class="sidebar-backdrop"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prerequisites</div>
+    <a href="#prerequisites" data-section="prerequisites">Cloud &amp; Tools Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Terraform</div>
+    <a href="#terraform-config" data-section="terraform-config">Prepare Configuration</a>
+    <a href="#deploy-verify" data-section="deploy-verify">Deploy &amp; Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Post-Deploy</div>
+    <a href="#post-deploy" data-section="post-deploy">Initial Access</a>
+    <a href="#verification" data-section="verification">Verification</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#cleanup" data-section="cleanup">Cleanup</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AWS</a>
+  <span class="sep">|</span>
+  Panorama Deployment
+</div>
+
+<div class="article">
+
+<h1>Panorama Deployment on AWS</h1>
+<p class="subtitle">End-to-end guide: AWS account setup through a fully licensed, accessible Panorama management plane</p>
+
+<div class="cloud-links">
+  <a href="../azure/panorama-deployment.html">Azure Panorama Guide</a>
+  <a href="../gcp/panorama-deployment.html">GCP Panorama Guide</a>
+</div>
+
+<!-- ── Phase Progress ────────────────────────────────────────── -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#terraform-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Terraform Config
+  </a>
+  <a href="#deploy-verify" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Deploy
+  </a>
+  <a href="#post-deploy" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Post-Deploy
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide deploys <strong>Panorama</strong> &mdash; the centralized management platform for Palo Alto Networks firewalls &mdash; as a standalone HA pair on AWS. Panorama must be operational <em>before</em> deploying VM-Series firewalls so that firewalls can bootstrap into a fully configured management plane on first boot.</p>
+  <p><strong>Deployment method:</strong> All AWS infrastructure is deployed with <strong>Terraform</strong> using the official <a href="https://github.com/PaloAltoNetworks/terraform-aws-swfw-modules/tree/main/examples/panorama_standalone">Palo Alto Networks SWFW Modules &mdash; Panorama Standalone example</a>. These modules encode Palo Alto's reference architecture and handle VPC, subnets, security groups, IAM, EBS, and Panorama EC2 provisioning with tested, production-ready code.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE OVERVIEW                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>Before deploying anything, study the target architecture. The Panorama standalone example deploys a dedicated management VPC with two Panorama instances across two availability zones for high availability.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Topology</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The deployment creates the following infrastructure:</p>
+    <ul>
+      <li><strong>VPC</strong> &mdash; a dedicated management VPC (<code>10.255.0.0/16</code>) with an Internet Gateway for Panorama management access</li>
+      <li><strong>Subnets</strong> &mdash; two management subnets across two availability zones (<code>10.255.0.0/24</code> in AZ-A, <code>10.255.1.0/24</code> in AZ-B)</li>
+      <li><strong>Panorama instances</strong> &mdash; two <code>c5.4xlarge</code> EC2 instances with static private IPs (<code>10.255.0.4</code> and <code>10.255.1.4</code>) and Elastic IPs for public access</li>
+      <li><strong>EBS volumes</strong> &mdash; two 2 TB encrypted gp3 volumes per instance for log storage (<code>/dev/sdb</code> and <code>/dev/sdc</code>)</li>
+      <li><strong>IAM role</strong> &mdash; EC2 instance profile with read-only access to CloudWatch metrics and EC2 instance status</li>
+      <li><strong>Security group</strong> &mdash; allows inbound SSH (22), HTTPS (443), and all outbound traffic</li>
+    </ul>
+
+    <div class="callout callout-note">
+      <div class="callout-title">HA pair vs. single instance</div>
+      <p>The example deploys two instances by default &mdash; a primary and secondary &mdash; for an HA pair. To deploy a single Panorama, remove the <code>secondary</code> block from the <code>panoramas</code> variable in <code>terraform.tfvars</code>.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Optional: NAT Gateway for private Panorama</div>
+      <p>If Panorama should not have a public IP, the example includes commented-out NAT Gateway configuration. Uncomment the NAT GW sections in <code>terraform.tfvars</code> and set <code>create_public_ip = false</code>. This routes Panorama's outbound traffic (licensing, content updates) through a NAT Gateway while keeping the management interface private. Inbound access then requires a VPN or Direct Connect connection to the management VPC.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Network &amp; Security Design</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The security group controls access to the Panorama management interface. The default configuration exposes three services:</p>
+
+    <table>
+      <thead>
+        <tr><th>Rule</th><th>Direction</th><th>Port</th><th>Protocol</th><th>Source/Dest</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>SSH</td><td>Ingress</td><td><code>22</code></td><td>TCP</td><td>Your admin IP</td></tr>
+        <tr><td>HTTPS</td><td>Ingress</td><td><code>443</code></td><td>TCP</td><td>Your admin IP</td></tr>
+        <tr><td>All outbound</td><td>Egress</td><td><code>0-65535</code></td><td>All</td><td><code>0.0.0.0/0</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Add port 3978 for managed firewalls</div>
+      <p>If VM-Series firewalls in other VPCs will connect to this Panorama over the network (via TGW, VPC peering, or VPN), add an ingress rule for TCP <code>3978</code> (Panorama device management). The source CIDR should be the firewall management subnet CIDRs. Without this rule, firewalls cannot register with Panorama.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">IAM role capabilities</div>
+      <p>The IAM role grants Panorama read-only access to <code>ec2:DescribeInstances</code>, <code>ec2:DescribeInstanceStatus</code>, and CloudWatch metrics. This enables the AWS plugin on Panorama to discover and monitor VM-Series instances. No write permissions are granted.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<p>Complete these one-time setup tasks before deploying Panorama infrastructure. If you have already completed them for a VM-Series deployment, skip to <a href="#terraform-config">Phase 2</a>.</p>
+
+<!-- Prereq 1.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1: Verify AWS Account &amp; Permissions</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Terraform requires IAM permissions to create VPCs, subnets, security groups, EC2 instances, EBS volumes, IAM roles, and Elastic IPs. Two options:</p>
+
+    <h4>Option A: IAM Role (Preferred)</h4>
+    <p>Attach an IAM role with <strong>Administrator</strong> permissions to the EC2 instance or CloudShell session running Terraform. No access keys to manage.</p>
+
+    <h4>Option B: IAM Programmatic User</h4>
+    <ol>
+      <li>Create an IAM user with <strong>programmatic access</strong>.</li>
+      <li>Attach the <strong>AdministratorAccess</strong> policy (scope can be reduced after a successful deployment).</li>
+      <li>Copy the <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> and store them securely.</li>
+      <li>Configure credentials:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code># Environment variables
+export AWS_ACCESS_KEY_ID="AKIA..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_DEFAULT_REGION="us-east-2"
+
+# Or configure via AWS CLI
+aws configure</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important</div>
+      <p>The initial deployment requires <strong>Administrator or equivalent</strong> privileges due to the range of resources created (VPCs, EC2, IAM roles/policies, EBS, EIPs). Scope can be reduced post-deployment.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm your AWS identity is correct:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>aws sts get-caller-identity</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The output should show your expected account ID and IAM principal.</p>
+  </div>
+</div>
+
+<!-- Prereq 1.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2: Install Deployment Tools</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Set up one of the following environments before starting Phase 2.</p>
+
+    <h4>Option A: AWS CloudShell (Quickest)</h4>
+    <p>CloudShell automatically assumes the IAM permissions of the logged-in console user. No credentials to configure.</p>
+    <ol>
+      <li>Open <strong>CloudShell</strong> from the AWS Console.</li>
+      <li>Install Terraform:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>sudo yum install -y yum-utils
+sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
+sudo yum -y install terraform
+terraform -v</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">CloudShell sessions reset</div>
+      <p>Terraform installed via <code>yum</code> is lost when CloudShell times out. If you return and <code>terraform</code> is not found, reinstall it.</p>
+    </div>
+
+    <h4>Option B: Local Workstation or Bastion Host</h4>
+    <p>Install the following tools on your deployment machine:</p>
+    <table>
+      <tr><th>Tool</th><th>Version</th><th>Install</th></tr>
+      <tr><td><strong>Terraform CLI</strong></td><td><code>&gt;= 1.5.0, &lt; 2.0.0</code></td><td><a href="https://developer.hashicorp.com/terraform/downloads">developer.hashicorp.com/terraform/downloads</a></td></tr>
+      <tr><td><strong>AWS CLI</strong></td><td>v2</td><td><a href="https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html">docs.aws.amazon.com/.../getting-started-install</a></td></tr>
+      <tr><td><strong>Git</strong></td><td>Any recent</td><td><a href="https://git-scm.com/downloads">git-scm.com/downloads</a></td></tr>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm all tools are installed and your AWS identity is correct:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>terraform -v
+aws --version
+git --version
+aws sts get-caller-identity</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Windows Users</div>
+      <p>All shell commands in this guide use Bash syntax (Linux/macOS). If deploying from a Windows workstation, use one of the following:</p>
+      <ul>
+        <li><strong>Windows Subsystem for Linux (WSL) &mdash; Recommended:</strong> Install <a href="https://learn.microsoft.com/en-us/windows/wsl/install">WSL 2</a> with Ubuntu, then install Terraform, AWS CLI, and Git inside the WSL environment. All commands in this guide work as-is.</li>
+        <li><strong>Git Bash:</strong> Installed alongside <a href="https://git-scm.com/downloads">Git for Windows</a>. Provides a Bash-compatible shell where most commands work without modification.</li>
+        <li><strong>PowerShell:</strong> Terraform and AWS CLI work natively, but shell syntax differs.</li>
+      </ul>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Windows Shell Syntax Reference</span>
+      </div>
+      <div class="collapsible-body">
+        <p>If using PowerShell instead of WSL or Git Bash, translate shell commands as follows:</p>
+        <table>
+          <tr><th>Bash (this guide)</th><th>PowerShell equivalent</th></tr>
+          <tr><td><code>export VAR="value"</code></td><td><code>$env:VAR = "value"</code></td></tr>
+          <tr><td><code>echo $VAR</code></td><td><code>$env:VAR</code></td></tr>
+          <tr><td><code>chmod 400 key.pem</code></td><td><code>icacls key.pem /inheritance:r /grant:r "$($env:USERNAME):(R)"</code></td></tr>
+          <tr><td><code>ssh -i key.pem user@host</code></td><td>Same syntax (OpenSSH is built into Windows 10+)</td></tr>
+          <tr><td>Line continuation: <code>\</code></td><td>Line continuation: <code>`</code> (backtick)</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 1.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3: Obtain Panorama License</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each Panorama instance requires a valid license. Panorama on AWS uses the BYOL (Bring Your Own License) model.</p>
+    <ol>
+      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
+      <li>Navigate to <strong>Products &gt; Assets</strong> and locate your Panorama serial numbers or auth codes.</li>
+      <li>Confirm you have one license per Panorama instance (two licenses for an HA pair).</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>License activation happens after deployment in <a href="#post-deploy">Phase 4</a>. At this stage, confirm the license exists in your support portal account &mdash; activation requires the Panorama instance to be running and have internet connectivity.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Your Panorama auth codes or serial numbers are visible in the Customer Support Portal under <strong>Products &gt; Assets</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 1.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4: Create or Identify SSH Key Pair</span>
+  </div>
+  <div class="collapsible-body">
+    <p>SSH access is the only way to reach Panorama before the web UI password is set. The key pair must exist in the target AWS region before Terraform runs.</p>
+
+    <h4>Option A: Create a new key pair</h4>
+    <div class="code-block">
+      <pre><code>aws ec2 create-key-pair \
+  --key-name panorama-key \
+  --key-type ed25519 \
+  --query 'KeyMaterial' \
+  --output text \
+  --region us-east-2 > ~/.ssh/panorama-key.pem
+
+chmod 400 ~/.ssh/panorama-key.pem</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Option B: Use an existing key pair</h4>
+    <p>List existing key pairs in the target region:</p>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-key-pairs \
+  --query 'KeyPairs[*].KeyName' \
+  --output table \
+  --region us-east-2</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important</div>
+      <p>Record the exact key pair name &mdash; it must match the <code>ssh_key_name</code> value in <code>terraform.tfvars</code>. Key pair names are case-sensitive and region-specific.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm the key pair exists in the target region:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-key-pairs \
+  --key-names panorama-key \
+  --region us-east-2</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The command should return the key pair details without error.</p>
+  </div>
+</div>
+
+<!-- Prereq 1.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.5: Accept the AWS Marketplace Subscription</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Accept the Panorama BYOL listing in AWS Marketplace before Terraform can launch instances. This is a one-time action per AWS account.</p>
+    <ol>
+      <li>Open the <a href="https://aws.amazon.com/marketplace/pp/prodview-da52tv33pbmyg">Palo Alto Networks Panorama BYOL listing</a> in AWS Marketplace.</li>
+      <li>Click <strong>Continue to Subscribe</strong>.</li>
+      <li>Review pricing and click <strong>Accept Terms</strong> to accept the End User License Agreement.</li>
+      <li>Wait for the subscription to show as active (this can take a few minutes).</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Product code</div>
+      <p>The Panorama BYOL product code is <code>eclz7j04vu9lf8ont8ta3n17o</code>. This is the default in the Terraform module's <code>product_code</code> variable and is used to locate the correct AMI.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm the subscription is active by checking for available Panorama AMIs:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-images \
+  --owners aws-marketplace \
+  --filters "Name=product-code,Values=eclz7j04vu9lf8ont8ta3n17o" \
+  --query 'Images | sort_by(@, &CreationDate) | [-1].{ImageId:ImageId, Name:Name, Created:CreationDate}' \
+  --output table \
+  --region us-east-2</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The command should return an AMI ID and name. If it returns empty results, repeat the subscription steps above.</p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: PREPARE TERRAFORM CONFIGURATION                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="terraform-config">Phase 2: Prepare Terraform Configuration</h2>
+
+<p>Clone the official SWFW modules repository, copy the example variables file, and customize it for your environment.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">SWFW Modules</div>
+  <p>This guide uses the <a href="https://github.com/PaloAltoNetworks/terraform-aws-swfw-modules/tree/main/examples/panorama_standalone"><code>panorama_standalone</code></a> example from the <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/aws/latest">Palo Alto Networks SWFW Modules for AWS</a>. These modules encode reference architectures and handle VPC, subnet, security group, IAM, EBS, and Panorama provisioning with tested code.</p>
+</div>
+
+<!-- Step 2.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.1: Clone the Repository</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>git clone https://github.com/PaloAltoNetworks/terraform-aws-swfw-modules.git
+cd terraform-aws-swfw-modules/examples/panorama_standalone</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm the example directory contains the expected files:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>ls -la
+# Expected: main.tf  variables.tf  outputs.tf  example.tfvars  README.md  versions.tf</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.2: Copy the Example tfvars</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>example.tfvars</code> file is a reference template. Copy it to <code>terraform.tfvars</code> for customization.</p>
+    <div class="code-block">
+      <pre><code>cp example.tfvars terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>Lines marked with <code># TODO: update here</code> in the file are the values that must be changed before deployment. Search for them:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>grep -n "TODO" terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>terraform.tfvars</code> file exists and contains <code>TODO</code> markers for required edits.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.3: Configure Region &amp; Tags</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Set the AWS region and global tags applied to every provisioned resource.</p>
+    <ol>
+      <li>Open <code>terraform.tfvars</code> in your editor.</li>
+      <li>Set <code>region</code> to your target AWS region (e.g., <code>us-east-2</code>).</li>
+      <li>Set <code>name_prefix</code> to a short identifier for your environment (e.g., <code>prod-</code> or <code>lab-</code>). This prefix is prepended to all resource names.</li>
+      <li>Update <code>global_tags</code> with your organization's tagging standard:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>region      = "us-east-2"
+name_prefix = "prod-"
+
+global_tags = {
+  ManagedBy   = "terraform"
+  Application = "Palo Alto Networks Panorama"
+  Owner       = "Network Security Team"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>region</code> value matches the region where your SSH key pair exists and the Marketplace subscription is accepted.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.4: Configure VPC &amp; Security Groups</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>vpcs</code> variable defines the management VPC, subnets, security groups, and routing. The critical edit is restricting the security group ingress rules to your admin IP address.</p>
+
+    <ol>
+      <li>Locate the <code>vpcs</code> block in <code>terraform.tfvars</code>.</li>
+      <li>Update the VPC <code>name</code> if desired (default: <code>management-vpc</code>).</li>
+      <li>Update the CIDR if <code>10.255.0.0/16</code> conflicts with your network.</li>
+      <li>Replace <code>1.1.1.1/32</code> in the <code>https</code> and <code>ssh</code> security group rules with your actual admin IP or CIDR range.</li>
+      <li>Update the subnet availability zones to match your target region (e.g., <code>us-east-2a</code> and <code>us-east-2b</code>).</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>vpcs = {
+  management_vpc = {
+    name = "management-vpc"
+    cidr = "10.255.0.0/16"
+    security_groups = {
+      panorama_mgmt = {
+        name = "panorama_mgmt"
+        rules = {
+          all_outbound = {
+            description = "Permit All traffic outbound"
+            type        = "egress", from_port = "0", to_port = "0", protocol = "-1"
+            cidr_blocks = ["0.0.0.0/0"]
+          }
+          https = {
+            description = "Permit HTTPS"
+            type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
+            cidr_blocks = ["203.0.113.10/32"] # Replace with your admin IP
+          }
+          ssh = {
+            description = "Permit SSH"
+            type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
+            cidr_blocks = ["203.0.113.10/32"] # Replace with your admin IP
+          }
+        }
+      }
+    }
+    subnets = {
+      "10.255.0.0/24" = { az = "us-east-2a", subnet_group = "mgmt" }
+      "10.255.1.0/24" = { az = "us-east-2b", subnet_group = "mgmt" }
+    }
+    routes = {
+      mgmt_default = {
+        vpc           = "management_vpc"
+        subnet_group  = "mgmt"
+        to_cidr       = "0.0.0.0/0"
+        next_hop_key  = "management_vpc"
+        next_hop_type = "internet_gateway"
+      }
+    }
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Replace placeholder IPs</div>
+      <p>The example file uses <code>1.1.1.1/32</code> as a placeholder. Deploying with this value will lock you out of SSH and HTTPS access. Replace it with your actual public IP. Find your current IP with <code>curl -s ifconfig.me</code>.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Add port 3978 for VM-Series management</div>
+      <p>If VM-Series firewalls will connect to this Panorama from other VPCs, add a security group rule for TCP port <code>3978</code> with the source set to the firewall management subnet CIDRs. Add this rule inside the <code>panorama_mgmt</code> security group rules block:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>          device_mgmt = {
+            description = "Permit Panorama device management"
+            type        = "ingress", from_port = "3978", to_port = "3978", protocol = "tcp"
+            cidr_blocks = ["10.51.0.0/22"] # Replace with your firewall mgmt CIDR
+          }</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The security group rules reference your actual admin IP (not <code>1.1.1.1/32</code>), and the subnet AZs match your target region.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.5: Configure Panorama Instances</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>panoramas</code> variable defines instance placement, PAN-OS version, EBS storage, and IAM configuration.</p>
+    <ol>
+      <li>Update the <code>az</code> values to match your region (e.g., <code>us-east-2a</code> and <code>us-east-2b</code>).</li>
+      <li>Update <code>panos_version</code> to the desired Panorama version. Recommended: <code>11.1.4-h7</code> or <code>11.2.x</code>.</li>
+      <li>Adjust <code>private_ip_address</code> values if the VPC CIDR was changed.</li>
+      <li>Adjust EBS volume sizes if needed (default: <code>2000</code> GB / 2 TB per volume, two volumes per instance).</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>panoramas = {
+  panorama_ha_pair = {
+    instances = {
+      "primary" = {
+        az                 = "us-east-2a"
+        private_ip_address = "10.255.0.4"
+      }
+      "secondary" = {
+        az                 = "us-east-2b"
+        private_ip_address = "10.255.1.4"
+      }
+    }
+
+    panos_version = "11.1.4-h7"
+
+    network = {
+      vpc              = "management_vpc"
+      subnet_group     = "mgmt"
+      security_group   = "panorama_mgmt"
+      create_public_ip = true
+    }
+
+    ebs = {
+      volumes = [
+        {
+          name            = "ebs-1"
+          ebs_device_name = "/dev/sdb"
+          ebs_size        = "2000"
+        },
+        {
+          name            = "ebs-2"
+          ebs_device_name = "/dev/sdc"
+          ebs_size        = "2000"
+        }
+      ]
+      encrypted = true
+    }
+
+    iam = {
+      create_role = true
+      role_name   = "panorama"
+    }
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>instance_type</code></td><td><code>c5.4xlarge</code></td><td>16 vCPU, 32 GB RAM. Required minimum for production Panorama.</td></tr>
+        <tr><td><code>panos_version</code></td><td><code>11.1.4-h7</code></td><td>PAN-OS version for the Panorama AMI. Must match an available AMI in the region.</td></tr>
+        <tr><td><code>ebs_size</code></td><td><code>2000</code></td><td>Size in GB per EBS volume. Two volumes = 4 TB total log storage per instance.</td></tr>
+        <tr><td><code>ebs_volume_type</code></td><td><code>gp3</code></td><td>GP3 provides baseline 3,000 IOPS and 125 MB/s throughput.</td></tr>
+        <tr><td><code>encrypted</code></td><td><code>true</code></td><td>EBS encryption using the default <code>aws/ebs</code> KMS key.</td></tr>
+        <tr><td><code>create_public_ip</code></td><td><code>true</code></td><td>Allocates an Elastic IP. Set to <code>false</code> with NAT Gateway for private Panorama.</td></tr>
+        <tr><td><code>enable_imdsv2</code></td><td><code>false</code></td><td>Instance Metadata Service v2. Set to <code>true</code> for stricter metadata access control.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Single Panorama (no HA)</div>
+      <p>To deploy a single instance, remove the entire <code>"secondary"</code> block from the <code>instances</code> map. Only the <code>"primary"</code> block is required.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The AZ values match your region, the private IPs fall within the VPC CIDR, and the PAN-OS version is current.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.6 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.6: Set SSH Key Name</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Set the <code>ssh_key_name</code> variable to the exact name of the key pair created or identified in <a href="#prerequisites">Step 1.4</a>.</p>
+    <div class="code-block">
+      <pre><code>ssh_key_name = "panorama-key"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>ssh_key_name</code> value matches exactly (case-sensitive) the key pair name in the target AWS region.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.7 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.7: Optional &mdash; Enable NAT Gateway</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If Panorama should not have a public IP (e.g., accessed via VPN or Direct Connect only), enable the NAT Gateway for outbound internet access (licensing, content updates, support telemetry).</p>
+    <ol>
+      <li>In the <code>vpcs</code> block, uncomment the two NAT Gateway subnets:
+        <div class="code-block">
+          <pre><code>      "10.255.2.0/24" = { az = "us-east-2a", subnet_group = "natgw" }
+      "10.255.3.0/24" = { az = "us-east-2b", subnet_group = "natgw" }</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Replace the existing <code>routes</code> block with the NAT Gateway routes (commented section in the file). The NAT GW routes send management subnet traffic through the NAT Gateway instead of directly to the IGW.</li>
+      <li>Uncomment the <code>natgws</code> variable block at the bottom of the file:
+        <div class="code-block">
+          <pre><code>natgws = {
+  mgmt_natgw = {
+    vpc          = "management_vpc"
+    subnet_group = "natgw"
+  }
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>In the <code>panoramas</code> block, set <code>create_public_ip = false</code>.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important</div>
+      <p>With <code>create_public_ip = false</code>, the only access to Panorama is through a private network path (VPN, Direct Connect, peered VPC). Confirm your private connectivity is in place before deploying.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>If using NAT Gateway: the <code>natgws</code> block is uncommented, NAT GW subnets are uncommented, and <code>create_public_ip</code> is <code>false</code>. If using public IP (default): all NAT GW sections remain commented and <code>create_public_ip</code> is <code>true</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.8 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.8: Validate Configuration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run Terraform validation to catch syntax errors before deploying.</p>
+    <ol>
+      <li>Initialize the working directory (downloads provider plugins and modules):
+        <div class="code-block">
+          <pre><code>terraform init</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Validate the configuration syntax:
+        <div class="code-block">
+          <pre><code>terraform validate</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>terraform validate</code> returns <code>Success! The configuration is valid.</code> with no errors or warnings.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: DEPLOY & VERIFY                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="deploy-verify">Phase 3: Deploy &amp; Verify Infrastructure</h2>
+
+<p>With the configuration validated, deploy the Panorama infrastructure and capture the output values needed for post-deployment access.</p>
+
+<!-- Step 3.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.1: Plan the Deployment</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Generate an execution plan to review what Terraform will create before committing.</p>
+    <div class="code-block">
+      <pre><code>terraform plan -var-file=terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Review the output. For a standard HA pair deployment, expect approximately:</p>
+    <ul>
+      <li>1 VPC with Internet Gateway</li>
+      <li>2 subnets (one per AZ)</li>
+      <li>1 security group with ingress/egress rules</li>
+      <li>2 EC2 instances (<code>c5.4xlarge</code>)</li>
+      <li>4 EBS volumes (2 per instance)</li>
+      <li>2 Elastic IPs</li>
+      <li>2 IAM instance profiles with roles and policies</li>
+      <li>2 route tables with routes</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The plan completes without errors and shows the expected number of resources to create. No resources should show <code>destroy</code> on the initial deployment.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.2: Apply the Configuration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Deploy the infrastructure. Terraform will prompt for confirmation before making changes.</p>
+    <div class="code-block">
+      <pre><code>terraform apply -var-file=terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Type <code>yes</code> when prompted. The deployment takes approximately <strong>5 minutes</strong>.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>The Terraform apply completing does not mean Panorama is ready. The EC2 instances are launched, but Panorama's internal bootstrap process takes an additional 5&ndash;10 minutes after the instance reaches <code>running</code> state.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Terraform completes with <code>Apply complete!</code> and displays the output values (public IPs, private IPs, URLs).</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.3: Record Output Values</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Capture the Panorama access details from Terraform outputs. These values are needed for SSH, web UI, and firewall bootstrap configuration.</p>
+    <div class="code-block">
+      <pre><code>terraform output panorama_public_ips
+terraform output panorama_private_ips
+terraform output panorama_urls</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Expected output format:</p>
+    <div class="code-block">
+      <pre><code># panorama_public_ips
+{
+  "panorama_ha_pair-primary"   = "3.14.xxx.xxx"
+  "panorama_ha_pair-secondary" = "3.14.yyy.yyy"
+}
+
+# panorama_private_ips
+{
+  "panorama_ha_pair-primary"   = "10.255.0.4"
+  "panorama_ha_pair-secondary" = "10.255.1.4"
+}
+
+# panorama_urls
+{
+  "panorama_ha_pair-primary"   = "https://3.14.xxx.xxx"
+  "panorama_ha_pair-secondary" = "https://3.14.yyy.yyy"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important</div>
+      <p>Record the <strong>private IPs</strong> &mdash; these are the addresses VM-Series firewalls will use for the <code>panorama-server</code> bootstrap parameter. The private IPs are static and persist across reboots. The public IPs (Elastic IPs) are used for admin access only.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All three output commands return values. The private IPs match what was configured in <code>terraform.tfvars</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.4: Verify AWS Console Resources</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the deployed resources in the AWS Console.</p>
+    <ol>
+      <li>Open <strong>EC2 &gt; Instances</strong>. Verify both Panorama instances show <code>running</code> state and have the expected instance type (<code>c5.4xlarge</code>).</li>
+      <li>Open <strong>EC2 &gt; Volumes</strong>. Verify four EBS volumes (two per instance) show <code>in-use</code> state, type <code>gp3</code>, and size <code>2000 GiB</code>.</li>
+      <li>Open <strong>VPC &gt; Your VPCs</strong>. Verify the management VPC exists with the correct CIDR.</li>
+      <li>Open <strong>VPC &gt; Security Groups</strong>. Verify the <code>panorama_mgmt</code> security group has the correct inbound rules (SSH 22, HTTPS 443 from your admin IP).</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both EC2 instances are in <code>running</code> state, all four EBS volumes are <code>in-use</code>, and the VPC/security group configuration matches the <code>terraform.tfvars</code> values.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: POST-DEPLOYMENT                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="post-deploy">Phase 4: Post-Deployment Setup</h2>
+
+<p>Panorama's internal bootstrap takes several minutes after the EC2 instance reaches <code>running</code> state. Complete the initial access setup once bootstrap finishes.</p>
+
+<!-- Step 4.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1: Wait for Panorama Bootstrap</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama takes 5&ndash;10 minutes to complete its internal boot process after the EC2 instance shows <code>running</code> in the AWS Console. During this time, SSH and HTTPS connections will be refused.</p>
+
+    <p>Check bootstrap progress by polling SSH availability:</p>
+    <div class="code-block">
+      <pre><code># Replace with your primary Panorama public IP
+PANORAMA_IP="3.14.xxx.xxx"
+
+# Poll until SSH responds (Ctrl+C to stop)
+until ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
+  -i ~/.ssh/panorama-key.pem admin@${PANORAMA_IP} \
+  echo "SSH ready" 2>/dev/null; do
+  echo "Waiting for Panorama bootstrap..."
+  sleep 30
+done</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Alternative: AWS Console serial log</div>
+      <p>Check bootstrap progress via <strong>EC2 &gt; Instances &gt; select instance &gt; Actions &gt; Monitor and troubleshoot &gt; Get system log</strong>. Look for <code>PAN-OS is ready</code> or <code>login:</code> prompt in the output.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>SSH connects successfully and presents the PAN-OS CLI prompt (<code>admin@Panorama&gt;</code>).</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.2: Set the Admin Password</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama ships with no admin password on first boot. The web UI is inaccessible until a password is set via SSH. This is a security gate &mdash; no one can access the web UI until you explicitly set credentials.</p>
+    <ol>
+      <li>SSH into the primary Panorama instance:
+        <div class="code-block">
+          <pre><code>ssh -i ~/.ssh/panorama-key.pem admin@3.14.xxx.xxx</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Enter configuration mode:
+        <div class="code-block">
+          <pre><code>configure</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Set the admin password:
+        <div class="code-block">
+          <pre><code>set mgt-config users admin password</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Enter the new password twice when prompted. Use a strong password that meets your organization's policy.</p>
+      </li>
+      <li>Commit the change:
+        <div class="code-block">
+          <pre><code>commit</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Exit the SSH session:
+        <div class="code-block">
+          <pre><code>exit
+exit</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Break-glass account</div>
+      <p>The <code>admin</code> account is the break-glass account for Panorama. Store the password in a secure vault. After initial setup, create named admin accounts for daily operations and reserve <code>admin</code> for emergency access only. Be aware that multiple failed login attempts will lock the account.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Repeat for secondary</div>
+      <p>If deploying an HA pair, repeat this step on the secondary Panorama instance using its public IP.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>commit</code> command completes without errors: <code>Commit job completed</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.3: Access the Web UI</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Open the Panorama web interface in a browser using the URL from the Terraform output.</p>
+    <ol>
+      <li>Navigate to <code>https://&lt;PRIMARY_PUBLIC_IP&gt;</code> (e.g., <code>https://3.14.xxx.xxx</code>).</li>
+      <li>Accept the self-signed certificate warning.</li>
+      <li>Log in with username <code>admin</code> and the password set in the previous step.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>The browser will show a certificate warning because Panorama uses a self-signed certificate by default. This is expected and safe for initial access. Replace the certificate with a CA-signed certificate after completing the initial setup.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Panorama dashboard loads and shows the system status panel with hostname, serial number, and PAN-OS version.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.4: Activate the License</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama must be licensed before it can manage firewalls or receive content updates.</p>
+    <ol>
+      <li>In the Panorama web UI, navigate to <strong>Panorama &gt; Licenses</strong>.</li>
+      <li>Click <strong>Activate feature using auth code</strong>.</li>
+      <li>Enter the Panorama auth code obtained from the Customer Support Portal in <a href="#prerequisites">Step 1.3</a>.</li>
+      <li>Click <strong>OK</strong>. Panorama will contact the licensing server and activate the license.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Internet connectivity required</div>
+      <p>License activation requires outbound HTTPS connectivity to <code>updates.paloaltonetworks.com</code>. If Panorama is behind a NAT Gateway or firewall, confirm outbound port 443 is permitted. See <a href="#troubleshooting">Troubleshooting</a> if activation fails.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Repeat for secondary</div>
+      <p>If deploying an HA pair, repeat the license activation on the secondary Panorama using its own auth code.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <strong>Panorama &gt; Licenses</strong> page shows active licenses with valid expiration dates. The <strong>Device Management</strong> license indicates the maximum number of managed devices.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: VERIFICATION                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="verification">Phase 5: Post-Deployment Verification</h2>
+
+<p>Run these checks to confirm Panorama is fully operational and ready to manage firewalls.</p>
+
+<!-- Step 5.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.1: Verify System Information</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the running PAN-OS version, hostname, and operational mode from the CLI or web UI.</p>
+    <h4>CLI</h4>
+    <div class="code-block">
+      <pre><code>ssh -i ~/.ssh/panorama-key.pem admin@3.14.xxx.xxx
+show system info</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Check the following fields:</p>
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Expected Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>sw-version</code></td><td>Matches the <code>panos_version</code> in <code>terraform.tfvars</code> (e.g., <code>11.1.4-h7</code>)</td></tr>
+        <tr><td><code>model</code></td><td><code>Panorama</code></td></tr>
+        <tr><td><code>operational-mode</code></td><td><code>normal</code></td></tr>
+        <tr><td><code>ip-address</code></td><td>Matches the private IP assigned in <code>terraform.tfvars</code></td></tr>
+      </tbody>
+    </table>
+
+    <h4>Web UI</h4>
+    <p>Navigate to <strong>Dashboard</strong>. The <strong>General Information</strong> widget shows the hostname, model, serial number, PAN-OS version, and uptime.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The PAN-OS version matches <code>terraform.tfvars</code>, the operational mode is <code>normal</code>, and the IP address matches the configured private IP.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.2: Verify Device Certificates</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Device certificates authenticate Panorama to Palo Alto Networks cloud services (licensing, content updates, telemetry). On newer PAN-OS versions, device certificates are installed automatically during the first boot if internet connectivity is available.</p>
+    <ol>
+      <li>In the web UI, navigate to <strong>Panorama &gt; Setup &gt; Management &gt; General Settings</strong>.</li>
+      <li>Check the <strong>Device Certificate</strong> status. It should show as installed.</li>
+    </ol>
+    <p>Alternatively, from the CLI:</p>
+    <div class="code-block">
+      <pre><code>show device-certificate status</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>If the device certificate is not installed, navigate to <strong>Panorama &gt; Setup &gt; Management &gt; General Settings</strong> and click <strong>Get Device Certificate</strong>. This requires outbound HTTPS connectivity to Palo Alto Networks certificate services.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Device certificate status shows <code>Installed</code> with a valid expiration date.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.3: Verify Content Updates</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama must have current content databases (Applications, Threats, WildFire, URL) before pushing security policy to managed firewalls.</p>
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Dynamic Updates</strong>.</li>
+      <li>Click <strong>Check Now</strong> to query for available updates.</li>
+      <li>Download and install the latest <strong>Applications and Threats</strong> content package.</li>
+      <li>If licensed, download and install <strong>WildFire</strong> and <strong>Antivirus</strong> updates.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <strong>Dynamic Updates</strong> page shows the currently installed content version and the available version. After installation, the <strong>Currently Installed</strong> column matches the latest available version.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.4: Verify HA Pair (if applicable)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If two Panorama instances were deployed, configure and verify the HA pair.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">HA configuration is separate from deployment</div>
+      <p>The Terraform module deploys the instances and network infrastructure. HA peering must be configured on Panorama itself after both instances are operational. Refer to <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/set-up-panorama/set-up-panorama-in-ha">Set Up Panorama in HA</a> for the complete HA configuration procedure.</p>
+    </div>
+
+    <p>After HA is configured, verify the pairing:</p>
+    <div class="code-block">
+      <pre><code>show high-availability state</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Expected output fields:</p>
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Primary</th><th>Secondary</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>Local State</code></td><td><code>active</code></td><td><code>passive</code></td></tr>
+        <tr><td><code>Peer State</code></td><td><code>passive</code></td><td><code>active</code></td></tr>
+        <tr><td><code>Running Config Sync</code></td><td><code>synchronized</code></td><td><code>synchronized</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both Panorama instances show the correct active/passive roles and running config is synchronized between peers.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.5: Verify EBS Log Volumes</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the EBS volumes are attached and recognized by Panorama for log storage.</p>
+    <div class="code-block">
+      <pre><code>show system disk-space</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The output should show the additional disk partitions mounted from the EBS volumes. Total available log storage should reflect the provisioned EBS capacity (approximately 4 TB for two 2 TB volumes).</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>show system disk-space</code> lists the log partitions with the expected total capacity, and none show 100% usage on a fresh deployment.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                            -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Instance Launch Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td>Terraform error: <code>no matching AMI found</code></td>
+        <td>AWS Marketplace subscription not accepted, or <code>panos_version</code> not available in the region</td>
+        <td>Accept the Panorama BYOL listing in AWS Marketplace. Verify the PAN-OS version has an available AMI: <code>aws ec2 describe-images --owners aws-marketplace --filters "Name=product-code,Values=eclz7j04vu9lf8ont8ta3n17o" "Name=name,Values=*11.1*" --query 'Images[*].Name' --region us-east-2</code></td>
+      </tr>
+      <tr>
+        <td>Terraform error: <code>UnsupportedInstanceType</code></td>
+        <td><code>c5.4xlarge</code> not available in the selected AZ</td>
+        <td>Check instance type availability: <code>aws ec2 describe-instance-type-offerings --location-type availability-zone --filters "Name=instance-type,Values=c5.4xlarge" --region us-east-2</code>. Switch to a supported AZ or use <code>c5a.4xlarge</code>.</td>
+      </tr>
+      <tr>
+        <td>Terraform error: key pair not found</td>
+        <td><code>ssh_key_name</code> does not match an existing key pair in the target region</td>
+        <td>Verify the key pair name and region: <code>aws ec2 describe-key-pairs --key-names your-key-name --region us-east-2</code></td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>SSH Connection Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td><code>Connection timed out</code></td>
+        <td>Security group does not allow SSH from your IP, or Panorama is still booting</td>
+        <td>Verify the security group ingress rules include port 22 from your current IP. Wait 5&ndash;10 minutes for bootstrap to complete. Check instance system log in the AWS Console.</td>
+      </tr>
+      <tr>
+        <td><code>Permission denied (publickey)</code></td>
+        <td>Wrong key pair or wrong username</td>
+        <td>Confirm the SSH key matches the key pair specified in <code>terraform.tfvars</code>. The username must be <code>admin</code> (not <code>ec2-user</code> or <code>root</code>).</td>
+      </tr>
+      <tr>
+        <td><code>Permissions are too open</code></td>
+        <td>SSH key file permissions too permissive</td>
+        <td>Run <code>chmod 400 ~/.ssh/panorama-key.pem</code></td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Web UI Not Accessible</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td>Browser shows <code>ERR_CONNECTION_REFUSED</code></td>
+        <td>Panorama is still booting, or the admin password has not been set</td>
+        <td>SSH in and set the admin password first (Step 4.2). The web UI will not start until a password is configured.</td>
+      </tr>
+      <tr>
+        <td>Browser shows <code>ERR_CONNECTION_TIMED_OUT</code></td>
+        <td>Security group does not allow HTTPS from your IP</td>
+        <td>Verify the security group includes an ingress rule for port 443 from your current public IP.</td>
+      </tr>
+      <tr>
+        <td>Login fails with valid credentials</td>
+        <td>Account lockout after multiple failed attempts</td>
+        <td>Wait for the lockout period to expire (default: 30 minutes) or unlock via CLI: <code>set mgt-config users admin lockout disabled</code> then <code>commit</code></td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>License Activation Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td><code>Failed to connect to server</code></td>
+        <td>No outbound internet connectivity</td>
+        <td>Verify the management subnet route table has a default route to the IGW (or NAT GW). Verify the security group allows all outbound traffic. Test connectivity: <code>ping updates.paloaltonetworks.com</code></td>
+      </tr>
+      <tr>
+        <td><code>Invalid auth code</code></td>
+        <td>Auth code does not match the Panorama product type</td>
+        <td>Confirm the auth code is for Panorama (not VM-Series). Check the Customer Support Portal under <strong>Products &gt; Assets</strong>.</td>
+      </tr>
+      <tr>
+        <td><code>Auth code already used</code></td>
+        <td>The auth code was previously applied to another Panorama instance</td>
+        <td>Each Panorama instance requires its own auth code. Obtain a second auth code for the HA secondary.</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>EBS Volume Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td>Log storage shows less than expected</td>
+        <td>EBS volumes not recognized or not formatted</td>
+        <td>Verify in the AWS Console that volumes are attached to the correct instance with device names <code>/dev/sdb</code> and <code>/dev/sdc</code>. Panorama formats the disks automatically on first boot &mdash; if this was interrupted, a reboot may be needed.</td>
+      </tr>
+      <tr>
+        <td>Terraform error: volume limit exceeded</td>
+        <td>AWS account EBS volume limit reached</td>
+        <td>Check current limits: <code>aws service-quotas get-service-quota --service-code ebs --quota-code L-D18FCD1D --region us-east-2</code>. Request a quota increase if needed.</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  CLEANUP                                                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="cleanup">Cleanup</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Destroy All Resources</span>
+  </div>
+  <div class="collapsible-body">
+    <p>To remove all resources created by this deployment, run the destroy command from the same directory where the deployment was executed.</p>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Data loss warning</div>
+      <p>Running <code>terraform destroy</code> will <strong>permanently delete</strong> both Panorama instances, all EBS volumes (including all stored logs and configuration), the VPC, subnets, security groups, IAM roles, and Elastic IPs. This action cannot be undone.</p>
+      <p>If you need to preserve Panorama's configuration, export it first: <strong>Panorama &gt; Setup &gt; Operations &gt; Export Panorama and devices running config bundle</strong>.</p>
+    </div>
+
+    <div class="code-block">
+      <pre><code>terraform destroy -var-file=terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Type <code>yes</code> when prompted. The destroy operation takes approximately 3&ndash;5 minutes.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Terraform completes with <code>Destroy complete!</code> and reports the number of resources destroyed. Verify in the AWS Console that the VPC, EC2 instances, and EBS volumes are no longer present.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>

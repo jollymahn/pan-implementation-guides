@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Panorama Deployment on Azure | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <div class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">Panorama on Azure</span>
+  </div>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="index.html" class="active">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="../../quick-ref/index.html">Quick Reference</a>
+  </nav>
+</header>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<!-- ── Sidebar Backdrop (mobile) ──────────────────────────────── -->
+<div class="sidebar-backdrop"></div>
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prerequisites</div>
+    <a href="#prerequisites" data-section="prerequisites">Cloud &amp; Tools Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Terraform</div>
+    <a href="#terraform-config" data-section="terraform-config">Prepare Configuration</a>
+    <a href="#deploy-verify" data-section="deploy-verify">Deploy &amp; Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Post-Deploy</div>
+    <a href="#post-deploy" data-section="post-deploy">Initial Access</a>
+    <a href="#verification" data-section="verification">Verification</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#cleanup" data-section="cleanup">Cleanup</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">Azure</a>
+  <span class="sep">|</span>
+  Panorama Deployment
+</div>
+
+<div class="article">
+
+<h1>Panorama Deployment on Azure</h1>
+<p class="subtitle">End-to-end guide: Azure subscription setup through Panorama deployment to verified management platform access</p>
+
+<div class="cloud-links">
+  <a href="../aws/panorama-deployment.html">AWS Panorama Guide</a>
+  <a href="../gcp/panorama-deployment.html">GCP Panorama Guide</a>
+</div>
+
+<!-- ── Phase Progress ────────────────────────────────────────── -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#terraform-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Terraform Config
+  </a>
+  <a href="#deploy-verify" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Deploy &amp; Verify
+  </a>
+  <a href="#post-deploy" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Post-Deploy
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Verification
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide deploys a <strong>standalone Panorama</strong> instance on Azure for centralized management of Palo Alto Networks firewalls. Panorama is deployed in management-only mode (no additional logging disks by default) into a dedicated VNet with a public IP on the management interface.</p>
+  <p><strong>Deployment method:</strong> All Azure infrastructure is deployed with <strong>Terraform</strong> using the official <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/azurerm/latest">Palo Alto Networks SWFW Modules for Azure</a>. The <code>panorama_standalone</code> example from the <a href="https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules/tree/main/examples/panorama_standalone">terraform-azurerm-swfw-modules</a> repository provides the reference configuration.</p>
+  <p><strong>Default authentication:</strong> Username <code>panadmin</code> with an auto-generated random password (available via Terraform outputs). SSH key authentication is optionally supported.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE OVERVIEW                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>Before deploying, review the target architecture. This is a <strong>non-zonal deployment</strong> of a single Panorama instance. The infrastructure consists of:</p>
+
+<ul>
+  <li>A <strong>VNet</strong> with one subnet dedicated to the Panorama appliance</li>
+  <li>A <strong>Network Security Group (NSG)</strong> restricting access to the Panorama management interface</li>
+  <li>A <strong>public IP</strong> assigned to the management interface for direct access</li>
+  <li>An optional <strong>Availability Set</strong> for non-zonal HA deployments</li>
+</ul>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Topology</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Panorama standalone deployment is intentionally minimal. A single VNet (<code>10.1.0.0/27</code>) hosts one subnet (<code>10.1.0.0/28</code>) for the Panorama management interface. An NSG on the subnet restricts inbound access to SSH (TCP 22) and HTTPS (TCP 443) from a specified allowlist.</p>
+    <table>
+      <thead>
+        <tr><th>Component</th><th>Default Value</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>VNet</td><td><code>10.1.0.0/27</code></td><td>Panorama management network</td></tr>
+        <tr><td>Panorama Subnet</td><td><code>10.1.0.0/28</code></td><td>Management interface NIC</td></tr>
+        <tr><td>Private IP</td><td><code>10.1.0.10</code></td><td>Static IP for the Panorama management interface</td></tr>
+        <tr><td>Public IP</td><td>Auto-assigned</td><td>External access to SSH and HTTPS</td></tr>
+        <tr><td>NSG</td><td><code>panorama-nsg</code></td><td>Inbound allow on TCP 22, 443 from admin CIDR</td></tr>
+        <tr><td>VM Size</td><td><code>Standard_D5_v2</code></td><td>16 vCPU, 56 GB RAM &mdash; minimum for production Panorama</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Firewall device management ports</div>
+      <p>If VM-Series firewalls will register to this Panorama, the NSG must also allow inbound <strong>TCP 3978</strong> (management plane) and <strong>TCP 28443</strong> (device certificate) from the firewall management subnet CIDR. Add these rules to the <code>vnets</code> variable in your <code>terraform.tfvars</code> before deploying.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Logging disks</div>
+      <p>This example deploys with one data disk configured. For production environments that require local log storage on Panorama, configure additional logging disks via the <code>logging_disks</code> property. See the <a href="https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules/tree/main/modules/panorama#input_logging_disks">Panorama module documentation</a> for available options.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Terraform Modules Used</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>panorama_standalone</code> example composes three modules from the <a href="https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules">terraform-azurerm-swfw-modules</a> repository:</p>
+    <table>
+      <thead>
+        <tr><th>Module</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>vnet</code></td><td>Creates the VNet, subnet, NSG, and route tables</td></tr>
+        <tr><td><code>public_ip</code></td><td>Creates and manages public IP addresses</td></tr>
+        <tr><td><code>panorama</code></td><td>Deploys the Panorama VM, network interfaces, and optional logging disks</td></tr>
+      </tbody>
+    </table>
+    <p>Additionally, the example uses the <code>random</code> provider to auto-generate a password and the <code>azurerm</code> provider (v4+) for all Azure resource management.</p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<p>Complete these one-time setup tasks before configuring Terraform. If already done, skip to <a href="#terraform-config">Phase 2</a>.</p>
+
+<!-- Step 1.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1: Verify Azure Subscription &amp; Permissions</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Terraform requires an Azure identity with sufficient privileges to create resource groups, VNets, NSGs, public IPs, and VMs.</p>
+    <ol>
+      <li>Log in to the <a href="https://portal.azure.com">Azure Portal</a>.</li>
+      <li>Confirm the target subscription is active.</li>
+      <li>Verify your account has <strong>Contributor</strong> role (or equivalent) on the subscription or target resource group.</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>az login
+az account show --query '{subscription:name, id:id, tenantId:tenantId}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>az account show</code> output displays the correct subscription name, ID, and tenant ID.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 1.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2: Install Required Tools</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Install the following tools on your deployment machine (macOS, Linux, or Windows):</p>
+
+    <h4>Option A: Azure Cloud Shell (Quickest)</h4>
+    <p>Cloud Shell ships with Terraform and Azure CLI pre-installed. It automatically authenticates as the logged-in portal user &mdash; no credentials to configure.</p>
+    <ol>
+      <li>Open <strong>Cloud Shell</strong> from the Azure Portal (top-right toolbar, terminal icon). Choose <strong>Bash</strong> on first launch.</li>
+      <li>Confirm the bundled tools:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>terraform -v
+az --version
+git --version</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Option B: Local Workstation</h4>
+    <table>
+      <tr><th>Tool</th><th>Purpose</th><th>Install</th></tr>
+      <tr><td><strong>Terraform CLI</strong></td><td>Infrastructure provisioning</td><td><a href="https://developer.hashicorp.com/terraform/downloads">developer.hashicorp.com/terraform/downloads</a></td></tr>
+      <tr><td><strong>Azure CLI</strong></td><td>Azure authentication</td><td><a href="https://learn.microsoft.com/cli/azure/install-azure-cli">learn.microsoft.com/cli/azure/install-azure-cli</a></td></tr>
+      <tr><td><strong>Git</strong></td><td>Clone the SWFW modules repo</td><td><a href="https://git-scm.com/downloads">git-scm.com/downloads</a></td></tr>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Terraform version</div>
+      <p>The SWFW modules require Terraform <code>&gt;= 1.5, &lt; 2.0</code>. Verify with <code>terraform -v</code>.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All three commands return version output without errors:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>terraform -v
+az --version
+git --version</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Windows Users</div>
+      <p>All shell commands in this guide use Bash syntax (Linux/macOS). If deploying from a Windows workstation, use one of the following approaches:</p>
+      <ul>
+        <li><strong>Windows Subsystem for Linux (WSL) &mdash; Recommended:</strong> Install <a href="https://learn.microsoft.com/en-us/windows/wsl/install">WSL 2</a> with Ubuntu, then install Terraform, Azure CLI, and Git inside the WSL environment. All commands in this guide work as-is.</li>
+        <li><strong>Git Bash:</strong> Installed alongside <a href="https://git-scm.com/downloads">Git for Windows</a>. Provides a Bash-compatible shell where most commands work without modification.</li>
+        <li><strong>PowerShell:</strong> Terraform and Azure CLI work natively, but shell syntax differs &mdash; environment variables use <code>$env:VAR</code> instead of <code>$VAR</code>, line continuations use backtick (<code>`</code>) instead of backslash (<code>\</code>).</li>
+      </ul>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Windows Shell Syntax Reference</span>
+      </div>
+      <div class="collapsible-body">
+        <p>If using PowerShell instead of WSL or Git Bash, translate shell commands as follows:</p>
+        <table>
+          <tr><th>Bash (this guide)</th><th>PowerShell equivalent</th></tr>
+          <tr><td><code>export VAR="value"</code></td><td><code>$env:VAR = "value"</code></td></tr>
+          <tr><td><code>echo $VAR</code></td><td><code>$env:VAR</code></td></tr>
+          <tr><td><code>ssh user@host</code></td><td>Same syntax (OpenSSH is built into Windows 10+)</td></tr>
+          <tr><td>Line continuation: <code>\</code></td><td>Line continuation: <code>`</code> (backtick)</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 1.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3: Obtain Panorama License</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama requires a valid license to manage firewalls and enable full functionality. Obtain the license before deployment &mdash; it will be activated after Panorama boots.</p>
+    <ol>
+      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
+      <li>Navigate to <strong>Products &gt; Panorama</strong>.</li>
+      <li>Locate your Panorama serial number and license auth code.</li>
+      <li>Note the auth code for use in <a href="#post-deploy">Phase 4</a> license activation.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">License mode</div>
+      <p>The Terraform deployment creates the Panorama VM in an unlicensed state. Licensing is performed post-deployment via the Web UI (<strong>Device &gt; Licenses</strong>) or CLI.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Customer Support Portal shows a valid Panorama license with an active auth code.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 1.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4: Accept Azure Marketplace Terms for Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Azure requires explicit acceptance of the Marketplace EULA before deploying Panorama images. This is a one-time action per subscription.</p>
+    <div class="code-block">
+      <pre><code>az vm image terms accept \
+  --publisher paloaltonetworks \
+  --offer panorama \
+  --plan byol</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Required before Terraform apply</div>
+      <p>If marketplace terms are not accepted, <code>terraform apply</code> will fail with a <code>MarketplacePurchaseEligibilityFailed</code> error. Run this command in the same subscription where Panorama will be deployed.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm the terms are accepted:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>az vm image terms show \
+  --publisher paloaltonetworks \
+  --offer panorama \
+  --plan byol \
+  --query 'accepted'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Returns <code>true</code>.</p>
+  </div>
+</div>
+
+<!-- Step 1.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.5: Set Azure Subscription ID</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The AzureRM provider (v4+) requires an explicit subscription ID. Setting it as an environment variable keeps the value out of version-controlled files.</p>
+    <div class="code-block">
+      <pre><code># Get your subscription ID
+az account show --query id -o tsv
+
+# Export it as an environment variable
+export ARM_SUBSCRIPTION_ID="your-subscription-id"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Do not put the Subscription ID in tfvars</div>
+      <p>The <code>example.tfvars</code> has a <code>subscription_id</code> field set to <code>null</code>. Leave it as <code>null</code> and use the <code>ARM_SUBSCRIPTION_ID</code> environment variable instead. Putting the Subscription ID in clear text inside committed code is a security risk.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>echo $ARM_SUBSCRIPTION_ID</code> &mdash; the output matches the subscription ID from <code>az account show</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: PREPARE CONFIGURATION                               -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="terraform-config">Phase 2: Prepare Configuration</h2>
+
+<p>Clone the official SWFW modules, copy the example configuration, and customize it for your environment. No infrastructure is created in this phase.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Terraform modules</div>
+  <p>This guide uses the official <a href="https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules">Palo Alto Networks SWFW Modules for Azure</a>. The <code>panorama_standalone</code> example composes the <code>vnet</code>, <code>public_ip</code>, and <code>panorama</code> modules into a ready-to-deploy configuration.</p>
+</div>
+
+<!-- Step 2.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.1: Clone the Repository</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Clone the official SWFW modules repository and navigate to the standalone Panorama example.</p>
+    <div class="code-block">
+      <pre><code>git clone https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules.git
+cd terraform-azurerm-swfw-modules/examples/panorama_standalone</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The directory contains <code>main.tf</code>, <code>variables.tf</code>, <code>outputs.tf</code>, <code>versions.tf</code>, and <code>example.tfvars</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.2: Copy the Example tfvars</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>example.tfvars</code> file contains all configurable variables with sensible defaults and <code>TODO</code> markers for values that must be customized.</p>
+    <div class="code-block">
+      <pre><code>cp example.tfvars terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>ls terraform.tfvars</code> succeeds and the file contents match <code>example.tfvars</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.3: Configure Region &amp; Resource Group</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Set the Azure region, resource group name, naming prefix, and tags.</p>
+    <p>Open <code>terraform.tfvars</code> and edit the general section:</p>
+    <div class="code-block">
+      <pre><code># GENERAL
+
+subscription_id = null  # Leave null — use ARM_SUBSCRIPTION_ID env var
+
+region                = "East US"        # Your target Azure region
+resource_group_name   = "panorama-rg"    # Name for the resource group
+name_prefix           = "prod-"          # Prefix applied to all resource names
+create_resource_group = true             # Set false to use an existing RG
+tags = {
+  "createdBy"   = "Palo Alto Networks"
+  "createdWith" = "Terraform"
+  "environment" = "production"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>subscription_id</code></td><td>Azure Subscription ID (use env var instead)</td><td><code>null</code></td></tr>
+        <tr><td><code>region</code></td><td>Azure region for all resources</td><td><code>"North Europe"</code></td></tr>
+        <tr><td><code>resource_group_name</code></td><td>Name of the resource group</td><td><code>"panorama"</code></td></tr>
+        <tr><td><code>name_prefix</code></td><td>Prefix for all created resources (include delimiter)</td><td><code>"example-"</code></td></tr>
+        <tr><td><code>create_resource_group</code></td><td>Create a new RG (<code>true</code>) or use existing (<code>false</code>)</td><td><code>true</code></td></tr>
+        <tr><td><code>tags</code></td><td>Tags applied to all resources</td><td>See example</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The general section of <code>terraform.tfvars</code> reflects your target region and resource group name.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.4: Configure VNet &amp; Subnet</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>vnets</code> variable defines the VNet, subnet, and NSG for Panorama. The critical customization is the NSG <code>source_address_prefixes</code> &mdash; replace the placeholder with your actual admin IP ranges.</p>
+    <div class="code-block">
+      <pre><code># NETWORK
+
+vnets = {
+  "vnet" = {
+    name          = "panorama-vnet"
+    address_space = ["10.1.0.0/27"]
+    network_security_groups = {
+      "panorama" = {
+        name = "panorama-nsg"
+        rules = {
+          mgmt_inbound = {
+            name                       = "panorama-management-allow-inbound"
+            priority                   = 100
+            direction                  = "Inbound"
+            access                     = "Allow"
+            protocol                   = "Tcp"
+            source_address_prefixes    = ["203.0.113.0/24"]  # TODO: Your admin IPs
+            source_port_range          = "*"
+            destination_address_prefix = "10.1.0.0/28"
+            destination_port_ranges    = ["22", "443"]
+          }
+        }
+      }
+    }
+    subnets = {
+      "panorama" = {
+        name                       = "panorama-snet"
+        address_prefixes           = ["10.1.0.0/28"]
+        network_security_group_key = "panorama"
+      }
+    }
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Replace the placeholder admin IP</div>
+      <p>The example uses <code>1.1.1.1/32</code> as a placeholder for <code>source_address_prefixes</code>. Replace this with your actual admin network CIDR. Leaving the placeholder means Panorama will be unreachable after deployment.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Add device management ports for firewalls</div>
+      <p>If VM-Series firewalls will register to this Panorama, add a second NSG rule allowing inbound TCP <code>3978</code> and <code>28443</code> from the firewall management subnet CIDR. Without these ports, firewalls cannot connect to the Panorama management plane.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>source_address_prefixes</code> value contains your actual admin network CIDR (not the placeholder). The subnet CIDR fits within the VNet address space.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.5: Configure the Panorama Instance</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>panoramas</code> variable defines the Panorama VM: name, authentication, PAN-OS image version, VM size, network interfaces, and optional logging disks.</p>
+    <div class="code-block">
+      <pre><code># PANORAMA
+
+panoramas = {
+  "pn-1" = {
+    name     = "panorama01"
+    vnet_key = "vnet"
+    authentication = {
+      disable_password_authentication = false
+      # ssh_keys = ["~/.ssh/id_rsa.pub"]  # Uncomment for SSH key auth
+    }
+    image = {
+      version = "11.1.607"
+    }
+    virtual_machine = {
+      size      = "Standard_D5_v2"
+      zone      = null                   # null for non-zonal deployment
+      disk_name = "panorama-os-disk"
+    }
+    interfaces = [
+      {
+        name               = "management"
+        subnet_key         = "panorama"
+        private_ip_address = "10.1.0.10"
+        create_public_ip   = true
+      }
+    ]
+    logging_disks = {
+      "datadisk1" = {
+        name = "data-disk1"
+        lun  = "0"
+      }
+    }
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Property</th><th>Purpose</th><th>Default / Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>name</code></td><td>VM name (prefixed with <code>name_prefix</code>)</td><td><code>"panorama01"</code></td></tr>
+        <tr><td><code>vnet_key</code></td><td>Key matching the VNet in <code>vnets</code></td><td><code>"vnet"</code></td></tr>
+        <tr><td><code>authentication.username</code></td><td>Admin username</td><td><code>"panadmin"</code> (implicit default)</td></tr>
+        <tr><td><code>authentication.password</code></td><td>Admin password</td><td><code>null</code> = auto-generated 16-char random</td></tr>
+        <tr><td><code>authentication.disable_password_authentication</code></td><td>Require SSH keys only</td><td><code>false</code></td></tr>
+        <tr><td><code>authentication.ssh_keys</code></td><td>Paths to public SSH keys</td><td><code>[]</code></td></tr>
+        <tr><td><code>image.version</code></td><td>PAN-OS Panorama version from Marketplace</td><td><code>"11.1.607"</code></td></tr>
+        <tr><td><code>virtual_machine.size</code></td><td>Azure VM size</td><td><code>"Standard_D5_v2"</code></td></tr>
+        <tr><td><code>virtual_machine.zone</code></td><td>Availability Zone (<code>null</code> = non-zonal)</td><td><code>null</code></td></tr>
+        <tr><td><code>virtual_machine.disk_type</code></td><td>OS disk type</td><td><code>"StandardSSD_LRS"</code> (module default)</td></tr>
+        <tr><td><code>interfaces[0].create_public_ip</code></td><td>Create public IP on management NIC</td><td><code>true</code></td></tr>
+        <tr><td><code>interfaces[0].private_ip_address</code></td><td>Static private IP</td><td><code>"10.1.0.10"</code></td></tr>
+        <tr><td><code>logging_disks</code></td><td>Additional data disks for log storage</td><td>Optional &mdash; remove block if not needed</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Password auto-generation</div>
+      <p>When <code>password</code> is left as <code>null</code> (or omitted), Terraform generates a random 16-character password using the <code>random_password</code> resource. Retrieve it after deployment with <code>terraform output password</code>. The password includes uppercase, lowercase, numeric, and special characters (<code>_%@</code>).</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">SSH key authentication</div>
+      <p>To use SSH key authentication instead of (or in addition to) password: uncomment the <code>ssh_keys</code> line and provide the path to your public key. To disable password authentication entirely, set <code>disable_password_authentication = true</code> &mdash; in that case, <code>ssh_keys</code> is required.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>panoramas</code> block has the correct <code>vnet_key</code> matching the key in the <code>vnets</code> variable. The <code>subnet_key</code> in the interface block matches a subnet key defined in <code>vnets</code>. The <code>private_ip_address</code> falls within the subnet CIDR.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.6 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.6: Optional &mdash; Configure Availability Set</span>
+  </div>
+  <div class="collapsible-body">
+    <p>For non-zonal HA deployments, an Availability Set provides fault and update domain isolation. This is only needed when deploying multiple Panorama instances without using Availability Zones.</p>
+    <div class="code-block">
+      <pre><code># Uncomment and add to terraform.tfvars for HA deployments
+availability_sets = {
+  "panorama-as" = {
+    name                = "panorama-avset"
+    update_domain_count = 5
+    fault_domain_count  = 2
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Then reference the Availability Set in the <code>panoramas</code> block by adding <code>avset_key = "panorama-as"</code> to the <code>virtual_machine</code> object.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Region-dependent fault domain count</div>
+      <p>Not all Azure regions support the same number of fault domains. Verify fault domain support for your target region before deploying. Small regions (without Availability Zones) may support only 2 fault domains.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>If using an Availability Set: the <code>availability_sets</code> variable is defined and the Panorama <code>virtual_machine.avset_key</code> references the correct key. If not using one: the <code>availability_sets</code> variable is omitted or empty.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.7 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.7: Validate Configuration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run Terraform validation to catch syntax errors and variable type mismatches before deploying.</p>
+    <div class="code-block">
+      <pre><code>terraform init
+terraform validate</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>terraform validate</code> outputs <code>Success! The configuration is valid.</code></p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: DEPLOY & VERIFY                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="deploy-verify">Phase 3: Deploy &amp; Verify</h2>
+
+<p>Authenticate to Azure, plan the deployment, and apply. The deployment creates approximately 10 resources and takes around 5 minutes.</p>
+
+<!-- Step 3.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.1: Authenticate to Azure</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Authenticate the Azure CLI and set the active subscription.</p>
+    <div class="code-block">
+      <pre><code>az login
+az account set --subscription "$ARM_SUBSCRIPTION_ID"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>az account show --query '{name:name, id:id}'</code> displays the correct subscription.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.2: Initialize Terraform</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Download the required providers and initialize the module tree.</p>
+    <div class="code-block">
+      <pre><code>terraform init</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Re-initialization</div>
+      <p>If <code>terraform init</code> was already run in <a href="#terraform-config">Phase 2</a> for validation, it does not need to run again unless provider versions changed.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Output ends with <code>Terraform has been successfully initialized!</code> The <code>.terraform/</code> directory exists.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.3: Plan the Deployment</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Review the execution plan to confirm the correct resources will be created before committing.</p>
+    <div class="code-block">
+      <pre><code>terraform plan -var-file=terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The plan should show approximately <strong>10 resources to add</strong>:</p>
+    <ul>
+      <li>1 Resource Group</li>
+      <li>1 VNet</li>
+      <li>1 Subnet</li>
+      <li>1 NSG with rules</li>
+      <li>1 Public IP</li>
+      <li>1 Network Interface</li>
+      <li>1 Virtual Machine (Panorama)</li>
+      <li>1 Managed Disk (logging, if configured)</li>
+      <li>1 Random Password</li>
+      <li>NSG-to-subnet association</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The plan summary shows <code>Plan: ~10 to add, 0 to change, 0 to destroy.</code> No errors or warnings about missing variables.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.4: Apply the Configuration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Deploy the infrastructure. Terraform will prompt for confirmation &mdash; type <code>yes</code> to proceed.</p>
+    <div class="code-block">
+      <pre><code>terraform apply -var-file=terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The deployment takes approximately 5 minutes. On completion, Terraform displays the outputs:</p>
+    <div class="code-block">
+      <pre><code>Apply complete! Resources: 10 added, 0 changed, 0 destroyed.
+
+Outputs:
+
+panorama_mgmt_ips = {
+  "pn-1" = "20.x.x.x"
+}
+password = &lt;sensitive&gt;
+username = "panadmin"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Terraform reports <code>Apply complete!</code> with no errors. The <code>panorama_mgmt_ips</code> output displays a public IP address.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.5: Record Terraform Outputs</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Save the management IP, username, and password for use in <a href="#post-deploy">Phase 4</a>.</p>
+    <div class="code-block">
+      <pre><code># Management IP
+terraform output panorama_mgmt_ips
+
+# Username
+terraform output username
+
+# Password (sensitive — will print to terminal)
+terraform output password</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Treat the password as a secret</div>
+      <p>The auto-generated password is sensitive. Do not commit it to version control or share it in plaintext. Change it after first login (see <a href="#post-deploy">Phase 4</a>).</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All three outputs return values: <code>panorama_mgmt_ips</code> shows a public IP, <code>username</code> shows <code>panadmin</code>, and <code>password</code> shows a 16-character string.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: POST-DEPLOYMENT                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="post-deploy">Phase 4: Post-Deployment</h2>
+
+<p>Panorama needs several minutes to boot after the VM is created. This phase covers initial access, password change, and license activation.</p>
+
+<!-- Step 4.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1: Wait for Panorama to Boot</span>
+  </div>
+  <div class="collapsible-body">
+    <p>After <code>terraform apply</code> completes, the Panorama VM is provisioned but the PAN-OS software still needs to boot. This takes approximately <strong>5&ndash;10 minutes</strong>.</p>
+    <p>Monitor the boot progress:</p>
+    <ol>
+      <li>In the Azure Portal, navigate to the Panorama VM.</li>
+      <li>Under <strong>Help</strong>, click <strong>Boot diagnostics</strong> to view the serial console output.</li>
+      <li>Wait until the console shows the PAN-OS login prompt.</li>
+    </ol>
+    <p>Alternatively, poll the management interface from the command line:</p>
+    <div class="code-block">
+      <pre><code># Replace with your Panorama public IP
+PANORAMA_IP=$(terraform output -json panorama_mgmt_ips | jq -r '."pn-1"')
+
+# Poll until HTTPS responds (timeout after 10 min)
+until curl -sk --connect-timeout 5 "https://${PANORAMA_IP}" -o /dev/null 2>&amp;1; do
+  echo "Waiting for Panorama to boot..."
+  sleep 30
+done
+echo "Panorama is ready at https://${PANORAMA_IP}"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>curl -sk https://${PANORAMA_IP}</code> returns an HTML page (the Panorama login form), or the Azure Boot diagnostics show the PAN-OS login prompt.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.2: SSH into Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Verify CLI access using the auto-generated credentials.</p>
+    <div class="code-block">
+      <pre><code>PANORAMA_IP=$(terraform output -json panorama_mgmt_ips | jq -r '."pn-1"')
+PANORAMA_PASS=$(terraform output -raw password | jq -r '."pn-1"')
+
+ssh panadmin@${PANORAMA_IP}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>When prompted, enter the auto-generated password from <code>terraform output password</code>.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">First SSH connection</div>
+      <p>The first connection will prompt to accept the host key fingerprint. Type <code>yes</code> to continue.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The SSH session connects and displays the PAN-OS CLI prompt: <code>panadmin@panorama01&gt;</code></p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.3: Access the Web UI</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Access the Panorama Web UI for graphical management.</p>
+    <ol>
+      <li>Open a browser and navigate to <code>https://&lt;PANORAMA_PUBLIC_IP&gt;</code>.</li>
+      <li>Accept the self-signed certificate warning (expected on first access).</li>
+      <li>Log in with username <code>panadmin</code> and the auto-generated password from <code>terraform output password</code>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Self-signed certificate</div>
+      <p>The initial HTTPS connection uses a self-signed certificate. This is expected. Replace it with a CA-signed certificate after initial setup for production use.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Panorama dashboard loads and displays system information including the PAN-OS version, serial number, and uptime.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.4: Change the Default Password</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The auto-generated password is stored in Terraform state. Change it immediately to reduce exposure.</p>
+
+    <h4>Option A: Web UI</h4>
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Administrators</strong>.</li>
+      <li>Click <code>panadmin</code>.</li>
+      <li>Enter the current password in <strong>Current Password</strong>.</li>
+      <li>Enter and confirm a new password that meets complexity requirements.</li>
+      <li>Click <strong>OK</strong>, then <strong>Commit</strong>.</li>
+    </ol>
+
+    <h4>Option B: CLI</h4>
+    <div class="code-block">
+      <pre><code>configure
+set mgt-config users panadmin password
+# Enter new password when prompted
+commit</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Break-glass account</div>
+      <p>Before changing the default password, consider creating a separate break-glass administrator account with a strong, documented password stored in a vault. If LDAP/SAML authentication is configured later and fails, this local account provides emergency access. Account lockout applies to all local accounts &mdash; failed login attempts will lock the account after the configured threshold.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Log out and log back in with the new password. The login succeeds.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.5: Activate the Panorama License</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama ships unlicensed. Activate the license to enable device management, logging, and full feature access.</p>
+
+    <h4>Option A: Web UI</h4>
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Licenses</strong>.</li>
+      <li>Click <strong>Activate feature using authorization code</strong>.</li>
+      <li>Enter the Panorama auth code from <a href="#prerequisites">Phase 1, Step 1.3</a>.</li>
+      <li>Click <strong>OK</strong>.</li>
+      <li>Panorama will contact the licensing server and activate. This requires outbound internet access from the management interface.</li>
+    </ol>
+
+    <h4>Option B: CLI</h4>
+    <div class="code-block">
+      <pre><code>request license fetch</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Outbound internet required</div>
+      <p>License activation contacts <code>updates.paloaltonetworks.com</code> over HTTPS. The management interface must have outbound internet access. The public IP assigned by Terraform provides this. If using a private-only deployment, configure a NAT Gateway on the Panorama subnet.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Navigate to <strong>Panorama &gt; Licenses</strong>. The license status shows as <strong>Active</strong> with the correct feature set and expiration date.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: VERIFICATION                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="verification">Phase 5: Verification</h2>
+
+<p>Run through these checks to confirm the Panorama deployment is fully operational.</p>
+
+<!-- Step 5.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.1: Verify System Information</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the PAN-OS version and system status via CLI.</p>
+    <div class="code-block">
+      <pre><code>show system info</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Key fields to verify:</p>
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Expected Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>sw-version</code></td><td>Matches the <code>image.version</code> in <code>terraform.tfvars</code> (e.g., <code>11.1.607</code>)</td></tr>
+        <tr><td><code>model</code></td><td><code>Panorama</code></td></tr>
+        <tr><td><code>operational-mode</code></td><td><code>normal</code></td></tr>
+        <tr><td><code>serial</code></td><td>A valid serial number (not <code>unknown</code>)</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>show system info</code> displays the correct PAN-OS version, <code>operational-mode: normal</code>, and a valid serial number.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.2: Verify Web UI Dashboard</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the Web UI loads correctly and displays key operational data.</p>
+    <ol>
+      <li>Log in to <code>https://&lt;PANORAMA_PUBLIC_IP&gt;</code>.</li>
+      <li>The dashboard should display:
+        <ul>
+          <li>System information (hostname, PAN-OS version, uptime)</li>
+          <li>License status</li>
+          <li>Device management summary (empty until firewalls are onboarded)</li>
+        </ul>
+      </li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Panorama dashboard renders without errors. System information and license status are visible.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.3: Verify Device Certificates</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Device certificates authenticate Panorama to Palo Alto Networks cloud services.</p>
+    <div class="code-block">
+      <pre><code>show system certificate-status</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Alternatively, in the Web UI: navigate to <strong>Panorama &gt; Setup &gt; Management &gt; General Settings</strong> and check the <strong>Device Certificate</strong> status.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Device certificate requirements</div>
+      <p>Device certificate installation requires outbound connectivity to <code>device.paloaltonetworks.com</code> on TCP 443. If the certificate is not installed automatically, install it manually via <strong>Panorama &gt; Setup &gt; Management &gt; General Settings &gt; Device Certificate</strong>.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The device certificate status shows <strong>Installed</strong> or <strong>Valid</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.4: Verify NSG Rules Allow Management Traffic</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the NSG is correctly filtering traffic to the Panorama management interface.</p>
+    <ol>
+      <li>In the Azure Portal, navigate to the Panorama VM's Network Interface.</li>
+      <li>Under <strong>Help</strong>, click <strong>Effective security rules</strong>.</li>
+      <li>Verify:
+        <ul>
+          <li>Inbound TCP 22 and 443 are <strong>Allow</strong> from your admin CIDR</li>
+          <li>All other inbound traffic is <strong>Deny</strong> (default rule)</li>
+        </ul>
+      </li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The effective security rules show explicit <strong>Allow</strong> rules for TCP 22 and 443 from the configured admin source CIDR. Default deny rules block all other inbound traffic.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                              -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Marketplace Terms Not Accepted</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td><code>terraform apply</code> fails with <code>MarketplacePurchaseEligibilityFailed</code></td>
+        <td>Azure Marketplace terms for Panorama BYOL not accepted in this subscription</td>
+        <td>Run the marketplace terms acceptance command:</td>
+      </tr>
+    </table>
+    <div class="code-block">
+      <pre><code>az vm image terms accept \
+  --publisher paloaltonetworks \
+  --offer panorama \
+  --plan byol</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Then re-run <code>terraform apply</code>.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Cannot SSH to Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td>SSH connection times out</td>
+        <td>NSG <code>source_address_prefixes</code> does not include your IP</td>
+        <td>Verify your public IP is within the NSG allowlist. Update <code>terraform.tfvars</code> and re-apply if needed.</td>
+      </tr>
+      <tr>
+        <td>SSH connection refused</td>
+        <td>Panorama still booting</td>
+        <td>Wait 5&ndash;10 minutes after <code>terraform apply</code>. Check Azure Boot diagnostics for progress.</td>
+      </tr>
+      <tr>
+        <td>SSH password rejected</td>
+        <td>Password mismatch</td>
+        <td>Retrieve the correct password with <code>terraform output password</code>. Ensure <code>terraform.tfvars</code> did not override the auto-generated password with an incorrect value.</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Web UI Not Accessible</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td>Browser times out on <code>https://&lt;IP&gt;</code></td>
+        <td>Port 443 blocked by NSG</td>
+        <td>Verify the NSG rule includes port <code>443</code> in <code>destination_port_ranges</code> and your IP in <code>source_address_prefixes</code>.</td>
+      </tr>
+      <tr>
+        <td>Browser shows connection refused</td>
+        <td>Panorama web service not yet started</td>
+        <td>Panorama boots the web service after the CLI is available. Wait an additional 2&ndash;3 minutes after SSH becomes accessible.</td>
+      </tr>
+      <tr>
+        <td>No public IP assigned</td>
+        <td><code>create_public_ip = false</code> in interface config</td>
+        <td>Set <code>create_public_ip = true</code> in the management interface block and re-apply. Alternatively, use a jump host or VPN to access the private IP.</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>License Activation Fails</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td>License activation times out or returns error</td>
+        <td>No outbound internet from management interface</td>
+        <td>Verify the Panorama management interface has a public IP (provides outbound NAT) or a NAT Gateway on the subnet. Panorama must reach <code>updates.paloaltonetworks.com</code> on TCP 443.</td>
+      </tr>
+      <tr>
+        <td>Invalid auth code</td>
+        <td>Wrong auth code or expired license</td>
+        <td>Verify the auth code in the Customer Support Portal under <strong>Products &gt; Panorama</strong>. Confirm the license is not expired.</td>
+      </tr>
+    </table>
+    <p>Test outbound connectivity from the Panorama CLI:</p>
+    <div class="code-block">
+      <pre><code>request license fetch
+# Or test DNS/connectivity:
+ping host updates.paloaltonetworks.com</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Terraform Provider Authentication Errors</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td><code>Error: building account</code> or <code>subscription_id is required</code></td>
+        <td><code>ARM_SUBSCRIPTION_ID</code> not set and <code>subscription_id</code> is <code>null</code></td>
+        <td>Export <code>ARM_SUBSCRIPTION_ID</code>: <code>export ARM_SUBSCRIPTION_ID="your-id"</code></td>
+      </tr>
+      <tr>
+        <td><code>AuthorizationFailed</code></td>
+        <td>Insufficient permissions on the subscription</td>
+        <td>Verify the authenticated identity has <strong>Contributor</strong> role. Run <code>az role assignment list --assignee &lt;your-user-or-sp&gt;</code> to check.</td>
+      </tr>
+      <tr>
+        <td><code>az login</code> expired</td>
+        <td>Azure CLI token expired</td>
+        <td>Re-authenticate with <code>az login</code> and retry.</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  CLEANUP                                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="cleanup">Cleanup</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Destroy All Resources</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Remove all Azure resources created by this deployment.</p>
+    <div class="code-block">
+      <pre><code>terraform destroy -var-file=terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Terraform will display the resources to be destroyed. Type <code>yes</code> to confirm.</p>
+    <div class="callout callout-danger">
+      <div class="callout-title">Data loss warning</div>
+      <p>Destroying the Panorama VM permanently deletes all configuration, device groups, templates, logs, and managed device state stored on the instance. Export the running configuration (<strong>Panorama &gt; Setup &gt; Operations &gt; Export named configuration snapshot</strong>) before destroying if the data is needed.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Terraform reports <code>Destroy complete! Resources: ~10 destroyed.</code> The resource group no longer appears in the Azure Portal.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="download-md-btn" id="downloadMdBtn" onclick="downloadAsMarkdown()">&#8681; Markdown</button>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>
