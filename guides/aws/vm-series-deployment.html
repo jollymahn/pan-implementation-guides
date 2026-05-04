@@ -795,6 +795,10 @@ sudo yum -y install terraform
 terraform -v</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
+    <div class="callout callout-note">
+      <div class="callout-title">CloudShell sessions reset</div>
+      <p>Terraform installed via <code>yum</code> is lost when CloudShell times out. If you return and <code>terraform</code> is not found, reinstall it. See <a href="#troubleshooting">Troubleshooting: CloudShell Session Persistence</a> for a persistent install method and a start-of-day checklist.</p>
+    </div>
 
     <h4>Option B: Local Workstation or Bastion Host</h4>
     <p>Install the following tools on your deployment machine (macOS, Linux, or Windows):</p>
@@ -816,6 +820,47 @@ aws --version
 git --version
 aws sts get-caller-identity</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Windows Users</div>
+      <p>All shell commands in this guide use Bash syntax (Linux/macOS). If you are deploying from a Windows workstation, use one of the following approaches:</p>
+      <ul>
+        <li><strong>Windows Subsystem for Linux (WSL) &mdash; Recommended:</strong> Install <a href="https://learn.microsoft.com/en-us/windows/wsl/install" target="_blank" rel="noopener">WSL 2</a> with Ubuntu, then install Terraform, AWS CLI, and Git inside the WSL environment. All commands in this guide work as-is.</li>
+        <li><strong>Git Bash:</strong> Installed alongside <a href="https://git-scm.com/downloads" target="_blank" rel="noopener">Git for Windows</a>. Provides a Bash-compatible shell where most commands work without modification.</li>
+        <li><strong>PowerShell:</strong> Terraform and AWS CLI work natively, but shell syntax differs. See the table below for common translations.</li>
+      </ul>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Windows Shell Syntax Reference</span>
+      </div>
+      <div class="collapsible-body">
+        <p>If you choose to use PowerShell instead of WSL or Git Bash, translate shell commands as follows:</p>
+        <table>
+          <tr><th>Bash (this guide)</th><th>PowerShell equivalent</th></tr>
+          <tr><td><code>export VAR="value"</code></td><td><code>$env:VAR = "value"</code></td></tr>
+          <tr><td><code>echo $VAR</code></td><td><code>$env:VAR</code></td></tr>
+          <tr><td><code>curl -Lo file URL</code></td><td><code>Invoke-WebRequest -Uri URL -OutFile file</code></td></tr>
+          <tr><td><code>unzip file.zip</code></td><td><code>Expand-Archive -Path file.zip -DestinationPath .</code></td></tr>
+          <tr><td><code>cat &lt;&lt; 'EOF' &gt; file</code></td><td>Use <code>notepad file</code> or VS Code instead</td></tr>
+          <tr><td><code>chmod 400 key.pem</code></td><td><code>icacls key.pem /inheritance:r /grant:r "$($env:USERNAME):(R)"</code></td></tr>
+          <tr><td><code>ssh -i key.pem user@host</code></td><td>Same syntax (OpenSSH is built into Windows 10+)</td></tr>
+          <tr><td>Line continuation: <code>\</code></td><td>Line continuation: <code>`</code> (backtick)</td></tr>
+        </table>
+        <div class="callout callout-note">
+          <div class="callout-title">SSH Key Permissions on Windows</div>
+          <p>Windows does not honor Unix file permissions. If SSH refuses your key with <em>"Permissions are too open"</em>, restrict the key file with:</p>
+        </div>
+        <div class="code-block">
+          <pre><code>icacls key.pem /inheritance:r
+icacls key.pem /grant:r "%USERNAME%:(R)"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>This removes inherited permissions and grants read-only access to your user account, which is the Windows equivalent of <code>chmod 400</code>.</p>
+      </div>
     </div>
   </div>
 </div>
@@ -2799,7 +2844,7 @@ pwd
     <div class="callout callout-warning">
       <div class="callout-title">Pre-flight check before <code>terraform apply</code></div>
       <ul>
-        <li><code>panorama-server</code> / <code>panorama-server-2</code> are <strong>reachable from the planned FW mgmt subnet CIDR</strong> via TGW peering, VPC peering, or Direct Connect. If not, the FW will boot but never register.</li>
+        <li><code>panorama-server</code> / <code>panorama-server-2</code> are <strong>reachable from the planned FW mgmt subnet CIDR</strong> on TCP port 3978. The path depends on where Panorama is deployed &mdash; VPC peering, Transit Gateway attachment, VPN/Direct Connect, or public internet. See <a href="#security-vpc">Phase 4.8: Panorama Connectivity</a> for details. If the FW mgmt interface cannot reach Panorama, the firewall will boot but never register.</li>
         <li><code>dgname</code> and <code>tplname</code> <strong>exist</strong> in Panorama and are not already in use by another tenant on a shared Panorama.</li>
         <li><code>auth-key</code> hasn't been rotated since you copied it.</li>
       </ul>
@@ -3009,6 +3054,11 @@ global_tags = {
   </div>
   <div class="collapsible-body">
     <p>The <code>vpcs</code> variable defines three VPCs with their subnets, security groups, and routing. Update the CIDRs and availability zones to match your environment.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Verify CIDR uniqueness</div>
+      <p>Every VPC CIDR must be unique and non-overlapping across all VPCs in the region, including any management VPC for Panorama. Overlapping CIDRs cause silent routing failures through the Transit Gateway. Run <code>aws ec2 describe-vpcs --query 'Vpcs[].CidrBlock'</code> to list existing VPC CIDRs before choosing yours. See <a href="#troubleshooting">Troubleshooting: VPC CIDR Conflicts</a>.</p>
+    </div>
 
     <h4>Security VPC</h4>
     <p>This guide uses a canonical IP schema: a <code>/22</code> for the Security VPC carved into 8 subnet groups × 4 AZ slots × <code>/28</code> each. The full schema and rationale live in the <a href="#ip-schema">IP Schema reference</a>. AZ slots run down the rows; subnet groups run across the columns.</p>
@@ -3528,13 +3578,50 @@ spoke_nlbs = {
   </div>
 </div>
 
-<div class="collapsible">
+<div class="collapsible mgmt-conditional" data-plane="Panorama">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>4.8 Optional: Panorama TGW Attachment</span>
+    <span>4.8 Panorama Connectivity (Panorama Path Only)</span>
   </div>
   <div class="collapsible-body">
-    <p>If Panorama is deployed in a separate management VPC with its own TGW attachment, uncomment the <code>panorama_attachment</code> block to add a route from the security VPC to the Panorama VPC.</p>
+    <p>Firewalls must reach Panorama on <strong>TCP port 3978</strong> from their management interface during bootstrap and for ongoing management. The connectivity path depends on where your Panorama is deployed. The Transit Gateway is one of several options &mdash; choose the one that matches your environment:</p>
+
+    <table>
+      <tr><th>Panorama Location</th><th>Connectivity Path</th><th>What to Configure</th></tr>
+      <tr>
+        <td><strong>Same VPC</strong> as firewalls</td>
+        <td>Direct VPC routing</td>
+        <td>No extra routing needed &mdash; Panorama is in the same mgmt subnet or a peered subnet within the security VPC. Ensure the security group allows port 3978.</td>
+      </tr>
+      <tr>
+        <td><strong>Separate Management VPC</strong> in the same region</td>
+        <td>Transit Gateway attachment or VPC peering</td>
+        <td>Create a TGW attachment for the Management VPC (see below) or establish VPC peering between the security and management VPCs. Add routes in both directions.</td>
+      </tr>
+      <tr>
+        <td><strong>On-premises</strong> data center</td>
+        <td>AWS Site-to-Site VPN or Direct Connect</td>
+        <td>Panorama is reachable via existing VPN/DX through the TGW or a VGW. Ensure the mgmt subnet route table has a route to Panorama's CIDR via the VPN/DX path.</td>
+      </tr>
+      <tr>
+        <td><strong>Another AWS region</strong></td>
+        <td>Inter-region TGW peering or VPN</td>
+        <td>Peer the TGWs across regions or establish a cross-region VPN. Latency should be under 100ms for reliable management.</td>
+      </tr>
+      <tr>
+        <td><strong>Public internet</strong> (Panorama has an EIP)</td>
+        <td>Firewall mgmt outbound via NAT GW or EIP</td>
+        <td>Ensure the mgmt subnet has outbound internet access (NAT gateway or public IP). Use the Panorama public IP/FQDN as <code>panorama-server</code>. Less secure &mdash; restrict Panorama inbound to known FW CIDRs.</td>
+      </tr>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Panorama deployment is out of scope for this guide</div>
+      <p>This guide covers VM-Series firewall deployment, not Panorama installation. Dedicated per-cloud Panorama deployment guides are available separately. Regardless of where Panorama runs, the requirement is the same: the firewall management interface must be able to reach Panorama on TCP 3978.</p>
+    </div>
+
+    <h4>Transit Gateway Path (Management VPC)</h4>
+    <p>If your Panorama is in a separate management VPC attached to the Transit Gateway, uncomment the <code>panorama_attachment</code> block in your <code>terraform.tfvars</code>:</p>
     <div class="code-block">
       <pre><code>panorama_attachment = {
   tgw_key                      = "tgw"
@@ -3543,7 +3630,27 @@ spoke_nlbs = {
 }</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
-    <p>If Panorama is reachable via VPN/Direct Connect or the security VPC management subnet route to <code>10.0.0.0/8</code> via TGW already covers it, skip this section.</p>
+
+    <p>This adds a static route in the <code>from_security</code> TGW route table pointing the Panorama VPC CIDR to the management VPC's TGW attachment. You must also ensure:</p>
+    <ol>
+      <li>The Management VPC TGW attachment is <strong>associated</strong> with the <code>from_spokes</code> TGW route table (so return traffic from Panorama reaches the security VPC)</li>
+      <li>The Management VPC route table has a route for the security VPC CIDR (<code>10.51.0.0/22</code>) pointing to the TGW</li>
+      <li>The Management VPC CIDR does <strong>not</strong> overlap with the Security VPC CIDR &mdash; see <a href="#troubleshooting">Troubleshooting: VPC CIDR Conflicts</a></li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Verify bidirectional routing</div>
+      <p>The Terraform <code>panorama_attachment</code> block creates a route <strong>from</strong> the security VPC <strong>to</strong> the Panorama VPC. You must separately configure the return path in the Management VPC route table and TGW route table association. Without bidirectional routing, firewalls will send bootstrap requests to Panorama but never receive responses.</p>
+    </div>
+
+    <h4>Other Paths</h4>
+    <p>If Panorama is reachable via VPN, Direct Connect, or an existing <code>0.0.0.0/0</code> or <code>10.0.0.0/8</code> route in the TGW route table, skip the <code>panorama_attachment</code> block entirely. Verify connectivity after deployment by SSHing into a firewall and running:</p>
+    <div class="code-block">
+      <pre><code># From the firewall CLI
+ping host &lt;panorama-ip&gt;
+show system info | match "Panorama"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
   </div>
 </div>
 
@@ -3576,8 +3683,10 @@ terraform plan -var-file=terraform.tfvars</code></pre>
       <ul>
         <li>SSH key pair exists in the target region</li>
         <li>AWS Marketplace subscription is accepted (Phase 1.7)</li>
-        <li>Panorama is reachable from the security VPC management subnet CIDR</li>
+        <li>Panorama is reachable from the security VPC management subnet CIDR (Panorama path) or outbound internet access is available from the mgmt subnet (SCM path)</li>
         <li>Bootstrap parameters (auth-key, dgname, tplname) are correct</li>
+        <li><strong>AWS service quotas</strong> are sufficient &mdash; this deployment creates multiple VPCs, EIPs, and TGW attachments that may exceed default limits. See <a href="#troubleshooting">Troubleshooting: AWS Service Quota Limits</a></li>
+        <li><strong>VPC CIDRs</strong> do not overlap with existing VPCs in the region. See <a href="#troubleshooting">Troubleshooting: VPC CIDR Conflicts</a></li>
       </ul>
     </div>
   </div>
@@ -3594,6 +3703,11 @@ terraform plan -var-file=terraform.tfvars</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
     <p>Type <code>yes</code> to confirm. Deployment takes approximately <strong>15–25 minutes</strong>. The VM-Series instances need an additional <strong>10–15 minutes</strong> after creation to complete bootstrap and register with Panorama.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">If terraform apply fails</div>
+      <p>Common mid-apply failures include <strong>quota limits</strong> (VPCs, EIPs) and <strong>SCP blocks</strong> (organizations that enforce EBS encryption or restrict volume types). If you see <code>UnauthorizedOperation</code> or <code>LimitExceeded</code> errors, see <a href="#troubleshooting">Troubleshooting: AWS Service Quota Limits</a> and <a href="#troubleshooting">Troubleshooting: Service Control Policy (SCP) Blocks</a>. After fixing the root cause, run <code>terraform plan</code> to review remaining changes, then <code>terraform apply</code> again &mdash; Terraform will pick up where it left off.</p>
+    </div>
 
     <h4>Terraform Outputs</h4>
     <p>After apply completes, Terraform outputs the key access information:</p>
@@ -3966,6 +4080,235 @@ debug logview component bts_details</code></pre>
       <div class="callout-title">Important</div>
       These commands are <strong>not persistent across reboots</strong> and must be re-executed after any Panorama restart. For HA pairs, run on <strong>each</strong> Panorama instance.
     </div>
+  </div>
+</div>
+
+<!-- ── AWS-Specific Troubleshooting ──────────────────────────── -->
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>AWS Service Quota Limits</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Default AWS account quotas are often too low for this deployment. If <code>terraform apply</code> fails partway through with <code>VpcLimitExceeded</code> or <code>AddressLimitExceeded</code>, you have hit a service quota.</p>
+
+    <table>
+      <tr><th>Resource</th><th>Default Limit</th><th>This Deployment Needs</th><th>Recommended Request</th></tr>
+      <tr><td>VPCs per region</td><td>5</td><td>4+ (Security + Spokes + default)</td><td>10</td></tr>
+      <tr><td>Elastic IPs per region</td><td>5</td><td>4+ (NAT GWs + Panorama)</td><td>10</td></tr>
+      <tr><td>NAT Gateways per AZ</td><td>5</td><td>2&ndash;4</td><td>Usually sufficient</td></tr>
+      <tr><td>TGW attachments</td><td>5</td><td>3+ (Security + Spokes)</td><td>10</td></tr>
+    </table>
+
+    <h4>Check Current Quotas</h4>
+    <div class="code-block">
+      <pre><code># Check VPC quota
+aws service-quotas get-service-quota \
+  --service-code vpc --quota-code L-F678F1CE \
+  --query 'Quota.Value' --output text
+
+# Check EIP quota
+aws service-quotas get-service-quota \
+  --service-code ec2 --quota-code L-0263D0A3 \
+  --query 'Quota.Value' --output text</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Request Increases</h4>
+    <div class="code-block">
+      <pre><code># Request VPC limit increase to 10
+aws service-quotas request-service-quota-increase \
+  --service-code vpc --quota-code L-F678F1CE --desired-value 10
+
+# Request EIP limit increase to 10
+aws service-quotas request-service-quota-increase \
+  --service-code ec2 --quota-code L-0263D0A3 --desired-value 10</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>You can also request increases from the AWS Console under <strong>Service Quotas &gt; AWS services &gt; Amazon VPC</strong> (or <strong>Amazon EC2</strong>). Increases are usually approved within minutes for modest amounts, but can take up to 24 hours. See <a href="https://docs.aws.amazon.com/servicequotas/latest/userguide/request-quota-increase.html" target="_blank" rel="noopener">AWS: Requesting a quota increase</a>.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Check quotas before running terraform apply</div>
+      <p>A partial deployment from a quota failure is more difficult to troubleshoot than checking quotas upfront. If <code>terraform apply</code> fails mid-run, some resources will exist and some won't &mdash; running <code>apply</code> again should recover, but verify with <code>terraform plan</code> first.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Service Control Policy (SCP) Blocks</span>
+  </div>
+  <div class="collapsible-body">
+    <p>AWS Organizations can enforce <a href="https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html" target="_blank" rel="noopener">Service Control Policies (SCPs)</a> that restrict what actions accounts can perform &mdash; even with Administrator privileges. Common SCP restrictions that affect this deployment:</p>
+
+    <table>
+      <tr><th>SCP Pattern</th><th>Symptom</th><th>Resolution</th></tr>
+      <tr>
+        <td>Deny gp2 EBS volumes</td>
+        <td><code>UnauthorizedOperation</code> on <code>volume/*</code> during EC2 launch</td>
+        <td>Add <code>volume_type = "gp3"</code> to all <code>root_block_device</code> blocks in your Terraform</td>
+      </tr>
+      <tr>
+        <td>Require KMS encryption</td>
+        <td><code>UnauthorizedOperation</code> mentioning <code>kms:*</code> or <code>encrypted</code></td>
+        <td>Add <code>encrypted = true</code> and <code>kms_key_id</code> to EBS volume configurations</td>
+      </tr>
+      <tr>
+        <td>Region restriction</td>
+        <td><code>AccessDeniedException</code> for any resource creation</td>
+        <td>Deploy in an allowed region, or request an exception from your cloud ops team</td>
+      </tr>
+    </table>
+
+    <h4>Decode the Error Message</h4>
+    <p>When Terraform fails with an <code>UnauthorizedOperation</code> or <code>AccessDenied</code> error, AWS returns an encoded message that contains the blocking policy. Decode it to identify the specific SCP:</p>
+    <div class="code-block">
+      <pre><code># Copy the encoded message from the Terraform error output
+aws sts decode-authorization-message \
+  --encoded-message "&lt;paste-encoded-message-here&gt;" \
+  --query DecodedMessage --output text | python3 -m json.tool</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>The decoded output shows which condition failed and which SCP policy enforced it. Share this with your cloud operations or security team if you need an exception.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>SCPs are controlled at the AWS Organization level and cannot be changed from within the account. If you encounter an SCP block, you'll need to either adjust your Terraform configuration to comply with the policy or request an exception from your cloud admin team.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>CloudShell Session Persistence</span>
+  </div>
+  <div class="collapsible-body">
+    <p>AWS CloudShell sessions reset when they time out (after ~20 minutes of inactivity) or when you open a new browser tab. While your <strong>home directory</strong> (<code>~</code>) persists up to 1 GB, anything installed to system paths (like <code>/usr/local/bin</code>) is lost.</p>
+
+    <h4>What Persists Between Sessions</h4>
+    <table>
+      <tr><th>Persists</th><th>Does Not Persist</th></tr>
+      <tr><td>Files in <code>~/</code> (up to 1 GB)</td><td>System-wide installs (<code>yum install</code>)</td></tr>
+      <tr><td>Your Terraform state files (if local)</td><td>Terraform binary (if installed to <code>/usr/local/bin</code>)</td></tr>
+      <tr><td>Cloned repos in <code>~/</code></td><td>Environment variables (e.g., <code>export</code> commands)</td></tr>
+      <tr><td>AWS CLI credentials (inherited from console login)</td><td>SSH agent keys</td></tr>
+    </table>
+
+    <h4>Reinstall Terraform on Each New Session</h4>
+    <p>If you installed Terraform via <code>yum</code>, you must reinstall it each time:</p>
+    <div class="code-block">
+      <pre><code>sudo yum install -y yum-utils
+sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
+sudo yum -y install terraform
+terraform -v</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Alternative: Install to Home Directory</h4>
+    <p>To avoid reinstalling every session, download the Terraform binary to your home directory:</p>
+    <div class="code-block">
+      <pre><code>curl -Lo ~/terraform.zip https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip
+unzip -o ~/terraform.zip -d ~/bin
+rm ~/terraform.zip
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+terraform -v</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">CloudShell 1 GB Storage Limit</div>
+      <p>CloudShell has a 1 GB limit on your home directory. Terraform providers (the <code>.terraform/</code> directory) can consume 200&ndash;400 MB. If you run out of space, delete unneeded files or move to a local workstation. Check usage with <code>du -sh ~</code>.</p>
+    </div>
+
+    <h4>Start-of-Day Checklist</h4>
+    <p>When returning to CloudShell after a break:</p>
+    <ol>
+      <li>Verify Terraform is available: <code>terraform -v</code> (reinstall if not found)</li>
+      <li>Navigate to your project directory: <code>cd ~/pan-aws-deployment</code> (or wherever you cloned)</li>
+      <li>Verify AWS identity: <code>aws sts get-caller-identity</code></li>
+      <li>Re-initialize if needed: <code>terraform init</code> (usually not needed if <code>.terraform/</code> is intact)</li>
+      <li>Check current state: <code>terraform plan</code> (should show no changes if infra is up-to-date)</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>VPC CIDR Conflicts</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Every VPC connected to the Transit Gateway must use a <strong>unique, non-overlapping CIDR</strong>. Overlapping CIDRs cause silent routing failures &mdash; traffic may be delivered to the wrong VPC, or dropped entirely.</p>
+
+    <h4>Common Mistakes</h4>
+    <table>
+      <tr><th>Scenario</th><th>Problem</th><th>Fix</th></tr>
+      <tr>
+        <td>Management VPC uses the same CIDR as Security VPC</td>
+        <td>TGW cannot distinguish destinations &mdash; traffic loops or drops</td>
+        <td>Use a distinct CIDR for Management (e.g., <code>10.255.0.0/24</code>)</td>
+      </tr>
+      <tr>
+        <td>Spoke VPCs use overlapping ranges</td>
+        <td>Return traffic lands in the wrong spoke</td>
+        <td>Plan CIDRs upfront; each spoke needs its own range</td>
+      </tr>
+      <tr>
+        <td>Corporate network overlaps with VPC CIDRs</td>
+        <td>Site-to-site VPN or Direct Connect routing breaks</td>
+        <td>Avoid commonly used blocks (10.0.0.0/8 is often in use); coordinate with your network team</td>
+      </tr>
+    </table>
+
+    <h4>Validate Before Deploying</h4>
+    <div class="code-block">
+      <pre><code># List all VPC CIDRs in the region
+aws ec2 describe-vpcs \
+  --query 'Vpcs[].{ID:VpcId,CIDR:CidrBlock,Name:Tags[?Key==`Name`].Value|[0]}' \
+  --output table</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Cross-reference the output against the CIDRs in your <code>terraform.tfvars</code> to verify there are no overlaps. The <a href="#ip-schema">Reference: IP Schema</a> section shows the complete subnet layout for the Security VPC.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Large File Editing in CloudShell</span>
+  </div>
+  <div class="collapsible-body">
+    <p>When creating or editing large configuration files (like <code>terraform.tfvars</code>) in CloudShell, avoid using <code>cat &lt;&lt; 'EOF'</code> heredocs. Common pitfalls:</p>
+
+    <ul>
+      <li><strong>Indentation issues:</strong> Leading spaces or tabs before the closing <code>EOF</code> marker cause it to be treated as file content, not a delimiter &mdash; the file never closes.</li>
+      <li><strong>Copy-paste artifacts:</strong> Pasting into a terminal can introduce invisible characters or line-ending differences.</li>
+      <li><strong>No undo:</strong> If the heredoc goes wrong, you've already overwritten the file.</li>
+    </ul>
+
+    <h4>Recommended Approaches</h4>
+    <ol>
+      <li><strong>Use <code>nano</code> or <code>vi</code>:</strong> Both are pre-installed in CloudShell. Open the file, make edits, save.
+        <div class="code-block">
+          <pre><code>nano terraform.tfvars</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li><strong>Use the CloudShell file editor:</strong> Click <strong>Actions &gt; Upload file</strong> to upload a pre-prepared file from your local machine, or use the built-in editor (click the file in the file browser).</li>
+      <li><strong>Small targeted edits with <code>sed</code>:</strong> For changing a single value:
+        <div class="code-block">
+          <pre><code>sed -i 's/old-value/new-value/g' terraform.tfvars</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
   </div>
 </div>
 
