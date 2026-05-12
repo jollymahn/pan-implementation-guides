@@ -72,6 +72,13 @@
     <a href="#reference" data-section="reference">Ports &amp; Sync</a>
     <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
   </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Appendix</div>
+    <a href="#appendix-entra" data-section="appendix-entra">Entra ID Setup</a>
+    <a href="#appendix-okta" data-section="appendix-okta">Okta Setup</a>
+    <a href="#appendix-google" data-section="appendix-google">Google Setup</a>
+    <a href="#appendix-ad" data-section="appendix-ad">On-Prem AD Setup</a>
+  </div>
 </aside>
 
 <!-- ── Main Content ──────────────────────────────────────────── -->
@@ -2035,6 +2042,850 @@
         </tr>
       </tbody>
     </table>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  APPENDIX A: MICROSOFT ENTRA ID SETUP                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="appendix-entra">Appendix A: Microsoft Entra ID Setup</h2>
+
+<p>End-to-end walkthrough for preparing your Microsoft Entra ID (formerly Azure AD) tenant before connecting to CIE. Covers user and group creation, app registration, API permissions, and client secrets.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.1 &mdash; Access the Entra Admin Center</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Entra admin center is the primary portal for identity management. The Azure Portal also works but redirects many identity tasks here.</p>
+    <table>
+      <thead><tr><th>Portal</th><th>URL</th></tr></thead>
+      <tbody>
+        <tr><td>Entra admin center (primary)</td><td><a href="https://entra.microsoft.com">entra.microsoft.com</a></td></tr>
+        <tr><td>Azure Portal (alternative)</td><td><a href="https://portal.azure.com">portal.azure.com</a> &rarr; search "Microsoft Entra ID"</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Required roles for CIE setup:</strong></p>
+    <table>
+      <thead><tr><th>Task</th><th>Minimum Role</th></tr></thead>
+      <tbody>
+        <tr><td>Create users and groups</td><td>User Administrator</td></tr>
+        <tr><td>Register an application</td><td>Any user (default setting)</td></tr>
+        <tr><td>Grant admin consent for Graph API</td><td><strong>Global Administrator</strong></td></tr>
+        <tr><td>CIE Enterprise App onboarding</td><td><strong>Global Administrator</strong></td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Why Global Admin?</div>
+      <p>CIE requires Microsoft Graph <strong>Application permissions</strong> (User.Read.All, Group.Read.All, etc.). Only Global Administrator or Privileged Role Administrator can grant admin consent for these. Application Administrator cannot.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.2 &mdash; Create Users</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Path:</strong> <code>Identity &gt; Users &gt; All users &gt; + New user &gt; Create new user</code></p>
+    <ol>
+      <li>Click <strong>+ New user</strong> &rarr; <strong>Create new user</strong>.</li>
+      <li>Fill in the <strong>Basics</strong> tab:
+        <ul>
+          <li><strong>User principal name (UPN)</strong> &mdash; e.g., <code>jdoe@yourcompany.com</code></li>
+          <li><strong>Mail nickname</strong> &mdash; auto-fills from UPN</li>
+          <li><strong>Display name</strong> &mdash; full name (e.g., "John Doe")</li>
+          <li><strong>Password</strong> &mdash; auto-generated or custom; copy the temporary password</li>
+        </ul>
+      </li>
+      <li>(Optional) <strong>Properties</strong> tab &mdash; First/Last name, Job title, Department, Usage location.</li>
+      <li>(Optional) <strong>Assignments</strong> tab &mdash; add to groups at creation time.</li>
+      <li>Click <strong>Review + create</strong> &rarr; <strong>Create</strong>.</li>
+    </ol>
+    <h4>Bulk Creation</h4>
+    <ol>
+      <li><strong>Path:</strong> <code>Identity &gt; Users &gt; All users &gt; Bulk operations &gt; Bulk create</code></li>
+      <li>Click <strong>Download</strong> to get the <code>BulkCreateUsers.csv</code> template.</li>
+      <li>Do not modify Row 1 (<code>version:v1.0</code>) or Row 2 (column headers).</li>
+      <li>Required columns: <code>Name [displayName]</code>, <code>User principal name [userPrincipalName]</code>, <code>Initial password [passwordProfile]</code>, <code>Block sign in (Yes/No) [accountEnabled]</code>.</li>
+      <li>Save as CSV, upload, and click <strong>Submit</strong>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.3 &mdash; Create Security Groups</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Path:</strong> <code>Identity &gt; Groups &gt; All groups &gt; + New group</code></p>
+    <ol>
+      <li><strong>Group type:</strong> Select <strong>Security</strong> (not Microsoft 365).</li>
+      <li><strong>Group name:</strong> Descriptive name (e.g., <code>SG-Engineering</code>, <code>SG-VPN-Users</code>).</li>
+      <li><strong>Membership type:</strong>
+        <ul>
+          <li><strong>Assigned</strong> &mdash; manually add/remove members</li>
+          <li><strong>Dynamic User</strong> &mdash; automatic membership via attribute rules (requires Entra ID P1/P2)</li>
+        </ul>
+      </li>
+      <li>Add <strong>Owners</strong> and initial <strong>Members</strong>.</li>
+      <li>Click <strong>Create</strong>.</li>
+    </ol>
+    <table>
+      <thead><tr><th>Group Type</th><th>Purpose</th><th>CIE Relevance</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Security</strong></td><td>Access control, policies</td><td>Use this for CIE &mdash; syncs to firewall policy</td></tr>
+        <tr><td>Microsoft 365</td><td>Collaboration (Teams, SharePoint)</td><td>Not needed for CIE</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.4 &mdash; Register an Application</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Required only for the <strong>Client Credential Flow</strong> method (Phase 3A, Method 2). Skip if using the CIE Enterprise App method.</p>
+    <p><strong>Path:</strong> <code>Identity &gt; Applications &gt; App registrations &gt; + New registration</code></p>
+    <ol>
+      <li><strong>Name:</strong> e.g., <code>CIE-Directory-Sync</code></li>
+      <li><strong>Supported account types:</strong> Select <strong>"Accounts in this organizational directory only"</strong> (single tenant).</li>
+      <li><strong>Redirect URI:</strong> Leave blank (CIE uses client credentials, no redirect needed).</li>
+      <li>Click <strong>Register</strong>.</li>
+    </ol>
+    <p>After registration, you land on the app&rsquo;s <strong>Overview</strong> page. Note the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong> in the Essentials section &mdash; you will need both for CIE.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.5 &mdash; Grant API Permissions</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Path:</strong> From your app registration &rarr; <code>Manage &gt; API permissions &gt; + Add a permission &gt; Microsoft Graph</code></p>
+    <p><strong>Application permissions</strong> (select "Application permissions" tab):</p>
+    <table>
+      <thead><tr><th>Permission</th><th>Category</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>User.Read.All</code></td><td>User</td><td>Read all user profiles</td></tr>
+        <tr><td><code>GroupMember.Read.All</code></td><td>GroupMember</td><td>Read all group memberships</td></tr>
+        <tr><td><code>Device.Read.All</code></td><td>Device</td><td>Read all device information</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Delegated permissions</strong> (click "+ Add a permission" again &rarr; Microsoft Graph &rarr; "Delegated permissions"):</p>
+    <table>
+      <thead><tr><th>Permission</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>User.Read</code></td><td>Sign in and read user profile</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Optional permissions</strong> (add if you enable these features in CIE):</p>
+    <ul>
+      <li>User risk info: <code>IdentityRiskyUser.Read.All</code>, <code>IdentityRiskEvent.Read.All</code></li>
+      <li>Roles &amp; admins: <code>RoleManagement.Read.Directory</code></li>
+      <li>Enterprise apps: <code>Application.Read.All</code></li>
+    </ul>
+    <h4>Grant Admin Consent</h4>
+    <ol>
+      <li>After adding all permissions, click <strong>"Grant admin consent for [Your Tenant]"</strong> at the top of the permissions list.</li>
+      <li>Click <strong>Yes</strong> to confirm.</li>
+      <li>Verify each permission shows a green checkmark with <strong>"Granted for [Your Tenant]"</strong>.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">Without Admin Consent</div>
+      <p>Permissions show "Not granted" with an orange warning icon. CIE will receive <strong>403 Forbidden</strong> errors when syncing.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.6 &mdash; Create a Client Secret</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Path:</strong> From your app registration &rarr; <code>Manage &gt; Certificates &amp; secrets &gt; Client secrets &gt; + New client secret</code></p>
+    <ol>
+      <li>Enter a <strong>Description</strong> (e.g., "CIE Production Secret").</li>
+      <li>Select <strong>Expires</strong>: 6 months (default), 12 months, or 24 months (maximum via portal).</li>
+      <li>Click <strong>Add</strong>.</li>
+      <li><strong>Immediately copy the Value column.</strong></li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">Copy the Value, Not the Secret ID</div>
+      <p>The <strong>Value</strong> is the actual secret string for CIE. The "Secret ID" is just an identifier. After you navigate away, the Value is permanently masked and cannot be recovered. If lost, delete the secret and create a new one.</p>
+    </div>
+    <h4>Secret Rotation</h4>
+    <p>Set a calendar reminder to rotate before expiration. To rotate with zero downtime:</p>
+    <ol>
+      <li>Create a <strong>new</strong> secret before the old one expires.</li>
+      <li>Update CIE: <strong>Directories</strong> &rarr; select directory &rarr; <strong>Actions</strong> &rarr; <strong>Update Credentials</strong>.</li>
+      <li>After confirming sync works with the new secret, delete the old one from Entra ID.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.7 &mdash; Find Your IDs</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Value</th><th>Where to Find</th><th>CIE Field</th></tr></thead>
+      <tbody>
+        <tr><td>Directory (tenant) ID</td><td>App registration &rarr; Overview &rarr; Essentials<br>or <code>entra.microsoft.com &gt; Overview</code></td><td>Directory ID</td></tr>
+        <tr><td>Application (client) ID</td><td>App registration &rarr; Overview &rarr; Essentials</td><td>Client ID</td></tr>
+        <tr><td>Client secret Value</td><td>App registration &rarr; Certificates &amp; secrets</td><td>Client Secret</td></tr>
+      </tbody>
+    </table>
+    <p>All IDs are GUIDs in the format <code>12345678-abcd-1234-abcd-1234567890ab</code>.</p>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  APPENDIX B: OKTA SETUP                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="appendix-okta">Appendix B: Okta Setup</h2>
+
+<p>End-to-end walkthrough for preparing your Okta org before connecting to CIE. Covers user and group creation, API Service Integration setup, and credential management.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>B.1 &mdash; Access the Okta Admin Console</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Purpose</th><th>URL Pattern</th></tr></thead>
+      <tbody>
+        <tr><td>Admin Console (direct)</td><td><code>https://&lt;subdomain&gt;-admin.okta.com</code></td></tr>
+        <tr><td>From User Dashboard</td><td>Log in at <code>https://&lt;subdomain&gt;.okta.com</code> &rarr; click <strong>Admin</strong> (top-right)</td></tr>
+        <tr><td>Preview / Sandbox</td><td><code>https://&lt;subdomain&gt;-admin.oktapreview.com</code></td></tr>
+      </tbody>
+    </table>
+    <p><strong>Required role:</strong> <strong>Super Admin</strong> is required for full CIE setup. Only Super Admins can grant Okta API Scopes (<code>okta.*</code> scopes) and see the "Okta API Scopes" tab.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">OIE vs Classic Engine</div>
+      <p>The API Service Integrations feature (preferred CIE method) requires <strong>Okta Identity Engine (OIE)</strong>. Classic Engine orgs must use the OIDC Auth Code Flow method instead. All new Okta orgs are provisioned on OIE.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>B.2 &mdash; Create Users</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Path:</strong> <code>Directory &gt; People &gt; Add person</code></p>
+    <ol>
+      <li>Click <strong>Add person</strong>.</li>
+      <li>Fill in required fields:
+        <ul>
+          <li><strong>First Name</strong> and <strong>Last Name</strong></li>
+          <li><strong>Username</strong> &mdash; must be email format (e.g., <code>user@company.com</code>)</li>
+          <li><strong>Primary Email</strong> &mdash; defaults to username</li>
+        </ul>
+      </li>
+      <li>(Optional) Assign to <strong>Groups</strong> at creation time.</li>
+      <li><strong>Password:</strong> "Set by user" (sends activation email) or "Set by admin" (enter temporary password).</li>
+      <li>Click <strong>Save</strong>.</li>
+    </ol>
+    <h4>Bulk Import (CSV)</h4>
+    <ol>
+      <li><strong>Path:</strong> <code>Directory &gt; People &gt; More Actions &gt; Import Users from CSV</code></li>
+      <li>Download the CSV template. Headers are case-sensitive: <code>login</code>, <code>firstName</code>, <code>lastName</code>, <code>email</code>.</li>
+      <li>Populate, save as UTF-8 CSV (max 10,000 rows per upload).</li>
+      <li>Upload and validate &mdash; Okta provides an error report for failures.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>B.3 &mdash; Create Groups</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Path:</strong> <code>Directory &gt; Groups &gt; Add group</code></p>
+    <ol>
+      <li>Click <strong>Add group</strong>.</li>
+      <li>Enter <strong>Name</strong> (must be unique) and optional <strong>Description</strong>.</li>
+      <li>Click <strong>Save</strong>.</li>
+    </ol>
+    <h4>Add Members</h4>
+    <ul>
+      <li><strong>From the group:</strong> Click group name &rarr; <strong>People</strong> tab &rarr; <strong>Assign people</strong> &rarr; search and assign.</li>
+      <li><strong>From the user:</strong> Click user name &rarr; <strong>Groups</strong> tab &rarr; search and add.</li>
+      <li><strong>Dynamic rules:</strong> <code>Directory &gt; Groups &gt; Rules tab &gt; Add Rule</code> &mdash; set conditions using attributes (e.g., <code>Department == "Sales"</code>).</li>
+    </ul>
+    <div class="callout callout-note">
+      <div class="callout-title">The "Everyone" Group</div>
+      <p>Every Okta user is automatically a member of the <strong>Everyone</strong> group. It cannot be renamed, deleted, or manually edited. CIE excludes it by design during sync.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>B.4 &mdash; Install API Service Integration (Preferred)</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Path:</strong> <code>Applications &gt; API Service Integrations &gt; Add Integration</code></p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Not the Regular App Catalog</div>
+      <p>Do not go to <code>Applications &gt; Applications &gt; Browse App Catalog</code>. API Service Integrations is a separate menu item for machine-to-machine OAuth 2.0 integrations.</p>
+    </div>
+    <ol>
+      <li>Click <strong>Add Integration</strong>.</li>
+      <li>Search for <strong>"Palo Alto Networks Cloud Identity Engine"</strong>.</li>
+      <li>Select the integration:
+        <ul>
+          <li><strong>Standard</strong> &mdash; syncs users and groups</li>
+          <li><strong>With Application Data</strong> &mdash; also syncs enterprise app assignments (for app-based policy)</li>
+        </ul>
+      </li>
+      <li>Click <strong>Next</strong>, review scopes, click <strong>Install &amp; Authorize</strong>.</li>
+      <li><strong>Copy the Client ID and Client Secret immediately</strong> &mdash; the secret is typically shown only once.</li>
+    </ol>
+    <p>API scopes are <strong>automatically configured</strong> during installation. No manual scope granting is needed.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>B.5 &mdash; OIDC App Setup (Auth Code Flow Alternative)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Use this method if API Service Integrations is unavailable (Classic Engine) or Auth Code Flow is specifically required.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">90-Day Re-Authentication</div>
+      <p>Auth Code Flow requires manual admin re-authentication every 90 days or sync stops. The API Service Integration method (above) avoids this entirely.</p>
+    </div>
+    <p><strong>Path:</strong> <code>Applications &gt; Applications &gt; Create App Integration</code></p>
+    <ol>
+      <li>Sign-in method: <strong>OIDC &mdash; OpenID Connect</strong>.</li>
+      <li>Application type: <strong>Web Application</strong>. Click <strong>Next</strong>.</li>
+      <li><strong>App integration name:</strong> e.g., "Palo Alto Networks CIE".</li>
+      <li><strong>Grant type:</strong> Check both <strong>Authorization Code</strong> and <strong>Refresh Token</strong>.</li>
+      <li><strong>Sign-in redirect URI:</strong> Use your CIE region&rsquo;s URL:</li>
+    </ol>
+    <table>
+      <thead><tr><th>CIE Region</th><th>Redirect URI</th></tr></thead>
+      <tbody>
+        <tr><td>Americas (US)</td><td><code>https://directory-sync.us.paloaltonetworks.com/authorize</code></td></tr>
+        <tr><td>Europe</td><td><code>https://directory-sync.eu.paloaltonetworks.com/authorize</code></td></tr>
+        <tr><td>UK</td><td><code>https://directory-sync.uk.paloaltonetworks.com/authorize</code></td></tr>
+        <tr><td>Singapore</td><td><code>https://directory-sync.sg.paloaltonetworks.com/authorize</code></td></tr>
+        <tr><td>Canada</td><td><code>https://directory-sync.ca.paloaltonetworks.com/authorize</code></td></tr>
+        <tr><td>Japan</td><td><code>https://directory-sync.jp.paloaltonetworks.com/authorize</code></td></tr>
+        <tr><td>Australia</td><td><code>https://directory-sync.au.paloaltonetworks.com/authorize</code></td></tr>
+      </tbody>
+    </table>
+    <ol start="6">
+      <li>After creation, edit <strong>General Settings</strong> &rarr; under Refresh Token, select <strong>"Use persistent token"</strong> &rarr; Save.</li>
+      <li>Go to <strong>Okta API Scopes</strong> tab and grant each required scope (see B.6).</li>
+      <li><strong>Assign the app</strong> to the admin user: <strong>Assignments</strong> tab &rarr; <strong>Assign</strong>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>B.6 &mdash; API Scopes</span>
+  </div>
+  <div class="collapsible-body">
+    <p>For API Service Integrations, scopes are auto-configured. For OIDC apps, grant each scope manually from the <strong>Okta API Scopes</strong> tab.</p>
+    <table>
+      <thead><tr><th>Scope</th><th>Purpose</th><th>Required</th></tr></thead>
+      <tbody>
+        <tr><td><code>okta.users.read</code></td><td>Read user profiles and attributes</td><td>Yes</td></tr>
+        <tr><td><code>okta.groups.read</code></td><td>Read group memberships</td><td>Yes</td></tr>
+        <tr><td><code>okta.logs.read</code></td><td>Read authentication logs</td><td>Yes</td></tr>
+        <tr><td><code>okta.apps.read</code></td><td>Read application assignments</td><td>Optional (for app data)</td></tr>
+        <tr><td><code>okta.authorizationServers.read</code></td><td>Read auth server configs</td><td>Optional</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>B.7 &mdash; Find Your Credentials</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Value</th><th>Where to Find</th><th>CIE Field</th></tr></thead>
+      <tbody>
+        <tr><td>Client ID</td><td>API Service Integration &rarr; General tab<br>or OIDC App &rarr; General &rarr; Client Credentials</td><td>Client ID</td></tr>
+        <tr><td>Client Secret</td><td>Shown once at creation; regenerate via <strong>Client Credentials &rarr; Generate new secret</strong></td><td>Client Secret</td></tr>
+        <tr><td>Okta Domain</td><td>Browser address bar, or <code>Settings &gt; Account</code></td><td>Domain</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Remove https://</div>
+      <p>When entering the Okta domain in CIE, enter only the domain (e.g., <code>yourcompany.okta.com</code>), not the full URL.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  APPENDIX C: GOOGLE WORKSPACE SETUP                           -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="appendix-google">Appendix C: Google Workspace Setup</h2>
+
+<p>End-to-end walkthrough for preparing your Google Workspace environment before connecting to CIE. Covers user and group creation, API controls, and finding your Customer ID.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>C.1 &mdash; Access the Google Admin Console</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>URL:</strong> <a href="https://admin.google.com">admin.google.com</a></p>
+    <p>Sign in with an account that has admin privileges. If the account lacks admin rights, the admin console will not load.</p>
+    <p><strong>Required role:</strong> <strong>Super Admin</strong> for initial CIE setup. Only Super Admins can manage API controls for third-party apps and grant domain-wide delegation.</p>
+    <table>
+      <thead><tr><th>Role</th><th>CIE Suitability</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Super Admin</strong></td><td>Required for initial setup (API controls, trust configuration)</td></tr>
+        <tr><td>Delegated Admin (custom)</td><td>Sufficient for ongoing ops after initial setup</td></tr>
+        <tr><td>Groups Admin / Help Desk Admin</td><td>Not sufficient for CIE</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>C.2 &mdash; Create Users</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Path:</strong> <code>Directory &gt; Users &gt; Add new user</code></p>
+    <ol>
+      <li>Click <strong>Add new user</strong>.</li>
+      <li>Fill in: <strong>First Name</strong>, <strong>Last Name</strong>, <strong>Primary Email</strong> (username@domain.com).</li>
+      <li>(Optional) Set a manual password (min 8 characters) or accept auto-generated.</li>
+      <li>(Optional) Assign to an <strong>Organizational Unit</strong>.</li>
+      <li>Click <strong>Add New User</strong>. Copy or email the credentials from the confirmation dialog.</li>
+    </ol>
+    <h4>Bulk Creation (CSV)</h4>
+    <ol>
+      <li><strong>Path:</strong> <code>Directory &gt; Users &gt; Bulk update users</code></li>
+      <li>Download Google&rsquo;s CSV template (custom headers will fail).</li>
+      <li>Required columns: <strong>First Name</strong>, <strong>Last Name</strong>, <strong>Email Address</strong> (full), <strong>Password</strong> (min 8 chars), <strong>Org Unit Path</strong> (<code>/</code> for top-level).</li>
+      <li>Save as CSV (max 150,000 users per file), upload, and monitor via the <strong>Tasks</strong> icon.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>C.3 &mdash; Create Groups</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Path:</strong> <code>Directory &gt; Groups &gt; Create group</code></p>
+    <ol>
+      <li>Enter <strong>Group name</strong>, <strong>Group email</strong>, and optional <strong>Description</strong>.</li>
+      <li>Select an <strong>Access preset</strong> (Public, Team, Announcement only, Restricted).</li>
+      <li>Click <strong>Create</strong>.</li>
+    </ol>
+    <h4>Add Members</h4>
+    <p>Click group name &rarr; <strong>Members</strong> &rarr; <strong>Add members</strong> icon &rarr; enter email addresses &rarr; select Role (Member, Manager, Owner) &rarr; <strong>Add to Group</strong>.</p>
+    <table>
+      <thead><tr><th>Group Type</th><th>Description</th><th>CIE Relevance</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Standard Group</strong></td><td>Email-based communication list</td><td>CIE syncs these as groups</td></tr>
+        <tr><td><strong>Security Group</strong></td><td>Protected from accidental external additions</td><td>CIE syncs; used for policy</td></tr>
+        <tr><td>Dynamic Group</td><td>Auto-managed by user attributes (Enterprise/Education Plus)</td><td>CIE syncs resulting membership</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>C.4 &mdash; Configure API Controls (Trust CIE)</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Path:</strong> <code>Security &gt; Access and data control &gt; API controls &gt; Manage Third-Party App Access</code></p>
+    <ol>
+      <li>Click <strong>Configure new app</strong>.</li>
+      <li>Select <strong>OAuth App Name Or Client ID</strong>.</li>
+      <li>Search for <strong>"Palo Alto Networks Cloud Identity Engine Directory Sync"</strong>.</li>
+      <li>Select the app &rarr; select the <strong>OAuth Client ID</strong> &rarr; click <strong>Select</strong>.</li>
+      <li>Under "Access to Google data", choose <strong>"Trusted: Can access all Google services"</strong>.</li>
+      <li>Click <strong>Configure</strong>.</li>
+    </ol>
+    <table>
+      <thead><tr><th>Trust Level</th><th>Behavior</th><th>CIE</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Trusted</strong></td><td>Full access to all Google services</td><td><strong>Required</strong></td></tr>
+        <tr><td>Limited</td><td>Only unrestricted services</td><td>Insufficient</td></tr>
+        <tr><td>Blocked</td><td>No access</td><td>CIE will not connect</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">App Not Found?</div>
+      <p>If CIE does not appear in search results, try searching by OAuth Client ID (available from the CIE directory setup flow) or a partial name like "Cloud Identity Engine".</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>C.5 &mdash; Find Your Customer ID</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Path:</strong> <code>Account &gt; Account settings &gt; Profile</code></p>
+    <ol>
+      <li>In the Google Admin console left nav, click <strong>Account</strong>.</li>
+      <li>Click <strong>Account settings</strong>.</li>
+      <li>Your <strong>Customer ID</strong> appears in the <strong>Profile</strong> section (format: <code>C0xxxxxxx</code>).</li>
+    </ol>
+    <p>This ID is unique to your Google Workspace domain, does not change, and is the value you enter in CIE during directory setup.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>C.6 &mdash; Edition Requirements</span>
+  </div>
+  <div class="collapsible-body">
+    <p>CIE directory sync requires a Google Workspace paid subscription.</p>
+    <p><strong>Supported:</strong></p>
+    <ul>
+      <li>Google Workspace Business Starter / Standard / Plus</li>
+      <li>Google Workspace Enterprise Starter / Standard / Plus</li>
+      <li>Google Workspace for Education (all tiers)</li>
+      <li>Google Workspace Frontline Starter / Standard</li>
+    </ul>
+    <p><strong>Not supported:</strong></p>
+    <ul>
+      <li>Personal Google accounts (<code>@gmail.com</code>)</li>
+      <li>Google Cloud Identity Free</li>
+      <li>Google accounts without Workspace</li>
+    </ul>
+    <div class="callout callout-note">
+      <div class="callout-title">Google Sync Differences</div>
+      <p>Google does not support incremental sync. CIE uses a configurable <strong>full-sync interval</strong> of 6, 12, or 24 hours.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  APPENDIX D: ON-PREMISES ACTIVE DIRECTORY SETUP               -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="appendix-ad">Appendix D: On-Premises Active Directory Setup</h2>
+
+<p>End-to-end walkthrough for preparing your on-premises Active Directory environment before installing the Cloud Identity Agent and connecting to CIE. Covers user and group creation, service accounts, LDAP connectivity, and network requirements.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>D.1 &mdash; Verify Active Directory Domain Services</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Cloud Identity Agent performs standard LDAP queries against domain controllers. AD DS must be running and accessible.</p>
+    <ol>
+      <li>Open <strong>Server Manager</strong> on a domain controller.</li>
+      <li>Click <strong>Tools</strong> &rarr; <strong>Active Directory Users and Computers</strong>. If it opens and shows your domain tree, AD DS is operational.</li>
+      <li>Alternatively, verify via PowerShell:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code># Check AD DS service status
+Get-Service -Name NTDS
+
+# Check domain functional level
+Get-ADDomain | Select-Object Name, DomainMode, DNSRoot
+
+# List all domain controllers
+Get-ADDomainController -Filter * | Select-Object Name, IPv4Address, Site</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>Domain functional level:</strong> Windows Server 2016 or higher is recommended. Any level that supports standard LDAP queries will work.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>D.2 &mdash; Create Users</span>
+  </div>
+  <div class="collapsible-body">
+    <h4>GUI (ADUC)</h4>
+    <ol>
+      <li>Open <strong>Server Manager</strong> &rarr; <strong>Tools</strong> &rarr; <strong>Active Directory Users and Computers</strong>.</li>
+      <li>Navigate to the target OU (e.g., <code>Corp &gt; Users</code>).</li>
+      <li>Right-click the OU &rarr; <strong>New</strong> &rarr; <strong>User</strong>.</li>
+      <li>Fill in: First Name, Last Name, User logon name (UPN format: <code>user@corp.example.com</code>).</li>
+      <li>Click <strong>Next</strong> &rarr; set password &rarr; configure options &rarr; <strong>Finish</strong>.</li>
+    </ol>
+    <h4>PowerShell</h4>
+    <div class="code-block">
+      <pre><code># Create a single user
+New-ADUser -Name "Jane Smith" `
+  -GivenName "Jane" -Surname "Smith" `
+  -SamAccountName "jsmith" `
+  -UserPrincipalName "jsmith@corp.example.com" `
+  -Path "OU=Users,OU=Corp,DC=corp,DC=example,DC=com" `
+  -AccountPassword (ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force) `
+  -Enabled $true
+
+# Bulk create from CSV
+Import-Csv "C:\users.csv" | ForEach-Object {
+    New-ADUser -Name "$($_.FirstName) $($_.LastName)" `
+      -SamAccountName $_.SamAccountName `
+      -UserPrincipalName "$($_.SamAccountName)@corp.example.com" `
+      -Path "OU=Users,OU=Corp,DC=corp,DC=example,DC=com" `
+      -AccountPassword (ConvertTo-SecureString $_.Password -AsPlainText -Force) `
+      -Enabled $true
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>Key attributes CIE reads:</strong> <code>sAMAccountName</code>, <code>userPrincipalName</code>, <code>mail</code>, <code>memberOf</code>, <code>department</code>, <code>title</code>, <code>displayName</code>.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>D.3 &mdash; Create Security Groups</span>
+  </div>
+  <div class="collapsible-body">
+    <h4>GUI (ADUC)</h4>
+    <ol>
+      <li>Right-click the target OU &rarr; <strong>New</strong> &rarr; <strong>Group</strong>.</li>
+      <li>Enter Group name (e.g., <code>CIE-VPN-Users</code>).</li>
+      <li>Set <strong>Group scope</strong> and <strong>Group type: Security</strong>.</li>
+      <li>Click <strong>OK</strong>. Open the group &rarr; <strong>Members</strong> tab &rarr; <strong>Add</strong> users.</li>
+    </ol>
+    <table>
+      <thead><tr><th>Scope</th><th>Members From</th><th>Best For</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Global</strong></td><td>Same domain only</td><td>Single-domain environments</td></tr>
+        <tr><td><strong>Universal</strong></td><td>Any domain in forest</td><td>Multi-domain forests, cross-domain CIE policies</td></tr>
+        <tr><td>Domain Local</td><td>Any domain + trusted</td><td>Assigning permissions in one domain</td></tr>
+      </tbody>
+    </table>
+    <h4>PowerShell</h4>
+    <div class="code-block">
+      <pre><code># Create a security group
+New-ADGroup -Name "CIE-VPN-Users" `
+  -GroupScope Global -GroupCategory Security `
+  -Path "OU=Groups,OU=Corp,DC=corp,DC=example,DC=com"
+
+# Add members
+Add-ADGroupMember -Identity "CIE-VPN-Users" -Members "jsmith","bwilson"
+
+# Verify
+Get-ADGroupMember -Identity "CIE-VPN-Users" | Select-Object Name</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>D.4 &mdash; Create the CIE Service Account</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Cloud Identity Agent uses this account to bind to AD and perform LDAP queries.</p>
+    <ol>
+      <li>Create a dedicated <strong>Service Accounts</strong> OU if one does not exist.</li>
+      <li>Create a user named <code>svc-cie-sync</code> (or similar <code>svc-</code> prefix).</li>
+      <li>Set a strong password (20+ characters recommended).</li>
+      <li>Check <strong>"Password never expires"</strong> &mdash; the agent stores the password in the Windows credential store.</li>
+      <li>Uncheck "User must change password at next logon".</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>New-ADUser -Name "svc-cie-sync" `
+  -SamAccountName "svc-cie-sync" `
+  -UserPrincipalName "svc-cie-sync@corp.example.com" `
+  -Path "OU=Service Accounts,DC=corp,DC=example,DC=com" `
+  -AccountPassword (ConvertTo-SecureString "YourStr0ngP@ssword!" -AsPlainText -Force) `
+  -Enabled $true -PasswordNeverExpires $true `
+  -Description "CIE Cloud Identity Agent - LDAP read access"
+
+# Get the Distinguished Name (needed for agent Bind DN)
+Get-ADUser -Identity "svc-cie-sync" | Select-Object DistinguishedName</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>Required permissions:</strong> Membership in <strong>Domain Users</strong> is typically sufficient &mdash; AD grants read access to directory objects by default. The account does <strong>not</strong> need Domain Admins, Enterprise Admins, or replication permissions.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Hardened Environments</div>
+      <p>If default read access has been restricted, delegate explicit read permissions: right-click domain root in ADUC &rarr; <strong>Delegate Control</strong> &rarr; add <code>svc-cie-sync</code> &rarr; grant <strong>Read All Properties</strong> on User, Group, and Computer objects.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>D.5 &mdash; Test LDAP Connectivity</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Protocol</th><th>Port</th><th>Use Case</th></tr></thead>
+      <tbody>
+        <tr><td>LDAP</td><td>389</td><td>Default, unencrypted</td></tr>
+        <tr><td>LDAPS</td><td>636</td><td>SSL-encrypted (recommended)</td></tr>
+        <tr><td>Global Catalog</td><td>3268/3269</td><td><strong>DO NOT USE</strong> &mdash; PAN explicitly prohibits this</td></tr>
+      </tbody>
+    </table>
+    <h4>Test with ldp.exe</h4>
+    <ol>
+      <li>Open <code>ldp.exe</code> (Start &rarr; Run &rarr; <code>ldp.exe</code>).</li>
+      <li><strong>Connection</strong> &rarr; <strong>Connect</strong>: Server = DC hostname, Port = 389 (or 636 with SSL checked).</li>
+      <li><strong>Connection</strong> &rarr; <strong>Bind</strong>: enter the service account DN and password.</li>
+      <li><strong>Browse</strong> &rarr; <strong>Search</strong>: Base DN = <code>DC=corp,DC=example,DC=com</code>, Filter = <code>(objectClass=user)</code>, Scope = Subtree.</li>
+    </ol>
+    <h4>Test with PowerShell</h4>
+    <div class="code-block">
+      <pre><code># Test LDAP port
+Test-NetConnection -ComputerName dc01.corp.example.com -Port 389
+
+# Test LDAPS port
+Test-NetConnection -ComputerName dc01.corp.example.com -Port 636
+
+# Verify service account can query users
+$cred = Get-Credential -UserName "svc-cie-sync@corp.example.com"
+Get-ADUser -Filter * -Credential $cred -ResultSetSize 5 | Select-Object Name, UserPrincipalName</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>LDAPS certificate requirements:</strong> Each DC needs a server certificate with the DC&rsquo;s FQDN. The CA certificate must be installed in the agent host&rsquo;s Trusted Root CA store.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>D.6 &mdash; Network Requirements</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Three traffic flows must be open for the Cloud Identity Agent:</p>
+    <h4>Flow 1: Agent &rarr; CIE Cloud (outbound)</h4>
+    <table>
+      <thead><tr><th>Destination</th><th>Port</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Regional CIE endpoint (see below)</td><td>443</td><td>Agent-to-CIE data sync, mutual TLS</td></tr>
+        <tr><td><code>crl.godaddy.com</code></td><td>80</td><td>Certificate revocation list</td></tr>
+        <tr><td><code>ocsp.godaddy.com</code></td><td>80</td><td>OCSP certificate verification</td></tr>
+        <tr><td><code>certs.godaddy.com</code></td><td>443</td><td>Certificate download</td></tr>
+      </tbody>
+    </table>
+    <h4>Regional CIE Endpoints</h4>
+    <table>
+      <thead><tr><th>Region</th><th>Endpoint</th></tr></thead>
+      <tbody>
+        <tr><td>US</td><td><code>agent-directory-sync.us.paloaltonetworks.com</code></td></tr>
+        <tr><td>EU</td><td><code>agent-directory-sync.eu.paloaltonetworks.com</code></td></tr>
+        <tr><td>UK</td><td><code>agent-directory-sync.uk.paloaltonetworks.com</code></td></tr>
+        <tr><td>Singapore</td><td><code>agent-directory-sync.sg.paloaltonetworks.com</code></td></tr>
+      </tbody>
+    </table>
+    <h4>Flow 2: Agent &rarr; Domain Controllers (internal)</h4>
+    <table>
+      <thead><tr><th>Destination</th><th>Port</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Domain controllers</td><td>389</td><td>LDAP queries</td></tr>
+        <tr><td>Domain controllers</td><td>636</td><td>LDAPS queries</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-danger">
+      <div class="callout-title">SSL Decryption Exclusion Required</div>
+      <p>The agent uses mutual certificate authentication with CIE. If a PAN firewall performs SSL decryption in the path, you <strong>must</strong> create a decryption exclusion for agent-to-CIE traffic. Decryption breaks the mutual TLS handshake.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>D.7 &mdash; Multi-Domain and Multi-Forest</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li><strong>Single forest, multiple domains:</strong> A single agent can communicate with up to <strong>20 domains</strong>. Configure all relevant domains on the agent for cross-domain group membership resolution.</li>
+      <li><strong>Multiple forests:</strong> Deploy a <strong>separate agent per forest</strong>. Each uses its own service account. All agents can report to the same CIE tenant.</li>
+      <li><strong>Agent redundancy:</strong> Deploy <strong>multiple agents</strong> per domain. CIE automatically handles failover and deduplicates data.</li>
+      <li><strong>Agent placement:</strong> Place the agent server near its domain controllers for low-latency LDAP queries. If DCs span multiple sites, deploy separate agents per site.</li>
+    </ul>
+    <div class="code-block">
+      <pre><code># Identify all domains in your forest
+Get-ADForest | Select-Object -ExpandProperty Domains
+
+# Check trust relationships
+Get-ADTrust -Filter * | Select-Object Name, Direction, TrustType</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>D.8 &mdash; Agent Host Requirements</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Component</th><th>Requirement</th></tr></thead>
+      <tbody>
+        <tr><td>Operating System</td><td>Windows Server 2016, 2019, 2022, or 2025</td></tr>
+        <tr><td>Runtime</td><td>.NET Framework 4.7.2 or later (4.8 recommended)</td></tr>
+        <tr><td>TLS</td><td>TLS 1.2 enabled (TLS 1.3 recommended)</td></tr>
+        <tr><td>Memory</td><td>8 GB or more</td></tr>
+        <tr><td>Disk</td><td>10 GB minimum</td></tr>
+        <tr><td>CPU</td><td>2-core minimum, 4-core recommended</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Co-location Restrictions</div>
+      <p>Do <strong>not</strong> install on the same server as a User-ID Agent (port conflict) or Terminal Server Agent (unless you change the TS Agent's default listening port).</p>
+    </div>
+    <p><strong>Installation details:</strong></p>
+    <ul>
+      <li>Installer: <code>DaInstall.msi</code> (download from CIE &rarr; Directories &rarr; Add Directory &rarr; On-Premises)</li>
+      <li>Install path: <code>C:\Program Files (x86)\Palo Alto Networks\Cloud Identity Agent\</code></li>
+      <li>Runs as Windows service: <strong>"Cloud Identity Agent"</strong></li>
+      <li>Logs: <code>C:\ProgramData\Palo Alto Networks\Cloud Identity Agent\logs\</code></li>
+    </ul>
+    <div class="code-block">
+      <pre><code># Verify .NET Framework version (461808 = 4.7.2, 528040 = 4.8)
+(Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full").Release
+
+# Verify TLS 1.2 is enabled
+Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client" -ErrorAction SilentlyContinue
+
+# Test outbound to CIE
+Test-NetConnection -ComputerName agent-directory-sync.us.paloaltonetworks.com -Port 443</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
   </div>
 </div>
 
