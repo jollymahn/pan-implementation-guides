@@ -1,0 +1,1567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Cloud Identity Engine Implementation | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <div class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">Cloud Identity Engine</span>
+  </div>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="cie-implementation.html" class="active">CIE</a>
+  </nav>
+</header>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<div class="sidebar-backdrop"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#overview" data-section="overview">Architecture</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Phase 1</div>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Phase 2</div>
+    <a href="#activate-cie" data-section="activate-cie">Activate CIE</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Phase 3 &mdash; Directory</div>
+    <a href="#directory-setup" data-section="directory-setup">Choose Directory Type</a>
+    <a href="#dir-entra" data-section="dir-entra">3A Entra ID</a>
+    <a href="#dir-okta" data-section="dir-okta">3B Okta</a>
+    <a href="#dir-google" data-section="dir-google">3C Google</a>
+    <a href="#dir-onprem" data-section="dir-onprem">3D On-Prem AD</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Phase 4 &mdash; Auth</div>
+    <a href="#authentication" data-section="authentication">SAML 2.0 Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Phase 5</div>
+    <a href="#enforcement" data-section="enforcement">Enforcement Points</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Phase 6</div>
+    <a href="#security-policy" data-section="security-policy">Security Policy</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Phase 7</div>
+    <a href="#mfa" data-section="mfa">MFA Integration</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Phase 8</div>
+    <a href="#validation" data-section="validation">Validation</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#reference" data-section="reference">Ports &amp; Sync</a>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  Cloud Identity Engine
+</div>
+
+<div class="article">
+
+<h1>Cloud Identity Engine Implementation</h1>
+<p class="subtitle">End-to-end guide: from CIE activation through directory integration, SAML authentication, and identity-based security policy</p>
+
+<div class="cloud-links">
+  <a href="../aws/vm-series-deployment.html">AWS VM-Series</a>
+  <a href="../azure/vm-series-deployment.html">Azure VM-Series</a>
+  <a href="../gcp/index.html">GCP VM-Series</a>
+</div>
+
+<!-- ── Phase Progress ────────────────────────────────────────── -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#activate-cie" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Activate
+  </a>
+  <a href="#directory-setup" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Directory
+  </a>
+  <a href="#authentication" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Auth (SAML)
+  </a>
+  <a href="#enforcement" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Enforcement
+  </a>
+  <a href="#security-policy" class="progress-phase">
+    <span class="progress-phase-label">Phase 6</span>
+    Policy
+  </a>
+  <a href="#mfa" class="progress-phase">
+    <span class="progress-phase-label">Phase 7</span>
+    MFA
+  </a>
+  <a href="#validation" class="progress-phase">
+    <span class="progress-phase-label">Phase 8</span>
+    Validate
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>The Cloud Identity Engine (CIE) is Palo Alto Networks' cloud-native identity service. It replaces per-firewall IdP connections with a single, centralized identity hub &mdash; firewalls connect to CIE once, and CIE handles all directory and authentication communication.</p>
+  <p><strong>CIE is free.</strong> No auth code or standalone subscription needed. Enforcement points (NGFWs, Panorama, Prisma Access) require their own licenses, but CIE itself has no licensing cost.</p>
+  <p>This guide covers <strong>four directory types</strong> (Entra ID, Okta, Google, on-prem AD) and <strong>both management planes</strong> (Panorama and SCM). Pick your path at each branching point &mdash; you only need to follow the sections that match your environment.</p>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  OVERVIEW                                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="overview">Architecture Overview</h2>
+
+<p>CIE sits between your identity providers and your enforcement points. Instead of configuring each firewall to connect directly to each IdP, every firewall connects to CIE once. CIE aggregates and normalizes identity data from all sources and presents a unified view.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>How CIE Fits Into the Stack</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Identity Sources</strong> (left side) feed into CIE:</p>
+    <ul>
+      <li><strong>Cloud directories</strong> &mdash; Microsoft Entra ID, Okta, Google Workspace (API-based sync)</li>
+      <li><strong>On-premises AD / OpenLDAP</strong> &mdash; via the Cloud Identity Agent installed on a Windows server near your domain controllers</li>
+      <li><strong>CIE Directory</strong> &mdash; built-in cloud directory for testing or small user sets (max 200 users)</li>
+    </ul>
+    <p><strong>CIE</strong> (center) provides:</p>
+    <ul>
+      <li>User and group synchronization from all directories</li>
+      <li>SAML 2.0 and OIDC authentication brokering</li>
+      <li>Cloud Dynamic User Groups (attribute-based membership)</li>
+      <li>Identity redistribution (IP-to-user, user tags, quarantine lists)</li>
+    </ul>
+    <p><strong>Enforcement Points</strong> (right side) consume CIE data:</p>
+    <ul>
+      <li>PA-Series and VM-Series NGFWs (PAN-OS 10.1+)</li>
+      <li>Panorama (PAN-OS 10.1+)</li>
+      <li>Prisma Access (any version with Panorama plugin)</li>
+      <li>Strata Cloud Manager</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Supported Authentication Methods</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Method</th><th>Supported IdPs</th><th>Supported Clients</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>SAML 2.0</td><td>Entra ID, Okta, Google, PingOne, PingFederate, CyberArk</td><td>GlobalProtect, Captive Portal, Prisma Access</td></tr>
+        <tr><td>OIDC</td><td>Entra ID, Okta, Google, PingOne</td><td>Prisma Access Browser only</td></tr>
+        <tr><td>Client Certificate</td><td>Any CA</td><td>GlobalProtect, Captive Portal</td></tr>
+        <tr><td>Password</td><td>CIE Directory (built-in)</td><td>Captive Portal</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">OIDC Limitation</div>
+      <p>OIDC authentication is currently supported <strong>only for Prisma Access Browser</strong>. It does not support GlobalProtect or Authentication Portal. For GlobalProtect deployments, use SAML 2.0.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<p>Complete all prerequisites before activating CIE. These steps ensure your environment is ready for directory sync and authentication.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 &mdash; Verify Platform Requirements</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Component</th><th>Minimum Version</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>PA-Series / VM-Series</td><td>PAN-OS 10.1</td><td>Required for User-ID with CIE</td></tr>
+        <tr><td>Panorama</td><td>PAN-OS 10.1</td><td>Required for CIE integration</td></tr>
+        <tr><td>CyberArk IdP</td><td>PAN-OS 11.2</td><td>Stricter requirement than other IdPs</td></tr>
+        <tr><td>Strata Cloud Manager</td><td>N/A</td><td>Requires Prisma Access, AIOps Premium, or SCM Essentials/Pro license</td></tr>
+        <tr><td>Prisma Access</td><td>Any with Panorama plugin</td><td>SCM-managed or Panorama-managed</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Verify:</strong> Confirm your enforcement points meet the version requirements before proceeding.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 &mdash; Assign Admin Roles in PAN Hub</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Log in to the <strong>Palo Alto Networks Hub</strong> (Common Services).</li>
+      <li>Navigate to <strong>Identity &amp; Access</strong> &rarr; <strong>Access Management</strong>.</li>
+      <li>Assign the following roles to administrators who will manage CIE:
+        <ul>
+          <li><strong>App Administrator</strong> &mdash; required for tenant operations (create, delete, sync)</li>
+          <li><strong>Directory Administrator</strong> &mdash; manage directory connections and secrets</li>
+          <li><strong>Authentication Administrator</strong> &mdash; configure SAML/OIDC profiles</li>
+        </ul>
+      </li>
+    </ol>
+    <p><strong>Verify:</strong> Each admin can log in to the CIE app in Strata Cloud Manager and see the Directories and Authentication tabs.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.3 &mdash; Select Deployment Region</span>
+  </div>
+  <div class="collapsible-body">
+    <p>CIE is deployed to a specific region. This choice is <strong>permanent</strong> for the tenant and affects:</p>
+    <ul>
+      <li><strong>Data residency</strong> &mdash; user and group data is stored in the selected region</li>
+      <li><strong>Latency</strong> &mdash; enforcement points communicate with the regional CIE endpoint</li>
+      <li><strong>Prisma Access alignment</strong> &mdash; if using Prisma Access, select the same region to minimize latency</li>
+    </ul>
+    <div class="callout callout-warning">
+      <div class="callout-title">Region Cannot Be Changed</div>
+      <p>Once activated, the CIE tenant region cannot be migrated. Choose carefully based on your compliance requirements and where your enforcement points are deployed.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.4 &mdash; Configure Network Access</span>
+  </div>
+  <div class="collapsible-body">
+    <p>CIE requires specific network paths to be open. If a Palo Alto Networks firewall sits between the Cloud Identity Agent and the CIE cloud service, configure the following:</p>
+
+    <h4>Required Outbound Access</h4>
+    <table>
+      <thead>
+        <tr><th>Destination</th><th>Port</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Region-specific CIE endpoint</td><td>443 (HTTPS)</td><td>Agent &harr; CIE cloud communication</td></tr>
+        <tr><td><code>crl.godaddy.com</code></td><td>80 (HTTP)</td><td>Certificate revocation list</td></tr>
+        <tr><td><code>ocsp.godaddy.com</code></td><td>80 (HTTP)</td><td>OCSP certificate validation</td></tr>
+        <tr><td><code>certs.godaddy.com</code></td><td>443 (HTTPS)</td><td>Certificate download</td></tr>
+      </tbody>
+    </table>
+
+    <h4>PAN Firewall App-IDs</h4>
+    <table>
+      <thead>
+        <tr><th>App-ID</th><th>Usage</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>paloalto-cloud-identity</code></td><td>Agent-to-CIE traffic (requires <code>ssl</code> and <code>web-browsing</code>)</td></tr>
+        <tr><td><code>ssl</code></td><td>LDAPS connections; SSL decryption bypass</td></tr>
+        <tr><td><code>web-browsing</code></td><td>Required alongside <code>paloalto-cloud-identity</code></td></tr>
+        <tr><td><code>ldap</code></td><td>Agent-to-AD traffic (on-prem only)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">SSL Decryption Exclusion Required</div>
+      <p>If SSL decryption is enabled on firewalls between the Cloud Identity Agent and CIE, you <strong>must exclude</strong> this traffic from decryption. CIE uses mutual certificate authentication &mdash; decryption breaks the TLS handshake and the agent cannot connect.</p>
+    </div>
+
+    <h4>On-Premises AD Ports</h4>
+    <table>
+      <thead>
+        <tr><th>Protocol</th><th>Port</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>LDAP</td><td>389</td><td>Default for agent-to-DC queries</td></tr>
+        <tr><td>LDAPS</td><td>636</td><td>Encrypted LDAP</td></tr>
+        <tr><td colspan="3"><strong>DO NOT</strong> use Global Catalog ports 3268 / 3269</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Proxy Support</div>
+      <p>Cloud Identity Agent versions <strong>1.7.0 and earlier</strong> do not support proxy servers &mdash; the agent must have direct reachability to the regional endpoint. Version <strong>1.7.1+</strong> adds proxy support.</p>
+    </div>
+
+    <p><strong>Verify:</strong> From the machine that will run the Cloud Identity Agent (or from cloud directory API sources), confirm you can reach the CIE endpoint on port 443 and the GoDaddy URLs on ports 80/443.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.5 &mdash; Prepare Directory Domains</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Prepare your identity source before connecting to CIE:</p>
+
+    <h4>On-Premises Active Directory</h4>
+    <ul>
+      <li>Create a <strong>service account</strong> with LDAP read/query permissions against all target domains</li>
+      <li>Plan Cloud Identity Agent placement &mdash; install on a Windows server <strong>physically near</strong> the domain controllers</li>
+      <li>For redundancy: configure multiple agents per domain, multiple DCs per agent</li>
+      <li>For cross-domain group membership: configure all relevant domains on the agent(s)</li>
+    </ul>
+
+    <h4>Microsoft Entra ID</h4>
+    <ul>
+      <li>Identify a <strong>Global Administrator</strong> (or someone with that role) for the CIE Enterprise App consent flow</li>
+      <li>Verify there are <strong>no circular group references</strong> (Group A member of Group B and vice versa) &mdash; CIE cannot accurately compute membership with circular references</li>
+    </ul>
+
+    <h4>Okta</h4>
+    <ul>
+      <li>Identify an <strong>Okta admin</strong> who can install Okta Integration Network apps and grant API scopes</li>
+      <li>You must create a <strong>separate OIDC app</strong> for CIE directory sync, even if Okta is already configured as a SAML IdP &mdash; reusing the SAML gallery app causes sync failures</li>
+    </ul>
+
+    <h4>Google Workspace</h4>
+    <ul>
+      <li>Identify a <strong>Google Admin</strong> with privileges for: Organizational Units, Users, Groups, Device Management, and Domain Settings</li>
+      <li>Get your <strong>Customer ID</strong> from Google Admin &rarr; Account &rarr; Account Settings</li>
+    </ul>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: ACTIVATE CIE                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="activate-cie">Phase 2: Activate CIE</h2>
+
+<p>Activation is done in the Palo Alto Networks Hub Activation Console. No auth code is needed &mdash; CIE is free. This step creates your CIE tenant.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.1 &mdash; Activate (Single CSP Account)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Follow this path if you have <strong>one</strong> Customer Support Portal account.</p>
+    <ol>
+      <li>Log in to the <strong>Palo Alto Networks Hub</strong>.</li>
+      <li>Navigate to the <strong>Activation Console</strong> and select <strong>Activate</strong>.</li>
+      <li>Your <strong>Customer Support Account</strong> is auto-populated (since there is only one).</li>
+      <li><strong>Allocate the product</strong> to a Recipient &mdash; the name defaults to your CSP account. Rename if desired.</li>
+      <li><strong>Select your deployment region</strong> (see Phase 1.3).</li>
+      <li><strong>Agree to terms and conditions</strong>, then click <strong>Activate</strong>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Result</div>
+      <p>A default tenant is auto-created with the <strong>Superuser</strong> role. You can immediately proceed to directory configuration.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.2 &mdash; Activate (Multiple CSP Accounts)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Follow this path if you have <strong>multiple</strong> Customer Support Portal accounts (MSSPs, distributed enterprises).</p>
+    <ol>
+      <li>Log in to the <strong>Palo Alto Networks Hub</strong>.</li>
+      <li>Navigate to the <strong>Activation Console</strong> and select <strong>Activate</strong>.</li>
+      <li><strong>Choose the CSP account</strong> from the dropdown.</li>
+      <li><strong>Allocate the product to a Recipient:</strong>
+        <ul>
+          <li>Allocate the entire license to one recipient, <strong>or</strong></li>
+          <li>Click <strong>Allocate to subtenant</strong> to create a tenant hierarchy (for MSSPs)</li>
+        </ul>
+      </li>
+      <li><strong>Select your deployment region.</strong></li>
+      <li><strong>Agree to terms and conditions</strong>, then click <strong>Activate</strong>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Tenant Hierarchy</div>
+      <p>You can build out the full tenant hierarchy after activation through tenant management. License sharing across tenants is also configured post-activation.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.3 &mdash; Verify Activation</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>From the PAN Hub, navigate to <strong>Strata Cloud Manager</strong>.</li>
+      <li>Open the <strong>Cloud Identity Engine</strong> app.</li>
+      <li>Verify you see the <strong>Directories</strong> and <strong>Authentication</strong> tabs.</li>
+      <li>Confirm your tenant name and region appear correctly.</li>
+    </ol>
+    <p><strong>Verify:</strong> You should see an empty Directories page ready for directory configuration.</p>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: DIRECTORY SETUP                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="directory-setup">Phase 3: Directory Setup</h2>
+
+<p>Connect CIE to your identity source. Pick the section that matches your directory type. Most deployments use one or two &mdash; you can configure multiple directory types on the same CIE tenant.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Pick Your Path</div>
+  <p>Follow <strong>3A</strong> for Microsoft Entra ID, <strong>3B</strong> for Okta, <strong>3C</strong> for Google Workspace, or <strong>3D</strong> for on-premises Active Directory. You can configure more than one.</p>
+</div>
+
+<!-- ── 3A: Entra ID ──────────────────────────────────────────── -->
+
+<h3 id="dir-entra">3A &mdash; Microsoft Entra ID (Azure AD)</h3>
+
+<p>Two connection methods are available. The <strong>CIE Enterprise App</strong> is simpler; the <strong>Client Credential Flow</strong> uses a service account and avoids tying the connection to a specific admin user.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Method 1: CIE Enterprise App (Recommended)</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li><strong>Get your Directory (Tenant) ID</strong>
+        <ul>
+          <li>Log in to the <a href="https://entra.microsoft.com/">Microsoft Entra admin center</a> or Azure Portal.</li>
+          <li>Select <strong>Overview</strong> and copy the <strong>Directory (tenant) ID</strong>.</li>
+        </ul>
+      </li>
+      <li><strong>Start directory setup in CIE</strong>
+        <ul>
+          <li>CIE app &rarr; <strong>Directories</strong> &rarr; <strong>Add New Directory</strong> &rarr; <strong>Set Up an Entra ID Cloud Directory</strong>.</li>
+        </ul>
+      </li>
+      <li><strong>(Optional) Select additional data to collect:</strong>
+        <ul>
+          <li>User risk information (requires <code>IdentityRiskyUser.Read.All</code>, <code>IdentityRiskEvent.Read.All</code>)</li>
+          <li>Roles and Administrators (requires <code>Directory.Read.All</code> or <code>RoleManagement.Read.Directory</code>)</li>
+          <li>Enterprise applications (requires <code>Application.Read.All</code>)</li>
+          <li>Device information (requires <code>Device.Read.All</code>)</li>
+        </ul>
+      </li>
+      <li><strong>Enter your Directory ID</strong> and click <strong>Generate URL</strong>.
+        <ul>
+          <li>If you are a Global Admin: open the URL in a new tab to register instantly.</li>
+          <li>If not: share the URL with a Global Admin to complete offline.</li>
+        </ul>
+      </li>
+      <li><strong>Authenticate and consent</strong> &mdash; sign in with Global Admin credentials and accept the permission prompt.</li>
+      <li><strong>Test Connection</strong> &mdash; confirm CIE can reach your Entra ID tenant.</li>
+      <li><strong>(Optional)</strong> Customize the directory name (max 15 chars, lowercase alphanumeric + <code>.</code> <code>-</code> <code>_</code>).</li>
+      <li><strong>(Optional) Filter groups</strong> &mdash; CSV upload or manual filter rules (by group name or UUID).</li>
+      <li>Click <strong>Submit</strong>.</li>
+    </ol>
+
+    <p>Permissions automatically granted after consent:</p>
+    <ul>
+      <li><code>Device.Read.All</code> &mdash; Read all devices</li>
+      <li><code>Group.Read.All</code> &mdash; Read all groups</li>
+      <li><code>User.Read.All</code> &mdash; Read all users' full profiles</li>
+      <li><code>User.Read</code> &mdash; Delegated sign-in</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Method 2: Client Credential Flow</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li><strong>Register an app in Azure Portal</strong>
+        <ul>
+          <li>Azure Portal &rarr; Azure Active Directory &rarr; <strong>App Registrations</strong> &rarr; <strong>New registration</strong>.</li>
+          <li>Enter a name (e.g., "CIE Directory Sync"), click <strong>Register</strong>.</li>
+        </ul>
+      </li>
+      <li><strong>Grant API permissions</strong>
+        <ul>
+          <li><strong>API permissions</strong> &rarr; <strong>Add a permission</strong> &rarr; <strong>Microsoft Graph</strong> &rarr; <strong>Application permissions</strong>.</li>
+          <li>Add: <code>Device.Read.All</code>, <code>GroupMember.Read.All</code>, <code>User.Read.All</code>.</li>
+          <li>Add delegated: <code>User.Read</code>.</li>
+          <li>Click <strong>Grant admin consent for [Directory]</strong> &rarr; <strong>Yes</strong>.</li>
+        </ul>
+      </li>
+      <li><strong>Create a client secret</strong>
+        <ul>
+          <li><strong>Certificates &amp; secrets</strong> &rarr; <strong>New client secret</strong>.</li>
+          <li>Set expiration (max 2 years).</li>
+        </ul>
+        <div class="callout callout-danger">
+          <div class="callout-title">Copy Secret Immediately</div>
+          <p>The client secret value is <strong>only shown once</strong>. Copy it now &mdash; you cannot retrieve it later.</p>
+        </div>
+      </li>
+      <li><strong>Copy from Azure Portal:</strong> Application (client) ID and Directory (tenant) ID.</li>
+      <li><strong>Configure in CIE</strong>
+        <ul>
+          <li>Directories &rarr; <strong>Add New Directory</strong> &rarr; <strong>Set Up Azure directory</strong>.</li>
+          <li>Enter Directory ID, Client ID, and Client Secret.</li>
+          <li>(Optional) Select additional data collection checkboxes.</li>
+        </ul>
+      </li>
+      <li><strong>Test Connection</strong> &rarr; (Optional) Customize Directory Name.</li>
+      <li>Click <strong>Submit</strong>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Verify Entra ID Sync</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to CIE &rarr; <strong>Directories</strong>.</li>
+      <li>Verify <strong>Sync Status</strong> shows <strong>"Success"</strong>.</li>
+      <li>Click on the directory to confirm users and groups are populated.</li>
+      <li>Incremental sync runs every <strong>5 minutes</strong> (filtered) or <strong>40 minutes</strong> (SCIM).</li>
+    </ol>
+  </div>
+</div>
+
+
+<!-- ── 3B: Okta ──────────────────────────────────────────────── -->
+
+<h3 id="dir-okta">3B &mdash; Okta</h3>
+
+<p>Two connection methods. <strong>Client Credential Flow</strong> is recommended &mdash; it uses a service account and doesn't require periodic reconnection.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Method 1: Client Credential Flow (Recommended)</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li><strong>Install from Okta Integration Network</strong>
+        <ul>
+          <li>Okta Admin Portal &rarr; <strong>Applications</strong> &rarr; <strong>API Service Integrations</strong> &rarr; <strong>Add Integration</strong>.</li>
+          <li>Search for <strong>"Palo Alto Networks Cloud Identity Engine"</strong>.</li>
+          <li>Select the variant:
+            <ul>
+              <li><strong>Application-enabled</strong> &mdash; if you use app data in security policy</li>
+              <li><strong>Standard</strong> &mdash; if you don't need app data</li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li><strong>Install &amp; Authorize</strong> the integration. Required API scopes are auto-configured.</li>
+      <li><strong>Copy the client secret</strong> (shown only once!).</li>
+      <li><strong>Copy your Okta Domain and Client ID.</strong>
+        <div class="callout callout-warning">
+          <div class="callout-title">Remove https://</div>
+          <p>When entering the Okta domain in CIE, remove the <code>https://</code> prefix. Enter only the domain (e.g., <code>mycompany.okta.com</code>).</p>
+        </div>
+      </li>
+      <li><strong>Configure in CIE</strong>
+        <ul>
+          <li>Directories &rarr; <strong>Add Directory</strong> &rarr; <strong>Cloud Directory</strong> &rarr; <strong>Okta</strong>.</li>
+          <li>Select <strong>Client Credential Flow</strong>.</li>
+          <li>(Optional) Collect enterprise applications, authentication logs.</li>
+          <li>Enter Domain, Client ID, Client Secret.</li>
+        </ul>
+      </li>
+      <li><strong>Test Connection</strong> (required to submit).</li>
+      <li>(Optional) Customize directory name.</li>
+      <li>Click <strong>Submit</strong>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Method 2: Auth Code Flow</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="callout callout-warning">
+      <div class="callout-title">90-Day Reconnect Required</div>
+      <p>Auth Code Flow requires reconnection <strong>every 90 days</strong> to refresh tokens, or sync will stop. Client Credential Flow (above) avoids this.</p>
+    </div>
+    <ol>
+      <li><strong>Get the CIE redirect URI:</strong> <code>https://directory-sync.&lt;region&gt;.paloaltonetworks.com/authorize</code></li>
+      <li><strong>Create an Okta admin account</strong> with assigned admin roles (Security &rarr; Administrators).</li>
+      <li><strong>Create an OIDC app integration in Okta:</strong>
+        <ul>
+          <li>Sign-in method: <strong>OIDC - OpenID Connect</strong></li>
+          <li>Application type: <strong>Web Application</strong></li>
+          <li>Sign-in redirect URI: paste the CIE redirect URI</li>
+        </ul>
+      </li>
+      <li><strong>Configure grant type:</strong> Edit General Settings &rarr; select <strong>Refresh token</strong> &rarr; <strong>Use persistent token</strong> &rarr; Save.</li>
+      <li><strong>Copy</strong> Client ID, Client Secret, and Okta domain.</li>
+      <li><strong>Assign the app</strong> to the admin user (Assignments tab).</li>
+      <li><strong>Grant API scopes</strong> (Okta API Scopes tab):
+        <ul>
+          <li><code>okta.groups.read</code></li>
+          <li><code>okta.users.read</code></li>
+          <li><code>okta.users.read.self</code></li>
+          <li><code>okta.logs.read</code></li>
+          <li><code>okta.authorizationServers.read</code> (if multiple auth servers)</li>
+          <li><code>okta.apps.read</code> (if collecting app data)</li>
+        </ul>
+      </li>
+      <li><strong>Configure in CIE:</strong> Add Directory &rarr; Okta &rarr; Auth Code Flow &rarr; enter credentials.</li>
+      <li><strong>Sign in with Okta</strong> admin credentials &rarr; <strong>Test Connection</strong> &rarr; <strong>Submit</strong>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Verify Okta Sync</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>CIE &rarr; <strong>Directories</strong> &rarr; verify <strong>Sync Status = "Success"</strong>.</li>
+      <li>Confirm users and groups appear. The default <strong>"Everyone"</strong> group is excluded by design.</li>
+    </ol>
+  </div>
+</div>
+
+
+<!-- ── 3C: Google ─────────────────────────────────────────────── -->
+
+<h3 id="dir-google">3C &mdash; Google Workspace</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Set Up Google Directory</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li><strong>Grant admin privileges in Google Admin console</strong>
+        <ul>
+          <li>Admin console: Organizational Units (Read), Users (Read), Groups, Mobile Device Management, Chrome OS Devices (read-only), Domain Settings</li>
+          <li>Admin API: Organization Units (Read), Users (Read), Groups (CRUD), Billing (Read), Domain Management</li>
+        </ul>
+      </li>
+      <li><strong>Mark CIE as a trusted app</strong>
+        <ul>
+          <li>Google Admin &rarr; <strong>Security</strong> &rarr; <strong>API controls</strong> &rarr; <strong>Manage Third-Party App Access</strong>.</li>
+          <li><strong>Configure new app</strong> &rarr; <strong>OAuth App Name Or Client ID</strong>.</li>
+          <li>Search for <strong>"Palo Alto Networks Cloud Identity Engine Directory Sync"</strong>.</li>
+          <li>Select the app &rarr; choose <strong>OAuth Client ID</strong> &rarr; <strong>Select</strong>.</li>
+          <li>Set access to <strong>"Trusted: Can access all Google services"</strong> &rarr; <strong>Configure</strong>.</li>
+        </ul>
+      </li>
+      <li><strong>Get your Customer ID</strong>
+        <ul>
+          <li>Google Admin &rarr; <strong>Account</strong> &rarr; <strong>Account Settings</strong> &rarr; copy <strong>Customer ID</strong>.</li>
+        </ul>
+      </li>
+      <li><strong>Configure in CIE</strong>
+        <ul>
+          <li>Directories &rarr; <strong>Add Directory</strong> &rarr; <strong>Cloud Directory</strong> &rarr; <strong>Google</strong>.</li>
+          <li>Enter the Customer ID.</li>
+        </ul>
+      </li>
+      <li><strong>Sign in with Google Admin</strong> credentials associated with the Customer ID.</li>
+      <li><strong>Test Connection</strong> &mdash; verify "Success" displays.</li>
+      <li>(Optional) Customize directory name.</li>
+      <li>Click <strong>Submit</strong>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Verify Google Sync</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>CIE &rarr; <strong>Directories</strong> &rarr; verify <strong>Sync Status = "Success"</strong>.</li>
+      <li>Configure the sync interval: <strong>6, 12, or 24 hours</strong> (Google does not support incremental sync).</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Google Sync Differences</div>
+      <p>Unlike Entra ID and Okta, Google Directory does <strong>not</strong> support incremental sync ("Sync Changes"). It uses a configurable full-sync interval. Use <strong>Sync CDUG Changes</strong> to update Cloud Dynamic User Groups between full syncs.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ── 3D: On-Prem AD ────────────────────────────────────────── -->
+
+<h3 id="dir-onprem">3D &mdash; On-Premises Active Directory</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Install and Configure Cloud Identity Agent</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li><strong>Download the Cloud Identity Agent</strong> installer from the CIE app.</li>
+      <li><strong>Install on a Windows server</strong> physically near your domain controllers.
+        <div class="callout callout-note">
+          <div class="callout-title">Placement Matters</div>
+          <p>The agent communicates directly with your DCs via LDAP/LDAPS. Place it on a server with low-latency access to the domain controllers. If DCs span multiple sites, deploy multiple agents &mdash; each near its local DCs.</p>
+        </div>
+      </li>
+      <li><strong>Configure the service account</strong>
+        <ul>
+          <li>Use the service account created in Phase 1.5 with LDAP query permissions.</li>
+          <li>The account must be able to query <strong>all</strong> configured domains.</li>
+        </ul>
+      </li>
+      <li><strong>Enter domain controller addresses</strong>
+        <ul>
+          <li>LDAP: port <strong>389</strong> (default)</li>
+          <li>LDAPS: port <strong>636</strong></li>
+          <li><strong>Do NOT use</strong> Global Catalog ports (3268/3269).</li>
+        </ul>
+      </li>
+      <li><strong>Mutual certificate authentication</strong> is established automatically between the agent and CIE.</li>
+      <li><strong>(Optional) Configure object filters</strong> to limit sync scope to specific OUs, containers, or computer objects.</li>
+      <li><strong>Verify the agent connects</strong> to the CIE cloud service (agent status should show "Connected").</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Configure Redundancy</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li>Configure <strong>multiple domain controllers</strong> per domain for DC-level failover.</li>
+      <li>Deploy <strong>multiple agents</strong> per domain for agent-level redundancy.</li>
+      <li>For cross-domain group membership, configure all relevant forest domains on the agent(s).</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Verify On-Prem AD Sync</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>CIE &rarr; <strong>Directories</strong> &rarr; verify agent status = <strong>"Connected"</strong>.</li>
+      <li>Confirm users, groups, and devices are syncing.</li>
+      <li>Check <strong>Cloud Identity Agent Logs</strong> (CIE &rarr; Manage) for any errors.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Continuous Sync</div>
+      <p>The on-prem agent provides <strong>continuous synchronization</strong> &mdash; it monitors directory changes in real time and forwards them to CIE. This is the fastest sync method across all directory types.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: AUTHENTICATION (SAML 2.0)                           -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="authentication">Phase 4: SAML 2.0 Authentication Setup</h2>
+
+<p>Configure SAML 2.0 authentication so users can authenticate through CIE. This phase has a common setup step, then branches by IdP &mdash; follow the section matching your directory from Phase 3.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.0 &mdash; Generate SP Metadata (All IdPs)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This step is the same regardless of your IdP.</p>
+    <ol>
+      <li>CIE app &rarr; <strong>Authentication</strong> &rarr; <strong>Authentication Types</strong> &rarr; <strong>Add New Authentication Type</strong>.</li>
+      <li>Select <strong>SAML 2.0</strong>.</li>
+      <li>Select Metadata Type:
+        <ul>
+          <li><strong>Single service provider metadata</strong> &mdash; standard (use this for most deployments)</li>
+          <li><strong>Dynamic service provider metadata</strong> &mdash; for Dynamic Privilege Access</li>
+        </ul>
+      </li>
+      <li><strong>Copy or download</strong> the following values (you will need these on the IdP side):
+        <ul>
+          <li><strong>Entity ID</strong> (SP Entity ID)</li>
+          <li><strong>Assertion Consumer Service (ACS) URL</strong></li>
+          <li><strong>SP Certificate</strong> (download)</li>
+          <li><strong>SP Metadata file</strong> (download)</li>
+        </ul>
+      </li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4A &mdash; Entra ID SAML Configuration</span>
+  </div>
+  <div class="collapsible-body">
+    <h4>Azure Portal Side</h4>
+    <ol>
+      <li>Go to <strong>Azure Portal</strong> &rarr; <strong>Azure Active Directory</strong>.</li>
+      <li><strong>Enterprise Applications</strong> &rarr; <strong>New Application</strong> &rarr; search for <strong>"Palo Alto Networks Cloud Identity Engine - Cloud Authentication Service"</strong>.</li>
+      <li><strong>Assign Users and Groups</strong> to the application (include your own account for testing).</li>
+      <li><strong>Single sign-on</strong> &rarr; <strong>SAML</strong> &rarr; <strong>Upload</strong> the SP Metadata file from step 4.0.</li>
+      <li>Edit <strong>Basic SAML Configuration</strong>: set <strong>Sign-on URL</strong> = <code>https://&lt;RegionUrl&gt;.paloaltonetworks.com/sp/acs</code></li>
+      <li>Copy the <strong>App Federation Metadata URL</strong>.</li>
+    </ol>
+
+    <h4>CIE Side</h4>
+    <ol>
+      <li>Enter a unique <strong>Profile Name</strong>.</li>
+      <li>Select Identity Provider Vendor: <strong>Azure</strong>.</li>
+      <li>Add IdP metadata: use <strong>Get URL</strong> and paste the App Federation Metadata URL (recommended).</li>
+      <li>(Optional) Enable <strong>MFA</strong> checkbox if Azure is configured for multi-factor.</li>
+      <li>(Optional) Enable <strong>Force Authentication</strong> for GlobalProtect reconnects.</li>
+      <li>Configure <strong>SAML Attributes</strong>:
+        <ul>
+          <li><strong>Username Attribute</strong> (required)</li>
+          <li><strong>Usergroup Attribute</strong> (optional)</li>
+          <li><strong>User Domain</strong> (required for GlobalProtect Clientless VPN)</li>
+        </ul>
+      </li>
+      <li><strong>Test SAML Setup</strong> &rarr; <strong>Submit</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Azure SSO Test Note</div>
+      <p>Testing SSO from the Azure Admin Console produces a 404 because CIE is <strong>SP-initiated only</strong>. Always test from the CIE side using "Test SAML Setup".</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4B &mdash; Okta SAML Configuration</span>
+  </div>
+  <div class="collapsible-body">
+    <h4>Okta Side (Gallery App &mdash; Recommended)</h4>
+    <ol>
+      <li><strong>Applications</strong> &rarr; <strong>Browse App Catalog</strong> &rarr; search <strong>"Palo Alto Networks Cloud Identity Engine"</strong>.</li>
+      <li>Select the <strong>Single sign-on</strong> version &rarr; <strong>Add Integration</strong>.</li>
+      <li>Verify sign-on type = <strong>SAML 2.0</strong>.</li>
+      <li>If Force Authentication is enabled in CIE, <strong>uncheck "Disable Force Authentication"</strong> in Okta.</li>
+      <li>Paste the <strong>SAML Region</strong> &mdash; extract from CIE Entity ID (e.g., <code>cloud-auth.us.apps</code>).</li>
+      <li>Set <strong>Application username format</strong> (e.g., Email for UPN).</li>
+      <li><strong>Assign users</strong> to the application.</li>
+    </ol>
+
+    <h4>CIE Side</h4>
+    <ol>
+      <li>Profile Name, Vendor = <strong>Okta</strong>.</li>
+      <li>Enter IdP metadata (manual entry or upload).</li>
+      <li>Configure SAML attributes (Username required).</li>
+      <li><strong>Test SAML Setup</strong> &rarr; <strong>Submit</strong>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4C &mdash; Google SAML Configuration</span>
+  </div>
+  <div class="collapsible-body">
+    <h4>Google Admin Console Side</h4>
+    <ol>
+      <li><strong>Apps</strong> &rarr; <strong>SAML Apps</strong> &rarr; <strong>Add App</strong> &rarr; <strong>Add custom SAML app</strong>.</li>
+      <li>Enter the app name.</li>
+      <li><strong>Download IdP Metadata</strong> (you'll upload this to CIE).</li>
+      <li>Enter SP metadata from CIE:
+        <ul>
+          <li><strong>Entity ID</strong> from CIE</li>
+          <li><strong>ACS URL</strong> from CIE</li>
+        </ul>
+      </li>
+      <li><strong>Add attribute mapping</strong>: map Google Directory attributes to App attributes.</li>
+      <li><strong>Enable the app</strong> (turn ON for everyone) and assign users.</li>
+    </ol>
+
+    <h4>CIE Side</h4>
+    <ol>
+      <li>Profile Name, Vendor = <strong>Google</strong>.</li>
+      <li><strong>Upload the IdP metadata file</strong> downloaded from Google (Get URL is <strong>not supported</strong> for Google).</li>
+      <li>Configure SAML attributes.</li>
+      <li><strong>Test SAML Setup</strong> &rarr; <strong>Submit</strong>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4D &mdash; On-Prem AD Authentication</span>
+  </div>
+  <div class="collapsible-body">
+    <p>On-prem AD does not directly provide SAML authentication through CIE. There are two common approaches:</p>
+    <ul>
+      <li><strong>ADFS via Azure</strong> &mdash; if your AD is synced to Entra ID (via Azure AD Connect), follow 4A. Azure handles the SAML federation while CIE syncs users from both on-prem (via agent) and cloud (via Entra ID).</li>
+      <li><strong>CIE Directory password authentication</strong> &mdash; for small user sets, create users in the CIE Directory (max 200) and use built-in password authentication via Captive Portal.</li>
+      <li><strong>Okta or Google as IdP</strong> &mdash; if AD users are synced to Okta or Google, follow 4B or 4C respectively.</li>
+    </ul>
+    <div class="callout callout-note">
+      <div class="callout-title">User-ID Still Works</div>
+      <p>Even without SAML, the Cloud Identity Agent provides <strong>User-ID</strong> data (IP-to-user mappings, group membership) to enforcement points. SAML adds interactive authentication on top of passive User-ID.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: ENFORCEMENT POINT INTEGRATION                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="enforcement">Phase 5: Enforcement Point Integration</h2>
+
+<p>Connect CIE to your management plane so firewalls can consume identity data and authentication profiles.</p>
+
+<div class="mgmt-tabs" data-tab-group="mgmt">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="panorama">Panorama</button>
+    <button class="mgmt-tab" data-plane="scm">Strata Cloud Manager</button>
+  </div>
+
+  <!-- ── Panorama Panel ──────────────────────────────────────── -->
+  <div class="mgmt-panel active" data-plane="panorama">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>5A.1 &mdash; Enable Cloud Identity Engine on Panorama</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Log in to <strong>Panorama</strong>.</li>
+          <li>Navigate to <strong>Device</strong> &rarr; <strong>User Identification</strong> &rarr; <strong>Cloud Identity Engine</strong>.</li>
+          <li>Click <strong>Enable</strong>.</li>
+          <li>Enter your <strong>CIE Tenant URL</strong> (the region-specific URL from activation).</li>
+          <li><strong>Authenticate</strong> with your PAN Hub credentials when prompted.</li>
+          <li>Click <strong>OK</strong> to save.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>5A.2 &mdash; Configure User-ID Redistribution</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Navigate to <strong>Device</strong> &rarr; <strong>User Identification</strong> &rarr; <strong>User Mapping</strong>.</li>
+          <li>Under <strong>Palo Alto Networks User-ID Agent Setup</strong>, add CIE as a mapping source.</li>
+          <li>Configure <strong>CIE segments</strong>:
+            <ul>
+              <li>Segments control which identity data flows to which firewalls.</li>
+              <li>Firewalls <strong>publish</strong> IP-to-user mappings to segments.</li>
+              <li>Firewalls <strong>subscribe</strong> to segments to receive identity data.</li>
+            </ul>
+          </li>
+          <li><strong>Commit</strong> to Panorama.</li>
+          <li><strong>Push</strong> the configuration to managed firewalls.</li>
+        </ol>
+        <div class="callout callout-note">
+          <div class="callout-title">What Gets Redistributed</div>
+          <p>CIE can redistribute: IP-to-User mappings (User-ID), User Tags, Quarantine lists, IP-Port mappings (VDI/Terminal Server), Device context (Device-ID), and IP Tag mappings (for dynamic address groups).</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>5A.3 &mdash; Configure Authentication Profile on Panorama</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Navigate to <strong>Device</strong> &rarr; <strong>Authentication Profile</strong>.</li>
+          <li>Click <strong>Add</strong> to create a new profile.</li>
+          <li>Set <strong>Type</strong> to <strong>Cloud Authentication Service</strong> (CIE).</li>
+          <li>Select the <strong>Authentication Profile</strong> you created in CIE (Phase 6.1).</li>
+          <li><strong>Commit</strong> and <strong>push</strong> to managed firewalls.</li>
+        </ol>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── SCM Panel ───────────────────────────────────────────── -->
+  <div class="mgmt-panel" data-plane="scm">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>5B.1 &mdash; Verify CIE in Strata Cloud Manager</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Log in to <strong>Strata Cloud Manager</strong>.</li>
+          <li>Navigate to <strong>Identity</strong> &rarr; <strong>Cloud Identity Engine</strong>.</li>
+          <li>Verify CIE appears and shows your configured directories.</li>
+          <li>SCM-managed devices automatically associate with CIE &mdash; no manual connection step needed.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>5B.2 &mdash; Configure User-Group Mapping in SCM</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Navigate to <strong>Security Policy</strong> in SCM.</li>
+          <li>When creating or editing rules, CIE-synced users and groups are available in the <strong>Source User</strong> and <strong>Source User Group</strong> fields.</li>
+          <li><strong>Push configuration</strong> to managed firewalls.</li>
+        </ol>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 6: SECURITY POLICY                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="security-policy">Phase 6: Identity-Based Security Policy</h2>
+
+<p>With directories synced and authentication configured, build security policies that use identity instead of (or alongside) IP addresses.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.1 &mdash; Create Authentication Profile in CIE</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>CIE app &rarr; <strong>Authentication</strong> &rarr; <strong>Authentication Profiles</strong> &rarr; <strong>Add Authentication Profile</strong>.</li>
+      <li>Enter a unique <strong>Profile Name</strong>.</li>
+      <li>Select <strong>Authentication Mode</strong>:
+        <ul>
+          <li><strong>Single</strong> &mdash; one authentication type for all users</li>
+          <li><strong>Multiple</strong> &mdash; different authentication types per group (requires a configured directory)</li>
+        </ul>
+      </li>
+      <li>(Multiple mode) Define the <strong>authentication mapping order</strong> &mdash; drag to reorder. First matching group wins.</li>
+      <li>Select <strong>Default authentication type</strong> (used when a user doesn't match any assigned group).</li>
+      <li>Choose directories and select groups.</li>
+      <li>Assign authentication types to groups.</li>
+      <li>Review assignments, then click <strong>Submit</strong>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Best Practice</div>
+      <p>Use UPN format (<code>user@domain.com</code>) for the Directory Sync Username Attribute. This ensures consistent matching between directory sync and authentication.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.2 &mdash; Create Cloud Dynamic User Groups (Optional)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Cloud Dynamic User Groups (CDUGs) automatically update membership based on user attributes like department, location, job title, or risk level.</p>
+    <ol>
+      <li>CIE &rarr; <strong>Directories</strong> &rarr; click the <strong>Groups</strong> column number &rarr; <strong>Create New Dynamic User Group</strong>.</li>
+      <li>Select <strong>Category</strong>:
+        <ul>
+          <li><strong>Attribute Based</strong> &mdash; membership determined by rules</li>
+          <li><strong>On Demand Assignment</strong> &mdash; manually assign users</li>
+        </ul>
+      </li>
+      <li>Enter a <strong>Common Name</strong> (CIE auto-appends <code>_cdug</code> to generate the Distinguished Name).</li>
+      <li>For Attribute Based, define rules:
+        <ul>
+          <li>Match logic: <strong>Any</strong> (OR) or <strong>All</strong> (AND)</li>
+          <li>Select attribute (department, location, title, risk level, etc.)</li>
+          <li>Select operator: is equal to, contains, starts with, is not equal to</li>
+          <li>Enter value(s)</li>
+        </ul>
+      </li>
+      <li>Click <strong>Submit</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Azure AD Risk Integration</div>
+      <p>To create CDUGs based on user risk level (from Azure AD Identity Protection), you need the Client Credential Flow for Azure AD with <code>IdentityRiskyUser.Read.All</code> and <code>IdentityRiskEvent.Read.All</code> permissions. Enable "Collect user risk information" in the directory config.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.3 &mdash; Build User/Group-Based Security Policy</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>On Panorama or SCM, navigate to <strong>Security Policy</strong>.</li>
+      <li><strong>Create or edit</strong> a security policy rule.</li>
+      <li>In the <strong>Source</strong> tab, use the <strong>Source User</strong> or <strong>Source User Group</strong> fields.</li>
+      <li>Select CIE-synced groups or Cloud Dynamic User Groups.</li>
+      <li>Configure the rule action, application, and destination as needed.</li>
+      <li><strong>Commit</strong> and <strong>push</strong> to managed firewalls.</li>
+    </ol>
+    <p><strong>Example rules:</strong></p>
+    <ul>
+      <li>Allow the <code>Engineering_cdug</code> group access to developer tools</li>
+      <li>Restrict the <code>Contractors</code> group to only web browsing</li>
+      <li>Block high-risk users (via risk-based CDUG) from accessing sensitive applications</li>
+    </ul>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 7: MFA INTEGRATION                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="mfa">Phase 7: MFA Integration</h2>
+
+<p>Multi-factor authentication adds a verification layer beyond passwords. CIE passes the MFA status from your IdP to the firewall so you can build policies that differentiate between MFA-authenticated and password-only sessions.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.1 &mdash; Enable MFA at the IdP</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Configure MFA in your identity provider. This is done entirely on the IdP side &mdash; CIE does not manage MFA configuration directly.</p>
+    <ul>
+      <li><strong>Entra ID:</strong> Azure Portal &rarr; Security &rarr; Conditional Access &rarr; create a policy requiring MFA</li>
+      <li><strong>Okta:</strong> Security &rarr; Multifactor &rarr; configure MFA factors and enrollment policies</li>
+      <li><strong>Google:</strong> Security &rarr; 2-Step Verification &rarr; enable and enforce</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.2 &mdash; Enable MFA Flag in CIE SAML Profile</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>CIE &rarr; <strong>Authentication</strong> &rarr; <strong>Authentication Types</strong> &rarr; edit your SAML profile.</li>
+      <li>Check the <strong>MFA</strong> checkbox.</li>
+      <li>This tells the firewall that users authenticated through this profile have completed MFA.</li>
+      <li>Click <strong>Submit</strong>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.3 &mdash; Enable Force Authentication (Optional)</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Force Authentication</strong> forces re-login on GlobalProtect reconnects instead of using cached sessions.</p>
+    <ol>
+      <li>Edit your SAML authentication type in CIE.</li>
+      <li>Enable the <strong>Force Authentication</strong> checkbox.</li>
+      <li>Submit.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Okta Compatibility</div>
+      <p>If Force Authentication is enabled in CIE, you must <strong>uncheck "Disable Force Authentication"</strong> in the Okta SAML app settings. Otherwise the settings conflict and force-auth will not work.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.4 &mdash; Use MFA Status in Security Policy</span>
+  </div>
+  <div class="collapsible-body">
+    <p>With MFA enabled, you can create tiered access policies:</p>
+    <ul>
+      <li><strong>MFA-authenticated users</strong> &rarr; full access to sensitive applications</li>
+      <li><strong>Password-only users</strong> &rarr; restricted access, prompted for MFA on sensitive resources</li>
+    </ul>
+    <p>Configure this in your Authentication Policy (on Panorama or SCM) by referencing the MFA-enabled authentication profile.</p>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 8: VALIDATION                                           -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="validation">Phase 8: Validation &amp; Verification</h2>
+
+<p>Verify the entire stack end-to-end: directory sync, authentication, User-ID on the firewall, and policy enforcement.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.1 &mdash; Verify Directory Sync</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>CIE &rarr; <strong>Directories</strong> &rarr; verify <strong>Sync Status = "Success"</strong> for each directory.</li>
+      <li>Confirm user and group counts match expected values.</li>
+      <li>If sync shows errors, trigger a manual <strong>Full Sync</strong> (90-second cooldown between syncs).</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Sync Status Caveat</div>
+      <p>Sync Status may show "Success" while an incremental sync is still in progress. Wait for the sync to fully complete before troubleshooting.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.2 &mdash; Test SAML Authentication</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In CIE, navigate to the SAML authentication type and click <strong>Test SAML Setup</strong>.</li>
+      <li>Verify the IdP redirect works and authentication completes successfully.</li>
+      <li>Attempt a user login through <strong>GlobalProtect</strong> or <strong>Captive Portal</strong>.</li>
+      <li>Verify the correct IdP handles the authentication (especially in Multiple mode with per-group mapping).</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.3 &mdash; Verify User-ID on the Firewall</span>
+  </div>
+  <div class="collapsible-body">
+    <p>SSH to a managed firewall and run:</p>
+    <div class="code-block">
+      <pre><code>show user ip-user-mapping all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Verify IP-to-user mappings appear for authenticated users.</p>
+
+    <div class="code-block">
+      <pre><code>show user group list</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Verify CIE-synced groups are listed.</p>
+
+    <div class="code-block">
+      <pre><code>show user cloud-identity-engine status</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Verify CIE connection status shows "Connected".</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.4 &mdash; Verify Policy Enforcement</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Generate test traffic from an <strong>identified user</strong> (log in via GlobalProtect or Captive Portal first).</li>
+      <li>Check <strong>Traffic logs</strong> on the firewall:
+        <ul>
+          <li>Verify the <strong>Source User</strong> column shows the expected username.</li>
+          <li>Verify the <strong>Rule Name</strong> matches the expected identity-based policy.</li>
+        </ul>
+      </li>
+      <li>Test both <strong>allow</strong> and <strong>deny</strong> scenarios to confirm policies are applied correctly.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.5 &mdash; Verify Dynamic User Groups</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Change a user attribute in your directory (e.g., department) that should trigger CDUG membership change.</li>
+      <li>Wait for the sync interval to pass (or trigger a manual sync).</li>
+      <li>Verify the user's CDUG membership updated in CIE.</li>
+      <li>Verify the firewall policy enforcement reflects the new group membership.</li>
+    </ol>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  REFERENCE                                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="reference">Reference: Ports, Protocols &amp; Sync</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Ports &amp; Protocols</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Port</th><th>Protocol</th><th>Direction</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>443</td><td>HTTPS</td><td>Outbound</td><td>Agent/API &harr; CIE cloud</td></tr>
+        <tr><td>80</td><td>HTTP</td><td>Outbound</td><td>Certificate verification (GoDaddy CRL/OCSP)</td></tr>
+        <tr><td>389</td><td>LDAP</td><td>Internal</td><td>Agent &rarr; Domain Controller</td></tr>
+        <tr><td>636</td><td>LDAPS</td><td>Internal</td><td>Agent &rarr; Domain Controller (encrypted)</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Do NOT use</strong> Global Catalog ports 3268 (LDAP) or 3269 (LDAPS) when configuring AD in the Cloud Identity Agent.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>App-ID Reference</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>App-ID</th><th>Usage</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>paloalto-cloud-identity</code></td><td>Cloud Identity Agent &harr; CIE cloud service</td></tr>
+        <tr><td><code>ssl</code></td><td>LDAPS connections; SSL decryption bypass for agent traffic</td></tr>
+        <tr><td><code>web-browsing</code></td><td>Required dependency for <code>paloalto-cloud-identity</code></td></tr>
+        <tr><td><code>ldap</code></td><td>Agent &rarr; Active Directory domain controller</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Sync Schedule by Directory Type</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Directory</th><th>Incremental Sync</th><th>Full Sync</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Microsoft Entra ID</td><td>Every 5 min (filtered); 40 min (SCIM)</td><td>Weekly (auto)</td><td>Device sync daily; apps max 3hr; roles max 24hr</td></tr>
+        <tr><td>Okta</td><td>On change detection</td><td>As needed (manual)</td><td>Apps synced max every 3hr</td></tr>
+        <tr><td>Google Workspace</td><td>Not available</td><td>6 / 12 / 24hr (configurable)</td><td>Use "Sync CDUG Changes" for dynamic groups</td></tr>
+        <tr><td>On-Prem AD</td><td>Continuous (real-time)</td><td>As needed (manual)</td><td>Agent monitors directory changes</td></tr>
+        <tr><td>CIE Directory</td><td>N/A</td><td>Manual refresh</td><td>Max 200 users; built-in directory</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Directory Connection Methods Comparison</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Aspect</th><th>Entra ID</th><th>Okta</th><th>Google</th><th>On-Prem AD</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Recommended Method</td><td>CIE Enterprise App</td><td>Client Credential (OIN)</td><td>OAuth (single method)</td><td>Cloud Identity Agent</td></tr>
+        <tr><td>Required Role</td><td>Global Administrator</td><td>Okta Admin</td><td>Google Admin</td><td>Domain access + server admin</td></tr>
+        <tr><td>Token Refresh</td><td>Not needed (Enterprise App)</td><td>Not needed (CCF); 90 days (Auth Code)</td><td>Re-auth if disconnected</td><td>Certificate rotation</td></tr>
+        <tr><td>Group Filtering</td><td>Yes (name/UUID/CSV)</td><td>No</td><td>No</td><td>Yes (OU/container filters)</td></tr>
+        <tr><td>Secret Expiration</td><td>Max 2yr (CCF only)</td><td>Does not expire (CCF)</td><td>N/A</td><td>Certificate-based</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                               -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Directory Sync Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Sync Status shows "Failed"</td>
+          <td>Network connectivity or credential issue</td>
+          <td>Verify network access (Phase 1.4). For cloud directories, test connection from CIE. For on-prem, check agent logs.</td>
+        </tr>
+        <tr>
+          <td>Missing users or groups</td>
+          <td>Group filters too restrictive or sync incomplete</td>
+          <td>Review group filters. Trigger a manual Full Sync (wait 90s between syncs).</td>
+        </tr>
+        <tr>
+          <td>Okta sync stops after 90 days</td>
+          <td>Auth Code Flow token expired</td>
+          <td>Reconnect the directory (Directories &rarr; Actions &rarr; Reconnect) or migrate to Client Credential Flow.</td>
+        </tr>
+        <tr>
+          <td>Azure AD circular group errors</td>
+          <td>Circular group references (A &isin; B &isin; A)</td>
+          <td>Remove circular references in Azure AD, then trigger Full Sync.</td>
+        </tr>
+        <tr>
+          <td>On-prem agent shows "Disconnected"</td>
+          <td>Network or certificate issue</td>
+          <td>Verify port 443 access to CIE endpoint. Check SSL decryption exclusion. Verify agent certificate is valid.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Authentication Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>SAML test returns 404</td>
+          <td>Testing from IdP admin console (IdP-initiated)</td>
+          <td>CIE is SP-initiated only. Test from CIE using "Test SAML Setup".</td>
+        </tr>
+        <tr>
+          <td>Users redirected to wrong IdP</td>
+          <td>Authentication Profile mapping order</td>
+          <td>Review the mapping order in the Authentication Profile. First matching group wins.</td>
+        </tr>
+        <tr>
+          <td>Clock skew errors</td>
+          <td>Time difference between CIE and IdP</td>
+          <td>Increase Maximum Clock Skew in the SAML profile (default 60s, max 900s).</td>
+        </tr>
+        <tr>
+          <td>Azure/PingOne OIDC login fails</td>
+          <td>Expired client secret</td>
+          <td>Rotate the client secret in the IdP and update CIE.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Firewall Integration Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>No IP-to-user mappings on firewall</td>
+          <td>CIE not connected or User-ID not enabled</td>
+          <td>Run <code>show user cloud-identity-engine status</code>. Verify CIE connection. Check User-ID is enabled on the zone.</td>
+        </tr>
+        <tr>
+          <td>Groups not appearing in policy</td>
+          <td>Firewall hasn't synced with CIE</td>
+          <td>After CIE full sync, the firewall must also complete a full sync. Commit and push the configuration.</td>
+        </tr>
+        <tr>
+          <td>CDUG membership not updating</td>
+          <td>Sync interval hasn't elapsed</td>
+          <td>Trigger manual sync in CIE. Wait for firewall sync to complete.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Back to Top ────────────────────────────────────────────── -->
+<button id="backToTop" class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#9650;</button>
+
+<!-- ── Download as Markdown ───────────────────────────────────── -->
+<button id="downloadMdBtn" class="download-md-btn" onclick="downloadAsMarkdown()">&#128196; Download .md</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>
