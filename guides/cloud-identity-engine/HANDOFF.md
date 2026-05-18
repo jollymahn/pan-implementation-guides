@@ -24,19 +24,14 @@
 6. **Added Appendix sidebar links** — 4 new links in sidebar Appendix section
 7. **HTML validated clean** — 2905 lines, nesting verified
 
-## Pending: Commit the appendix changes
+## Completed since last handoff
 
-The appendix content (Appendix A–D + sidebar links) has NOT been committed yet. First action next session:
+- Appendix A–D committed and pushed: `0d005e0`
+- Appendix cross-reference note added to Phase 3: `5e97499`
 
-```bash
-git add docs/guides/cloud-identity-engine/cie-implementation.html
-git commit -m "docs(cie): add Appendix A-D vendor directory setup walkthroughs"
-git push
-```
+## Next task: Live Validation (BLOCKED — waiting on Entra tenant)
 
-## Next task: Live Validation
-
-**Task #4** (in progress): Validate the CIE guide end-to-end against a live environment.
+**Task #4** (blocked): Validate the CIE guide end-to-end against a live environment. On hold until an Entra ID tenant is available.
 
 ### Setup
 

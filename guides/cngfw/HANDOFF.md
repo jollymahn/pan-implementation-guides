@@ -1,84 +1,53 @@
 # Cloud NGFW Guide — Handoff
 
-## Status: Guide built, browser-verified, ready for review
+## Status: Diagrams wired in, ready for content refinement
 
-## What Was Done
+## What's Done
 
-### Phase 0: PDF Conversions (complete)
-7 parallel subagents converted source PDFs to structured Markdown:
-- `workspace/cngfw/aws-deployment-architectures.md` (375 lines, 34KB)
-- `workspace/cngfw/azure-deployment-architectures.md` (234 lines, 20KB)
-- `workspace/cngfw/aws-design-guide.md` (920 lines, 104KB)
-- `workspace/cngfw/aws-deployment-guide.md` (2500 lines, 133KB)
-- `workspace/cngfw/azure-design-guide.md` (107KB)
-- `workspace/cngfw/azure-vnet-deployment-guide.md` (1585 lines, 101KB)
-- `workspace/cngfw/azure-vwan-deployment-guide.md` (92KB)
+### Guide (complete)
+- `cloud-ngfw-deployment.html` — single-page guide with AWS/Azure cloud picker
+- AWS Combined Design: 44 collapsible sections (prereqs → post-deployment verification)
+- Azure Centralized VNet: 43 collapsible sections (same phase structure)
+- Panorama/SCM management tabs in Phase 2 for both clouds
+- Landing page cards activated for AWS and Azure (`docs/index.html`)
+- Browser-verified: cloud picker, sidebar switching, collapsibles, tabs, no console errors
 
-### Phase 1: HTML Scaffold (complete)
-Created `docs/guides/cngfw/cloud-ngfw-deployment.html` with:
-- Cloud picker (AWS/Azure) with `?cloud=` URL param support
-- Dual sidebar navigation (switches on cloud selection)
-- Progress phases bar (7 phases per cloud)
+### Diagrams (complete — primary set)
+7 architecture/topology diagrams wired into the guide, replacing all `[DIAGRAM]` placeholders:
 
-### Phase 2: Guide Content (complete)
-AWS Combined Design — 44 collapsible sections:
-- Architecture Overview (5 deployment models)
-- Phase 1: Prerequisites (4 steps)
-- Phase 2: Management tabs — 2A Panorama (6 steps) / 2B SCM (3 steps)
-- Phase 3: Review Checkpoint (10-item checklist)
-- Phase 4: Terraform Config (4 steps)
-- Phase 5: Deploy & Verify (6 steps)
-- Phase 6: Spoke VPC Onboarding (5 steps)
-- Phase 7: Post-Deployment Verification (4 steps)
-- Troubleshooting (6 topics)
+| Diagram | File | Section |
+|---|---|---|
+| AWS Combined high-level | `diagrams/aws/Combined Simplified.png` | AWS Architecture Overview |
+| AWS Centralized high-level | `diagrams/aws/Centralized Simplified.png` | AWS Architecture Overview |
+| Azure VNet hub-and-spoke | `diagrams/azure/vnet.png` | Azure Architecture Overview |
+| Azure egress flow | `diagrams/azure/vnet - outbound.png` | Azure Traffic Flows |
+| Azure ingress flow | `diagrams/azure/vnet - inbound.png` | Azure Traffic Flows |
+| Azure east-west flow | `diagrams/azure/vnet - east-west.png` | Azure Traffic Flows |
+| Azure vWAN architecture | `diagrams/azure/vwan.png` | Azure vWAN Overview |
 
-Azure Centralized VNet — 43 collapsible sections:
-- Architecture Overview (2 deployment models)
-- Phase 1: Prerequisites (4 steps)
-- Phase 2: Management tabs — 2A Panorama (8 steps) / 2B SCM (3 steps)
-- Phase 3: Review Checkpoint (checklist)
-- Phase 4: Terraform Config (4 steps)
-- Phase 5: Deploy & Verify (6 steps)
-- Phase 6: Spoke VNet Onboarding (5 steps)
-- Phase 7: Post-Deployment Verification (4 steps)
-- Troubleshooting (6 topics)
+### Source Material
+7 PDF→MD conversions in `workspace/cngfw/`:
+- `cngfw-aws/`: 3 MDs + 2 PDFs + 1 diagram zip (22 PNGs)
+- `cngfw-azure/`: 3 MDs + 3 PDFs + 2 diagram zips (18 unique PNGs)
 
-### Phase 3: Landing Page (complete)
-- AWS CNGFW card activated → links to `?cloud=aws`
-- Azure CNGFW card activated → links to `?cloud=azure`
-- GCP CNGFW card remains coming-soon
+## What's Left
 
-### Phase 5: Browser Verification (complete)
-Tested in Firefox via Playwright:
-- Cloud picker toggles content and sidebar correctly
-- URL params auto-select cloud on load
-- Collapsible sections expand/collapse
-- Management tabs (Panorama/SCM) switch correctly
-- Landing page cards link to guide with correct cloud param
-- No console errors
-- All h2 section anchors resolve
+See `TODO.md` in this directory for the full list. Summary:
 
-## Outstanding Items
-
-### Architecture Diagrams (Phase 4)
-`[DIAGRAM: ...]` placeholders exist throughout the guide. Actual diagram files should go in `docs/guides/cngfw/diagrams/`. Sources:
-- Terraform repo GitHub assets (Combined Design diagram URL known)
-- PDF architecture descriptions (detailed enough to recreate)
-- Traffic flow diagrams (step descriptions already in guide)
-
-### Content Refinements
-- SCM path steps (2B) are less detailed than Panorama — limited source material on SCM-specific Cloud NGFW workflows
-- Terraform variable names in Steps 4.3-4.4 are based on SWFW module patterns — should be validated against actual `cloudngfw_combined_design` and `cloudngfw_centralized_vnet` examples
-- No screenshots yet — would need live Cloud NGFW deployments
+1. **Additional diagrams** — 33 bonus diagrams extracted but not yet placed (AWS traffic flows, detailed route tables, vWAN flows, management diagrams). Backlogged in `BACKLOG.md`.
+2. **SCM path gaps** — 2B steps are thinner than Panorama due to limited source material on SCM-specific Cloud NGFW workflows.
+3. **Terraform variable validation** — variable names in Steps 4.3-4.4 based on SWFW module patterns, not yet verified against actual `cloudngfw_combined_design` and `cloudngfw_centralized_vnet` examples.
+4. **No screenshots** — would need live Cloud NGFW deployments.
+5. **GCP** — landing page card still `.coming-soon`; no source material yet.
 
 ## File Inventory
 
 | File | Status |
 |---|---|
-| `docs/guides/cngfw/cloud-ngfw-deployment.html` | Complete (3900 lines, 198KB) |
-| `docs/guides/cngfw/diagrams/` | Empty — awaiting diagrams |
-| `docs/guides/cngfw/screenshots/` | Playwright verification screenshots only |
-| `docs/index.html` | Updated — CNGFW cards activated |
-| `workspace/cngfw/*.md` | 7 converted source files (592KB total) |
-| `workspace/cngfw/aws-content.html` | AWS content fragment (intermediate) |
-| `workspace/cngfw/azure-content.html` | Azure content fragment (intermediate) |
+| `cloud-ngfw-deployment.html` | Complete (3900+ lines) |
+| `diagrams/aws/` | 22 PNGs (2 in use, 20 backlogged) |
+| `diagrams/azure/` | 18 PNGs (5 in use, 13 backlogged) |
+| `screenshots/` | 2 Playwright verification screenshots |
+| `HANDOFF.md` | This file |
+| `TODO.md` | Remaining work items |
+| `workspace/cngfw/` | Source PDFs, MDs, HTML fragments |
