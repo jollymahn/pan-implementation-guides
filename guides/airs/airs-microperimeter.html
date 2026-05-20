@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>AIRS Microperimeter Deployment | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+<style>
+  .arch-diagram {
+    background: #f7f8fa;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2rem 1.5rem;
+    margin: 1.5rem 0;
+    font-family: 'Source Code Pro', monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--fg);
+  }
+  .arch-diagram .highlight { color: var(--pan-link); font-weight: 600; }
+  .arch-diagram .warn { color: #e5a300; font-weight: 600; }
+  .arch-diagram .safe { color: #22c55e; font-weight: 600; }
+  .arch-diagram .danger { color: #ef4444; font-weight: 600; }
+  .checklist-section {
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin: 1.5rem 0;
+  }
+  .checklist-section h4 { margin-top: 0; color: var(--pan-navy); }
+  .checklist-section ul { list-style: none; padding: 0; }
+  .checklist-section li { padding: 0.3rem 0; }
+  .checklist-section li::before { content: "\2610  "; font-size: 1.1rem; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AIRS Microperimeter</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="../bootstrap/index.html">Bootstrap</a>
+    <a href="../../globalprotect/index.html">GlobalProtect</a>
+    <a href="../../scm-onboarding/index.html">SCM</a>
+    <a href="../cloud-identity-engine/cie-implementation.html">CIE</a>
+    <a href="airs-microperimeter.html" class="active">AIRS</a>
+  </nav>
+</header>
+
+<!-- Layout -->
+<div class="layout">
+
+<!-- Sidebar -->
+<div class="sidebar-backdrop"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Deploy</div>
+    <a href="#prerequisites" data-section="prerequisites">Phase 1: Prerequisites</a>
+    <a href="#firewall-config" data-section="firewall-config">Phase 2: Firewall Config</a>
+    <a href="#deploy-redirector" data-section="deploy-redirector">Phase 3: Deploy Redirector</a>
+    <a href="#steering-rules" data-section="steering-rules">Phase 4: Steering Rules</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Verify</div>
+    <a href="#validation" data-section="validation">Phase 5: Validation</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#cli-reference" data-section="cli-reference">CLI Reference</a>
+    <a href="#uninstall" data-section="uninstall">Uninstall</a>
+    <a href="#deployment-checklist" data-section="deployment-checklist">Deployment Checklist</a>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="airs-network-intercept.html">AIRS Network Intercept</a>
+  <span class="sep">|</span>
+  Microperimeter
+</div>
+
+<div class="article">
+
+<h1>Prisma AIRS: Microperimeter Deployment</h1>
+<p class="subtitle">End-to-end guide: PAN Traffic Redirector installation through validated east-west microsegmentation with L7 inspection</p>
+
+<!-- Phase Progress -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#firewall-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    FW Config
+  </a>
+  <a href="#deploy-redirector" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Deploy
+  </a>
+  <a href="#steering-rules" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Steering
+  </a>
+  <a href="#validation" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Validate
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide deploys <strong>Microperimeter</strong> &mdash; a L7-aware microsegmentation solution for east-west traffic using the PAN Traffic Redirector agent and Prisma AIRS firewalls. Unlike traditional L3/L4 microsegmentation, Microperimeter enables deep packet inspection and Zero Trust policy enforcement between workloads on the same host or subnet.</p>
+  <p><strong>What you get:</strong> A working Microperimeter deployment where Linux workload traffic is intercepted by the <code>panredirect</code> agent, encapsulated in a GENEVE tunnel (UDP 6081), inspected by a Prisma AIRS firewall, and delivered to its destination &mdash; with selective steering rules to control which traffic is redirected.</p>
+  <p><strong>Prerequisite:</strong> A deployed Prisma AIRS AI Runtime Firewall. Complete the <a href="airs-network-intercept.html">AIRS Network Intercept Core Guide</a> through Phase 4 (firewall deployment) before starting this guide.</p>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE OVERVIEW                                        -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>Microperimeter provides L7-aware secure microsegmentation for east-west traffic within private and public cloud environments. Two components work together: the <strong>PAN Traffic Redirector</strong> (installed on Linux workloads) and the <strong>Prisma AIRS Firewall</strong> (the inspection engine).</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Microperimeter Components</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Component</th><th>Function</th><th>Deployment</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>PAN Traffic Redirector (<code>panredirect</code>)</strong></td>
+          <td>Lightweight agent installed on Linux workloads. Intercepts L3 traffic using the Linux Packet Control subsystem and redirects it to the firewall via GENEVE tunnels. No complex network re-architecture required.</td>
+          <td>RPM/DEB package on each Linux workload</td>
+        </tr>
+        <tr>
+          <td><strong>Prisma AIRS Firewall</strong></td>
+          <td>Inspection engine that decapsulates GENEVE traffic, performs L7 DPI and security policy enforcement, then re-encapsulates and returns traffic to the originating host.</td>
+          <td>Existing AIRS firewall with a dedicated L3 data interface</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">AIRS Only</div>
+      <p>Microperimeter requires Prisma AIRS firewalls. Standard VM-Series firewalls do not support this feature.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Traffic Redirection Workflow (Hairpin Pattern)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The architecture uses a hairpin traffic pattern. All packets undergo inspection before reaching their destination. Redirection operates on both inbound and outbound directions.</p>
+
+    <div class="arch-diagram">
+   <span class="highlight">Linux Workload</span>                              <span class="highlight">Prisma AIRS Firewall</span>
+   ┌───────────────────────┐                    ┌───────────────────────┐
+   │                       │                    │                       │
+   │  Application          │                    │  <span class="safe">L7 Security Engine</span>    │
+   │       │                │                    │  ┌─────────────────┐ │
+   │       ▼                │                    │  │ Decapsulate     │ │
+   │  ┌─────────────┐      │     <span class="warn">GENEVE Tunnel</span>    │  │ L7 Inspect      │ │
+   │  │ panredirect │      │     <span class="warn">UDP 6081</span>       │  │ Re-encapsulate  │ │
+   │  │  agent      │ ─────┼──────────────────►│  └─────────────────┘ │
+   │  └─────────────┘      │                    │          │            │
+   │       ▲                │                    │          │            │
+   │       │                │◄───────────────────┼──────────┘            │
+   │  ┌─────────────┐      │     <span class="safe">Inspected</span>       │                       │
+   │  │  pangnv0    │      │     <span class="safe">Traffic</span>        │  Data Interface (L3)  │
+   │  │  MTU 1440   │      │                    │  Static IPv4          │
+   │  └─────────────┘      │                    │  Dedicated Zone/VR    │
+   │                       │                    │                       │
+   └───────────────────────┘                    └───────────────────────┘
+    </div>
+
+    <p><strong>Four-step flow:</strong></p>
+    <ol>
+      <li><strong>Interception</strong> &mdash; The <code>panredirect</code> agent intercepts inbound and outbound packets on the designated workload interface.</li>
+      <li><strong>Encapsulation</strong> &mdash; The agent wraps packets in a GENEVE tunnel using <code>UDP 6081</code>. A GENEVE option (<code>0x20</code>) and flow direction flag uniquely identify the traffic.</li>
+      <li><strong>Inspection</strong> &mdash; The encapsulated traffic arrives at the Prisma AIRS firewall data interface. The firewall decapsulates, performs L7 inspection against security policies, and re-encapsulates the traffic.</li>
+      <li><strong>Delivery</strong> &mdash; The firewall sends the inspected packet back to the originating host. The agent decapsulates it and forwards it to the Linux kernel protocol stack for delivery to the application or destination.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Supported Platforms</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Microperimeter runs on Linux workloads across private and public cloud platforms.</p>
+    <table>
+      <thead>
+        <tr><th>Platform Type</th><th>Supported Platforms</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Private Cloud</strong></td>
+          <td>ESXi, KVM, Nutanix</td>
+        </tr>
+        <tr>
+          <td><strong>Public Cloud</strong></td>
+          <td>AWS, Azure, GCP</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">No Bare Metal or Windows</div>
+      <p>The <code>panredirect</code> agent requires a supported Linux distribution running as a virtual machine or cloud instance. Bare metal servers and Windows workloads are not supported.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>When to Use Microperimeter</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Microperimeter addresses a specific gap: east-west traffic between workloads that share the same network segment. Choose between deployment models based on your traffic pattern.</p>
+    <table>
+      <thead>
+        <tr><th>Traffic Direction</th><th>Deployment Model</th><th>Use Case</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>North-south (ingress/egress)</td>
+          <td><a href="airs-network-intercept.html">Network Intercept</a></td>
+          <td>Traffic entering or leaving the cloud environment, app-to-model, app-to-internet</td>
+        </tr>
+        <tr>
+          <td>East-west (workload-to-workload)</td>
+          <td><strong>Microperimeter</strong> (this guide)</td>
+          <td>Same-host or same-subnet traffic between processes, containers, or VMs that never traverses a network firewall</td>
+        </tr>
+        <tr>
+          <td>API-level (per-request)</td>
+          <td><a href="airs-api-intercept.html">API Intercept</a></td>
+          <td>Code-level scanning integrated via REST API, no infrastructure changes</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Microperimeter and Network Intercept are complementary. Network Intercept handles traffic that routes through the firewall naturally. Microperimeter captures traffic that bypasses the firewall because it stays within the same L2 segment.</p>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                       -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1: Verify Linux Distribution Support</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>panredirect</code> agent only runs on specific non-EOL Linux distributions. Verify each target workload before proceeding.</p>
+
+    <table>
+      <thead>
+        <tr><th>Supported Linux Distribution</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Ubuntu 22.04 or 24.04</td></tr>
+        <tr><td>Red Hat Enterprise Linux (RHEL) 8.x or 9.x</td></tr>
+        <tr><td>AlmaLinux 8.x or 9.x</td></tr>
+        <tr><td>Rocky Linux 8.x or 9.x</td></tr>
+        <tr><td>OpenSuse 15.6</td></tr>
+      </tbody>
+    </table>
+
+    <ol>
+      <li>SSH to each target workload.</li>
+      <li>Check the distribution and version:
+        <div class="code-block">
+          <pre><code>cat /etc/os-release</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Confirm the <code>NAME</code> and <code>VERSION_ID</code> fields match a supported distribution above.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">No Bare Metal or Windows</div>
+      <p>The agent requires a Linux VM or cloud instance. Bare metal servers and Windows workloads are not supported.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each target workload runs a supported Linux distribution listed in the table above.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2: Verify Network Requirements</span>
+  </div>
+  <div class="collapsible-body">
+    <p>GENEVE encapsulation requires <code>UDP 6081</code> open between each workload and the Prisma AIRS firewall data interface.</p>
+
+    <ol>
+      <li>Identify the Prisma AIRS firewall data interface IP that will receive redirected traffic.</li>
+      <li>From each target workload, verify connectivity on <code>UDP 6081</code>:
+        <div class="code-block">
+          <pre><code># Test UDP 6081 reachability to firewall data interface
+nc -zvu &lt;firewall-data-IP&gt; 6081</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Verify that any intermediate security groups, NACLs, or NSGs allow <code>UDP 6081</code> in both directions between the workload and the firewall.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">RHEL/Rocky/Alma: Host Firewall Rule</div>
+      <p>If the Linux workload uses <code>firewalld</code>, open <code>UDP 6081</code> on the public zone before installing the agent:</p>
+      <div class="code-block">
+        <pre><code>sudo firewall-cmd --zone=public --add-port=6081/udp --permanent
+sudo firewall-cmd --reload</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>UDP 6081</code> is open inbound and outbound between each workload and the firewall data interface. On RHEL-family distros, <code>firewall-cmd --list-ports</code> includes <code>6081/udp</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3: Verify AIRS Firewall Deployment</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Microperimeter requires a deployed Prisma AIRS firewall with an available data interface. Standard VM-Series firewalls do not support this feature.</p>
+
+    <ol>
+      <li>Confirm a Prisma AIRS AI Runtime Firewall is deployed and operational. If not, complete the <a href="airs-network-intercept.html">AIRS Network Intercept Core Guide</a> through Phase 4 first.</li>
+      <li>Verify the firewall has an available data interface that can be dedicated to Microperimeter traffic.</li>
+    </ol>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Dedicated Interface Required</div>
+      <p>The data interface used for Microperimeter must be <strong>dedicated</strong> to this feature. Redirected traffic re-entering the same firewall on the same interface used for other traffic is not supported. Do not reuse an interface that already carries north-south or management traffic.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A Prisma AIRS firewall is deployed, operational, and has at least one available data interface for dedicated Microperimeter use.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4: Download the Panredirect Package</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>panredirect</code> installer is available from the Palo Alto Networks Customer Support Portal.</p>
+
+    <ol>
+      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal (CSP)</a>.</li>
+      <li>Navigate to <code>Updates</code> &gt; <code>Software Updates</code> &gt; <code>Traffic Redirector</code>.</li>
+      <li>Download the <code>panredirect</code> installer package appropriate for your Linux distribution.</li>
+      <li>Transfer the package to each target workload (e.g., via <code>scp</code>).</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>panredirect</code> installer package is present on each target workload.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: FIREWALL INTERFACE CONFIGURATION                    -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="firewall-config">Phase 2: Firewall Interface Configuration</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.1: Configure Dedicated L3 Data Interface</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Prisma AIRS firewall needs a dedicated Layer 3 interface to receive GENEVE-encapsulated traffic from the <code>panredirect</code> agent. This interface must have a static IPv4 address reachable from all workloads running the agent.</p>
+
+    <ol>
+      <li>Log in to the firewall management interface (or Panorama/SCM).</li>
+      <li>Navigate to <code>Network</code> &gt; <code>Interfaces</code>.</li>
+      <li>Select the interface to dedicate to Microperimeter (e.g., <code>ethernet1/2</code>).</li>
+      <li>Set <strong>Interface Type</strong> to <code>Layer3</code>.</li>
+      <li>On the <strong>Config</strong> tab, assign or create a dedicated <strong>Virtual Router</strong> (e.g., <code>VR-Microperimeter</code>).</li>
+      <li>On the <strong>Config</strong> tab, assign or create a dedicated <strong>Security Zone</strong> (e.g., <code>Zone-Microperimeter</code>).</li>
+      <li>On the <strong>IPv4</strong> tab, set <strong>Type</strong> to <code>Static</code>.</li>
+      <li>Click <code>Add</code> and enter the static IPv4 address with subnet mask (e.g., <code>192.168.101.1/24</code>).</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">IPv6 Not Supported</div>
+      <p>Microperimeter requires a static IPv4 address. IPv6 is not supported for the data interface.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The interface shows type <code>Layer3</code>, a static IPv4 address, a dedicated security zone, and a dedicated virtual router in the interface list.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.2: Attach Interface Management Profile</span>
+  </div>
+  <div class="collapsible-body">
+    <p>An Interface Management Profile on the data interface enables health check and telemetry communication between the <code>panredirect</code> agent and the firewall.</p>
+
+    <ol>
+      <li>Navigate to <code>Network</code> &gt; <code>Network Profiles</code> &gt; <code>Interface Mgmt</code>.</li>
+      <li>Click <code>Add</code> to create a new profile (e.g., <code>IMP-Microperimeter</code>).</li>
+      <li>Enable <code>HTTPS</code> and <code>Ping</code> under <strong>Network Services</strong>.</li>
+      <li>Click <code>OK</code>.</li>
+      <li>Return to <code>Network</code> &gt; <code>Interfaces</code> and select the Microperimeter data interface.</li>
+      <li>On the <strong>Advanced</strong> tab, set <strong>Management Profile</strong> to the profile created above (e.g., <code>IMP-Microperimeter</code>).</li>
+      <li>Click <code>OK</code>.</li>
+      <li>Click <code>Commit</code> to apply the interface and management profile configuration.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The data interface displays the management profile in the interface list. After commit, <code>ping</code> the interface IP from a workload to confirm reachability.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.3: Create Firewall Security Policy for Redirected Traffic</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The firewall needs security policy rules to process the decapsulated east-west traffic arriving from the GENEVE tunnel. Without policy, the firewall will drop the redirected traffic.</p>
+
+    <ol>
+      <li>Navigate to <code>Policies</code> &gt; <code>Security</code>.</li>
+      <li>Click <code>Add</code> to create a new rule.</li>
+      <li>Set <strong>Name</strong> to a descriptive value (e.g., <code>Microperimeter-EastWest</code>).</li>
+      <li>On the <strong>Source</strong> tab, set <strong>Source Zone</strong> to the Microperimeter zone (e.g., <code>Zone-Microperimeter</code>).</li>
+      <li>On the <strong>Destination</strong> tab, set <strong>Destination Zone</strong> to the same zone (<code>Zone-Microperimeter</code>).</li>
+      <li>On the <strong>Actions</strong> tab, set <strong>Action</strong> to <code>Allow</code>.</li>
+      <li>Attach the appropriate <strong>Security Profile Group</strong> (AI Security Profile, Threat Prevention, etc.) to enable L7 inspection.</li>
+      <li>Click <code>OK</code>, then <code>Commit</code>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Health Check UDP Rule</div>
+      <p>The <code>panredirect</code> agent sends health check probes to the firewall. Create an additional security rule or modify the rule above to allow <code>UDP</code> traffic with source <code>169.254.1.1</code> port <code>45000</code> to destination <code>169.254.1.2</code> port <code>45000</code>. Without this rule, <code>panredirect health_check</code> will fail.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The security rule appears in the policy list with the Microperimeter zone as both source and destination, and a security profile group attached for L7 inspection.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: DEPLOY PAN REDIRECTOR AGENT                         -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="deploy-redirector">Phase 3: Deploy PAN Redirector Agent</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.1: Install the Panredirect Package</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Install the <code>panredirect</code> agent on each target Linux workload.</p>
+
+    <ol>
+      <li>SSH to the target workload.</li>
+      <li>Make the installer executable and run it:
+        <div class="code-block">
+          <pre><code>chmod +x ./panredirect-installer
+sudo ./panredirect-installer</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>panredirect version</code>. The output displays the installed version:</p>
+      <div class="code-block">
+        <pre><code>panredirect version
+panredirect 0.9.0-3</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.2: Configure Firewall Destination IP</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Point the agent at the Prisma AIRS firewall data interface so GENEVE-encapsulated traffic reaches the inspection engine.</p>
+
+    <ol>
+      <li>Set the firewall IP:
+        <div class="code-block">
+          <pre><code>sudo panredirect configure --fwip &lt;firewall-data-interface-IP&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Example:</p>
+        <div class="code-block">
+          <pre><code>sudo panredirect configure --fwip 192.168.101.1</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Azure Load Balancer Deployments</div>
+      <p>When using an Azure Internal Load Balancer (ILB) in front of the firewall, the ILB front-end IP differs from the firewall subnet. Use the <code>--fwsubnet</code> flag to specify the backend firewall subnet so direct-return works correctly:</p>
+      <div class="code-block">
+        <pre><code>sudo panredirect configure --fwip 10.0.3.4 --fwsubnet 10.0.4.0/24</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>In this example, <code>10.0.3.4</code> is the ILB front-end IP and <code>10.0.4.0/24</code> is the subnet containing the firewall backend pool members.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Verify the firewall IP is reachable from the workload by pinging the configured address. The agent will use this IP for all GENEVE tunnel traffic.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.3: Enable Redirection on Target Interface</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Activate traffic redirection on the workload interface that carries the east-west traffic to be inspected. This is the interface whose traffic the agent will intercept.</p>
+
+    <ol>
+      <li>Identify the target interface (e.g., <code>ens224</code>, <code>eth0</code>):
+        <div class="code-block">
+          <pre><code>ip link show</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Enable redirection:
+        <div class="code-block">
+          <pre><code>sudo panredirect enable &lt;interface&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Example:</p>
+        <div class="code-block">
+          <pre><code>sudo panredirect enable ens224</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Do Not Enable on Management Interface</div>
+      <p>Enabling <code>panredirect</code> on the management interface (the interface used for SSH access) <strong>will break SSH connectivity</strong>. If the management interface must also carry inspected traffic, use the <code>--exception</code> flag during configuration to exempt the management IP:</p>
+      <div class="code-block">
+        <pre><code>sudo panredirect configure --fwip &lt;firewall-IP&gt; --exception &lt;management-IP&gt;</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>Alternatively, add a selective steering <code>pass</code> rule for SSH traffic before enabling (see <a href="#steering-rules">Phase 4</a>).</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Side Effects of Enabling Redirection</div>
+      <p>When redirection is enabled on an interface:</p>
+      <ul>
+        <li>A logical interface named <code>pangnv0</code> is created with MTU <code>1440</code> for GENEVE encapsulation.</li>
+        <li><code>tcp-segmentation-offload</code> (TSO), <code>generic-segmentation-offload</code> (GSO), and <code>large-receive-offload</code> (LRO) are disabled on the redirected interface.</li>
+        <li>If Docker is using bridge networking with MTU 1500, containers may experience connectivity issues. Reduce the Docker bridge MTU to <code>1440</code> to accommodate the GENEVE overhead.</li>
+      </ul>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>panredirect status</code>. The output shows the interface with <code>ACT</code> set to <code>yes</code>:</p>
+      <div class="code-block">
+        <pre><code>panredirect status
+IF              FW_IP            VNI    IF_MAC             ACT
+ens224          192.168.101.1    48813  00:50:56:95:f2:6e  yes</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.4: Verify Health Check</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The built-in health check confirms the GENEVE tunnel is operational and the firewall is inspecting traffic correctly.</p>
+
+    <ol>
+      <li>Run the health check:
+        <div class="code-block">
+          <pre><code>panredirect health_check</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Health Check Firewall Requirement</div>
+      <p>The health check sends a UDP probe with source <code>169.254.1.1:45000</code> to destination <code>169.254.1.2:45000</code>. The firewall must have a security rule that allows this traffic, as configured in <a href="#firewall-config">Step 2.3</a>. If the health check fails, verify the UDP rule exists and is committed.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The command outputs <code>OK</code> and returns exit code <code>0</code>. A failing health check returns exit code <code>1</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.5: Enable Persistence Across Reboots</span>
+  </div>
+  <div class="collapsible-body">
+    <p>By default, <code>panredirect</code> does not survive a system reboot. Enable the systemd service to ensure redirection starts automatically.</p>
+
+    <ol>
+      <li>Enable and start the systemd service:
+        <div class="code-block">
+          <pre><code>sudo systemctl enable panredirect
+sudo systemctl start panredirect</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Verify the service status:
+        <div class="code-block">
+          <pre><code>systemctl status panredirect</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The output shows <code>Loaded: loaded (...; enabled; ...)</code> and <code>Active: active</code>. The service will start automatically after reboots.</p>
+      <div class="code-block">
+        <pre><code>systemctl status panredirect
+● panredirect.service - PAN redirect
+     Loaded: loaded (/usr/lib/systemd/system/panredirect.service; enabled; preset: disabled)
+     Active: active (exited) since ...
+   Main PID: 1099 (code=exited, status=0/SUCCESS)</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: SELECTIVE STEERING RULES                             -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="steering-rules">Phase 4: Configure Selective Steering Rules</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1: Understand Default Behavior and Rule Structure</span>
+  </div>
+  <div class="collapsible-body">
+    <p>When redirection is enabled on an interface, a default rule redirects <strong>all</strong> traffic to the firewall. Selective steering rules allow granular control over which traffic is redirected and which bypasses the firewall.</p>
+
+    <p><strong>Rule structure:</strong> Each rule matches on a 5-tuple:</p>
+    <table>
+      <thead>
+        <tr><th>Field</th><th>CLI Flag</th><th>Values</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Protocol</td><td><code>--proto</code></td><td><code>tcp</code>, <code>udp</code>, hex number, or <code>any</code></td></tr>
+        <tr><td>Remote IP (source)</td><td><code>--remoteip</code></td><td>CIDR notation or <code>any</code></td></tr>
+        <tr><td>Remote Port (source)</td><td><code>--remoteport</code></td><td>Port number (TCP/UDP only)</td></tr>
+        <tr><td>Local IP (destination)</td><td><code>--localip</code></td><td>CIDR notation or <code>any</code></td></tr>
+        <tr><td>Local Port (destination)</td><td><code>--localport</code></td><td>Port number (TCP/UDP only)</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Actions:</strong></p>
+    <ul>
+      <li><code>pass</code> &mdash; Route the matching traffic locally (bypass the firewall).</li>
+      <li><code>redirect</code> &mdash; Send the matching traffic to the firewall via GENEVE.</li>
+    </ul>
+
+    <p><strong>Evaluation order:</strong> Rules are evaluated in ascending index order. The first matching rule wins. The default catch-all <code>redirect</code> rule sits at index 0.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>panredirect rule list</code> to see the default rule:</p>
+      <div class="code-block">
+        <pre><code>panredirect rule list
+ifname          idx proto remoteip        rport localip         lport action
+ens224          0   any   any             any   any             any   redirect</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.2: Add Exception Rules for Management Traffic</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If the redirected interface also carries management traffic (SSH, monitoring), add <code>pass</code> rules to exempt that traffic from redirection. Insert these at a lower index than the default <code>redirect</code> rule so they match first.</p>
+
+    <ol>
+      <li>Exempt SSH traffic from a specific management subnet:
+        <div class="code-block">
+          <pre><code>sudo panredirect rule insert --index 0 \
+  --interface ens224 \
+  --proto tcp \
+  --remoteip 10.0.0.0/8 \
+  --localport 22 \
+  --action pass</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Exempt a specific trusted subnet from all inspection:
+        <div class="code-block">
+          <pre><code>sudo panredirect rule append \
+  --interface ens224 \
+  --proto any \
+  --remoteip 192.168.100.0/24 \
+  --localip 192.168.100.0/24 \
+  --action pass</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Insert vs. Append</div>
+      <p><code>rule insert --index N</code> places a rule at position N, shifting existing rules down. <code>rule append</code> adds the rule after all existing rules. Use <code>insert</code> when the new rule must take precedence over existing rules; use <code>append</code> for lower-priority exceptions.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>panredirect rule list</code>. The output shows the new <code>pass</code> rules at the expected index positions, with the default <code>redirect</code> rule at a higher index.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.3: Add Targeted Redirect Rules</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Instead of redirecting all traffic, create specific <code>redirect</code> rules for only the traffic that requires inspection. This approach is useful when most traffic should bypass the firewall and only specific flows need L7 inspection.</p>
+
+    <ol>
+      <li>First, delete the default catch-all redirect rule if switching to a targeted model:
+        <div class="code-block">
+          <pre><code>sudo panredirect rule delete --index 0 --interface ens224</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Add specific redirect rules for traffic that needs inspection:
+        <div class="code-block">
+          <pre><code># Redirect HTTP/HTTPS traffic to AI model endpoints
+sudo panredirect rule append \
+  --interface ens224 \
+  --proto tcp \
+  --remoteip 10.1.0.0/16 \
+  --localport 443 \
+  --action redirect</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Traffic Not Matching Any Rule</div>
+      <p>If the default catch-all <code>redirect</code> rule is deleted and no other rule matches a given flow, that traffic is routed locally (not redirected). Ensure every flow that requires inspection has a matching <code>redirect</code> rule.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>panredirect rule list</code> and confirm all intended redirect rules appear. Generate test traffic matching a redirect rule and verify it appears in the firewall traffic log.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.4: Delete Rules</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Remove rules that are no longer needed by specifying the index and interface.</p>
+
+    <ol>
+      <li>List current rules to identify the index:
+        <div class="code-block">
+          <pre><code>panredirect rule list</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Delete the rule by index:
+        <div class="code-block">
+          <pre><code>sudo panredirect rule delete --index &lt;N&gt; --interface &lt;interface&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Example:</p>
+        <div class="code-block">
+          <pre><code>sudo panredirect rule delete --index 3 --interface ens224</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>panredirect rule list</code> again. The deleted rule no longer appears and remaining rules have been re-indexed.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: VALIDATION                                          -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="validation">Phase 5: Validation</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.1: Verify Agent Status and Health</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the <code>panredirect</code> agent is running, redirecting on the correct interface, and communicating with the firewall.</p>
+
+    <ol>
+      <li>Check agent status:
+        <div class="code-block">
+          <pre><code>panredirect status</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Confirm <code>ACT</code> is <code>yes</code> for each redirected interface.</p>
+      </li>
+      <li>Run health check:
+        <div class="code-block">
+          <pre><code>panredirect health_check</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Confirm the output is <code>OK</code>.</p>
+      </li>
+      <li>Verify the <code>pangnv0</code> interface exists with MTU <code>1440</code>:
+        <div class="code-block">
+          <pre><code>ip link show pangnv0</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Verify systemd persistence:
+        <div class="code-block">
+          <pre><code>systemctl is-enabled panredirect</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Confirm the output is <code>enabled</code>.</p>
+      </li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All four checks pass: <code>panredirect status</code> shows active redirection, <code>health_check</code> returns <code>OK</code>, <code>pangnv0</code> exists with MTU 1440, and the systemd service is enabled.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.2: Generate Test Traffic</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Send traffic through the redirected interface to confirm the firewall receives and inspects it.</p>
+
+    <ol>
+      <li>From the workload running <code>panredirect</code>, generate test traffic to another host on the same subnet:
+        <div class="code-block">
+          <pre><code># HTTP request to a test target
+curl -v http://&lt;target-host-IP&gt;/
+
+# Or a simple ping
+ping -c 4 &lt;target-host-IP&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>On the firewall, check the traffic log to confirm the redirected traffic was received and inspected:
+        <div class="code-block">
+          <pre><code># From the firewall CLI
+show log traffic</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The firewall traffic log shows entries with the source and destination IPs of the test traffic, the Microperimeter security zone, and the applied security rule. The test traffic reaches its destination after passing through the firewall.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.3: Verify Security Policy Enforcement</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the firewall applies security profiles to the redirected traffic, not just forwarding it.</p>
+
+    <ol>
+      <li>Generate traffic that should trigger a security profile action (e.g., a URL category match, a known test signature, or a DLP pattern).</li>
+      <li>Check the firewall threat log:
+        <div class="code-block">
+          <pre><code># From the firewall CLI
+show log threat</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>In SCM or Panorama, navigate to <code>Monitor</code> &gt; <code>Logs</code> &gt; <code>Threat</code> and filter by the Microperimeter zone.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Threat log entries appear for the test traffic with the correct security profile actions (alert, block, or reset). The Microperimeter deployment is fully operational with L7 inspection on east-west traffic.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.4: Verify Steering Rules</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm that selective steering rules are working as expected &mdash; traffic matching <code>pass</code> rules bypasses the firewall and traffic matching <code>redirect</code> rules is inspected.</p>
+
+    <ol>
+      <li>Generate traffic that matches a <code>pass</code> rule (e.g., SSH from the management subnet).</li>
+      <li>Verify this traffic does <strong>not</strong> appear in the firewall traffic log.</li>
+      <li>Generate traffic that matches a <code>redirect</code> rule.</li>
+      <li>Verify this traffic <strong>does</strong> appear in the firewall traffic log.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Traffic matching <code>pass</code> rules routes locally without firewall log entries. Traffic matching <code>redirect</code> rules appears in the firewall log with the expected security policy applied.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                               -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Generate a Diagnostic Bundle</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>panredirect</code> agent includes a built-in diagnostic tool that collects a point-in-time snapshot of the agent status, host network configuration, and recent traffic patterns &mdash; similar to a Technical Support File (TSF) in PAN-OS.</p>
+
+    <ol>
+      <li>Generate the bundle:
+        <div class="code-block">
+          <pre><code>sudo panredirect diag --out /tmp/microperimeter-diag.tar</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Extract and review:
+        <div class="code-block">
+          <pre><code>tar xf /tmp/microperimeter-diag.tar -C /tmp/diag-output/
+ls /tmp/diag-output/</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <h4>Diagnostic Bundle Contents</h4>
+    <table>
+      <thead>
+        <tr><th>File</th><th>Contents</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>fwdiag.pcap</code></td><td>10-second packet capture (tcpdump) on the interface with the route to the firewall</td></tr>
+        <tr><td><code>curl-test.out</code></td><td>HTTP connectivity test results</td></tr>
+        <tr><td><code>ping-test.out</code></td><td>ICMP reachability test results to the firewall</td></tr>
+        <tr><td><code>ip-rules.out</code></td><td>Current IP routing rules</td></tr>
+        <tr><td><code>ip-show-routes.out</code></td><td>Full routing table dump</td></tr>
+        <tr><td><code>iptables-rules-t-filter.out</code></td><td>Active iptables filter rules</td></tr>
+        <tr><td><code>sysctl-all.out</code></td><td>All kernel parameters (<code>sysctl --all</code>)</td></tr>
+        <tr><td><code>package-list.out</code></td><td>Installed software packages on the workload</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">When to Generate</div>
+      <p>Generate a diagnostic bundle before opening a Palo Alto Networks support case. The bundle contains all information needed for initial triage.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The tarball is created at the specified path and contains the files listed above.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Common Issues and Resolution</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Symptom</th><th>Likely Cause</th><th>Resolution</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>panredirect health_check</code> returns failure (exit code 1)</td>
+          <td>Firewall missing the UDP health check security rule</td>
+          <td>Add a security rule allowing UDP from <code>169.254.1.1:45000</code> to <code>169.254.1.2:45000</code> on the Microperimeter zone. Commit and retry.</td>
+        </tr>
+        <tr>
+          <td>SSH connection lost after enabling redirection</td>
+          <td>Redirection enabled on the management interface without an SSH exception</td>
+          <td>If access is lost, reboot the workload (redirection is not persistent unless systemd is enabled). After recovery, add a <code>pass</code> rule for SSH traffic or use the <code>--exception</code> flag before re-enabling.</td>
+        </tr>
+        <tr>
+          <td>Docker containers cannot reach external services</td>
+          <td>GENEVE encapsulation reduces effective MTU; Docker bridge still at 1500</td>
+          <td>Set Docker bridge MTU to <code>1440</code>. Edit <code>/etc/docker/daemon.json</code> and add <code>"mtu": 1440</code>, then restart Docker.</td>
+        </tr>
+        <tr>
+          <td>No traffic appearing in firewall logs</td>
+          <td><code>UDP 6081</code> blocked between workload and firewall</td>
+          <td>Verify security groups, NACLs, or NSGs allow <code>UDP 6081</code> bidirectionally. Check host firewall rules (<code>firewall-cmd --list-ports</code> on RHEL-family). Run <code>panredirect health_check</code> to confirm tunnel connectivity.</td>
+        </tr>
+        <tr>
+          <td><code>panredirect status</code> shows <code>ACT: no</code></td>
+          <td>Redirection not enabled or was stopped</td>
+          <td>Run <code>panredirect enable &lt;interface&gt;</code> and verify with <code>panredirect status</code>.</td>
+        </tr>
+        <tr>
+          <td>Redirection lost after reboot</td>
+          <td>Systemd service not enabled</td>
+          <td>Run <code>systemctl enable panredirect</code> and <code>systemctl start panredirect</code>.</td>
+        </tr>
+        <tr>
+          <td><code>pangnv0</code> interface not created</td>
+          <td>Agent installation incomplete or interface not enabled</td>
+          <td>Verify installation with <code>panredirect version</code>. If installed, run <code>panredirect enable &lt;interface&gt;</code>.</td>
+        </tr>
+        <tr>
+          <td>Telemetry errors in systemd logs (<code>Failed to send telemetry</code>)</td>
+          <td>Workload cannot reach telemetry endpoint <!-- [VALIDATION NEEDED] telemetry endpoint URL/IP not documented --></td>
+          <td>These warnings are non-fatal. Redirection continues to function. Verify outbound internet connectivity from the workload if telemetry reporting is required.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After resolving any issue, re-run <code>panredirect health_check</code> and confirm the output is <code>OK</code>.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  CLI REFERENCE                                                 -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="cli-reference">CLI Reference</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Panredirect Command Reference</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>panredirect version</code></td><td>Display the installed agent version.</td></tr>
+        <tr><td><code>panredirect status</code></td><td>Show redirection status for all configured interfaces (interface name, firewall IP, VNI, MAC, active state).</td></tr>
+        <tr><td><code>panredirect start</code></td><td>Start redirection on all previously configured interfaces.</td></tr>
+        <tr><td><code>panredirect stop</code></td><td>Stop redirection on all interfaces. Traffic returns to normal local routing.</td></tr>
+        <tr><td><code>panredirect enable &lt;interface&gt;</code></td><td>Enable redirection on a specific interface. Creates the <code>pangnv0</code> tunnel interface and begins intercepting traffic.</td></tr>
+        <tr><td><code>panredirect disable &lt;interface&gt;</code></td><td>Disable redirection on a specific interface. Removes the GENEVE tunnel and restores normal routing.</td></tr>
+        <tr><td><code>panredirect health_check</code></td><td>Test GENEVE tunnel connectivity to the firewall. Returns <code>OK</code> (exit 0) or failure (exit 1).</td></tr>
+        <tr><td><code>panredirect configure --fwip &lt;IP&gt;</code></td><td>Set the firewall destination IP for GENEVE tunnels.</td></tr>
+        <tr><td><code>panredirect configure --fwip &lt;IP&gt; --fwsubnet &lt;CIDR&gt;</code></td><td>Set firewall IP and backend subnet for Azure ILB deployments.</td></tr>
+        <tr><td><code>panredirect configure --fwip &lt;IP&gt; --exception &lt;MGMT_IP&gt;</code></td><td>Set firewall IP and exempt the management IP from redirection.</td></tr>
+        <tr><td><code>panredirect rule list</code></td><td>Display all selective steering rules with index, protocol, IPs, ports, and action.</td></tr>
+        <tr><td><code>panredirect rule append --interface &lt;IF&gt; --proto &lt;P&gt; --action &lt;A&gt;</code></td><td>Add a new rule at the end of the rule list. Optional flags: <code>--remoteip</code>, <code>--remoteport</code>, <code>--localip</code>, <code>--localport</code>.</td></tr>
+        <tr><td><code>panredirect rule insert --index &lt;N&gt; --interface &lt;IF&gt; --proto &lt;P&gt; --action &lt;A&gt;</code></td><td>Insert a rule at position N. Existing rules at N and above shift down. Same optional flags as <code>append</code>.</td></tr>
+        <tr><td><code>panredirect rule delete --index &lt;N&gt; --interface &lt;IF&gt;</code></td><td>Delete the rule at position N on the specified interface.</td></tr>
+        <tr><td><code>panredirect diag --out &lt;filename&gt;</code></td><td>Generate a diagnostic bundle tarball containing pcaps, routing info, iptables rules, and system metadata.</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Systemd Service Commands</h4>
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>systemctl enable panredirect</code></td><td>Enable the agent to start automatically on boot.</td></tr>
+        <tr><td><code>systemctl start panredirect</code></td><td>Start the agent service immediately.</td></tr>
+        <tr><td><code>systemctl stop panredirect</code></td><td>Stop the agent service immediately.</td></tr>
+        <tr><td><code>systemctl status panredirect</code></td><td>Display current service status, load state, and recent log entries.</td></tr>
+        <tr><td><code>systemctl is-enabled panredirect</code></td><td>Check if the service is set to start on boot.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>panredirect --help</code> or any command with <code>-h</code> to confirm the CLI is accessible and display usage information.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  UNINSTALL                                                     -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="uninstall">Uninstall</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Remove Panredirect from a Workload</span>
+  </div>
+  <div class="collapsible-body">
+    <p>To completely remove the <code>panredirect</code> agent from a workload, stop redirection, disable the interface, and uninstall the package.</p>
+
+    <ol>
+      <li>Stop all redirection:
+        <div class="code-block">
+          <pre><code>sudo panredirect stop</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Disable redirection on each interface:
+        <div class="code-block">
+          <pre><code>sudo panredirect disable &lt;interface&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Disable the systemd service:
+        <div class="code-block">
+          <pre><code>sudo systemctl disable panredirect</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Remove the package:
+
+        <p><strong>RHEL / Rocky / Alma / OpenSuse:</strong></p>
+        <div class="code-block">
+          <pre><code>sudo dnf remove panredirect</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p><strong>Ubuntu / Debian:</strong> <!-- [VALIDATION NEEDED] Ubuntu uninstall command not documented in source material; inferred from standard dpkg conventions --></p>
+        <div class="code-block">
+          <pre><code>sudo apt remove panredirect</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>panredirect version</code>. The command should fail with a "command not found" error. Verify the <code>pangnv0</code> interface no longer exists: <code>ip link show pangnv0</code> should return "Device does not exist".</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  DEPLOYMENT CHECKLIST                                          -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="deployment-checklist">Deployment &amp; Validation Checklist</h2>
+
+<div class="checklist-section">
+  <h4>Phase 1: Prerequisites</h4>
+  <ul>
+    <li>Target workloads run a supported Linux distribution</li>
+    <li>No bare metal or Windows workloads in scope</li>
+    <li><code>UDP 6081</code> open between all workloads and firewall data interface</li>
+    <li>RHEL-family host firewall rules updated (if applicable)</li>
+    <li>Prisma AIRS firewall deployed and operational</li>
+    <li><code>panredirect</code> package downloaded from CSP and transferred to workloads</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 2: Firewall Configuration</h4>
+  <ul>
+    <li>Dedicated L3 data interface configured with static IPv4</li>
+    <li>Dedicated security zone and virtual router assigned</li>
+    <li>Interface management profile (HTTPS + Ping) attached</li>
+    <li>Security policy rule created for Microperimeter zone</li>
+    <li>Health check UDP rule in place (169.254.1.1:45000 to 169.254.1.2:45000)</li>
+    <li>Configuration committed</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 3: Deploy Redirector</h4>
+  <ul>
+    <li><code>panredirect</code> installed on each target workload</li>
+    <li>Firewall destination IP configured</li>
+    <li>Azure ILB <code>--fwsubnet</code> set (if applicable)</li>
+    <li>Redirection enabled on target interfaces (not management interfaces)</li>
+    <li><code>panredirect health_check</code> returns <code>OK</code></li>
+    <li>Systemd service enabled for reboot persistence</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 4: Steering Rules</h4>
+  <ul>
+    <li>Default redirect rule reviewed</li>
+    <li>Management traffic exceptions added (SSH, monitoring)</li>
+    <li>Targeted redirect rules added (if replacing default catch-all)</li>
+    <li>Rule list reviewed for correct ordering</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 5: Validation</h4>
+  <ul>
+    <li><code>panredirect status</code> shows active on all expected interfaces</li>
+    <li><code>panredirect health_check</code> returns <code>OK</code></li>
+    <li><code>pangnv0</code> interface exists with MTU 1440</li>
+    <li>Systemd service enabled and active</li>
+    <li>Test traffic appears in firewall traffic logs</li>
+    <li>Security policy enforcement confirmed in threat logs</li>
+    <li>Pass rules correctly bypass firewall</li>
+    <li>Redirect rules correctly send traffic to firewall</li>
+  </ul>
+</div>
+
+
+</div><!-- /.article -->
+</main>
+</div><!-- /.layout -->
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#9650;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>

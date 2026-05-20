@@ -1,0 +1,2446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>AIRS K8s &amp; Container Protection | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+<style>
+  .arch-diagram {
+    background: #f7f8fa;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2rem 1.5rem;
+    margin: 1.5rem 0;
+    font-family: 'Source Code Pro', monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--fg);
+  }
+  .arch-diagram .highlight { color: var(--pan-link); font-weight: 600; }
+  .arch-diagram .warn { color: #e5a300; font-weight: 600; }
+  .arch-diagram .safe { color: #22c55e; font-weight: 600; }
+  .arch-diagram .danger { color: #ef4444; font-weight: 600; }
+  .checklist-section {
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin: 1.5rem 0;
+  }
+  .checklist-section h4 { margin-top: 0; color: var(--pan-navy); }
+  .checklist-section ul { list-style: none; padding: 0; }
+  .checklist-section li { padding: 0.3rem 0; }
+  .checklist-section li::before { content: "\2610  "; font-size: 1.1rem; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AIRS K8s Protection</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="../bootstrap/index.html">Bootstrap</a>
+    <a href="../../globalprotect/index.html">GlobalProtect</a>
+    <a href="../../scm-onboarding/index.html">SCM</a>
+    <a href="../cloud-identity-engine/cie-implementation.html">CIE</a>
+    <a href="airs-k8s-protection.html" class="active">AIRS</a>
+  </nav>
+</header>
+
+<!-- Layout -->
+<div class="layout">
+
+<!-- Sidebar -->
+<div class="sidebar-backdrop"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Deploy</div>
+    <a href="#prerequisites" data-section="prerequisites">Phase 1: Prerequisites</a>
+    <a href="#fw-configuration" data-section="fw-configuration">Phase 2: FW Configuration</a>
+    <a href="#helm-install" data-section="helm-install">Phase 3: Install Helm</a>
+    <a href="#tag-collector" data-section="tag-collector">Phase 4: Tag Collector</a>
+    <a href="#ip-tag-harvesting" data-section="ip-tag-harvesting">Phase 5: IP Tag Harvesting</a>
+    <a href="#traffic-objects" data-section="traffic-objects">Phase 6: Traffic Objects</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Verify</div>
+    <a href="#validation" data-section="validation">Validation</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#reference" data-section="reference">Reference</a>
+    <a href="#deployment-checklist" data-section="deployment-checklist">Deployment Checklist</a>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="airs-network-intercept.html">AIRS Network Intercept</a>
+  <span class="sep">|</span>
+  K8s &amp; Container Protection
+</div>
+
+<div class="article">
+
+<h1>Prisma AIRS: K8s &amp; Container Protection</h1>
+<p class="subtitle">End-to-end guide: PAN-CNI Helm installation through validated Kubernetes traffic inspection with IP tag harvesting</p>
+
+<!-- Cloud Links -->
+<div class="cloud-links">
+  <a href="airs-network-intercept.html" class="cloud-link">AIRS Core Guide</a>
+  <a href="airs-api-intercept.html" class="cloud-link">API Intercept</a>
+</div>
+
+<!-- Phase Progress -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#fw-configuration" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    FW Config
+  </a>
+  <a href="#helm-install" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Helm Install
+  </a>
+  <a href="#tag-collector" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Tag Collector
+  </a>
+  <a href="#ip-tag-harvesting" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    IP Tags
+  </a>
+  <a href="#traffic-objects" class="progress-phase">
+    <span class="progress-phase-label">Phase 6</span>
+    Traffic Objects
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide is a <strong>bolt-on module</strong> for the <a href="airs-network-intercept.html">AIRS Network Intercept Core Guide</a>. It covers post-deployment Kubernetes and container protection &mdash; configuring the firewall to handle K8s traffic, installing the PAN-CNI Helm chart, and optionally deploying Tag Collector agents for private cluster discovery.</p>
+  <p><strong>Prerequisites:</strong> An AIRS AI Runtime Firewall must already be deployed and connected to SCM or Panorama. Security profiles must be configured. Complete the <a href="airs-network-intercept.html">Core Guide</a> first.</p>
+  <p><strong>Management platforms:</strong> Steps are tabbed for <strong>SCM</strong> and <strong>Panorama</strong> where the UI workflow differs. Cloud-specific tabs (AWS / Azure / GCP) appear where routing or NAT configuration diverges.</p>
+</div>
+
+
+<!-- ================================================================ -->
+<!--  ARCHITECTURE OVERVIEW                                           -->
+<!-- ================================================================ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>Prisma AIRS protects Kubernetes workloads by deploying a Container Network Interface (CNI) plugin into each cluster. The PAN-CNI plugin intercepts pod traffic and redirects it through the AIRS AI Runtime Firewall for inspection before forwarding to the destination.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>How PAN-CNI Works</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The PAN-CNI plugin installs as a DaemonSet in the <code>kube-system</code> namespace. It chains onto the cluster's existing CNI (Calico, Azure CNI, VPC CNI, etc.) without replacing it. When a pod is annotated for protection, PAN-CNI adds routing rules that redirect the pod's egress and ingress traffic through the AIRS firewall.</p>
+
+    <div class="arch-diagram">
+                    <span class="highlight">Kubernetes Cluster</span>
+    ┌─────────────────────────────────────────────────────┐
+    │                                                     │
+    │   ┌───────────┐     ┌───────────┐                   │
+    │   │  App Pod   │     │  App Pod   │                   │
+    │   │ (annotated)│     │ (annotated)│                   │
+    │   └─────┬─────┘     └─────┬─────┘                   │
+    │         │                 │                           │
+    │         ▼                 ▼                           │
+    │   ┌─────────────────────────────┐                   │
+    │   │      <span class="warn">PAN-CNI DaemonSet</span>       │                   │
+    │   │  Redirects annotated pod    │                   │
+    │   │  traffic to firewall        │                   │
+    │   └─────────────┬───────────────┘                   │
+    │                 │                                    │
+    └─────────────────┼────────────────────────────────────┘
+                      │
+                      ▼
+    ┌─────────────────────────────────────────────────────┐
+    │         <span class="highlight">AIRS AI Runtime Firewall</span>                   │
+    │   ┌─────────────────────────────────────────────┐   │
+    │   │  AI Security Profile   +   Cloud-Delivered  │   │
+    │   │  (Prompt Injection, DLP, Toxic Content)     │   │
+    │   └─────────────────────────────────────────────┘   │
+    └──────────────────┬──────────────────────────────────┘
+                       │
+                       ▼
+              <span class="safe">AI Models / Internet</span>
+         (Bedrock, Vertex AI, Azure OAI)
+    </div>
+
+    <p><strong>Two protection levels:</strong></p>
+    <ul>
+      <li><strong>VPC-level protection</strong> &mdash; secures all applications within the VPC. A single Helm chart covers the entire cluster. Annotate namespaces with <code>paloaltonetworks.com/firewall=pan-fw</code>.</li>
+      <li><strong>Namespace-level protection</strong> &mdash; provides granular control per application namespace with traffic steering inspection and CIDR-based rules. Separate Helm charts are generated for each protected namespace during deployment.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Tag Collector Agent for Private Clusters</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Private Kubernetes clusters (with no public API server endpoint) cannot be directly monitored by the firewall for IP-to-tag mappings. A <strong>Tag Collector Agent</strong> deploys as a separate firewall instance that connects to private cluster API servers, harvests IP-tag information for pods, services, and namespaces, and redistributes those tags to the AIRS firewall.</p>
+
+    <div class="arch-diagram">
+    <span class="highlight">Private K8s Cluster</span>           <span class="warn">Tag Collector Agent</span>           <span class="highlight">AIRS Firewall</span>
+    ┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
+    │  Private API      │      │  Polls K8s API    │      │  Receives tags   │
+    │  Server            │ ◄──── │  Harvests IP-tag  │ ────► │  via CIE/redistr.│
+    │                    │      │  mappings          │      │  Creates DAGs    │
+    │  Pods / Services   │      │  (PAN-OS 11.2.10+)│      │  Enforces policy │
+    └──────────────────┘      └──────────────────┘      └──────────────────┘
+              ▲                         │
+              │       TGW / VNet        │
+              └────── Peering ──────────┘
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Private Clusters Only (AWS and Azure)</div>
+      <p>In PAN-OS 11.2.10-h2 and later, the tag collector only harvests IP tags from AWS and Azure <strong>private</strong> Kubernetes clusters. Public clusters on AWS/Azure and all GCP clusters are not supported for tag collection. Public cluster IPs can be discovered through standard cloud asset discovery instead.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>OpenShift and Rancher (Private Cloud)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>For private cloud container platforms (OpenShift, Rancher), the PAN-CNI plugin integrates as a secondary CNI via <strong>Multus CNI chaining</strong>. This path requires Panorama management with PAN-OS <code>11.2.5</code> or later and Kubernetes plugin <code>3.0.4</code>.</p>
+
+    <p>Key differences from public cloud deployments:</p>
+    <ul>
+      <li>Helm chart is sourced from the <a href="https://github.com/PaloAltoNetworks/prisma-airs-helm">Prisma AIRS Helm GitHub repository</a>, not the SCM Terraform download.</li>
+      <li>A <code>NetworkAttachmentDefinition</code> must be deployed in each application namespace for Multus.</li>
+      <li>Annotation uses <code>k8s.v1.cni.cncf.io/networks=pan-cni</code> instead of the standard PAN annotation.</li>
+      <li>Single-arm deployment (trust interface only) with the firewall trust IP in <code>values.yaml</code>.</li>
+    </ul>
+  </div>
+</div>
+
+
+<!-- ================================================================ -->
+<!--  PHASE 1: PREREQUISITES                                         -->
+<!-- ================================================================ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1: Verify Firewall Deployment and Connectivity</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The AIRS AI Runtime Firewall must be deployed in the target cloud environment, connected to SCM or Panorama, and operational before configuring K8s protection.</p>
+
+    <ol>
+      <li>Confirm the firewall is deployed by following the <a href="airs-network-intercept.html">AIRS Network Intercept Core Guide</a> through Phase 4 (Deploy Firewall).</li>
+      <li>Verify the firewall appears as <code>Connected</code> in SCM under <strong>Workflows</strong> &rarr; <strong>NGFW Setup</strong> &rarr; <strong>Device Management</strong>, or in Panorama under <strong>Panorama</strong> &rarr; <strong>Managed Devices</strong> &rarr; <strong>Summary</strong>.</li>
+      <li>Confirm AI Security Profiles are configured by completing Phase 5 (Security Config) of the Core Guide.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Firewall status shows <code>Connected</code> in the management platform. AI Security Profiles exist in the configuration scope assigned to this firewall.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2: Confirm Tooling and Cluster Access</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Helm chart installation and pod annotation steps require local tooling and cluster administrative access.</p>
+
+    <ol>
+      <li>Install <a href="https://helm.sh/docs/intro/install/">Helm v3</a> on the workstation.</li>
+      <li>Confirm <code>kubectl</code> is installed and configured with credentials for the target cluster(s).</li>
+      <li>Verify cluster admin permissions:
+        <div class="code-block">
+          <pre><code>kubectl auth can-i create daemonset -n kube-system</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        The output must be <code>yes</code>.
+      </li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: GKE Autopilot Not Supported</div>
+      <p>GKE Autopilot clusters do not support Helm deployments due to restrictions on modifying the <code>kube-system</code> namespace. Use GKE Standard clusters instead.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>helm version</code> returns v3.x. <code>kubectl auth can-i create daemonset -n kube-system</code> returns <code>yes</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3: Confirm Version Requirements (Panorama Only)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama-managed deployments require specific software versions for K8s protection features, including the Kubernetes plugin for IP tag harvesting.</p>
+
+    <ol>
+      <li>Confirm Panorama software version is <code>11.2.5</code> or later.</li>
+      <li>Install Kubernetes plugin version <code>3.0.4</code> or later. Navigate to <strong>Panorama</strong> &rarr; <strong>Plugins</strong> and verify the installed version.</li>
+      <li>For IP tag harvesting (Phase 5), Kubernetes plugin version <code>3.1.0</code> or later is required.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">SCM-Managed Firewalls</div>
+      <p>SCM-managed deployments do not require a separate Kubernetes plugin. The tag collector functionality is built into the AIRS firewall deployment Terraform.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Panorama version shows <code>11.2.5</code> or later. Kubernetes plugin shows <code>3.0.4</code> or later under <strong>Panorama</strong> &rarr; <strong>Plugins</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4: Gather Pod and Service Subnet CIDRs</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The firewall needs static routes for pod and service subnets to properly route Kubernetes traffic. Gather these CIDRs from each target cluster before proceeding.</p>
+
+    <div class="mgmt-tabs" data-tab-group="cloud-subnets">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="aws-subnets">AWS (EKS)</button>
+        <button class="mgmt-tab" data-plane="azure-subnets">Azure (AKS)</button>
+        <button class="mgmt-tab" data-plane="gcp-subnets">GCP (GKE)</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="aws-subnets">
+        <ol>
+          <li>Open the <a href="https://console.aws.amazon.com/eks/">Amazon EKS Console</a>.</li>
+          <li>Select the target cluster.</li>
+          <li>Navigate to the <strong>Networking</strong> tab.</li>
+          <li>Record the <strong>Service IPv4 range</strong> (e.g., <code>172.20.0.0/16</code>).</li>
+          <li>Record the <strong>VPC CIDR</strong> and <strong>Subnet CIDRs</strong> from the VPC configuration.</li>
+          <li>For custom CNI configurations, run:
+            <div class="code-block">
+              <pre><code>kubectl get nodes -o jsonpath='{.items[0].spec.podCIDR}'</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+        </ol>
+      </div>
+
+      <div class="mgmt-panel" data-plane="azure-subnets">
+        <ol>
+          <li>Open the <a href="https://portal.azure.com/">Azure Portal</a>.</li>
+          <li>Navigate to <strong>Kubernetes services</strong> &rarr; select the target cluster.</li>
+          <li>Under <strong>Properties</strong>, record the <strong>Service CIDR</strong> and <strong>Pod CIDR</strong> (if using kubenet; Azure CNI uses the VNet subnet range for pods).</li>
+          <li>Record the <strong>VNet address space</strong> from <strong>Virtual Networks</strong> &rarr; select the cluster VNet.</li>
+        </ol>
+      </div>
+
+      <div class="mgmt-panel" data-plane="gcp-subnets">
+        <ol>
+          <li>Open the <a href="https://console.cloud.google.com/kubernetes/">GKE Console</a>.</li>
+          <li>Select the target cluster.</li>
+          <li>Record the <strong>Cluster Pod IPv4 range</strong> (e.g., <code>10.40.0.0/14</code>).</li>
+          <li>Record the <strong>IPv4 Service range</strong> (e.g., <code>172.16.0.0/24</code>).</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Pod CIDR and Service CIDR values are recorded for each target cluster. These values are required in Phase 2 (static routes) and Phase 3 (Helm <code>values.yaml</code>).</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================ -->
+<!--  PHASE 2: FIREWALL INTERFACE & ROUTING CONFIGURATION             -->
+<!-- ================================================================ -->
+
+<h2 id="fw-configuration">Phase 2: Firewall Interface &amp; Routing Configuration</h2>
+
+<p>Configure the AIRS firewall interfaces, zones, logical routers, NAT policies, and security policies to handle Kubernetes cluster traffic. The configuration varies by cloud provider due to differences in load balancer health probes, routing architecture, and overlay handling.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which tab should I pick?</div>
+  <ul>
+    <li><strong>AWS</strong> &mdash; uses GWLB endpoints. Overlay routing requires dual interfaces; non-overlay uses single-arm (trust only).</li>
+    <li><strong>Azure</strong> &mdash; requires two logical routers (<code>vr-private</code> / <code>vr-public</code>) because the Azure health probe (<code>168.63.129.16/32</code>) fails with a single router. Includes inbound and outbound NAT.</li>
+    <li><strong>GCP</strong> &mdash; standard dual-interface with a single logical router. Internal Load Balancer health checks via loopback.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="cloud-fw-config">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="aws-fw">AWS</button>
+    <button class="mgmt-tab" data-plane="azure-fw">Azure</button>
+    <button class="mgmt-tab" data-plane="gcp-fw">GCP</button>
+  </div>
+
+  <!-- ==================== AWS ==================== -->
+  <div class="mgmt-panel active" data-plane="aws-fw">
+
+    <p>AWS deployments use GWLB (Gateway Load Balancer) endpoints for traffic interception. The interface configuration depends on whether overlay routing is enabled.</p>
+
+    <div class="mgmt-tabs" data-tab-group="aws-mgmt">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="aws-scm">SCM</button>
+        <button class="mgmt-tab" data-plane="aws-panorama">Panorama</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="aws-scm">
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.1: Configure Interfaces (AWS / SCM)</span>
+          </div>
+          <div class="collapsible-body">
+            <p>Configure Layer 3 Ethernet interfaces for the trust and untrust data planes. Overlay routing deployments require both interfaces; non-overlay deployments use trust only.</p>
+
+            <ol>
+              <li>Log in to <a href="https://stratacloudmanager.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+              <li>Navigate to <strong>Configuration</strong> &rarr; <strong>NGFW and Prisma Access</strong> &rarr; <strong>Device Settings</strong> &rarr; <strong>Interfaces</strong>.</li>
+              <li>Set the <strong>Configuration Scope</strong> to the AI Runtime Security folder.</li>
+              <li>Click <strong>Add Interface</strong>.</li>
+              <li>Configure <code>ethernet1/1</code> (trust):
+                <table>
+                  <thead><tr><th>Field</th><th>Value</th></tr></thead>
+                  <tbody>
+                    <tr><td>Interface Name</td><td><code>ethernet1/1</code></td></tr>
+                    <tr><td>Interface Type</td><td><code>Layer3</code></td></tr>
+                    <tr><td>Zone</td><td><code>trust</code></td></tr>
+                    <tr><td>IPv4</td><td>Dynamic (DHCP Client)</td></tr>
+                  </tbody>
+                </table>
+              </li>
+              <li>For <strong>overlay routing</strong>: uncheck <strong>Automatically create default route pointing to default gateway provided by server</strong> on <code>ethernet1/1</code>.</li>
+              <li>For <strong>overlay routing</strong>: configure <code>ethernet1/2</code> (untrust) with the same settings except Zone = <code>untrust</code>. Leave the default route checkbox enabled on <code>ethernet1/2</code>.</li>
+            </ol>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">Important: Non-Overlay Routing (Single-Arm)</div>
+              <p>Non-overlay routing deployments require only <code>ethernet1/1</code> (trust). Do not configure <code>ethernet1/2</code>. The GWLB handles all traffic steering without a separate untrust interface.</p>
+            </div>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Interface(s) appear under <strong>Device Settings</strong> &rarr; <strong>Interfaces</strong> with status <code>Layer3</code> and DHCP Client assigned.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.2: Create Zones (AWS / SCM)</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>Navigate to <strong>Configuration</strong> &rarr; <strong>NGFW and Prisma Access</strong> &rarr; <strong>Device Settings</strong> &rarr; <strong>Zones</strong>.</li>
+              <li>Click <strong>Add Zone</strong>.</li>
+              <li>Create a <code>trust</code> zone with Interface Type <code>Layer3</code> and add <code>ethernet1/1</code>.</li>
+              <li>For overlay routing: create an <code>untrust</code> zone and add <code>ethernet1/2</code>.</li>
+              <li>Click <strong>Save</strong>.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Zone(s) appear under <strong>Device Settings</strong> &rarr; <strong>Zones</strong> with the correct interfaces assigned.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.3: Configure Logical Routers (AWS / SCM)</span>
+          </div>
+          <div class="collapsible-body">
+            <p>Create logical routers with static routes for RFC 1918 address space and Kubernetes pod/service subnets.</p>
+
+            <ol>
+              <li>Navigate to <strong>Configuration</strong> &rarr; <strong>NGFW and Prisma Access</strong> &rarr; <strong>Device Settings</strong> &rarr; <strong>Routing</strong>.</li>
+              <li>Create <code>trust-logical-router</code> with interface <code>ethernet1/1</code>.</li>
+              <li>In <strong>Advanced Settings</strong>, add these IPv4 Static Routes for <code>trust-logical-router</code>:</li>
+            </ol>
+
+            <table>
+              <thead><tr><th>Name</th><th>Destination</th><th>Interface</th><th>Next Hop</th></tr></thead>
+              <tbody>
+                <tr><td><code>10.x-route</code></td><td><code>10.0.0.0/8</code></td><td><code>ethernet1/1</code></td><td>IP Address (eth1/1 gateway)</td></tr>
+                <tr><td><code>172.16.x-route</code></td><td><code>172.16.0.0/12</code></td><td><code>ethernet1/1</code></td><td>IP Address (eth1/1 gateway)</td></tr>
+                <tr><td><code>192.168.x-route</code></td><td><code>192.168.0.0/16</code></td><td><code>ethernet1/1</code></td><td>IP Address (eth1/1 gateway)</td></tr>
+                <tr><td><code>default</code></td><td><code>0.0.0.0/0</code></td><td>None</td><td>Next Logical Router: <code>untrust-lr</code></td></tr>
+              </tbody>
+            </table>
+
+            <ol start="4">
+              <li>For overlay routing: create <code>untrust-logical-router</code> with interface <code>ethernet1/2</code> and add reverse static routes:</li>
+            </ol>
+
+            <table>
+              <thead><tr><th>Name</th><th>Destination</th><th>Interface</th><th>Next Hop</th></tr></thead>
+              <tbody>
+                <tr><td><code>10.x-route</code></td><td><code>10.0.0.0/8</code></td><td>None</td><td>Next Logical Router: <code>trust-lr</code></td></tr>
+                <tr><td><code>172.16.x-route</code></td><td><code>172.16.0.0/12</code></td><td>None</td><td>Next Logical Router: <code>trust-lr</code></td></tr>
+                <tr><td><code>192.168.x-route</code></td><td><code>192.168.0.0/16</code></td><td>None</td><td>Next Logical Router: <code>trust-lr</code></td></tr>
+              </tbody>
+            </table>
+
+            <ol start="5">
+              <li>Click <strong>Save</strong>.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Logical router(s) appear under <strong>Routing</strong> with the static routes listed above. The default route on <code>trust-logical-router</code> points to the untrust logical router.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.4: Create NAT Policy (AWS / SCM &mdash; Overlay Only)</span>
+          </div>
+          <div class="collapsible-body">
+            <p>Source NAT translates outbound Kubernetes traffic from trust to untrust. This step is required only for overlay routing deployments.</p>
+
+            <ol>
+              <li>Navigate to <strong>Configuration</strong> &rarr; <strong>NGFW and Prisma Access</strong> &rarr; <strong>Network Policies</strong> &rarr; <strong>NAT</strong>.</li>
+              <li>Click <strong>Add</strong>.</li>
+              <li>Configure the NAT rule:</li>
+            </ol>
+
+            <table>
+              <thead><tr><th>Section</th><th>Field</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>General</td><td>Name</td><td><code>trust-to-untrust-zone-nat</code></td></tr>
+                <tr><td>Original Packet</td><td>Source Zone</td><td><code>trust</code></td></tr>
+                <tr><td>Original Packet</td><td>Destination Zone</td><td><code>untrust</code></td></tr>
+                <tr><td>Original Packet</td><td>Destination Interface</td><td><code>ethernet1/2</code></td></tr>
+                <tr><td>Translated Packet</td><td>Translation</td><td>Source Address Only</td></tr>
+                <tr><td>Translated Packet</td><td>Source Translation Type</td><td>Dynamic IP and Port</td></tr>
+                <tr><td>Translated Packet</td><td>Interface</td><td><code>ethernet1/2</code></td></tr>
+              </tbody>
+            </table>
+
+            <ol start="4">
+              <li>Click <strong>Save</strong>.</li>
+            </ol>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">Important: Non-Overlay Routing</div>
+              <p>Non-overlay routing deployments do not need a NAT rule. The GWLB handles traffic steering at the VPC level without address translation on the firewall.</p>
+            </div>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>NAT rule <code>trust-to-untrust-zone-nat</code> appears in the NAT policy list with Source Zone <code>trust</code> and Destination Zone <code>untrust</code>.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.5: Create Security Policy (AWS / SCM)</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>Navigate to <strong>Configuration</strong> &rarr; <strong>NGFW and Prisma Access</strong> &rarr; <strong>Security Services</strong> &rarr; <strong>Security Policy</strong>.</li>
+              <li>Click <strong>Add Rule</strong>.</li>
+              <li>Set the action to <strong>Allow</strong>.</li>
+              <li>Attach the AI Security Profile Group configured in the <a href="airs-network-intercept.html#security-config">Core Guide Phase 5</a>.</li>
+              <li>Click <strong>Save</strong>.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Security policy rule appears with action <code>Allow</code> and the AI Security Profile Group attached.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.6: Push Configuration (AWS / SCM)</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>Navigate to <strong>Configuration</strong> &rarr; <strong>Push Config</strong>.</li>
+              <li>Select the AI Runtime Security managed folder.</li>
+              <li>Click <strong>Push</strong>.</li>
+              <li>Wait for the push to complete successfully.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Push status shows <code>Completed</code> with no errors. The firewall is now configured to handle Kubernetes traffic.</p>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /aws-scm panel -->
+
+      <div class="mgmt-panel" data-plane="aws-panorama">
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.1: Configure Interface (AWS / Panorama)</span>
+          </div>
+          <div class="collapsible-body">
+            <p>Panorama-managed AWS deployments use a single-arm architecture with only the trust interface (<code>ethernet1/1</code>).</p>
+
+            <ol>
+              <li><a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/set-up-panorama/access-and-navigate-panorama-management-interfaces/log-in-to-the-panorama-web-interface">Log in to Panorama</a>.</li>
+              <li>Navigate to <strong>Network</strong> &rarr; <strong>Interfaces</strong>.</li>
+              <li>Set the <strong>Configuration Scope</strong> to the AI Runtime Security template.</li>
+              <li>Click <strong>Add Interface</strong> and configure:</li>
+            </ol>
+
+            <table>
+              <thead><tr><th>Field</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Interface Name</td><td><code>ethernet1/1</code></td></tr>
+                <tr><td>Interface Type</td><td><code>Layer3</code></td></tr>
+                <tr><td>Logical Router</td><td><code>vr-private</code></td></tr>
+                <tr><td>Zone</td><td><code>trust</code></td></tr>
+                <tr><td>IPv4</td><td>DHCP Client</td></tr>
+                <tr><td>Management Profile</td><td>HTTPS enabled</td></tr>
+              </tbody>
+            </table>
+
+            <ol start="5">
+              <li>Click <strong>Add</strong>.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p><code>ethernet1/1</code> appears under <strong>Network</strong> &rarr; <strong>Interfaces</strong> as Layer3 with DHCP Client and <code>trust</code> zone.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.2: Create Zone (AWS / Panorama)</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>Navigate to <strong>Network</strong> &rarr; <strong>Zones</strong>.</li>
+              <li>Click <strong>Add Zone</strong>.</li>
+              <li>Set <strong>Name</strong> to <code>trust</code>, <strong>Type</strong> to <code>Layer3</code>, and add <code>ethernet1/1</code>.</li>
+              <li>Click <strong>Save</strong>.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p><code>trust</code> zone appears with <code>ethernet1/1</code> listed.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.3: Create Security Policy and Push (AWS / Panorama)</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>Navigate to <strong>Policies</strong> &rarr; <strong>Security</strong>.</li>
+              <li>Click <strong>Add</strong> and set the action to <strong>Allow</strong>.</li>
+              <li>Attach the AI Security Profile Group.</li>
+              <li>Navigate to <strong>Commit</strong> &rarr; <strong>Commit and Push</strong>.</li>
+              <li>Select the AI Runtime Security device group and push.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Commit and Push completes successfully. The security policy with the AI profile group is active on the firewall.</p>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /aws-panorama panel -->
+    </div><!-- /aws-mgmt tabs -->
+
+  </div><!-- /aws-fw panel -->
+
+  <!-- ==================== AZURE ==================== -->
+  <div class="mgmt-panel" data-plane="azure-fw">
+
+    <p>Azure deployments require <strong>two logical routers</strong> (<code>vr-private</code> and <code>vr-public</code>) because the Azure health probe (<code>168.63.129.16/32</code>) fails with a single virtual router. Both inbound and outbound NAT rules are required.</p>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Azure Health Probe Requires Dual Virtual Routers</div>
+      <p>A single virtual router causes health probe failures in Azure. Always create separate <code>vr-private</code> (for <code>ethernet1/1</code>) and <code>vr-public</code> (for <code>ethernet1/2</code>) logical routers with health probe routes (<code>168.63.129.16/32</code>) on both.</p>
+    </div>
+
+    <div class="mgmt-tabs" data-tab-group="azure-mgmt">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="azure-scm">SCM</button>
+        <button class="mgmt-tab" data-plane="azure-panorama">Panorama</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="azure-scm">
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.1: Configure Interfaces (Azure / SCM)</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>Log in to <a href="https://stratacloudmanager.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+              <li>Navigate to <strong>Configuration</strong> &rarr; <strong>NGFW and Prisma Access</strong> &rarr; <strong>Device Settings</strong> &rarr; <strong>Interfaces</strong>.</li>
+              <li>Set the <strong>Configuration Scope</strong> to the AI Runtime Security folder.</li>
+              <li>Configure <code>ethernet1/1</code> (trust):</li>
+            </ol>
+
+            <table>
+              <thead><tr><th>Field</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Interface Type</td><td><code>Layer3</code></td></tr>
+                <tr><td>Logical Router</td><td><code>vr-private</code></td></tr>
+                <tr><td>Zone</td><td><code>trust</code></td></tr>
+                <tr><td>IPv4</td><td>DHCP Client</td></tr>
+                <tr><td>IPv4 Enabled</td><td>Yes</td></tr>
+              </tbody>
+            </table>
+
+            <ol start="5">
+              <li>Configure <code>ethernet1/2</code> (untrust):</li>
+            </ol>
+
+            <table>
+              <thead><tr><th>Field</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Interface Type</td><td><code>Layer3</code></td></tr>
+                <tr><td>Logical Router</td><td><code>vr-public</code></td></tr>
+                <tr><td>Zone</td><td><code>untrust</code></td></tr>
+                <tr><td>IPv4</td><td>DHCP Client</td></tr>
+                <tr><td>Auto Default Route</td><td>Enabled (eth1/2 only)</td></tr>
+              </tbody>
+            </table>
+
+            <ol start="6">
+              <li>Configure a <strong>Loopback</strong> interface for ILB health checks:
+                <ul>
+                  <li>Set <strong>Zone</strong> to <code>trust</code> for private / <code>untrust</code> for public logical router.</li>
+                  <li>In <strong>IPv4s</strong>, enter the ILB private IP address (from the <code>security_project</code> Terraform output).</li>
+                  <li>Under <strong>Advanced Settings</strong> &rarr; <strong>Management Profile</strong>, add <code>allow-health-checks</code> with HTTPS enabled.</li>
+                </ul>
+              </li>
+              <li>Click <strong>Save</strong>.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Two Ethernet interfaces (<code>ethernet1/1</code> / <code>ethernet1/2</code>) and a loopback interface appear with the correct zones and logical router assignments.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.2: Configure Dual Logical Routers (Azure / SCM)</span>
+          </div>
+          <div class="collapsible-body">
+            <p>Create <code>vr-private</code> and <code>vr-public</code> with application routes, default routes, pod/service subnet routes, and health probe routes.</p>
+
+            <ol>
+              <li>Navigate to <strong>Configuration</strong> &rarr; <strong>NGFW and Prisma Access</strong> &rarr; <strong>Device Settings</strong> &rarr; <strong>Routing</strong>.</li>
+              <li>Create <code>vr-private</code> with interface <code>ethernet1/1</code>.</li>
+              <li>Add these static routes to <code>vr-private</code>:</li>
+            </ol>
+
+            <table>
+              <thead><tr><th>Name</th><th>Destination</th><th>Next Hop</th><th>Interface</th></tr></thead>
+              <tbody>
+                <tr><td><code>app-vnet</code></td><td>Application VNet CIDR</td><td>IP Address (eth1/1 gateway)</td><td><code>ethernet1/1</code></td></tr>
+                <tr><td><code>pod_route</code></td><td>Pod IPv4 CIDR</td><td>IP Address (eth1/1 gateway)</td><td><code>ethernet1/1</code></td></tr>
+                <tr><td><code>service_route</code></td><td>Service IPv4 CIDR</td><td>IP Address (eth1/1 gateway)</td><td><code>ethernet1/1</code></td></tr>
+                <tr><td><code>health-probe</code></td><td><code>168.63.129.16/32</code></td><td>IP Address (eth1/1 gateway)</td><td><code>ethernet1/1</code></td></tr>
+                <tr><td><code>default</code></td><td><code>0.0.0.0/0</code></td><td>Next Router: <code>vr-public</code></td><td>None</td></tr>
+              </tbody>
+            </table>
+
+            <ol start="4">
+              <li>Create <code>vr-public</code> with interface <code>ethernet1/2</code> and add:</li>
+            </ol>
+
+            <table>
+              <thead><tr><th>Name</th><th>Destination</th><th>Next Hop</th><th>Interface</th></tr></thead>
+              <tbody>
+                <tr><td><code>app-vnet</code></td><td>Application VNet CIDR</td><td>Next Router: <code>vr-private</code></td><td>None</td></tr>
+                <tr><td><code>pod_route</code></td><td>Pod IPv4 CIDR</td><td>Next Router: <code>vr-private</code></td><td>None</td></tr>
+                <tr><td><code>service_route</code></td><td>Service IPv4 CIDR</td><td>Next Router: <code>vr-private</code></td><td>None</td></tr>
+                <tr><td><code>health-probe</code></td><td><code>168.63.129.16/32</code></td><td>IP Address (eth1/2 gateway)</td><td><code>ethernet1/2</code></td></tr>
+                <tr><td><code>default</code></td><td><code>0.0.0.0/0</code></td><td>IP Address (eth1/2 gateway)</td><td><code>ethernet1/2</code></td></tr>
+              </tbody>
+            </table>
+
+            <ol start="5">
+              <li>Click <strong>Save</strong>.</li>
+            </ol>
+
+            <div class="callout callout-note">
+              <div class="callout-title">Gateway IP Address</div>
+              <p>The gateway IP is the first usable IP in the subnet range (e.g., <code>192.168.1.1</code> for a <code>/24</code> subnet). Find it in the Azure Portal under <strong>Virtual Networks</strong> &rarr; <strong>[Your VNet]</strong> &rarr; <strong>Subnets</strong>.</p>
+            </div>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Both <code>vr-private</code> and <code>vr-public</code> appear under <strong>Routing</strong> with all static routes including the <code>168.63.129.16/32</code> health probe route.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.3: Create NAT Policies (Azure / SCM)</span>
+          </div>
+          <div class="collapsible-body">
+            <p>Azure requires both inbound DNAT and outbound source NAT rules.</p>
+
+            <ol>
+              <li>Navigate to <strong>Configuration</strong> &rarr; <strong>NGFW and Prisma Access</strong> &rarr; <strong>Network Policies</strong> &rarr; <strong>NAT</strong>.</li>
+              <li><strong>Inbound NAT</strong> (<code>inbound-web</code>):
+                <ul>
+                  <li>Source Zone: <code>untrust</code></li>
+                  <li>Destination Zone: <code>trust</code>, Interface: <code>any</code>, Address: ELB public IP</li>
+                  <li>Translation: <code>Both</code> &mdash; Source: Dynamic IP and Port on <code>ethernet1/1</code>, Destination: Static IP translation</li>
+                </ul>
+              </li>
+              <li><strong>Outbound NAT</strong> (<code>outbound-internet</code>):
+                <ul>
+                  <li>Source Zone: <code>trust</code>, Source Addresses: app-vnet CIDR + K8s pod CIDRs</li>
+                  <li>Destination Zone: <code>untrust</code>, Interface: <code>any</code></li>
+                  <li>Translation: Source Address Only &mdash; Dynamic IP and Port on <code>ethernet1/2</code></li>
+                </ul>
+              </li>
+              <li>Click <strong>Save</strong>.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Two NAT rules appear: <code>inbound-web</code> (untrust &rarr; trust) and <code>outbound-internet</code> (trust &rarr; untrust).</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.4: Create Security Policy and Push (Azure / SCM)</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>Navigate to <strong>Security Services</strong> &rarr; <strong>Security Policy</strong> &rarr; <strong>Add Rule</strong>.</li>
+              <li>Set the action to <strong>Allow</strong>. Attach the AI Security Profile Group.</li>
+              <li>Ensure the policy allows health checks from the Azure Load Balancer pool to the ILB IP.</li>
+              <li>Navigate to <strong>Configuration</strong> &rarr; <strong>Push Config</strong> and push to the AI Runtime Security folder.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Push completes successfully. Security policy with <code>Allow</code> action and AI profile group is active.</p>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /azure-scm -->
+
+      <div class="mgmt-panel" data-plane="azure-panorama">
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.1&ndash;2.4: Configure Azure (Panorama)</span>
+          </div>
+          <div class="collapsible-body">
+            <p>Follow the same configuration as the SCM path above, but in the Panorama UI:</p>
+
+            <ol>
+              <li><a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/set-up-panorama/access-and-navigate-panorama-management-interfaces/log-in-to-the-panorama-web-interface">Log in to Panorama</a>.</li>
+              <li>Configure interfaces under <strong>Network</strong> &rarr; <strong>Interfaces</strong>. Use <code>lr-private</code> / <code>lr-public</code> as logical router names (Panorama convention).</li>
+              <li>Create <code>trust</code> and <code>untrust</code> zones under <strong>Network</strong> &rarr; <strong>Zones</strong>.</li>
+              <li>Configure dual logical routers (<code>lr-private</code> and <code>lr-public</code>) under <strong>Network</strong> &rarr; <strong>Logical Routers</strong> with the same static routes as the SCM path (including <code>168.63.129.16/32</code> health probe routes).</li>
+              <li>Create inbound and outbound NAT rules under <strong>Policies</strong> &rarr; <strong>NAT</strong>.</li>
+              <li>Create a security policy under <strong>Policies</strong> &rarr; <strong>Security</strong> with <code>Allow</code> action and AI profile group attached.</li>
+              <li>Navigate to <strong>Commit</strong> &rarr; <strong>Commit and Push</strong>. Select the AI Runtime Security device group.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Commit and Push completes successfully. Verify firewall connectivity in <strong>Panorama</strong> &rarr; <strong>Managed Devices</strong>.</p>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /azure-panorama -->
+    </div><!-- /azure-mgmt -->
+
+  </div><!-- /azure-fw panel -->
+
+  <!-- ==================== GCP ==================== -->
+  <div class="mgmt-panel" data-plane="gcp-fw">
+
+    <p>GCP deployments use a standard dual-interface configuration with a single logical router and ILB health checks via a loopback interface.</p>
+
+    <div class="mgmt-tabs" data-tab-group="gcp-mgmt">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="gcp-scm">SCM</button>
+        <button class="mgmt-tab" data-plane="gcp-panorama">Panorama</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="gcp-scm">
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.1: Configure Interfaces (GCP / SCM)</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>Log in to <a href="https://stratacloudmanager.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+              <li>Navigate to <strong>Configuration</strong> &rarr; <strong>NGFW and Prisma Access</strong> &rarr; <strong>Device Settings</strong> &rarr; <strong>Interfaces</strong>.</li>
+              <li>Set the <strong>Configuration Scope</strong> to the AI Runtime Security folder.</li>
+              <li>Configure <code>ethernet1/1</code> and <code>ethernet1/2</code> as Layer 3 DHCP Client interfaces:
+                <ul>
+                  <li><code>ethernet1/1</code>: Zone = <code>trust</code></li>
+                  <li><code>ethernet1/2</code>: Zone = <code>untrust</code></li>
+                </ul>
+              </li>
+              <li>Configure a <strong>Loopback</strong> interface:
+                <ul>
+                  <li>Enter the ILB private IP in <strong>IPv4s</strong>.</li>
+                  <li>Set <strong>Zone</strong> to <code>trust</code>.</li>
+                  <li>Set <strong>Virtual Router</strong> to <code>default</code> (same as <code>ethernet1/2</code>).</li>
+                </ul>
+              </li>
+              <li>Click <strong>Save</strong>.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Two Ethernet interfaces and one loopback interface appear with correct zone assignments.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.2: Create Zones, Router, and Push (GCP / SCM)</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>Create <code>trust</code> and <code>untrust</code> zones under <strong>Device Settings</strong> &rarr; <strong>Zones</strong>.</li>
+              <li>Create a <a href="https://docs.paloaltonetworks.com/ngfw/administration/set-up-firewalls/routing-and-interfaces/configure-a-logical-router">Logical Router</a> with both <code>ethernet1/1</code> and <code>ethernet1/2</code>.</li>
+              <li>Add a static route for the ILB IP using the trust interface gateway IP as the next hop.</li>
+              <li>Add static routes for pod and service subnets (from Step 1.4) with next hop set to <code>ethernet1/2</code> (trust) and the trust subnet gateway IP.</li>
+              <li>Add a source NAT rule: Source Zone <code>trust</code>, Destination Zone <code>untrust</code>, Interface <code>ethernet1/1</code>, Dynamic IP and Port.</li>
+              <li>Create a security policy with <code>Allow</code> action and the AI Security Profile Group. Ensure health checks from the GCP Load Balancer to the ILB IP are permitted.</li>
+              <li>Navigate to <strong>Configuration</strong> &rarr; <strong>Push Config</strong> and push.</li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Push completes successfully. Logical router, NAT rule, and security policy are active on the firewall.</p>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /gcp-scm -->
+
+      <div class="mgmt-panel" data-plane="gcp-panorama">
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Step 2.1&ndash;2.2: Configure GCP (Panorama)</span>
+          </div>
+          <div class="collapsible-body">
+            <p>Follow the same dual-interface, single-router configuration as the SCM path, using the Panorama UI:</p>
+
+            <ol>
+              <li>Configure interfaces under <strong>Network</strong> &rarr; <strong>Interfaces</strong>.</li>
+              <li>Configure a loopback with the ILB private IP.</li>
+              <li>Create zones under <strong>Network</strong> &rarr; <strong>Zones</strong>.</li>
+              <li>Create a logical router under <strong>Network</strong> &rarr; <strong>Logical Routers</strong> with static routes for ILB, pod subnets, and service subnets.</li>
+              <li>Create a source NAT rule under <strong>Policies</strong> &rarr; <strong>NAT</strong>.</li>
+              <li>Create a security policy under <strong>Policies</strong> &rarr; <strong>Security</strong> with <code>Allow</code> action.</li>
+              <li>Navigate to <strong>Commit</strong> &rarr; <strong>Commit and Push</strong>.</li>
+            </ol>
+
+            <div class="callout callout-note">
+              <div class="callout-title">Advanced Routing</div>
+              <p>Advanced routing is enabled by default on AIRS AI Runtime Firewall. Configure a Logical Router instead of a Virtual Router.</p>
+            </div>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Commit and Push completes successfully. Firewall shows <code>Connected</code> in Panorama.</p>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /gcp-panorama -->
+    </div><!-- /gcp-mgmt -->
+
+  </div><!-- /gcp-fw panel -->
+
+</div><!-- /cloud-fw-config tabs -->
+
+
+<!-- ================================================================ -->
+<!--  PHASE 3: INSTALL HELM CHART (PAN-CNI)                          -->
+<!-- ================================================================ -->
+
+<h2 id="helm-install">Phase 3: Install Helm Chart (PAN-CNI)</h2>
+
+<p>The PAN-CNI Helm chart deploys a DaemonSet that intercepts annotated pod traffic and redirects it to the AIRS firewall. The chart is included in the Terraform download from SCM, or cloned from GitHub for private cloud deployments.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.1: Extract and Navigate to the Helm Chart</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Extract the Terraform download:
+        <div class="code-block">
+          <pre><code>tar -xvzf &lt;your-terraform-download.tar.gz&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Navigate to the Helm directory based on protection level:
+        <ul>
+          <li><strong>VPC-level</strong>:
+            <div class="code-block">
+              <pre><code>cd &lt;unzipped-folder&gt;/architecture/helm</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li><strong>Namespace-level</strong>:
+            <div class="code-block">
+              <pre><code>cd &lt;unzipped-folder&gt;/architecture/helm-&lt;app-name&gt;</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>Namespace-level deployments generate separate Helm charts per protected namespace. Repeat the install process for each.</p>
+          </li>
+        </ul>
+      </li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">OpenShift / Rancher (Private Cloud)</div>
+      <p>For private cloud deployments, clone the Helm chart from <a href="https://github.com/PaloAltoNetworks/prisma-airs-helm">github.com/PaloAltoNetworks/prisma-airs-helm</a> instead of extracting from the Terraform download.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The directory contains <code>Chart.yaml</code>, <code>values.yaml</code>, and a <code>templates/</code> subdirectory.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.2: Review and Update values.yaml</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>values.yaml</code> file contains cluster-specific parameters that must be verified before installation.</p>
+
+    <div class="mgmt-tabs" data-tab-group="helm-values-cloud">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="helm-aws">AWS</button>
+        <button class="mgmt-tab" data-plane="helm-azure-gcp">Azure / GCP</button>
+        <button class="mgmt-tab" data-plane="helm-private">Private Cloud</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="helm-aws">
+        <p>AWS deployments must update the GWLB endpoint IPs. These are created during the Terraform <code>application_project</code> deployment.</p>
+
+        <ol>
+          <li>Navigate to the <a href="https://console.aws.amazon.com/vpc/">AWS VPC Console</a> &rarr; <strong>Endpoints</strong>.</li>
+          <li>Under the <strong>Subnets</strong> tab, copy the IP addresses for each availability zone.</li>
+          <li>Edit <code>values.yaml</code>:
+            <div class="code-block">
+              <pre><code># GWLB VPC endpoint zone1 IP address.
+endpoints1: "10.0.1.100"
+endpoints1zone: us-east-1a
+
+# GWLB VPC endpoint zone2 IP address.
+endpoints2: "10.0.2.100"
+endpoints2zone: us-east-1b
+
+# PAN CNI image.
+cniimage: gcr.io/pan-cn-series/airs/pan-cni:latest
+
+# Resource namespace name.
+namespace: kube-system
+
+# Kubernetes ClusterID value range 1-2048.
+clusterid: 1</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Set <code>endpoints1</code> and <code>endpoints2</code> to the GWLB endpoint IPs from the console.</li>
+          <li>Set <code>clusterid</code> to a unique value (1&ndash;2048) for this cluster.</li>
+        </ol>
+      </div>
+
+      <div class="mgmt-panel" data-plane="helm-azure-gcp">
+        <p>Azure and GCP deployments do not require GWLB endpoint configuration. Review and adjust the <code>clusterid</code> and <code>namespace</code> values.</p>
+
+        <ol>
+          <li>Open <code>values.yaml</code>.</li>
+          <li>Set <code>clusterid</code> to a unique value (1&ndash;2048) for this cluster.</li>
+          <li>Confirm <code>namespace</code> is set to <code>kube-system</code>.</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Azure CNI Requirement</div>
+          <p>For AKS clusters, enable <strong>Bring your own Azure virtual network</strong> in the Azure Portal under <strong>Kubernetes services</strong> &rarr; <strong>[Cluster]</strong> &rarr; <strong>Settings</strong> &rarr; <strong>Networking</strong> &rarr; <strong>Network configuration</strong> &rarr; <strong>Azure CNI</strong>. This allows PAN-CNI to discover Kubernetes-related VNets.</p>
+        </div>
+      </div>
+
+      <div class="mgmt-panel" data-plane="helm-private">
+        <p>Private cloud (OpenShift/Rancher) uses the firewall trust interface IP instead of GWLB endpoints.</p>
+
+        <div class="code-block">
+          <pre><code># Firewall trust interface IP Address for on-prem
+endpoints: 10.101.255.253
+
+# PAN CNI image
+cniimage: gcr.io/pan-cn-series/airs/pan-cni:latest
+
+# AI firewall trust CIDR (optional, reduces hops for east-west)
+fwtrustcidr: ""
+
+# Resource namespace name
+namespace: kube-system
+
+# Kubernetes Cluster ID (1-2048)
+clusterid: 1</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>Set <code>endpoints</code> to the trust interface IP of the standalone firewall. For active/passive HA, use the active-primary trust IP.</p>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>values.yaml</code> contains valid endpoint IPs (or firewall trust IP for private cloud), the correct availability zones, and a unique <code>clusterid</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.3: Install the Helm Chart</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>For <strong>VPC-level</strong> protection:
+        <div class="code-block">
+          <pre><code>helm install ai-runtime-security helm --namespace kube-system --values helm/values.yaml</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>For <strong>namespace-level</strong> protection:
+        <div class="code-block">
+          <pre><code>helm install ai-runtime-security helm-&lt;app-name&gt; --namespace kube-system --values helm-&lt;app-name&gt;/values.yaml</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Repeat for each namespace-specific Helm chart.</p>
+      </li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: CNI Installed but Not Yet Active</div>
+      <p>Installing the Helm chart deploys the PAN-CNI DaemonSet, but pod traffic is <strong>not redirected</strong> until namespaces or pods are annotated in Step 3.5. The CNI is dormant until annotations trigger protection.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Helm reports <code>STATUS: deployed</code> in the output.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.4: Verify Helm Installation</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run these verification commands to confirm all PAN-CNI components are running.</p>
+
+    <ol>
+      <li>List Helm releases:
+        <div class="code-block">
+          <pre><code>helm list -A</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Expected output:</p>
+        <div class="code-block">
+          <pre><code>NAME                 NAMESPACE    REVISION  UPDATED                  STATUS    CHART                       APP VERSION
+ai-runtime-security  kube-system  1         2024-08-13 07:00 PDT     deployed  ai-runtime-security-0.1.0  11.2.2</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Check pod status:
+        <div class="code-block">
+          <pre><code>kubectl get pods -A | grep pan-cni</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Pods named <code>pan-cni-*****</code> must show <code>Running</code>.</p>
+      </li>
+      <li>Check endpoint slices:
+        <div class="code-block">
+          <pre><code>kubectl get endpointslice -n kube-system | grep pan</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Check Kubernetes resources:
+        <div class="code-block">
+          <pre><code>kubectl get serviceaccounts -n kube-system | grep pan
+kubectl get secrets -n kube-system | grep pan
+kubectl get svc -n kube-system | grep pan</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All <code>pan-cni-*****</code> pods are <code>Running</code>. Resources <code>pan-cni-sa</code> (service account), <code>pan-plugin-user-secret</code> (secret), and <code>pan-ngfw-svc</code> (service) exist in the <code>kube-system</code> namespace. Endpoint slices show ILB or firewall trust IP addresses.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.5: Annotate Namespaces and Pods</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Annotations tell PAN-CNI which pods to redirect through the firewall. Without annotation, pods are not protected.</p>
+
+    <ol>
+      <li>For <strong>VPC-level</strong> protection &mdash; annotate each namespace:
+        <div class="code-block">
+          <pre><code>kubectl annotate namespace &lt;namespace&gt; paloaltonetworks.com/firewall=pan-fw</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>For <strong>namespace-level</strong> protection &mdash; annotate all pods:
+        <div class="code-block">
+          <pre><code>kubectl annotate pods --all paloaltonetworks.com/subnetfirewall=ns-secure/bypassfirewall</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Important: Annotation Value Naming</div>
+          <p>The annotation value <code>ns-secure/bypassfirewall</code> is misleading &mdash; it does <strong>not</strong> bypass the firewall. This value instructs PAN-CNI to redirect the pod's traffic through the firewall for namespace-level subnet-based inspection. The name is a legacy artifact from the internal CNI routing logic.</p>
+        </div>
+      </li>
+      <li>For <strong>OpenShift</strong> &mdash; use the Multus CNI annotation instead:
+        <div class="code-block">
+          <pre><code>kubectl annotate namespace &lt;namespace&gt; k8s.v1.cni.cncf.io/networks=pan-cni</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Also deploy the <code>NetworkAttachmentDefinition</code> in each application namespace:</p>
+        <div class="code-block">
+          <pre><code>kubectl apply -f pan-cni-net-attach-def.yaml -n &lt;target-namespace&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>kubectl describe namespace &lt;namespace&gt;</code> and confirm the annotation appears (e.g., <code>paloaltonetworks.com/firewall=pan-fw</code>).</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.6: Restart Application Pods</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Existing pods must be restarted after annotation for PAN-CNI to inject its routing rules. New pods created after annotation are automatically protected.</p>
+
+    <ol>
+      <li>Restart pods in the annotated namespace:
+        <div class="code-block">
+          <pre><code>kubectl rollout restart deployment -n &lt;namespace&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Wait for pods to reach <code>Running</code> state:
+        <div class="code-block">
+          <pre><code>kubectl get pods -n &lt;namespace&gt; -w</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All restarted pods show <code>Running</code> status. Pod traffic now routes through the AIRS firewall for inspection.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================ -->
+<!--  PHASE 4: DEPLOY TAG COLLECTOR AGENT (OPTIONAL)                  -->
+<!-- ================================================================ -->
+
+<h2 id="tag-collector">Phase 4: Deploy Tag Collector Agent (Optional)</h2>
+
+<p>The Tag Collector Agent enables IP tag harvesting from <strong>private</strong> Kubernetes clusters. This is optional &mdash; skip this phase if all target clusters have public API server endpoints, or if granular DAG-based security policies are not required.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Important: AWS and Azure Private Clusters Only</div>
+  <p>In PAN-OS <code>11.2.10-h2</code> and later, the tag collector only harvests IP tags from AWS and Azure <strong>private</strong> Kubernetes clusters. Public clusters on AWS/Azure and all GCP clusters are not supported for tag collection.</p>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="tag-collector-cloud">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="tc-aws">AWS</button>
+    <button class="mgmt-tab" data-plane="tc-azure">Azure</button>
+  </div>
+
+  <!-- ==================== TAG COLLECTOR: AWS ==================== -->
+  <div class="mgmt-panel active" data-plane="tc-aws">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 4.1: Create Tag Collector Deployment in SCM (AWS)</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The SCM wizard generates the Terraform template for the Tag Collector Agent infrastructure.</p>
+
+        <ol>
+          <li>Log in to <a href="https://stratacloudmanager.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+          <li>Navigate to <strong>AI Security</strong> &rarr; <strong>AI Runtime Firewall</strong>.</li>
+          <li>Click the <strong>+</strong> icon and select <strong>Add Agent Deployment</strong>.</li>
+          <li>Select <strong>AWS</strong> and click <strong>Next</strong>.</li>
+          <li>Enter a descriptive <strong>Name</strong>.</li>
+          <li>Select the <strong>Cloud Account</strong> and <strong>Cloud Region</strong>. Click <strong>Next</strong>.</li>
+          <li>Enter the <strong>VPC CIDR</strong> for the tag collector deployment.</li>
+          <li>Enter <strong>Allowed Management Access</strong> CIDR ranges.</li>
+          <li>Select the <strong>Zone</strong>.</li>
+          <li>Configure the Transit Gateway (TGW):
+            <ul>
+              <li><strong>New TGW</strong>: Enter the Autonomous System Number, select the AWS account, and select accounts with private workloads.</li>
+              <li><strong>Existing TGW</strong>: Select the TGW Cloud Account and TGW ID, then select accounts with private workloads.</li>
+            </ul>
+          </li>
+          <li>Configure Management IP, RAM, SSH Key, Device ID/PIN, SCM folder, PAN-OS version, VM size, and Authcode.</li>
+          <li>Click <strong>Next</strong>.</li>
+          <li>Enter a <strong>Terraform Template Name</strong> and download the template.</li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The Terraform template ZIP file downloads successfully. It contains <code>architecture/tgw_project</code>, <code>architecture/tc_project</code>, and <code>architecture/tc_iam_project</code> subdirectories.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 4.2: Execute Tag Collector Terraform (AWS)</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Deploy the Terraform templates in order: <code>tgw_project</code> &rarr; <code>tc_project</code> &rarr; <code>tc_iam_project</code>.</p>
+
+        <ol>
+          <li>Extract the download and navigate to <code>architecture/</code>.</li>
+          <li>If creating a <strong>new TGW</strong>, deploy <code>tgw_project</code> first:
+            <div class="code-block">
+              <pre><code>cd tgw_project
+terraform init && terraform plan && terraform apply</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Copy the TGW ID from the output into <code>tc_project/terraform.tfvars</code>:
+            <div class="code-block">
+              <pre><code>id = "&lt;new-tgw-unique-identifier&gt;"</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Deploy <code>tc_project</code>:
+            <div class="code-block">
+              <pre><code>cd ../tc_project
+terraform init && terraform plan && terraform apply</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Deploy <code>tc_iam_project</code>:
+            <div class="code-block">
+              <pre><code>cd ../tc_iam_project
+terraform init && terraform plan && terraform apply</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>All three Terraform applies complete without errors. The tag collector VM is running in the AWS console.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 4.3: Configure TGW Attachments and Routes (AWS)</span>
+      </div>
+      <div class="collapsible-body">
+        <p>After deploying all three Terraform templates, manually configure TGW attachments and route tables to allow the tag collector to communicate with private clusters.</p>
+
+        <ol>
+          <li>Create a TGW attachment for each private cluster VPC. Add routes to the route table for the tag collector CIDR.</li>
+          <li>Create a TGW route table for the tag collector TGW attachment. Add routes for each private cluster CIDR.</li>
+          <li>Update the tag collector security group to allow traffic from the private cluster management CIDR.</li>
+          <li>Update the private cluster security group to allow traffic from the tag collector management CIDR.</li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>TGW attachments show <code>Available</code> in the AWS console. Route tables contain entries for both the tag collector and private cluster CIDRs.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tc-aws -->
+
+  <!-- ==================== TAG COLLECTOR: AZURE ==================== -->
+  <div class="mgmt-panel" data-plane="tc-azure">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 4.1: Create Tag Collector Deployment in SCM (Azure)</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Log in to <a href="https://stratacloudmanager.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+          <li>Navigate to <strong>AI Security</strong> &rarr; <strong>AI Runtime Firewall</strong>.</li>
+          <li>Click <strong>+</strong> and select <strong>Add Agent Deployment</strong>.</li>
+          <li>Select <strong>Azure</strong> and click <strong>Next</strong>.</li>
+          <li>Enter Name, Cloud Account, Cloud Region. Click <strong>Next</strong>.</li>
+          <li>Enter VPC CIDR, management access CIDRs.</li>
+          <li>Select accounts with private workloads from <strong>Accounts to pull IP/Tags from</strong>.</li>
+          <li>Configure Management IP, SSH Key, Device ID/PIN, SCM folder, PAN-OS version, VM size, and Authcode.</li>
+          <li>Click <strong>Next</strong>, enter Terraform Template Name, and download.</li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The Terraform ZIP downloads with <code>architecture/tc_project</code> and <code>architecture/tc_peer_project</code> subdirectories.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 4.2: Configure and Execute Terraform (Azure)</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Edit <code>tc_project/terraform.tfvars</code> with private cluster details. The private cluster ID format:
+            <div class="code-block">
+              <pre><code>/subscriptions/&lt;sub-id&gt;/resourceGroups/&lt;rg-name&gt;/providers/Microsoft.Network/virtualNetworks/&lt;private-cluster&gt;</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Add VNet details for each private cluster in the <code>vnets</code> block.</li>
+          <li>Update the <code>private_cluster_dns_tc_peering</code> block with each cluster's resource group name and private DNS name.</li>
+          <li>Deploy <code>tc_project</code>:
+            <div class="code-block">
+              <pre><code>cd architecture/tc_project
+terraform init && terraform plan && terraform apply</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Deploy <code>tc_peer_project</code>:
+            <div class="code-block">
+              <pre><code>cd ../tc_peer_project
+terraform init && terraform plan && terraform apply</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Both Terraform applies complete without errors. VNet peering shows <code>Connected</code> in the Azure Portal under the tag collector VNet.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tc-azure -->
+</div><!-- /tag-collector-cloud tabs -->
+
+
+<!-- ================================================================ -->
+<!--  PHASE 5: CONFIGURE IP TAG HARVESTING                           -->
+<!-- ================================================================ -->
+
+<h2 id="ip-tag-harvesting">Phase 5: Configure IP Tag Harvesting</h2>
+
+<p>IP tag harvesting collects Kubernetes metadata (namespace, service, pod labels) and maps them to IP addresses. These tags feed into Dynamic Address Groups (DAGs) for granular security policy enforcement. The configuration path differs significantly between SCM-managed and Panorama-managed firewalls.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which path should I pick?</div>
+  <ul>
+    <li><strong>SCM path</strong> &mdash; the tag collector is deployed as part of the AIRS Terraform and sends IP-tags to SCM via the Cloud Identity Engine (CIE). Configure redistribution in SCM.</li>
+    <li><strong>Panorama path</strong> &mdash; the Kubernetes plugin on Panorama directly connects to cluster API servers. Configure cluster onboarding, monitoring definitions, and notify groups in Panorama.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="ip-tag-mgmt">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="ip-tag-scm">SCM</button>
+    <button class="mgmt-tab" data-plane="ip-tag-panorama">Panorama</button>
+  </div>
+
+  <!-- ==================== IP TAG: SCM ==================== -->
+  <div class="mgmt-panel active" data-plane="ip-tag-scm">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5.1: Verify Tag Collector Mode (SCM)</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The AIRS deployment Terraform automatically enables tag collector mode on the firewall. Verify this is active.</p>
+
+        <ol>
+          <li>SSH into the tag collector firewall and run:
+            <div class="code-block">
+              <pre><code>show system info | match tag-collector-mode</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Output shows <code>tag-collector-mode: enabled</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5.2: Set SCM Region (SCM)</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Configure the tag collector to send IP-tags to the correct SCM region.</p>
+
+        <ol>
+          <li>View available regions:
+            <div class="code-block">
+              <pre><code>request plugins kubernetes set-tag-collector-config region</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Set the region:
+            <div class="code-block">
+              <pre><code>request plugins kubernetes set-tag-collector-config region &lt;region_name&gt;</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The command completes without error. The region name matches the SCM tenant region.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5.3: Configure Cluster Credentials (SCM)</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Provide the tag collector with credentials to access each Kubernetes cluster's API server.</p>
+
+        <ol>
+          <li>Transfer the service account credential file to the tag collector (via SCP or base64 encoding).</li>
+          <li>Configure the cluster:
+            <div class="code-block">
+              <pre><code>set deviceconfig plugins kubernetes setup \
+cluster-credentials &lt;cluster_name&gt; \
+api-server-address &lt;cluster-external-endpoint-ip&gt; \
+cluster-type [GKE|AKS|EKS] \
+cluster-credential-file \
+[GCP-service-account-json|AWS-credentials-file|Azure-credentials-file] &lt;filename&gt;
+labels no-labels</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Cluster Endpoint IP</div>
+          <p>Use the cluster's external endpoint IP. For GKE: <strong>Kubernetes Engine</strong> &rarr; <strong>Clusters</strong> &rarr; <strong>[Cluster]</strong> &rarr; <strong>External endpoint</strong>. For EKS: <strong>EKS Console</strong> &rarr; <strong>[Cluster]</strong> &rarr; <strong>API server endpoint</strong>. For AKS: <strong>Kubernetes services</strong> &rarr; <strong>[Cluster]</strong> &rarr; <strong>Properties</strong> &rarr; <strong>API server address</strong>.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The command completes without error. Cluster name is registered in the plugin configuration.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5.4: Create Monitoring Definition and Commit (SCM)</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Create a monitoring definition:
+            <div class="code-block">
+              <pre><code>set deviceconfig plugins kubernetes \
+monitoring-definition &lt;mon_def_name&gt; \
+cluster-credentials &lt;cluster_name&gt; \
+enable yes</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <div class="callout callout-note">
+              <div class="callout-title">One-to-One Mapping</div>
+              <p>Each monitoring definition maps to exactly one cluster. One monitoring definition per cluster, one cluster per monitoring definition.</p>
+            </div>
+          </li>
+          <li>Commit:
+            <div class="code-block">
+              <pre><code>commit</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Verify cluster status:
+            <div class="code-block">
+              <pre><code>show plugins kubernetes status</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Cluster status shows <code>Connected</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5.5: Configure Redistribution Agent in SCM</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Configure the tag collector as an <a href="https://docs.paloaltonetworks.com/strata-cloud-manager/getting-started/manage-configuration-ngfw-and-prisma-access/identity-services/identity-redistribution">Identity Redistribution</a> agent so the AIRS firewall receives the harvested IP-to-tag mappings.</p>
+
+        <ol>
+          <li>Log in to <a href="https://stratacloudmanager.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+          <li>Navigate to <strong>Configuration</strong> &rarr; <strong>NGFW and Prisma Access</strong> &rarr; <strong>Identity Services</strong> &rarr; <strong>Identity Redistribution</strong>.</li>
+          <li>Set the <strong>Configuration Scope</strong>.</li>
+          <li>Click <strong>Add Agent</strong>.</li>
+          <li>Configure:
+            <table>
+              <thead><tr><th>Field</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Name</td><td>Descriptive name for the agent</td></tr>
+                <tr><td>Enabled</td><td>Yes</td></tr>
+                <tr><td>Host</td><td>Tag collector IP address</td></tr>
+                <tr><td>Port</td><td><code>5007</code> (default)</td></tr>
+                <tr><td>Data Type Mapping</td><td>Select <strong>IP to Tag</strong></td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Click <strong>Save</strong>, then <strong>Commit</strong>, then <strong>Push Config</strong>.</li>
+        </ol>
+
+        <ol start="7">
+          <li>If the <code>userid</code> service is disabled on the tag collector, enable it:
+            <div class="code-block">
+              <pre><code>configure
+set deviceconfig system service disable-userid-service no
+commit</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Verify redistribution client connectivity:
+            <div class="code-block">
+              <pre><code>show redistribution service client all</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Redistribution client output shows the AIRS firewall IP with <code>Status: idle</code> and <code>Redistribution: ITUH</code> (indicating IP-to-User/Host/Tag mapping is active).</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5.6: Create Dynamic Address Groups (SCM)</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Navigate to <strong>Configuration</strong> &rarr; <strong>NGFW and Prisma Access</strong> &rarr; <strong>Objects</strong> &rarr; <strong>Address</strong> &rarr; <strong>Address Groups</strong>.</li>
+          <li>Click <strong>Add Address Group</strong>.</li>
+          <li>Enter a <strong>Name</strong> and <strong>Description</strong>.</li>
+          <li>Set <strong>Type</strong> to <code>Dynamic</code>.</li>
+          <li>Click <strong>Add Match Criteria</strong>.</li>
+          <li>Switch to the <strong>CIE</strong> tab to view Kubernetes tags sent from the tag collector.</li>
+          <li>Select the required Kubernetes tags (e.g., <code>k8s.ns_&lt;namespace&gt;</code>, <code>k8s.svc_&lt;service&gt;</code>).</li>
+          <li>Click <strong>Save</strong>.</li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The Dynamic Address Group appears under <strong>Address Groups</strong> with <code>Dynamic</code> type and CIE-based match criteria showing Kubernetes tags.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5.7: Create Security Policy with DAGs (SCM)</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Navigate to <strong>Security Services</strong> &rarr; <strong>Security Policy</strong> &rarr; <strong>Add Rule</strong>.</li>
+          <li>Enter a <strong>Name</strong> and <strong>Description</strong>.</li>
+          <li>Under <strong>Source</strong> &rarr; <strong>Addresses</strong>, select the Dynamic Address Group created above.</li>
+          <li>Set the action to <strong>Allow</strong> or <strong>Deny</strong>.</li>
+          <li>Attach the AI Security Profile Group.</li>
+          <li>Click <strong>Save</strong>.</li>
+          <li>Select <strong>Push Config</strong> to push to the AIRS firewall.</li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>After a successful push, verify IP-tags are registered on the firewall:</p>
+          <div class="code-block">
+            <pre><code>show object registered-ip all</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>Output should show registered IPs with Kubernetes tags like <code>k8s.ns_gmp-system</code> and <code>k8s.svc_metrics-server</code>.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /ip-tag-scm -->
+
+  <!-- ==================== IP TAG: PANORAMA ==================== -->
+  <div class="mgmt-panel" data-plane="ip-tag-panorama">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5.1: Onboard Cluster in Panorama Kubernetes Plugin</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The Panorama Kubernetes plugin connects directly to cluster API servers to harvest IP-tag information.</p>
+
+        <ol>
+          <li><a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/set-up-panorama/access-and-navigate-panorama-management-interfaces/log-in-to-the-panorama-web-interface">Log in to Panorama</a>.</li>
+          <li>Navigate to <strong>Panorama</strong> &rarr; <strong>Plugins</strong> &rarr; <strong>Kubernetes</strong> &rarr; <strong>Setup</strong> &rarr; <strong>General</strong>.</li>
+          <li>Ensure <strong>Enable Monitoring</strong> is checked.</li>
+          <li>Set the <strong>Monitoring Interval</strong> (30&ndash;300 seconds; default is 30).</li>
+          <li>Navigate to <strong>Setup</strong> &rarr; <strong>Cluster</strong> and click <strong>Add Cluster</strong>.</li>
+          <li>Enter a <strong>Name</strong> (up to 20 characters, cannot be changed after creation).</li>
+          <li>Enter the <strong>API Server Address</strong> (hostname or IP:port; port 443 is default).</li>
+          <li>Select the environment <strong>Type</strong> (AKS, EKS, GKE, Native Kubernetes, OpenShift, or Other).</li>
+          <li>Upload the service account <strong>Credential</strong> file (<code>plugin-svc-acct.json</code>). See <a href="https://docs.paloaltonetworks.com/cn-series/getting-started/cn-series-deployment-prereq/create-service-accounts-for-cluster-authentication-with-cn-series">Create Service Accounts for Cluster Authentication</a>.</li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Important: One Cluster per Panorama</div>
+          <p>Do not add the same Kubernetes cluster to more than one Panorama appliance (or HA pair). Duplicate registrations cause inconsistencies in IP-to-tag mappings across device groups.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The cluster appears in the Kubernetes plugin cluster list with connection status showing successful authentication.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5.2: Add Notify Group and Monitoring Definition (Panorama)</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Navigate to <strong>Panorama</strong> &rarr; <strong>Plugins</strong> &rarr; <strong>Kubernetes</strong>.</li>
+          <li>Add a <strong>Notify Group</strong> specifying the device groups that should receive IP-to-tag mappings.</li>
+          <li>Add a <strong>Monitoring Definition</strong> for each onboarded cluster:
+            <ul>
+              <li>Select the cluster credential.</li>
+              <li>Enable monitoring.</li>
+              <li>Associate with the Notify Group.</li>
+            </ul>
+          </li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Monitoring Definition shows <code>Enabled</code> with the correct cluster and Notify Group assigned.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5.3: Create Dynamic Address Group and Security Policy (Panorama)</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Navigate to <strong>Objects</strong> &rarr; <strong>Address Groups</strong> &rarr; <strong>Add</strong>.</li>
+          <li>Set <strong>Type</strong> to <code>Dynamic</code>.</li>
+          <li>Add match criteria using the Kubernetes tags pushed by the plugin.</li>
+          <li>Navigate to <strong>Policies</strong> &rarr; <strong>Security</strong> &rarr; <strong>Add</strong>.</li>
+          <li>Set the <strong>Destination Address</strong> to the Dynamic Address Group.</li>
+          <li>Set the action and attach the AI Security Profile Group.</li>
+          <li>Navigate to <strong>Commit</strong> &rarr; <strong>Commit and Push</strong>.</li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>After Commit and Push, verify tags on the firewall CLI:</p>
+          <div class="code-block">
+            <pre><code>show object registered-ip all</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>Output shows registered IPs with Kubernetes tags (e.g., <code>k8s.ns_&lt;namespace&gt;</code>, <code>k8s.svc_&lt;service&gt;</code>).</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /ip-tag-panorama -->
+</div><!-- /ip-tag-mgmt tabs -->
+
+
+<!-- ================================================================ -->
+<!--  PHASE 6: CONFIGURE TRAFFIC OBJECTS (OPTIONAL)                  -->
+<!-- ================================================================ -->
+
+<h2 id="traffic-objects">Phase 6: Configure Traffic Objects (Optional)</h2>
+
+<p>Traffic objects map cloud entities (K8s clusters or VPC endpoints) to zones, enabling zone-based security policy rules that target specific clusters or endpoints. This is optional &mdash; basic K8s protection works without traffic objects. Add them when granular per-cluster or per-VPC security policies are required.</p>
+
+<div class="mgmt-tabs" data-tab-group="traffic-obj-mgmt">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="to-scm">SCM</button>
+    <button class="mgmt-tab" data-plane="to-panorama">Panorama</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="to-scm">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 6.1: Create Traffic Object (SCM)</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Traffic objects create sub-interfaces mapped to zones, enabling per-cluster security policies.</p>
+
+        <ol>
+          <li>Log in to <a href="https://stratacloudmanager.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+          <li>Navigate to <strong>Configuration</strong> &rarr; <strong>NGFW and Prisma Access</strong> &rarr; <strong>Objects</strong> &rarr; <strong>Traffic Objects</strong>.</li>
+          <li>Click <strong>Add Traffic Object</strong>.</li>
+          <li>Configure:
+            <table>
+              <thead><tr><th>Field</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Name</td><td>Descriptive name</td></tr>
+                <tr><td>Type</td><td><code>K8s Cluster ID</code> or <code>VPC Endpoint ID</code></td></tr>
+                <tr><td>Traffic Object ID</td><td>Cluster ID (1&ndash;2048, from <code>values.yaml</code>) or VPC Endpoint ID (<code>vpce-xxxxxxxxxxxxxxxxx</code>)</td></tr>
+                <tr><td>Zone</td><td>Select existing or create new zone</td></tr>
+                <tr><td>Router</td><td>Select the logical router</td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Click <strong>Save</strong>.</li>
+          <li>Attach the zone to a security policy rule. Push configuration.</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">ClusterID Source</div>
+          <p>The <code>clusterid</code> value comes from the <code>values.yaml</code> file configured in Phase 3 (Step 3.2). This must match exactly.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The traffic object appears under <strong>Objects</strong> &rarr; <strong>Traffic Objects</strong>. A sub-interface is created and mapped to the selected zone. The zone can be used in security policy rules for per-cluster enforcement.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /to-scm -->
+
+  <div class="mgmt-panel" data-plane="to-panorama">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 6.1: Create Traffic Object (Panorama)</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li><a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/set-up-panorama/access-and-navigate-panorama-management-interfaces/log-in-to-the-panorama-web-interface">Log in to Panorama</a>.</li>
+          <li>Navigate to <strong>Network</strong> &rarr; <strong>Traffic Objects</strong>.</li>
+          <li>Click <strong>Add</strong>.</li>
+          <li>Enter a <strong>Name</strong>, select the <strong>Location</strong> (virtual system).</li>
+          <li>Set <strong>Type</strong> to <code>K8s Cluster ID</code> or <code>VPC Endpoint ID</code>.</li>
+          <li>Enter the <strong>Traffic Object ID</strong> (1&ndash;2048 for K8s, or <code>vpce-xxxxxxxxxxxxxxxxx</code> for VPC).</li>
+          <li>Select the ingress <strong>Zone</strong> and <strong>Logical Router</strong>.</li>
+          <li>Click <strong>OK</strong>.</li>
+          <li>Attach the zone to a security policy, then <strong>Commit and Push</strong>.</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Advanced Routing</div>
+          <p>Advanced routing is enabled by default on AIRS firewalls. Configure a Logical Router, not a Virtual Router.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Traffic object appears under <strong>Network</strong> &rarr; <strong>Traffic Objects</strong>. The sub-interface is created and attached to the selected zone. After Commit and Push, the firewall shows the traffic object sub-interfaces.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /to-panorama -->
+</div><!-- /traffic-obj-mgmt tabs -->
+
+
+<!-- ================================================================ -->
+<!--  VALIDATION                                                      -->
+<!-- ================================================================ -->
+
+<h2 id="validation">Validation</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Validate PAN-CNI Pods</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Confirm all PAN-CNI pods are running:
+        <div class="code-block">
+          <pre><code>kubectl get pods -A | grep pan-cni</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Each node should have a <code>pan-cni</code> pod in <code>Running</code> state.</p>
+      </li>
+      <li>Verify namespace annotations:
+        <div class="code-block">
+          <pre><code>kubectl describe namespace &lt;protected-namespace&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Annotations should include <code>paloaltonetworks.com/firewall=pan-fw</code>.</p>
+      </li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>PAN-CNI pods are <code>Running</code> on all cluster nodes. Protected namespaces show the correct annotation.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Validate IP Tag Harvesting</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>On the AIRS firewall CLI, check registered IP-to-tag mappings:
+        <div class="code-block">
+          <pre><code>show object registered-ip all</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Expected output shows pod IPs with Kubernetes tags:</p>
+        <div class="code-block">
+          <pre><code>registered IP            Tags
+--------------------------  --------
+10.111.22.108 *           "k8s.ns_gmp-system (never expire)"
+                          "k8s.ns_gmp-operator (never expire)"
+10.111.19.125 *           "k8s.svc_metrics-server (never expire)"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Verify the tag collector plugin status (if using SCM path):
+        <div class="code-block">
+          <pre><code>show plugins kubernetes status</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Registered IPs appear with <code>k8s.ns_*</code>, <code>k8s.svc_*</code>, and other Kubernetes tags. Cluster status shows <code>Connected</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Validate Security Policy Enforcement</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Generate test traffic between protected pods to confirm the firewall is inspecting K8s traffic.</p>
+
+    <ol>
+      <li>Enter a secured pod:
+        <div class="code-block">
+          <pre><code>kubectl exec -it &lt;pod-name&gt; -n &lt;secured-namespace&gt; -- bash</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Send an HTTP request to another secured pod:
+        <div class="code-block">
+          <pre><code>wget http://&lt;target-pod-ip&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>On the firewall CLI, verify the session:
+        <div class="code-block">
+          <pre><code>show session all filter source &lt;source-pod-ip&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Inspect the session detail to confirm the security policy rule is applied:
+        <div class="code-block">
+          <pre><code>show session id &lt;session-id&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>The output should show the security policy rule name (e.g., <code>rule: allow-all-E_W</code>).</p>
+      </li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Sessions appear in the firewall session table with the expected security rule applied. Traffic between secured pods traverses the firewall. AI security inspections are logged in SCM or Panorama monitor views.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Validate Traffic Objects (If Configured)</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Verify traffic object sub-interfaces on the firewall:
+        <div class="code-block">
+          <pre><code>show interface all</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Sub-interfaces created by traffic objects should appear with the assigned zone.</p>
+      </li>
+      <li>Verify the traffic object zone appears in security policy matches for cluster-specific traffic.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Traffic object sub-interfaces appear in the interface list. Security policy logs show traffic matching rules that reference the traffic object zone.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================ -->
+<!--  TROUBLESHOOTING                                                 -->
+<!-- ================================================================ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>PAN-CNI Pod Not Starting</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td><code>pan-cni</code> pod stuck in <code>CrashLoopBackOff</code></td><td>Invalid <code>values.yaml</code> parameters (wrong endpoint IPs or cluster ID)</td><td>Check <code>kubectl logs &lt;pan-cni-pod&gt; -n kube-system</code>. Correct <code>values.yaml</code> and run <code>helm upgrade</code>.</td></tr>
+        <tr><td><code>pan-cni</code> pod stuck in <code>Pending</code></td><td>Insufficient node resources or taints preventing scheduling</td><td>Verify node capacity with <code>kubectl describe node</code>. Remove taints if applicable.</td></tr>
+        <tr><td><code>ImagePullBackOff</code></td><td>Cannot pull <code>gcr.io/pan-cn-series/airs/pan-cni:latest</code></td><td>Verify network connectivity to <code>gcr.io</code>. Check if nodes have correct IAM permissions for image pulling.</td></tr>
+        <tr><td>GKE Autopilot cluster</td><td>Autopilot restricts <code>kube-system</code> namespace modifications</td><td>Use GKE Standard cluster instead. Autopilot is not supported.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After fixing, all <code>pan-cni</code> pods show <code>Running</code> status.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Tags Not Appearing on Firewall</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td><code>show object registered-ip all</code> returns empty</td><td>Tag collector not connected to cluster API</td><td>Check <code>show plugins kubernetes status</code>. Verify cluster credentials and API server endpoint.</td></tr>
+        <tr><td>Tags appear on tag collector but not on AIRS firewall</td><td>Redistribution agent misconfigured or <code>userid</code> service disabled</td><td>Verify redistribution agent config in SCM. Enable <code>userid</code>: <code>set deviceconfig system service disable-userid-service no</code>.</td></tr>
+        <tr><td>Tags appear but Dynamic Address Group is empty</td><td>Match criteria do not match the tag format</td><td>Tags use format <code>k8s.ns_&lt;namespace&gt;</code>, <code>k8s.svc_&lt;service&gt;</code>. Verify DAG match criteria in SCM/Panorama.</td></tr>
+        <tr><td>Public cluster or GCP cluster tags not appearing</td><td>Tag collector only supports AWS/Azure private clusters</td><td>This is a platform limitation in PAN-OS 11.2.10-h2+. Use standard cloud asset discovery for public clusters.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>show object registered-ip all</code> returns populated IP-to-tag mappings.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Helm Install Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td><code>Error: INSTALLATION FAILED</code></td><td>Missing cluster admin permissions</td><td>Run <code>kubectl auth can-i create daemonset -n kube-system</code>. Must return <code>yes</code>.</td></tr>
+        <tr><td><code>namespace "kube-system" not found</code></td><td>kubectl context pointing to wrong cluster</td><td>Verify with <code>kubectl config current-context</code>. Switch context if needed.</td></tr>
+        <tr><td><code>Release already exists</code></td><td>Previous install attempt left a release</td><td>Run <code>helm uninstall ai-runtime-security -n kube-system</code> then reinstall.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>helm list -A</code> shows <code>ai-runtime-security</code> with <code>STATUS: deployed</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Tag Collector Connectivity Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td>Tag collector cannot reach private cluster API</td><td>TGW attachment or VNet peering not configured</td><td>Verify TGW attachments (AWS) or VNet peering status (Azure). Check route tables for correct CIDR entries.</td></tr>
+        <tr><td>Tag collector shows <code>Disconnected</code></td><td>Security group / NSG blocking traffic</td><td>Update security groups to allow traffic between tag collector and cluster management CIDRs.</td></tr>
+        <tr><td>Redistribution client shows no connection</td><td>Port 5007 blocked between tag collector and AIRS firewall</td><td>Verify network connectivity on port <code>5007</code>. Check firewall rules in the cloud provider.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>show plugins kubernetes status</code> shows <code>Connected</code>. <code>show redistribution service client all</code> shows active redistribution clients.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================ -->
+<!--  REFERENCE                                                       -->
+<!-- ================================================================ -->
+
+<h2 id="reference">Reference</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Helm Chart values.yaml Parameters</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Parameter</th><th>Description</th><th>Default</th><th>Required</th></tr></thead>
+      <tbody>
+        <tr><td><code>endpoints1</code></td><td>GWLB VPC endpoint zone 1 IP (AWS only)</td><td><code>""</code></td><td>AWS: Yes</td></tr>
+        <tr><td><code>endpoints1zone</code></td><td>AWS availability zone for endpoint 1</td><td><code>us-east-1a</code></td><td>AWS: Yes</td></tr>
+        <tr><td><code>endpoints2</code></td><td>GWLB VPC endpoint zone 2 IP (AWS only)</td><td><code>""</code></td><td>AWS: Yes</td></tr>
+        <tr><td><code>endpoints2zone</code></td><td>AWS availability zone for endpoint 2</td><td><code>us-east-1b</code></td><td>AWS: Yes</td></tr>
+        <tr><td><code>endpoints</code></td><td>Firewall trust interface IP (private cloud only)</td><td><code>10.101.255.253</code></td><td>Private: Yes</td></tr>
+        <tr><td><code>cniimage</code></td><td>PAN-CNI container image</td><td><code>gcr.io/pan-cn-series/airs/pan-cni:latest</code></td><td>Yes</td></tr>
+        <tr><td><code>namespace</code></td><td>Kubernetes namespace for PAN-CNI</td><td><code>kube-system</code></td><td>Yes</td></tr>
+        <tr><td><code>clusterid</code></td><td>Unique cluster identifier (1&ndash;2048)</td><td><code>1</code></td><td>Yes</td></tr>
+        <tr><td><code>fwtrustcidr</code></td><td>Firewall trust CIDR for east-west optimization (private cloud)</td><td><code>""</code></td><td>No</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All required parameters are set in <code>values.yaml</code> before running <code>helm install</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>PAN-CNI Annotations Reference</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Annotation</th><th>Protection Level</th><th>Apply To</th></tr></thead>
+      <tbody>
+        <tr><td><code>paloaltonetworks.com/firewall=pan-fw</code></td><td>VPC-level</td><td>Namespace</td></tr>
+        <tr><td><code>paloaltonetworks.com/subnetfirewall=ns-secure/bypassfirewall</code></td><td>Namespace-level</td><td>Individual pods</td></tr>
+        <tr><td><code>k8s.v1.cni.cncf.io/networks=pan-cni</code></td><td>OpenShift (Multus)</td><td>Namespace</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The correct annotation is applied for the deployment type. Run <code>kubectl describe namespace &lt;ns&gt;</code> or <code>kubectl describe pod &lt;pod&gt; -n &lt;ns&gt;</code> to confirm.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>IP Tag Format Reference</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The tag collector creates tags in these formats for Dynamic Address Group match criteria:</p>
+
+    <table>
+      <thead><tr><th>Tag Format</th><th>Description</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td><code>k8s.ns_&lt;namespace&gt;</code></td><td>Kubernetes namespace</td><td><code>k8s.ns_gmp-system</code></td></tr>
+        <tr><td><code>k8s.svc_&lt;service&gt;</code></td><td>Kubernetes service</td><td><code>k8s.svc_metrics-server</code></td></tr>
+        <tr><td><code>k8s.ns_&lt;operator&gt;</code></td><td>Kubernetes operator/controller</td><td><code>k8s.ns_gmp-operator</code></td></tr>
+      </tbody>
+    </table>
+
+    <p>Tags are registered with <code>(never expire)</code> lifetime. They update dynamically as pods are created and destroyed.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>show object registered-ip all</code> on the firewall to see the current tag mappings and their format.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Supported Cluster Types</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Cluster Type</th><th>PAN-CNI</th><th>Tag Harvesting</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>EKS (public)</td><td>Yes</td><td>No</td><td>Use cloud asset discovery</td></tr>
+        <tr><td>EKS (private)</td><td>Yes</td><td>Yes (11.2.10-h2+)</td><td>Requires Tag Collector Agent</td></tr>
+        <tr><td>AKS (public)</td><td>Yes</td><td>No</td><td>Use cloud asset discovery</td></tr>
+        <tr><td>AKS (private)</td><td>Yes</td><td>Yes (11.2.10-h2+)</td><td>Requires Tag Collector Agent</td></tr>
+        <tr><td>GKE Standard</td><td>Yes</td><td>No</td><td>GKE tag harvesting not supported</td></tr>
+        <tr><td>GKE Autopilot</td><td>No</td><td>No</td><td><code>kube-system</code> modifications blocked</td></tr>
+        <tr><td>OpenShift</td><td>Yes (Multus)</td><td>Yes (Panorama plugin)</td><td>Requires PAN-OS 11.2.5+, K8s plugin 3.0.4</td></tr>
+        <tr><td>Rancher</td><td>Yes (Multus)</td><td>Yes (Panorama plugin)</td><td>Requires PAN-OS 11.2.5+, K8s plugin 3.0.4</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The target cluster type appears in the supported list above. If not supported for tag harvesting, use standard cloud asset discovery for visibility.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================ -->
+<!--  DEPLOYMENT CHECKLIST                                            -->
+<!-- ================================================================ -->
+
+<h2 id="deployment-checklist">Deployment Checklist</h2>
+
+<div class="checklist-section">
+  <h4>Phase 1: Prerequisites</h4>
+  <ul>
+    <li>AIRS firewall deployed and connected (Core Guide complete)</li>
+    <li>AI Security Profiles configured</li>
+    <li>Helm v3 and kubectl installed</li>
+    <li>Cluster admin access confirmed</li>
+    <li>Pod and Service subnet CIDRs recorded</li>
+    <li>Panorama version 11.2.5+ and K8s plugin 3.0.4+ (Panorama only)</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 2: Firewall Configuration</h4>
+  <ul>
+    <li>Interfaces configured (trust / untrust as applicable)</li>
+    <li>Loopback configured with ILB IP (Azure / GCP)</li>
+    <li>Zones created and assigned to interfaces</li>
+    <li>Logical router(s) with static routes for RFC 1918 + pod/service subnets</li>
+    <li>Health probe routes configured (Azure: 168.63.129.16/32)</li>
+    <li>NAT policies created (source NAT for overlay; inbound/outbound for Azure)</li>
+    <li>Security policy with Allow action and AI profile group</li>
+    <li>Configuration pushed successfully</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 3: Helm Installation</h4>
+  <ul>
+    <li>Terraform download extracted</li>
+    <li>values.yaml updated with GWLB endpoints (AWS) or cluster settings</li>
+    <li>Helm chart installed in kube-system namespace</li>
+    <li>pan-cni pods Running on all nodes</li>
+    <li>Endpoint slices, service accounts, secrets, and services verified</li>
+    <li>Namespaces/pods annotated for protection</li>
+    <li>Application pods restarted</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 4: Tag Collector (Optional)</h4>
+  <ul>
+    <li>Tag collector deployment created in SCM</li>
+    <li>Terraform templates deployed in correct order</li>
+    <li>TGW/VNet peering configured for private cluster connectivity</li>
+    <li>Security groups updated for tag collector communication</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 5: IP Tag Harvesting (Optional)</h4>
+  <ul>
+    <li>Tag collector mode enabled</li>
+    <li>Cluster credentials configured</li>
+    <li>Monitoring definitions created</li>
+    <li>Redistribution agent configured (SCM) or Notify Group set (Panorama)</li>
+    <li>Dynamic Address Groups created with CIE/K8s tag criteria</li>
+    <li>Security policy rules with DAGs pushed</li>
+    <li>Registered IPs show K8s tags on firewall CLI</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 6: Traffic Objects (Optional)</h4>
+  <ul>
+    <li>Traffic objects created with correct cluster ID / VPC endpoint ID</li>
+    <li>Zones assigned and attached to security policies</li>
+    <li>Sub-interfaces visible on firewall</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Validation</h4>
+  <ul>
+    <li>PAN-CNI pods Running on all nodes</li>
+    <li>Namespace annotations confirmed</li>
+    <li>IP-to-tag mappings visible (show object registered-ip all)</li>
+    <li>Test traffic between secured pods creates firewall sessions</li>
+    <li>Security policy rules applied to K8s traffic</li>
+    <li>AI security inspections logged in SCM/Panorama</li>
+  </ul>
+</div>
+
+
+</div><!-- /.article -->
+</main>
+</div><!-- /.layout -->
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#9650;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>

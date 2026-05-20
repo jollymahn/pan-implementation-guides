@@ -1,0 +1,2261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>AIRS Cloud Deployment Guide | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+<style>
+  .arch-diagram {
+    background: #f7f8fa;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2rem 1.5rem;
+    margin: 1.5rem 0;
+    font-family: 'Source Code Pro', monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--fg);
+  }
+  .arch-diagram .highlight { color: var(--pan-link); font-weight: 600; }
+  .arch-diagram .warn { color: #e5a300; font-weight: 600; }
+  .arch-diagram .safe { color: #22c55e; font-weight: 600; }
+  .arch-diagram .danger { color: #ef4444; font-weight: 600; }
+  .checklist-section {
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin: 1.5rem 0;
+  }
+  .checklist-section h4 { margin-top: 0; color: var(--pan-navy); }
+  .checklist-section ul { list-style: none; padding: 0; }
+  .checklist-section li { padding: 0.3rem 0; }
+  .checklist-section li::before { content: "\2610  "; font-size: 1.1rem; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AIRS Cloud Deployment</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="../bootstrap/index.html">Bootstrap</a>
+    <a href="../../globalprotect/index.html">GlobalProtect</a>
+    <a href="../../scm-onboarding/index.html">SCM</a>
+    <a href="../cloud-identity-engine/cie-implementation.html">CIE</a>
+    <a href="airs-cloud-deployment.html" class="active">AIRS</a>
+  </nav>
+</header>
+
+<!-- Layout -->
+<div class="layout">
+
+<!-- Sidebar -->
+<div class="sidebar-backdrop"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Deployment Models</div>
+    <a href="#scm-terraform" data-section="scm-terraform">Phase 1: SCM Terraform</a>
+    <a href="#auto-execute" data-section="auto-execute">Phase 2: Auto-Execute</a>
+    <a href="#panorama-managed" data-section="panorama-managed">Phase 3: Panorama-Managed</a>
+    <a href="#vm-series" data-section="vm-series">Phase 4: VM-Series</a>
+    <a href="#private-cloud" data-section="private-cloud">Phase 5: Private Cloud</a>
+    <a href="#manual-bootstrap" data-section="manual-bootstrap">Phase 6: Manual Bootstrap</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Complete</div>
+    <a href="#post-deployment" data-section="post-deployment">Post-Deployment</a>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#reference" data-section="reference">Reference</a>
+    <a href="#deployment-checklist" data-section="deployment-checklist">Deployment Checklist</a>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="airs-network-intercept.html">AIRS Network Intercept</a>
+  <span class="sep">|</span>
+  Cloud Deployment
+</div>
+
+<div class="article">
+
+<h1>Prisma AIRS: Cloud Deployment Guide</h1>
+<p class="subtitle">Deployment-model-specific steps: from SCM wizard through verified firewall connectivity in AWS, Azure, and GCP</p>
+
+<!-- Phase Progress -->
+<div class="progress-phases">
+  <a href="#scm-terraform" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    SCM Terraform
+  </a>
+  <a href="#auto-execute" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Auto-Execute
+  </a>
+  <a href="#panorama-managed" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Panorama
+  </a>
+  <a href="#vm-series" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    VM-Series
+  </a>
+  <a href="#private-cloud" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Private Cloud
+  </a>
+  <a href="#manual-bootstrap" class="progress-phase">
+    <span class="progress-phase-label">Phase 6</span>
+    Manual Bootstrap
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide covers the <strong>deployment-specific steps</strong> for getting Prisma AIRS AI Runtime Firewall instances running in cloud environments. It assumes the reader has completed <a href="airs-network-intercept.html#prerequisites">Prerequisites</a>, <a href="airs-network-intercept.html#license-foundation">License Activation</a>, and <a href="airs-network-intercept.html#cloud-onboarding">Cloud Account Onboarding</a> from the <a href="airs-network-intercept.html">Core Network Intercept Guide</a>.</p>
+  <p><strong>Six deployment models</strong> are documented as independent phases. Choose the one that matches your cloud, management platform, and operational requirements &mdash; complete that phase, skip the others.</p>
+  <p><strong>After deployment:</strong> Return to the Core Guide <a href="airs-network-intercept.html#security-config">Phase 5: Security Configuration</a> to create AI Security Profiles, policy rules, and push configuration.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Complete the Core Guide First</div>
+  <p>Every deployment model requires a valid license, active Strata Logging Service, device certificate PIN, deployment profile, and onboarded cloud account. Complete <a href="airs-network-intercept.html">Phases 1&ndash;3 of the Core Guide</a> before starting any phase below.</p>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE OVERVIEW                                        -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>Choose a deployment model based on your cloud provider, management platform, and operational requirements. Each model produces the same outcome &mdash; one or more Prisma AIRS AI Runtime Firewall instances inline in your cloud network path &mdash; but differs in automation level, cloud support, and management options.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Deployment Model Comparison</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Clouds</th><th>Management</th><th>FW Type</th><th>Who Runs TF?</th><th>Cloud Mesh?</th><th>AI + K8s?</th><th>Best For</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>SCM Terraform Download</strong></td>
+          <td>AWS, Azure, GCP</td>
+          <td>SCM or Panorama</td>
+          <td>AIRS or VM-Series</td>
+          <td>You</td>
+          <td>No</td>
+          <td>Yes</td>
+          <td>Full infrastructure control</td>
+        </tr>
+        <tr>
+          <td><strong>Auto-Execute</strong></td>
+          <td>AWS, Azure</td>
+          <td>SCM only</td>
+          <td>AIRS only</td>
+          <td>SCM</td>
+          <td>Yes</td>
+          <td>Yes</td>
+          <td>Fastest deployment</td>
+        </tr>
+        <tr>
+          <td><strong>Panorama-Managed</strong></td>
+          <td>AWS, Azure, GCP</td>
+          <td>Panorama only</td>
+          <td>AIRS</td>
+          <td>You</td>
+          <td>No</td>
+          <td>Yes</td>
+          <td>Existing Panorama environments</td>
+        </tr>
+        <tr>
+          <td><strong>VM-Series from SCM</strong></td>
+          <td>AWS, Azure, GCP</td>
+          <td>SCM or Panorama</td>
+          <td>VM-Series only</td>
+          <td>You</td>
+          <td>No</td>
+          <td>No</td>
+          <td>Non-AI workloads (traditional NGFW)</td>
+        </tr>
+        <tr>
+          <td><strong>Private Cloud</strong></td>
+          <td>ESXi, KVM, OpenShift</td>
+          <td>SCM or Panorama</td>
+          <td>AIRS</td>
+          <td>N/A (ISO)</td>
+          <td>No</td>
+          <td>Yes</td>
+          <td>On-premises / private cloud</td>
+        </tr>
+        <tr>
+          <td><strong>Manual Bootstrap</strong></td>
+          <td>All</td>
+          <td>SCM or Panorama</td>
+          <td>AIRS</td>
+          <td>You</td>
+          <td>No</td>
+          <td>Yes</td>
+          <td>Brownfield environments</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Decision Guide</div>
+      <ul>
+        <li><strong>Want the fastest deployment with zero Terraform?</strong> &rarr; <a href="#auto-execute">Phase 2: Auto-Execute</a> (AWS/Azure, SCM only)</li>
+        <li><strong>Need full control over infrastructure?</strong> &rarr; <a href="#scm-terraform">Phase 1: SCM Terraform Download</a></li>
+        <li><strong>Already use Panorama for centralized management?</strong> &rarr; <a href="#panorama-managed">Phase 3: Panorama-Managed</a></li>
+        <li><strong>Protecting non-AI workloads alongside AI traffic?</strong> &rarr; <a href="#vm-series">Phase 4: VM-Series</a></li>
+        <li><strong>Deploying on-premises (ESXi/KVM)?</strong> &rarr; <a href="#private-cloud">Phase 5: Private Cloud</a></li>
+        <li><strong>Existing infrastructure you cannot redeploy?</strong> &rarr; <a href="#manual-bootstrap">Phase 6: Manual Bootstrap</a></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Traffic Type Support by Firewall Type</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The firewall type determines which traffic can be inspected. Only Prisma AIRS AI Runtime Firewall supports AI, K8s, and cluster traffic.</p>
+    <table>
+      <thead>
+        <tr><th>Traffic Type</th><th>Prisma AIRS Runtime FW</th><th>VM-Series</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>AI Traffic (App &rarr; AI Model)</td><td>Yes</td><td>No</td></tr>
+        <tr><td>Non-AI Traffic + namespaces (e.g., kube-system)</td><td>Yes</td><td>No</td></tr>
+        <tr><td>Cluster Traffic</td><td>Yes</td><td>No</td></tr>
+        <tr><td>Non-AI, non-cluster traffic</td><td>Yes</td><td>Yes</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">VM-Series Cannot Inspect AI Traffic</div>
+      <p>Selecting any namespace in the SCM wizard disables the VM-Series option. Only Prisma AIRS AI Runtime Firewall can secure AI workloads and Kubernetes namespaces.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Deployment model selected. Confirm the chosen model supports your target cloud provider, management platform, and traffic types before proceeding.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: SCM TERRAFORM DOWNLOAD                             -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="scm-terraform">Phase 1: SCM Terraform Download</h2>
+
+<p>The primary deployment path. Generate a Terraform template from the SCM wizard, download it, and apply it in your cloud environment. Supports AWS, Azure, and GCP with SCM or Panorama management.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1 &mdash; Navigate to SCM AI Runtime Firewall</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Log in to <a href="https://stratacloudmanager.paloaltonetworks.com">Strata Cloud Manager</a>.</li>
+      <li>Navigate to <code>AI Security</code> &rarr; <code>AI Runtime Firewall</code>.</li>
+      <li>Click <code>Add Protections</code> (the <code>+</code> icon).</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Firewall Deployment wizard opens with the cloud provider selection screen.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2 &mdash; Select Cloud Provider and Traffic Streams</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Select your <strong>Cloud Service Provider</strong> (AWS, Azure, or Google Cloud).</li>
+      <li>Click <code>Next</code>.</li>
+      <li>In <strong>Firewall Placement</strong>, select the traffic streams to inspect:
+        <ul>
+          <li><strong>AI queries and responses</strong> &mdash; application-to-AI-model traffic</li>
+          <li><strong>Inbound traffic to cloud applications</strong> &mdash; user-to-application traffic</li>
+          <li><strong>Outbound traffic from cloud applications</strong> &mdash; application-to-internet traffic</li>
+          <li><strong>Inter VPC/VNet communication</strong> &mdash; application-to-application traffic</li>
+          <li><strong>Select All Traffic</strong> &mdash; inspect all streams</li>
+        </ul>
+      </li>
+      <li>Select <strong>Download Terraform templates and execute on my own</strong> as the deployment method.</li>
+      <li>Click <code>Next</code>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The wizard advances to the <strong>Regions &amp; Applications</strong> screen with your selected cloud provider and traffic streams.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3 &mdash; Select Region, Account, and Applications</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Select your <strong>cloud account</strong> from the onboarded accounts list.</li>
+      <li>Select the <strong>region</strong> where applications will be protected.</li>
+      <li>In <strong>Selected applications</strong>, choose the applications to secure from the discovered list.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Application Discovery</div>
+      <p>Available applications are determined by the application definition criteria configured during <a href="https://docs.paloaltonetworks.com/ai-runtime-security/activation-and-onboarding/onboard-and-activate-cloud-account-in-scm">cloud account onboarding</a>. If expected applications are missing, review the application definition settings in the Cloud Account Manager.</p>
+    </div>
+
+    <p>Cloud-specific configuration for application VPC/VNet connectivity:</p>
+
+    <div class="mgmt-tabs" data-tab-group="p1-region">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="aws-region">AWS</button>
+        <button class="mgmt-tab" data-plane="azure-region">Azure</button>
+        <button class="mgmt-tab" data-plane="gcp-region">GCP</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="aws-region">
+        <ol start="4">
+          <li>For each application, configure the <strong>GWLB Endpoint CIDR &amp; Zone Pair</strong>:
+            <ul>
+              <li>Select the <strong>zone</strong> for GWLB endpoint creation.</li>
+              <li>Enter the <strong>CIDR IP address</strong> of an available (unused) subnet within your application VPC.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="callout callout-note">
+          <div class="callout-title">Finding Your VPC CIDR</div>
+          <p>In the <a href="https://aws.amazon.com/console/">AWS Management Console</a>, navigate to <code>VPC</code>, select your application VPC, and record the IPv4 CIDR range. The GWLB endpoint CIDR must fall within this range.</p>
+        </div>
+      </div>
+
+      <div class="mgmt-panel" data-plane="azure-region">
+        <ol start="4">
+          <li>To add an undiscovered VNet, select the <strong>Added vNet</strong> tab:
+            <ul>
+              <li>Enter the <strong>VNet Name</strong> (from the <a href="https://portal.azure.com/">Azure portal</a> &rarr; <code>Virtual Networks</code>).</li>
+              <li>Enter the <strong>VNet CIDR</strong>.</li>
+              <li>Enter the <strong>Resource Group Name</strong>.</li>
+              <li>Enter the <strong>Cluster ID</strong> (if applicable).</li>
+            </ul>
+          </li>
+        </ol>
+      </div>
+
+      <div class="mgmt-panel" data-plane="gcp-region">
+        <ol start="4">
+          <li>For each application, set the <strong>Public IP address</strong> on the External Load Balancer (ELB):
+            <ul>
+              <li><strong>Auto generate</strong> &mdash; assigns an ephemeral IP automatically.</li>
+              <li><strong>Input manually</strong> &mdash; enter a pre-created static IP. See <a href="https://cloud.google.com/compute/docs/ip-addresses/configure-static-external-ip-address">GCP Static External IP Addresses</a>.</li>
+            </ul>
+          </li>
+          <li>To add an undiscovered VPC, select the <strong>Undiscovered VPC(s)</strong> tab:
+            <ul>
+              <li>Enter <strong>VPC Name</strong>, <strong>VPC CIDRs</strong>, optional <strong>K8s pod CIDRs</strong>, optional <strong>K8s service CIDRs</strong>, and <strong>Cluster ID</strong>.</li>
+            </ul>
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>At least one application or VPC/VNet is selected with the correct region and zone configuration.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4 &mdash; Configure Traffic Inspection</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Traffic steering inspection is available when namespace-level applications are selected. This allows granular control over which CIDRs are inspected or bypassed.</p>
+    <ol>
+      <li>Select a <strong>namespace</strong> from the applications list.</li>
+      <li>Configure traffic handling per namespace (limit: 10 CIDRs per cluster):
+        <ul>
+          <li><strong>Inspect certain CIDRs</strong> &mdash; only inspect traffic from specified subnet ranges.</li>
+          <li><strong>Bypass certain CIDRs</strong> &mdash; exclude traffic from specified subnet ranges.</li>
+        </ul>
+      </li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Namespace vs. VPC Selection</div>
+      <p>When protecting traffic from namespaces, select <strong>only the namespace</strong> &mdash; not its parent VPC. The same GWLB endpoint cannot be used for both VPC and namespace-level protection in the same zone. Selecting both causes deployment failure.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Default Behavior</div>
+      <p>For container applications, all traffic to and from the applications is protected by default. Use traffic inspection options only when granular CIDR-level control is needed.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Traffic inspection configuration shows the selected namespaces with inspect/bypass CIDRs applied (or left at default for full protection).</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.5 &mdash; Configure Deployment Parameters</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Configure the firewall type, instance count, zones, instance size, and scaling behavior.</p>
+    <ol>
+      <li>In <strong>Deployment type</strong>, select <code>AI Runtime Security</code>.
+        <ul><li>Select <code>VM-Series</code> only if protecting non-AI, non-cluster traffic exclusively. See <a href="#vm-series">Phase 4</a>.</li></ul>
+      </li>
+      <li>Optionally enable <strong>Auto-Deploy Security</strong> (disabled by default).</li>
+      <li>Enter the <strong>number of firewalls to deploy</strong>.</li>
+      <li><strong>Select zones</strong> from the available list. Firewall zones must cover all application zones selected in Step 1.3.</li>
+      <li><strong>Choose the instance type</strong> for the security VM (minimum 4 vCPUs).</li>
+      <li>In <strong>Firewall Scaling</strong>, select <code>Static</code> or <code>Dynamic</code>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Zone Coverage</div>
+      <p>Firewall zones must include every availability zone used by your selected applications. For example, if App1 uses <code>us-west-2a</code> and <code>us-west-2c</code>, and App2 uses <code>us-west-2b</code>, the firewall deployment must include all three zones.</p>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Dynamic Autoscaling Configuration</span>
+      </div>
+      <div class="collapsible-body">
+        <p>When <code>Dynamic</code> scaling is selected, configure the following additional parameters:</p>
+        <ol>
+          <li>Set the <strong>Number of Firewalls to Deploy</strong> as a range (minimum to maximum).</li>
+          <li>Enter the <strong>CloudWatch Namespace</strong> (AWS) or equivalent metric namespace.</li>
+          <li>Set the <strong>Update Interval</strong> (1&ndash;60 minutes).</li>
+          <li>Select one or more <strong>Autoscaling Metrics</strong> and configure thresholds for scale-in and scale-out.</li>
+          <li>Click <code>Apply</code>.</li>
+        </ol>
+        <table>
+          <thead>
+            <tr><th>Metric</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>Dataplane CPU Utilization (%)</code></td><td>Traffic load on the firewall dataplane</td></tr>
+            <tr><td><code>Dataplane Packet Buffer Utilization (%)</code></td><td>Buffer usage; prevents packet drops during traffic bursts</td></tr>
+            <tr><td><code>panSessionConnectionsPerSecond</code></td><td>New connection establish rate per second</td></tr>
+            <tr><td><code>panSessionThroughputKbps</code></td><td>Throughput in Kbps</td></tr>
+            <tr><td><code>panSessionThroughputPps</code></td><td>Packets per second</td></tr>
+            <tr><td><code>Sessions Active</code></td><td>Total active sessions in the flow lookup table</td></tr>
+            <tr><td><code>Session Utilization (%)</code></td><td>Combined TCP/UDP/ICMP/SSL session utilization</td></tr>
+            <tr><td><code>SSLProxyUtilization (%)</code></td><td>SSL forward proxy session utilization</td></tr>
+          </tbody>
+        </table>
+        <p>After traffic decreases and firewalls deactivate, the system automatically removes instances from inventory and returns licenses to the credit pool.</p>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Deployment parameters show <code>AI Runtime Security</code> as firewall type with the correct instance count, zones, instance type, and scaling configuration.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.6 &mdash; Configure IP Addressing</span>
+  </div>
+  <div class="collapsible-body">
+    <p>IP addressing differs by cloud provider. Configure the security VPC/VNet CIDR and transit/peering connectivity.</p>
+
+    <div class="mgmt-tabs" data-tab-group="p1-ip">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="aws-ip">AWS</button>
+        <button class="mgmt-tab" data-plane="azure-ip">Azure</button>
+        <button class="mgmt-tab" data-plane="gcp-ip">GCP</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="aws-ip">
+        <ol>
+          <li>Enter the <strong>CIDR for security VPC</strong> &mdash; an unused VPC CIDR range. Locate existing VPC CIDRs in the <a href="https://aws.amazon.com/console/">AWS Console</a> &rarr; <code>VPC</code>.</li>
+          <li>In <strong>Create transit gateway</strong>:
+            <ul>
+              <li><strong>No</strong> &mdash; select an existing <strong>TGW ID</strong> from the dropdown (find it in <code>VPC Dashboard</code> &rarr; <code>Transit Gateways</code>).</li>
+              <li><strong>Yes</strong> &mdash; optionally enter the ASN for the new Transit Gateway. See <a href="https://docs.aws.amazon.com/vpc/latest/tgw/create-tgw.html">Create a Transit Gateway</a>.</li>
+            </ul>
+          </li>
+          <li>Optionally enable <strong>Cross-Zone load balancing</strong> to distribute traffic evenly across availability zones.</li>
+        </ol>
+      </div>
+
+      <div class="mgmt-panel" data-plane="azure-ip">
+        <ol>
+          <li>Enter the <strong>CIDR of Security VNet</strong> &mdash; an unused VNet address space. Locate existing VNet CIDRs in the <a href="https://portal.azure.com/">Azure portal</a> &rarr; <code>Virtual Networks</code> &rarr; <code>Address space</code>.</li>
+        </ol>
+      </div>
+
+      <div class="mgmt-panel" data-plane="gcp-ip">
+        <ol>
+          <li>Enter the <strong>CIDR for Untrust VPC</strong>.</li>
+          <li>Enter the <strong>CIDR for Trust VPC</strong>.</li>
+          <li>Enter the <strong>CIDR for Management VPC</strong>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>IP addressing configuration shows non-overlapping CIDRs for the security VPC/VNet and transit/peering configuration appropriate for your cloud.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.7 &mdash; Configure Licensing</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Enter the licensing parameters generated during <a href="airs-network-intercept.html#license-foundation">Phase 2 of the Core Guide</a>.</p>
+    <ol>
+      <li>Select the <strong>PAN-OS version</strong> from the available list.</li>
+      <li>Enter the <strong>Flex authentication code</strong> &mdash; the AUTH CODE from the <a href="https://docs.paloaltonetworks.com/ai-runtime-security/activation-and-onboarding/create-an-ai-instance-deployment-profile-in-csp">deployment profile</a> created in the Customer Support Portal.</li>
+      <li>Enter the <strong>Device Certificate PIN ID</strong> and <strong>PIN Value</strong> generated during <a href="airs-network-intercept.html#license-foundation">Step 2.3 of the Core Guide</a>.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">PINs Expire</div>
+      <p>Registration PINs have an expiration date. If the PIN expired since generation, return to the Customer Support Portal and generate a new one before proceeding.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>PAN-OS version, auth code, and device certificate PIN fields are populated. No validation errors are shown in the wizard.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.8 &mdash; Configure Management Parameters</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Choose whether firewalls are managed by Strata Cloud Manager or Panorama.</p>
+
+    <div class="mgmt-tabs" data-tab-group="p1-mgmt">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="scm-mgmt">SCM</button>
+        <button class="mgmt-tab" data-plane="panorama-mgmt">Panorama</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="scm-mgmt">
+        <ol>
+          <li>Enter <strong>CIDR ranges</strong> allowed to access the management interface.</li>
+          <li>Enter or paste the <strong>SSH public key</strong> for login.</li>
+          <li>Select <strong>Manage by SCM</strong>.</li>
+          <li>Select the <strong>SCM folder</strong> to group the firewall(s). See <a href="https://docs.paloaltonetworks.com/strata-cloud-manager/getting-started/workflows/workflows-ngfw-setup/folder-management">SCM Folder Management</a>.</li>
+        </ol>
+      </div>
+
+      <div class="mgmt-panel" data-plane="panorama-mgmt">
+        <ol>
+          <li>Enter <strong>CIDR ranges</strong> allowed to access the management interface.</li>
+          <li>Enter or paste the <strong>SSH public key</strong> for login.</li>
+          <li>Select <strong>Manage by Panorama</strong>.</li>
+          <li>Enter the <strong>Active Panorama IP address</strong>.</li>
+          <li>Optionally enter the <strong>Passive Panorama IP address</strong> (for HA).</li>
+          <li>Enter the <strong>Panorama VM auth key</strong> &mdash; see <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/bootstrap-the-vm-series-firewall/generate-the-vm-auth-key-on-panorama">Generate the VM Auth Key on Panorama</a>.</li>
+          <li>Enter the <strong>Device Group</strong> name.</li>
+          <li>Enter the <strong>Template Stack</strong> name.</li>
+        </ol>
+        <div class="callout callout-note">
+          <div class="callout-title">Panorama-Managed Deployment</div>
+          <p>For detailed Panorama-specific steps including security group configuration and connectivity verification, see <a href="#panorama-managed">Phase 3: Panorama-Managed Deployment</a>.</p>
+        </div>
+      </div>
+    </div>
+
+    <p>AWS-specific management options (both SCM and Panorama):</p>
+    <ul>
+      <li><strong>Deploy NAT Gateway</strong> &mdash; routes egress traffic through a NAT gateway in the security VPC.</li>
+      <li><strong>Overlay Routing</strong> &mdash; enables a dual-arm architecture (eth1/1 + eth1/2) for egress traffic inspection. Requires PAN-OS 11.2.8+.</li>
+    </ul>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>AWS Egress Traffic Handling Scenarios</span>
+      </div>
+      <div class="collapsible-body">
+        <table>
+          <thead>
+            <tr><th></th><th>Overlay Routing Enabled</th><th>Overlay Routing Disabled</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>NAT Gateway Disabled</strong></td>
+              <td>Dual-arm (eth1/1 + eth1/2). eth1/2 has a public IP. Direct egress through eth1/2 to IGW. Eliminates NAT gateway costs.</td>
+              <td>Single-arm (eth1/1 only).</td>
+            </tr>
+            <tr>
+              <td><strong>NAT Gateway Enabled</strong></td>
+              <td>Dual-arm (eth1/1 + eth1/2). eth1/2 is private. Egress through eth1/2 to NAT Gateway. Avoids public IP costs.</td>
+              <td>Single-arm (eth1/1 only). All traffic goes through the NAT gateway.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Management parameters show the selected management platform (SCM or Panorama) with allowed management CIDRs and SSH key configured.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.9 &mdash; Review Architecture and Create Terraform Template</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Click <code>Next</code> to reach the <strong>Review Architecture</strong> screen.</li>
+      <li>Enter a unique <strong>Terraform template name</strong>.
+        <ul>
+          <li>Use only lowercase letters, numbers, and hyphens.</li>
+          <li>Do not start or end with a hyphen.</li>
+          <li>Maximum 19 characters.</li>
+        </ul>
+      </li>
+      <li>Review the topology diagram for your AI network architecture.</li>
+      <li>Click <code>Create terraform template</code>.</li>
+      <li>Click <code>Download terraform template</code>.</li>
+      <li>Close the deployment workflow.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A <code>.zip</code> file is downloaded containing <code>architecture/</code> and <code>modules/</code> directories. The template appears in the Terraform Templates list under the shield icon in SCM.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.10 &mdash; Accept Marketplace Subscription</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Before running Terraform, accept the marketplace subscription for the Prisma AIRS image in your cloud provider.</p>
+
+    <div class="mgmt-tabs" data-tab-group="p1-marketplace">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="aws-mkt">AWS</button>
+        <button class="mgmt-tab" data-plane="azure-mkt">Azure</button>
+        <button class="mgmt-tab" data-plane="gcp-mkt">GCP</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="aws-mkt">
+        <ol>
+          <li>Navigate to the <a href="https://aws.amazon.com/marketplace/pp?sku=b261y39exndwe1ltro1tqpeog">AWS Marketplace listing for Prisma AIRS</a>.</li>
+          <li>Click <code>Continue to Subscribe</code>.</li>
+          <li>Accept the Terms and Conditions.</li>
+          <li>Click <code>Continue to Configuration</code> (no further action needed &mdash; Terraform handles the rest).</li>
+        </ol>
+        <div class="callout callout-warning">
+          <div class="callout-title">[VALIDATION NEEDED] Marketplace Listing</div>
+          <p>The marketplace listing may use the Universal Image name (same as VM-Series) starting with PAN-OS 11.2.11. Verify the correct listing SKU before subscribing.</p>
+        </div>
+      </div>
+
+      <div class="mgmt-panel" data-plane="azure-mkt">
+        <p>Run the following commands in Azure CLI to accept the subscription terms:</p>
+        <div class="code-block">
+<pre><code>az vm image accept-terms --urn paloaltonetworks:airs-flex:airs-byol:VERSION</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Replace <code>VERSION</code> with the <code>vmseries_version</code> value from <code>&lt;terraform-path&gt;/architecture/security_project/terraform.tfvars</code>.</p>
+      </div>
+
+      <div class="mgmt-panel" data-plane="gcp-mkt">
+        <div class="callout callout-warning">
+          <div class="callout-title">[VALIDATION NEEDED] GCP Marketplace</div>
+          <p>The GCP marketplace acceptance process for Prisma AIRS images is not documented in the source material. Accept the image terms through the GCP Marketplace or <code>gcloud</code> CLI before running Terraform.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Marketplace subscription is active for your cloud provider. Terraform <code>plan</code> will fail with a subscription error if this step was missed.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.11 &mdash; Deploy security_project Terraform</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>security_project</code> creates the core firewall infrastructure: security VPC/VNet, firewall instances, load balancers, health checks, and the IP-tag collector service.</p>
+    <ol>
+      <li>Unzip the downloaded Terraform template.</li>
+      <li>Review the <code>README.md</code> in the <code>architecture/</code> directory.</li>
+      <li>Navigate to the <code>security_project</code> directory and run:</li>
+    </ol>
+    <div class="code-block">
+<pre><code>cd architecture/security_project
+terraform init
+terraform plan
+terraform apply</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Record Output IP Addresses</div>
+      <p>After <code>terraform apply</code> completes, record the <code>lbs_external_ips</code> and <code>lbs_internal_ips</code> from the output. These are required for post-deployment configuration (particularly for GCP and Azure).</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">IP-Tag Collector</div>
+      <p>The <code>security_project</code> Terraform also creates an IP-tag collector service, enabling IP-tag retrieval from Kubernetes clusters for Dynamic Address Groups (DAGs). See <a href="https://docs.paloaltonetworks.com/ai-runtime-security/administration/deploy-ai-instances-in-public-clouds-as-a-software/use-case-harvesting-ip-tags-k8s-clusters">Harvest IP-Tags from Kubernetes Clusters</a>.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Terraform output shows <code>Apply complete!</code> with resources created. No errors in the apply output. Record the load balancer IP addresses from the outputs.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.12 &mdash; Deploy application_project Terraform</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>application_project</code> creates the peering connections between application VPCs/VNets and the security VPC/VNet, and creates GWLB endpoints (AWS) or peering (Azure/GCP).</p>
+    <div class="code-block">
+<pre><code>cd ../application_project
+terraform init
+terraform plan
+terraform apply</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Azure Route Table Association</div>
+      <p>After running the Azure <code>application_project</code> Terraform, manually associate the route table with your application subnet to direct outbound traffic through the firewall:</p>
+      <ol>
+        <li>In the <a href="https://portal.azure.com/">Azure portal</a>, navigate to <code>Virtual Networks</code>.</li>
+        <li>Select the virtual network containing your application subnet.</li>
+        <li>Navigate to <code>Subnets</code> and select the application subnet.</li>
+        <li>In the <strong>Route table</strong> field, select the route table created by the deployment Terraform.</li>
+        <li>Click <code>Save</code>.</li>
+      </ol>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Terraform output shows <code>Apply complete!</code>. GWLB endpoints (AWS), VNet peering (Azure), or VPC peering (GCP) are created in your cloud console.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.13 &mdash; Verify Firewall Connectivity</span>
+  </div>
+  <div class="collapsible-body">
+    <p>After both Terraform projects complete, verify the firewall has connected to the management platform.</p>
+    <ol>
+      <li>In SCM, navigate to <code>Workflows</code> &rarr; <code>NGFW Setup</code> &rarr; <code>Device Management</code>.</li>
+      <li>Switch to the <strong>Cloud Managed Devices</strong> tab.</li>
+      <li>Locate the deployed firewall(s).</li>
+      <li>Confirm <strong>Device Status</strong> shows <code>Connected</code>.</li>
+      <li>Verify the serial number, PAN-OS version, and deployment profile match your configuration.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Connection Timing</div>
+      <p>The firewall takes several minutes to bootstrap and connect to the management platform after Terraform apply completes. Allow up to 15 minutes before troubleshooting connectivity.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Firewall appears in SCM (or Panorama <code>Managed Devices</code> &rarr; <code>Summary</code>) with <strong>Connected</strong> status. Proceed to <a href="airs-network-intercept.html#security-config">Phase 5: Security Configuration</a> in the Core Guide.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: AUTO-EXECUTE DEPLOYMENT                             -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="auto-execute">Phase 2: Auto-Execute Deployment</h2>
+
+<p>Auto-Execute orchestrates the complete lifecycle of firewall infrastructure provisioning and traffic redirection. SCM creates the security VPC/VNet, firewall instances, load balancers, and route tables automatically &mdash; no Terraform required. Available for AWS and Azure only, with SCM management only.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Auto-Execute Constraints</div>
+  <ul>
+    <li><strong>Clouds:</strong> AWS and Azure only (GCP not supported)</li>
+    <li><strong>Management:</strong> Strata Cloud Manager only (Panorama not supported)</li>
+    <li><strong>Cloud Mesh:</strong> Supported &mdash; enables secure tunnels between firewalls across clouds/regions</li>
+    <li><strong>TGW:</strong> Requires an existing Transit Gateway (AWS) &mdash; cannot create one during deployment</li>
+  </ul>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.1 &mdash; Navigate to SCM and Select Auto-Execute</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Log in to <a href="https://stratacloudmanager.paloaltonetworks.com">Strata Cloud Manager</a>.</li>
+      <li>Navigate to <code>AI Security</code> &rarr; <code>AI Runtime Firewall</code>.</li>
+      <li>Click <code>Add Protections</code> (the <code>+</code> icon).</li>
+      <li>Select your <strong>Cloud Service Provider</strong> (AWS or Azure) and click <code>Next</code>.</li>
+      <li>In <strong>Firewall Placement</strong>, select the traffic streams to inspect.</li>
+      <li>Select <strong>Auto-Execute</strong> as the deployment method.</li>
+      <li>Click <code>Next</code>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Cloud Asset Map Shortcut</div>
+      <p>Auto-Execute can also be initiated from the Cloud Asset Map by clicking an unprotected application and selecting <code>Add Protection</code>. The cloud service is pre-selected when entering the wizard this way.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The wizard shows <strong>Auto-Execute</strong> as the selected deployment method and advances to the applications selection screen.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.2 &mdash; Select Applications</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>On the <strong>Applications</strong> tab, use the <code>Select Application(s)</code> dropdown to choose discovered applications to protect.</li>
+      <li>For AWS, configure <strong>GWLB Endpoint CIDR &amp; Zone Pair</strong> for each application:
+        <ul>
+          <li>Select the zone.</li>
+          <li>Enter the CIDR of an available subnet in the application VPC.</li>
+          <li>Click the <code>+</code> icon to add additional zones.</li>
+        </ul>
+      </li>
+      <li>Optionally select <strong>VPC(s)</strong> from the discovered list. VPCs associated with selected applications are pre-populated.</li>
+      <li>Click <code>Next</code>.</li>
+    </ol>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Do Not Pre-Create Subnets</div>
+      <p>For Auto-Execute on AWS, do not pre-create the GWLB endpoint subnets. Prisma AIRS creates new subnets using the CIDRs entered here. Pre-existing subnets cause a pre-deployment check failure.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>At least one application is selected with zone and CIDR configuration complete.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.3 &mdash; Configure Deployment Parameters</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Auto-Execute pre-selects <code>AI Runtime Security</code> as the firewall type when AI traffic streams are selected. VM-Series is not supported for Auto-Execute.</p>
+    <ol>
+      <li>Specify the <strong>number of firewall instances</strong>.</li>
+      <li>Select <strong>deployment zones</strong> covering all application availability zones.</li>
+      <li>Select the <strong>instance type</strong> for the security VM.</li>
+      <li>Optionally enable <strong>Deploy NAT Gateway</strong> (AWS only).</li>
+      <li>Optionally enable <strong>Overlay Routing</strong> (AWS only, PAN-OS 11.2.8+).</li>
+      <li>Optionally enable <strong>Cloud Mesh</strong> for multi-cloud secure tunneling.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Deployment parameters show the correct instance count, zones, and instance type. Cloud Mesh toggle is set as desired.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.4 &mdash; Configure IP Addressing</span>
+  </div>
+  <div class="collapsible-body">
+
+    <div class="mgmt-tabs" data-tab-group="p2-ip">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="aws-auto-ip">AWS</button>
+        <button class="mgmt-tab" data-plane="azure-auto-ip">Azure</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="aws-auto-ip">
+        <ol>
+          <li>Enter the <strong>CIDR for security VPC</strong> (unused VPC CIDR range).</li>
+          <li>Configure TGW:
+            <ul>
+              <li>From the <strong>TGW Cloud Account</strong> dropdown, select your AWS account.</li>
+              <li>Select the existing <strong>TGW ID</strong> from the dropdown.</li>
+            </ul>
+          </li>
+          <li>Select a <strong>Resource Access Manager (RAM)</strong> &mdash; <code>New</code> or <code>Existing</code>.</li>
+          <li>Optionally enable <strong>Cross-Zone load balancing</strong>.</li>
+        </ol>
+        <div class="callout callout-warning">
+          <div class="callout-title">Existing TGW Required</div>
+          <p>Auto-Execute requires an existing Transit Gateway. Unlike the Terraform Download path, Auto-Execute cannot create a new TGW during deployment.</p>
+        </div>
+      </div>
+
+      <div class="mgmt-panel" data-plane="azure-auto-ip">
+        <ol>
+          <li>Enter the <strong>CIDR for security VNet</strong> (unused VNet address space).</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>IP addressing shows valid, non-overlapping CIDRs. For AWS, an existing TGW is selected.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.5 &mdash; Configure Licensing and Management</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Select the <strong>PAN-OS version</strong>.</li>
+      <li>Enter the <strong>Flex authentication code</strong>.</li>
+      <li>Enter the <strong>Device Certificate PIN ID</strong> and <strong>PIN Value</strong>.</li>
+      <li>Enter <strong>allowed management CIDRs</strong>.</li>
+      <li>Enter the <strong>SSH public key</strong>.</li>
+      <li>Select <strong>Manage by SCM</strong> and choose the <strong>SCM folder</strong>.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Cloud Mesh Folder Requirement</div>
+      <p>If Cloud Mesh is enabled, select the folder that contains the required Auto-VPN configuration. Cloud Mesh uses Auto-VPN to establish tunnels between firewalls.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Licensing and management fields are populated. Management is set to SCM (Panorama is not available for Auto-Execute).</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.6 &mdash; Review and Deploy</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Click <code>Next</code> to reach the <strong>Review Architecture</strong> screen.</li>
+      <li>Review the topology diagram.</li>
+      <li>Click <code>Deploy</code> to initiate automatic deployment.</li>
+    </ol>
+    <p>SCM orchestrates the deployment automatically. No Terraform download or manual <code>apply</code> is needed.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Deployment is initiated. The SCM dashboard shows a deployment in progress.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.7 &mdash; Monitor Deployment Progress</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <code>AI Security</code> &rarr; <code>AI Runtime Firewall</code>.</li>
+      <li>Click the <strong>shield</strong> icon.</li>
+      <li>Select the <strong>Cloud Task log</strong> tab.</li>
+      <li>Locate your deployment by name to monitor task progress.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Deployment Timing</div>
+      <p>Auto-Execute deployments can take 15&ndash;30 minutes to complete, depending on cloud provider and resource creation times.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All tasks in the Cloud Task log show as completed. No error entries appear.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.8 &mdash; Verify Firewall Connectivity</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <code>Workflows</code> &rarr; <code>NGFW Setup</code> &rarr; <code>Device Management</code>.</li>
+      <li>Switch to the <strong>Cloud Managed Devices</strong> tab.</li>
+      <li>Locate the deployed firewall(s) and confirm <strong>Device Status</strong> is <code>Connected</code>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Firewall appears in SCM with <strong>Connected</strong> status and <strong>In Sync</strong> configuration state. Proceed to <a href="airs-network-intercept.html#security-config">Phase 5: Security Configuration</a> in the Core Guide.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Decommissioning Auto-Execute Firewalls</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Decommissioning deletes the Terraform template, associated firewalls, and cloud resources deployed by Prisma AIRS. Software NGFW credits are released back to the pool. The cloud account is not modified or deleted.</p>
+    <ol>
+      <li>Log in to Strata Cloud Manager.</li>
+      <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/activation-and-onboarding/manage-onboarded-cloud-accounts">Disable and re-enable the cloud account</a>.</li>
+      <li>Navigate to <code>AI Security</code> &rarr; <code>AI Runtime</code> &rarr; <code>AI Runtime Firewall</code>.</li>
+      <li>Click the <strong>shield</strong> icon.</li>
+      <li>Select the <strong>Terraform Templates</strong> tab.</li>
+      <li>Click the <strong>delete</strong> icon next to the template to decommission.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">AWS Cloud Mesh IAM Permission</div>
+      <p>If mesh-enabled firewalls are deployed in AWS (or AWS account is onboarded for orchestration), ensure the IAM role includes <code>ec2:RevokeSecurityGroupIngress</code> before decommissioning. Reapply the Terraform template to sync IAM permissions.</p>
+    </div>
+
+    <p>Monitor decommissioning progress on the <strong>Cloud Task log</strong> tab. The <code>Purge MSF Managed Folders from SCM</code> task may log an error if other active firewall clusters exist in the same folder &mdash; this error has no functional impact.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Terraform template no longer appears in the Terraform Templates list. Cloud resources (VPC/VNet, instances, load balancers) are deleted from the cloud console. Credits are returned to the pool.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: PANORAMA-MANAGED DEPLOYMENT                        -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="panorama-managed">Phase 3: Panorama-Managed Deployment</h2>
+
+<p>A variant of the SCM Terraform Download path (Phase 1) that configures the firewall for Panorama management. Follow Phase 1 Steps 1.1&ndash;1.6 first, then use this phase for Panorama-specific management configuration.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Panorama-Managed Prerequisites</div>
+  <ul>
+    <li>Panorama version <strong>11.2.5 or later</strong></li>
+    <li>CloudConnector Plugin <strong>2.1.0</strong> installed</li>
+    <li>Panorama IP address (active, and optionally passive for HA)</li>
+    <li>VM auth key generated on Panorama</li>
+    <li>Device Group and Template Stack pre-created for AIRS firewalls</li>
+  </ul>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.1 &mdash; Prepare Panorama Prerequisites</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Before running the SCM wizard, prepare the Panorama environment.</p>
+    <ol>
+      <li>Confirm Panorama is running PAN-OS <strong>11.2.5+</strong> with <strong>CloudConnector Plugin 2.1.0</strong>.</li>
+      <li>Generate a <strong>VM auth key</strong> on Panorama: <code>Panorama</code> &rarr; <code>Setup</code> &rarr; <code>Management</code> &rarr; <code>VM Auth Key</code> &rarr; <code>Generate</code>. See <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/bootstrap-the-vm-series-firewall/generate-the-vm-auth-key-on-panorama">Generate the VM Auth Key on Panorama</a>.</li>
+      <li>Create a <strong>Device Group</strong> for AIRS firewalls. See <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-device-groups/add-a-device-group">Add a Device Group</a>.</li>
+      <li>Create a <strong>Template Stack</strong> for AIRS firewalls. See <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-templates-and-template-stacks/configure-a-template-stack">Configure a Template Stack</a>.</li>
+      <li>Record the Panorama <strong>active IP address</strong> and (if HA) <strong>passive IP address</strong>: <code>Panorama</code> &rarr; <code>High Availability</code>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Panorama 11.2.5+ is running with CloudConnector Plugin 2.1.0 installed. VM auth key, Device Group, and Template Stack are created and recorded.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.2 &mdash; Configure Management as Panorama in SCM Wizard</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Follow Phase 1 Steps 1.1&ndash;1.6 for your cloud provider. At the management parameters step:</p>
+    <ol>
+      <li>Select <strong>Manage by Panorama</strong>.</li>
+      <li>Enter the <strong>Active Panorama IP address</strong>.</li>
+      <li>Optionally enter the <strong>Passive Panorama IP address</strong>.</li>
+      <li>Enter the <strong>Panorama VM auth key</strong>.</li>
+      <li>Enter the <strong>Device Group</strong> name.</li>
+      <li>Enter the <strong>Template Stack</strong> name.</li>
+    </ol>
+    <p>Continue with Steps 1.7&ndash;1.9 (licensing, review architecture, download Terraform).</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Panorama Dashboard Status</div>
+      <p>For Panorama-managed deployments, the SCM Terraform Templates list shows <strong>Not Deployed</strong> as the status. This is expected &mdash; verify deployment by checking the <strong>Managed By</strong> column, which shows <code>panorama:&lt;ip-address&gt;</code>.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Terraform template is downloaded with Panorama management configuration embedded. The <strong>Managed By</strong> column in SCM shows <code>panorama:&lt;ip-address&gt;</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.3 &mdash; Run Terraform</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Follow the same Terraform execution as Phase 1 Steps 1.10&ndash;1.12 (marketplace subscription, <code>security_project</code>, <code>application_project</code>).</p>
+    <div class="callout callout-note">
+      <div class="callout-title">No IP-Tags Configuration Needed</div>
+      <p>Panorama-managed deployments do not require separate IP-tag configuration. Panorama uses the <a href="https://docs.paloaltonetworks.com/plugins/vm-series-and-panorama-plugins-release-notes/panorama-plugin-for-kubernetes">Panorama Plugin for Kubernetes</a> to pull IP-tags and push them to managed firewalls via Device Groups.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both <code>security_project</code> and <code>application_project</code> Terraform apply successfully.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.4 &mdash; Add Firewall IP to Panorama Security Group (If Applicable)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If Panorama has a security group restricting inbound connections, add the firewall public IP to allow communication.</p>
+    <ol>
+      <li>In the cloud console (e.g., <a href="https://aws.amazon.com/console/">AWS Console</a>), navigate to <code>EC2</code> &rarr; <code>Instances</code>.</li>
+      <li>Search for the deployed AIRS firewall instance.</li>
+      <li>Copy the <strong>Public IPv4 address</strong>.</li>
+      <li>Navigate to the <strong>Panorama instance</strong> &rarr; <code>Security</code> tab &rarr; click the <strong>Security group</strong>.</li>
+      <li>Select <strong>Inbound rules</strong> &rarr; <code>Edit inbound rules</code>.</li>
+      <li>Click <code>Add rule</code> &rarr; select <code>All traffic</code> &rarr; enter the firewall public IP.</li>
+      <li>Click <code>Save rules</code>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Cloud-Specific Adaptation</div>
+      <p>The example above shows AWS. For Azure, add the IP to the Panorama Network Security Group (NSG). For GCP, add it to the Panorama firewall rule.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Panorama security group (or NSG/firewall rule) includes the AIRS firewall public IP in its inbound rules.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.5 &mdash; Verify Firewall in Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Log in to the Panorama web interface.</li>
+      <li>Navigate to <code>Panorama</code> &rarr; <code>Managed Devices</code> &rarr; <code>Summary</code>.</li>
+      <li>Locate the deployed firewall.</li>
+      <li>Confirm the device status is <strong>Connected</strong>.</li>
+      <li>Verify it is assigned to the correct <strong>Device Group</strong> and <strong>Template Stack</strong>.</li>
+    </ol>
+    <p>View AI security threat logs at <code>Monitor</code> &rarr; <code>Logs</code> &rarr; <code>Threat</code> with the <code>ai-security</code> subtype filter.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Firewall appears in Panorama Managed Devices with <strong>Connected</strong> status, correct Device Group, and correct Template Stack. Proceed to security configuration via Panorama.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: VM-SERIES DEPLOYMENT                                -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="vm-series">Phase 4: VM-Series Deployment</h2>
+
+<p>Deploy a standard VM-Series firewall through the SCM wizard. VM-Series firewalls protect non-AI, non-cluster traffic only &mdash; they cannot inspect AI model traffic or Kubernetes namespace traffic.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">VM-Series Limitations</div>
+  <p>VM-Series firewalls deployed through this workflow <strong>cannot inspect AI traffic, K8s namespace traffic, or cluster traffic</strong>. Use this path only for non-AI workload protection (VPCs, EC2s, Lambda functions). For AI traffic protection, deploy Prisma AIRS AI Runtime Firewall via <a href="#scm-terraform">Phase 1</a> instead.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1 &mdash; Prerequisites and Constraints</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Requirement</th><th>Details</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>License</strong></td><td>VM-Series license with a separate <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/software-ngfw/create-a-deployment-profile-vm-series">VM-Series deployment profile</a></td></tr>
+        <tr><td><strong>Panorama</strong></td><td>PAN-OS 11.2.5+ with cloud plugin</td></tr>
+        <tr><td><strong>Cloud account</strong></td><td>Must include VPC workloads (not namespace-only)</td></tr>
+        <tr><td><strong>Traffic types</strong></td><td>Non-AI, non-cluster traffic only</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>VM-Series deployment profile is created in the Customer Support Portal with the correct credit allocation.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.2 &mdash; Select VM-Series in Deployment Parameters</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Follow Phase 1 Steps 1.1&ndash;1.4. At the deployment parameters step:</p>
+    <ol>
+      <li>In <strong>Deployment type</strong>, select <code>VM-Series</code>.</li>
+      <li>Enter the <strong>Service account attached to security VM</strong> (GCP only).</li>
+      <li>Enter the <strong>number of firewalls to deploy</strong>.</li>
+      <li>Select <strong>deployment zones</strong>.</li>
+      <li>Select the <strong>instance type</strong>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">No Autoscaling for VM-Series</div>
+      <p>The VM-Series deployment through this wizard uses static scaling only. Dynamic autoscaling is available only for Prisma AIRS AI Runtime Firewall deployments.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Deployment type shows <code>VM-Series</code> with the correct instance count and zones.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.3 &mdash; Complete Wizard and Download Terraform</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Follow Phase 1 Steps 1.6&ndash;1.9 for IP addressing, licensing (using VM-Series auth code), management parameters, and Terraform template creation/download.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Terraform template is downloaded with VM-Series configuration.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.4 &mdash; Run Terraform</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Follow Phase 1 Steps 1.10&ndash;1.12 (marketplace subscription, <code>security_project</code>, <code>application_project</code>).</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both Terraform projects apply successfully. Record load balancer IPs from the output.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.5 &mdash; Verify in SCM or Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <code>Workflows</code> &rarr; <code>NGFW Setup</code> &rarr; <code>Device Management</code>.</li>
+      <li>Switch to the <strong>Cloud Managed Devices</strong> tab.</li>
+      <li>Confirm the VM-Series firewall shows <strong>Device Status</strong> as <code>Connected</code>.</li>
+      <li>Verify the <strong>Application Type</strong> column shows <code>VMSeries</code>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>VM-Series firewall appears in SCM (or Panorama) with <strong>Connected</strong> status. Configure security policy for non-AI traffic inspection.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: PRIVATE CLOUD DEPLOYMENT                            -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="private-cloud">Phase 5: Private Cloud Deployment</h2>
+
+<p>Deploy Prisma AIRS AI Runtime Firewall on ESXi, KVM, or OpenShift for on-premises or private cloud environments. The firewall intercepts traffic between applications in private clouds and AI models on public clouds.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.1 &mdash; Download the AIRS Image</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
+      <li>Navigate to <code>Updates</code> &rarr; <code>Software Updates</code>.</li>
+      <li>In <strong>Content type</strong>, search for:
+        <ul>
+          <li><strong>ESXi:</strong> <code>PAN-OS for AI Runtime Security ESXi Base Images</code> &rarr; download the <code>.ova</code> file</li>
+          <li><strong>KVM:</strong> <code>PAN-OS for AI Runtime Security KVM Base Images</code> &rarr; download the <code>.qcow2</code> file</li>
+        </ul>
+      </li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The AIRS image file (<code>.ova</code> or <code>.qcow2</code>) is downloaded to the local machine or accessible storage.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.2 &mdash; Create VM with 3 Interfaces</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create a virtual machine using the downloaded image.</p>
+    <ol>
+      <li>In ESXi or KVM, create a new VM using the OVA/QCOW2 file.</li>
+      <li>Enter a <strong>name</strong> for the VM.</li>
+      <li>Upload the image file.</li>
+      <li>Configure <strong>three network interfaces</strong>:
+        <ul>
+          <li><strong>Management</strong> &mdash; for firewall management traffic</li>
+          <li><strong>Client-side</strong> &mdash; for application-facing traffic</li>
+          <li><strong>Server-side</strong> &mdash; for AI model-facing traffic</li>
+        </ul>
+      </li>
+      <li>Configure VM resources: minimum <strong>2 CPUs</strong> and <strong>4.5 GB memory</strong>.</li>
+      <li>Complete the VM creation wizard.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The VM is created with 3 network interfaces and meets the minimum resource requirements.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.3 &mdash; Create Bootstrap Folder Structure</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create the standard bootstrap folder structure on your local machine or storage.</p>
+    <div class="code-block">
+<pre><code>mkdir -p content software plugins license config</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Five directories exist: <code>content/</code>, <code>software/</code>, <code>plugins/</code>, <code>license/</code>, <code>config/</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.4 &mdash; Create Bootstrap Files</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create the auth codes file and init-cfg.txt bootstrap configuration.</p>
+
+    <h4>Part 1: Auth Codes</h4>
+    <p>Create a file named <code>authcodes</code> in the <code>license/</code> folder with your auth code (no leading or trailing spaces or newlines):</p>
+    <div class="code-block">
+<pre><code># Create the authcodes file
+echo -n "YOUR_AUTH_CODE_HERE" > license/authcodes</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Part 2: init-cfg.txt</h4>
+    <p>Create <code>init-cfg.txt</code> in the <code>config/</code> folder. See <a href="#manual-bootstrap">Phase 6: Manual Bootstrap</a> for the full parameter reference.</p>
+
+    <div class="mgmt-tabs" data-tab-group="p5-initcfg">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="scm-initcfg">SCM-Managed</button>
+        <button class="mgmt-tab" data-plane="panorama-initcfg">Panorama-Managed</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="scm-initcfg">
+        <div class="code-block">
+<pre><code>type=static
+ip-address=10.3.254.85
+default-gateway=10.3.254.1
+netmask=255.255.255.0
+hostname=airs-private-01
+panorama-server=cloud
+plugin-op-commands=advance-routing:enable
+dgname=airs-private-dg
+dns-primary=8.8.8.8
+dns-secondary=8.8.4.4
+vm-series-auto-registration-pin-id=YOUR_PIN_ID
+vm-series-auto-registration-pin-value=YOUR_PIN_VALUE</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-note">
+          <div class="callout-title">SCM-Managed: panorama-server=cloud</div>
+          <p>Setting <code>panorama-server=cloud</code> directs the firewall to register with Strata Cloud Manager instead of a Panorama appliance.</p>
+        </div>
+      </div>
+
+      <div class="mgmt-panel" data-plane="panorama-initcfg">
+        <div class="code-block">
+<pre><code>type=static
+ip-address=10.3.254.85
+default-gateway=10.3.254.1
+netmask=255.255.255.0
+hostname=airs-private-01
+panorama-server=10.1.1.20
+panorama-server-2=10.1.1.21
+vm-auth-key=0123456789ABCDEF
+plugin-op-commands=advance-routing:enable
+dgname=airs-panorama-dg
+tplname=airs-panorama-tpl
+dns-primary=8.8.8.8
+dns-secondary=8.8.4.4
+vm-series-auto-registration-pin-id=YOUR_PIN_ID
+vm-series-auto-registration-pin-value=YOUR_PIN_VALUE</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>license/authcodes</code> contains the auth code. <code>config/init-cfg.txt</code> contains all required bootstrap parameters for the selected management platform.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.5 &mdash; Create ISO and Boot VM</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Package the bootstrap folder structure into an ISO image and attach it to the VM.</p>
+    <ol>
+      <li>Create an ISO from the bootstrap folders. See <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/bootstrap-the-vm-series-firewall">Bootstrap the VM-Series Firewall</a> for platform-specific ISO creation steps.</li>
+      <li>Attach the ISO to the VM as a CD/DVD drive.</li>
+      <li>Power on the VM.</li>
+    </ol>
+    <p>The firewall automatically reads the bootstrap parameters from the ISO during first boot.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The VM powers on and begins the bootstrap process. The console shows PAN-OS loading.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.6 &mdash; Verify Bootstrap Completion</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Connect to the firewall console and verify the bootstrap parameters.</p>
+    <div class="code-block">
+<pre><code>show system info</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Confirm the following values in the output:</p>
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Expected Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>model</code></td><td><code>AI-Runtime-Security</code></td></tr>
+        <tr><td><code>vm-license</code></td><td><code>AI-RUNTIME-SECURITY-2</code></td></tr>
+        <tr><td><code>cloud-mode</code></td><td><code>non-cloud</code> (private cloud)</td></tr>
+        <tr><td><code>advanced-routing</code></td><td><code>on</code></td></tr>
+        <tr><td><code>device-certificate-status</code></td><td><code>Valid</code></td></tr>
+      </tbody>
+    </table>
+
+    <p>Check bootstrap status:</p>
+    <div class="code-block">
+<pre><code>show system bootstrap status</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Check for configuration push jobs:</p>
+    <div class="code-block">
+<pre><code>show jobs all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>show system info</code> shows <code>model: AI-Runtime-Security</code> and <code>device-certificate-status: Valid</code>. Bootstrap status shows all phases complete. Record the serial number for the next step.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.7 &mdash; Verify in SCM or Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In SCM, navigate to <code>System Settings</code> &rarr; <code>Device Management</code>.</li>
+      <li>Locate the firewall by the serial number recorded in the previous step.</li>
+      <li>Confirm <strong>Device Status</strong> is <code>Connected</code> and configuration is <strong>In Sync</strong>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The private cloud firewall appears in SCM (or Panorama) with <strong>Connected</strong> and <strong>In Sync</strong> status. Proceed to security configuration.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 6: MANUAL BOOTSTRAP                                    -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="manual-bootstrap">Phase 6: Manual Bootstrap</h2>
+
+<p>Manually deploy and bootstrap Prisma AIRS AI Runtime Firewall for brownfield environments with existing cloud infrastructure. This path provides maximum flexibility &mdash; use it when the SCM wizard-generated Terraform does not fit your environment.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.1 &mdash; Choose a Bootstrap Method</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Three bootstrap methods are available. Choose based on your cloud and infrastructure.</p>
+    <table>
+      <thead>
+        <tr><th>Method</th><th>Applicability</th><th>Best For</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>init-cfg.txt</code></td>
+          <td>Public and private clouds</td>
+          <td>Standard bootstrap with file-based configuration</td>
+        </tr>
+        <tr>
+          <td><strong>User data</strong></td>
+          <td>Public clouds only</td>
+          <td>Cloud-native bootstrap using instance metadata</td>
+        </tr>
+        <tr>
+          <td><strong>AWS Secrets Manager</strong></td>
+          <td>AWS only</td>
+          <td>Secure parameter storage for sensitive bootstrap values</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Reference: <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/bootstrap-the-vm-series-firewall/choose-a-bootstrap-method">Choose a Bootstrap Method</a></p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Bootstrap method selected based on cloud environment and security requirements.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.2 &mdash; Configure init-cfg.txt Parameters</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>init-cfg.txt</code> file contains all bootstrap parameters. Configuration differs based on the management platform.</p>
+
+    <div class="mgmt-tabs" data-tab-group="p6-initcfg">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="scm-bootstrap">SCM-Managed</button>
+        <button class="mgmt-tab" data-plane="panorama-bootstrap">Panorama-Managed</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="scm-bootstrap">
+        <div class="code-block">
+<pre><code>type=dhcp-client
+dhcp-accept-server-domain=yes
+dhcp-accept-server-hostname=yes
+dhcp-send-client-id=yes
+dhcp-send-hostname=yes
+dgname=airs-brownfield-dg
+plugin-op-commands=advance-routing:enable
+panorama-server=cloud
+mgmt-interface-swap=enable
+dns-primary=10.5.6.6
+dns-secondary=10.5.6.7
+vm-series-auto-registration-pin-id=YOUR_PIN_ID
+vm-series-auto-registration-pin-value=YOUR_PIN_VALUE</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <table>
+          <thead>
+            <tr><th>Parameter</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>type</code></td><td><code>dhcp-client</code> or <code>static</code>. Use <code>static</code> for private cloud with fixed IP.</td></tr>
+            <tr><td><code>dhcp-*</code></td><td>Required when <code>type=dhcp-client</code>. Enables DHCP hostname and domain acceptance.</td></tr>
+            <tr><td><code>panorama-server=cloud</code></td><td>Directs the firewall to register with SCM instead of a Panorama appliance.</td></tr>
+            <tr><td><code>dgname</code></td><td>SCM folder name where the firewall will be managed.</td></tr>
+            <tr><td><code>plugin-op-commands</code></td><td>Set to <code>advance-routing:enable</code> for Logical Router support (required).</td></tr>
+            <tr><td><code>mgmt-interface-swap</code></td><td>Set to <code>enable</code> if the firewall is behind a load balancer (public cloud only).</td></tr>
+            <tr><td><code>vm-series-auto-registration-pin-id</code></td><td>Device Certificate PIN ID from the Customer Support Portal.</td></tr>
+            <tr><td><code>vm-series-auto-registration-pin-value</code></td><td>Device Certificate PIN Value.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mgmt-panel" data-plane="panorama-bootstrap">
+        <div class="code-block">
+<pre><code>type=static
+ip-address=10.1.1.19
+default-gateway=10.1.1.1
+netmask=255.255.255.0
+dgname=airs-panorama-dg
+vm-auth-key=0123456789ABCDEF
+plugin-op-commands=advance-routing:enable
+panorama-server=10.1.1.20
+panorama-server-2=10.1.1.21
+mgmt-interface-swap=enable
+tplname=airs-panorama-tpl
+dns-primary=10.5.6.6
+dns-secondary=10.5.6.7
+vm-series-auto-registration-pin-id=YOUR_PIN_ID
+vm-series-auto-registration-pin-value=YOUR_PIN_VALUE</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <table>
+          <thead>
+            <tr><th>Parameter</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>type</code></td><td><code>static</code> for fixed IP assignment. Requires <code>ip-address</code>, <code>default-gateway</code>, <code>netmask</code>.</td></tr>
+            <tr><td><code>panorama-server</code></td><td>IP address of the active Panorama appliance.</td></tr>
+            <tr><td><code>panorama-server-2</code></td><td>IP address of the passive Panorama appliance (for HA).</td></tr>
+            <tr><td><code>vm-auth-key</code></td><td>VM auth key generated on Panorama.</td></tr>
+            <tr><td><code>dgname</code></td><td>Panorama Device Group name.</td></tr>
+            <tr><td><code>tplname</code></td><td>Panorama Template Stack name.</td></tr>
+            <tr><td><code>plugin-op-commands</code></td><td>Set to <code>advance-routing:enable</code> for Logical Router support.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>init-cfg.txt</code> contains all required parameters for the selected management platform. No commented-out lines or placeholder values remain.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.3 &mdash; Configure Routing</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Prisma AIRS AI Runtime Firewall supports different routing configurations based on the management platform.</p>
+    <table>
+      <thead>
+        <tr><th>Routing Type</th><th>SCM Support</th><th>Panorama Support</th><th>init-cfg.txt Parameter</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Logical Router (LR)</strong></td>
+          <td>Yes (only option)</td>
+          <td>Yes</td>
+          <td><code>plugin-op-commands=advance-routing:enable</code></td>
+        </tr>
+        <tr>
+          <td><strong>Virtual Router (VR)</strong></td>
+          <td>No</td>
+          <td>Yes</td>
+          <td>No parameter needed (default)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">SCM Requires Logical Router</div>
+      <p>SCM supports only Logical Router (LR) configuration. Always include <code>plugin-op-commands=advance-routing:enable</code> in the init-cfg.txt for SCM-managed firewalls. Panorama supports both LR and VR.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>plugin-op-commands</code> parameter is set correctly for the chosen management platform and routing type.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.4 &mdash; Apply Required Labels for Manual Terraform</span>
+  </div>
+  <div class="collapsible-body">
+    <p>When deploying manually (not using the SCM-generated Terraform), add cloud-specific labels to your Terraform template for Prisma AIRS to identify and manage the firewall instances.</p>
+    <p>Add the following labels under <code>Tags</code> in <code>&lt;terraform-path&gt;/architecture/security_project/terraform.tfvars</code>:</p>
+
+    <div class="mgmt-tabs" data-tab-group="p6-labels">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="aws-azure-labels">AWS / Azure</button>
+        <button class="mgmt-tab" data-plane="gcp-labels">GCP</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="aws-azure-labels">
+        <div class="code-block">
+<pre><code>paloaltonetworks.com-trust  = "unique-value-1"
+paloaltonetworks.com-occupied = "unique-value-2"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+
+      <div class="mgmt-panel" data-plane="gcp-labels">
+        <div class="code-block">
+<pre><code>paloaltonetworks_com-trust  = "unique-value-1"
+paloaltonetworks_com-occupied = "unique-value-2"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-note">
+          <div class="callout-title">GCP Label Format</div>
+          <p>GCP uses underscores (<code>_</code>) instead of dots (<code>.</code>) in label keys.</p>
+        </div>
+      </div>
+    </div>
+
+    <p>Additionally, ensure the network interface name in the <code>security_project</code> Terraform is suffixed by <code>-trust-vpc</code>.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Cloud-specific labels are present in the Terraform template with unique values. The trust network interface name ends with <code>-trust-vpc</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.5 &mdash; Deploy and Verify</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Download the Terraform module for your cloud architecture from the cloud marketplace or Palo Alto Networks resources.</li>
+      <li>Apply the Terraform with the configured <code>init-cfg.txt</code> and labels.</li>
+      <li>Wait for the firewall to bootstrap (allow 10&ndash;15 minutes).</li>
+      <li>Verify connectivity in SCM (<code>Workflows</code> &rarr; <code>NGFW Setup</code> &rarr; <code>Device Management</code>) or Panorama (<code>Managed Devices</code> &rarr; <code>Summary</code>).</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Firewall appears in the management platform with <strong>Connected</strong> status. Proceed to security configuration.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  POST-DEPLOYMENT                                              -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="post-deployment">Post-Deployment</h2>
+
+<p>After completing any deployment phase above, return to the Core Guide to configure security profiles and verify protection.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Next Steps</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li><strong>Security Configuration</strong> &mdash; Create AI Security Profiles, model groups, Security Profile Groups, and policy rules. See <a href="airs-network-intercept.html#security-config">Core Guide Phase 5</a>.</li>
+      <li><strong>Push Configuration</strong> &mdash; Push the security configuration to the deployed firewall(s) from SCM or Panorama.</li>
+      <li><strong>Validation</strong> &mdash; Generate test traffic, review AI Security logs, and confirm threat detection. See <a href="airs-network-intercept.html#validation">Core Guide Phase 7</a>.</li>
+      <li><strong>K8s Protection</strong> (optional) &mdash; For containerized workloads, configure interfaces, zones, NAT, routers, and deploy PAN-CNI. See <a href="https://docs.paloaltonetworks.com/ai-runtime-security/administration/deploy-ai-instances-in-public-clouds-as-a-software/scm-config-protect-vms-k8s">Configure SCM to Secure K8s Clusters</a>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Firewall is connected to the management platform, security configuration is pushed, and AI Security logs appear in the Log Viewer.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                              -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Terraform Apply Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Error</th><th>Cause</th><th>Fix</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Marketplace subscription error</td>
+          <td>Image terms not accepted</td>
+          <td>Accept the Prisma AIRS marketplace subscription (Step 1.10) before running <code>terraform apply</code>.</td>
+        </tr>
+        <tr>
+          <td>CIDR overlap</td>
+          <td>Security VPC/VNet CIDR overlaps with existing VPC/VNet</td>
+          <td>Use a non-overlapping CIDR range for the security VPC/VNet.</td>
+        </tr>
+        <tr>
+          <td>IAM / permissions error</td>
+          <td>Insufficient permissions for resource creation</td>
+          <td>Verify the IAM role or service account has permissions to create VPCs, EC2 instances, load balancers, and route tables.</td>
+        </tr>
+        <tr>
+          <td>TGW not found</td>
+          <td>Transit Gateway ID is incorrect or in a different account</td>
+          <td>Verify the TGW ID in <code>VPC Dashboard</code> &rarr; <code>Transit Gateways</code> and ensure it is in the same region.</td>
+        </tr>
+        <tr>
+          <td>Template name invalid</td>
+          <td>Name exceeds 19 characters or contains invalid characters</td>
+          <td>Use only lowercase letters, numbers, and hyphens. Do not start or end with a hyphen.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Re-run <code>terraform plan</code> after fixing the error. The plan completes without errors.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Firewall Not Connecting to Management Platform</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Device Status not showing <code>Connected</code> after 15 minutes</td>
+          <td>Management interface lacks outbound connectivity</td>
+          <td>Verify the management subnet has outbound HTTPS access to <code>api.paloaltonetworks.com</code> and <code>api.sase.paloaltonetworks.com</code>. Check security groups / NSGs.</td>
+        </tr>
+        <tr>
+          <td>Device certificate invalid</td>
+          <td>Expired or incorrect PIN</td>
+          <td>Generate a new device certificate PIN in the Customer Support Portal and redeploy.</td>
+        </tr>
+        <tr>
+          <td>Panorama shows no device</td>
+          <td>Security group blocks inbound from firewall</td>
+          <td>Add the firewall public IP to the Panorama security group (see Phase 3, Step 3.4).</td>
+        </tr>
+        <tr>
+          <td>Auth code mismatch</td>
+          <td>Auth code does not match deployment profile</td>
+          <td>Verify the Flex auth code matches the deployment profile created for Prisma AIRS (not VM-Series).</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After fixing connectivity, the firewall appears in SCM/Panorama with <strong>Connected</strong> status within 5&ndash;10 minutes.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Auto-Execute Deployment Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Error</th><th>Cause</th><th>Fix</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Pre-deployment check failure</td>
+          <td>GWLB endpoint subnets already exist</td>
+          <td>Do not pre-create subnets. Auto-Execute creates them using the CIDRs entered in the wizard.</td>
+        </tr>
+        <tr>
+          <td>TGW not found</td>
+          <td>No existing Transit Gateway in the selected region</td>
+          <td>Auto-Execute requires an existing TGW. Create one in the AWS Console before deploying.</td>
+        </tr>
+        <tr>
+          <td>Deployment times out</td>
+          <td>Cloud provider resource limits</td>
+          <td>Check cloud provider quotas (EC2 instance limits, VPC limits, EIP limits) and request increases.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After fixing the error, re-run the Auto-Execute deployment. The Cloud Task log shows all tasks completed.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Private Cloud Bootstrap Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>show system info</code> shows wrong model</td>
+          <td>Downloaded VM-Series image instead of AIRS image</td>
+          <td>Download the correct image from the Customer Support Portal: search for <code>PAN-OS for AI Runtime Security</code>.</td>
+        </tr>
+        <tr>
+          <td><code>device-certificate-status: None</code></td>
+          <td>PIN parameters missing or incorrect in init-cfg.txt</td>
+          <td>Verify <code>vm-series-auto-registration-pin-id</code> and <code>vm-series-auto-registration-pin-value</code> are correct and not expired.</td>
+        </tr>
+        <tr>
+          <td>Bootstrap hangs</td>
+          <td>DNS resolution failure or no internet access from management interface</td>
+          <td>Verify DNS settings and outbound connectivity from the management interface to Palo Alto Networks endpoints.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After fixing the issue, reboot the VM (or redeploy with corrected bootstrap parameters). <code>show system bootstrap status</code> shows all phases complete.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  REFERENCE                                                    -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="reference">Reference</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Terraform Template Structure</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The SCM-generated Terraform template contains two directories:</p>
+    <div class="code-block">
+<pre><code>&lt;template-name&gt;/
+  architecture/
+    security_project/      # Core firewall infrastructure
+      terraform.tfvars     # Configuration variables
+      main.tf              # Resource definitions
+      README.md            # Deployment instructions
+    application_project/   # App VPC/VNet peering
+      terraform.tfvars
+      main.tf
+      README.md
+  modules/                 # Shared Terraform modules</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Project</th><th>Creates</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>security_project</code></td><td>Security VPC/VNet, firewall instances, load balancers, health checks, IP-tag collector service, NAT gateway (if enabled)</td></tr>
+        <tr><td><code>application_project</code></td><td>VPC/VNet peering, GWLB endpoints (AWS), route table entries</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both directories contain <code>main.tf</code> and <code>terraform.tfvars</code> files. The <code>README.md</code> in each directory provides deployment-specific instructions.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>init-cfg.txt Parameter Reference</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>type</code></td><td>Yes</td><td><code>static</code> or <code>dhcp-client</code>. Determines IP assignment method.</td></tr>
+        <tr><td><code>ip-address</code></td><td>If static</td><td>Management interface IP address.</td></tr>
+        <tr><td><code>default-gateway</code></td><td>If static</td><td>Default gateway for management interface.</td></tr>
+        <tr><td><code>netmask</code></td><td>If static</td><td>Subnet mask for management interface.</td></tr>
+        <tr><td><code>hostname</code></td><td>No</td><td>Firewall hostname.</td></tr>
+        <tr><td><code>panorama-server</code></td><td>Yes</td><td><code>cloud</code> for SCM, or Panorama IP address.</td></tr>
+        <tr><td><code>panorama-server-2</code></td><td>No</td><td>Secondary Panorama IP (HA only).</td></tr>
+        <tr><td><code>vm-auth-key</code></td><td>Panorama only</td><td>VM auth key from Panorama.</td></tr>
+        <tr><td><code>dgname</code></td><td>Yes</td><td>Device Group (Panorama) or SCM folder name.</td></tr>
+        <tr><td><code>tplname</code></td><td>Panorama only</td><td>Template Stack name.</td></tr>
+        <tr><td><code>plugin-op-commands</code></td><td>Yes</td><td>Set to <code>advance-routing:enable</code> for Logical Router.</td></tr>
+        <tr><td><code>dns-primary</code></td><td>Yes</td><td>Primary DNS server IP.</td></tr>
+        <tr><td><code>dns-secondary</code></td><td>No</td><td>Secondary DNS server IP.</td></tr>
+        <tr><td><code>mgmt-interface-swap</code></td><td>No</td><td><code>enable</code> if firewall is behind a load balancer (public cloud only).</td></tr>
+        <tr><td><code>vm-series-auto-registration-pin-id</code></td><td>Yes</td><td>Device Certificate PIN ID from the Customer Support Portal.</td></tr>
+        <tr><td><code>vm-series-auto-registration-pin-value</code></td><td>Yes</td><td>Device Certificate PIN Value.</td></tr>
+        <tr><td><code>dhcp-accept-server-domain</code></td><td>If DHCP</td><td>Set to <code>yes</code> when <code>type=dhcp-client</code>.</td></tr>
+        <tr><td><code>dhcp-accept-server-hostname</code></td><td>If DHCP</td><td>Set to <code>yes</code> when <code>type=dhcp-client</code>.</td></tr>
+        <tr><td><code>dhcp-send-client-id</code></td><td>If DHCP</td><td>Set to <code>yes</code> when <code>type=dhcp-client</code>.</td></tr>
+        <tr><td><code>dhcp-send-hostname</code></td><td>If DHCP</td><td>Set to <code>yes</code> when <code>type=dhcp-client</code>.</td></tr>
+      </tbody>
+    </table>
+    <p>Reference: <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/bootstrap-the-vm-series-firewall/create-the-init-cfgtxt-file/sample-init-cfgtxt-file">Sample init-cfg.txt File</a></p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All required parameters for your management platform are present in the init-cfg.txt file.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Autoscaling Metrics Reference</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Description</th><th>Use Case</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>Dataplane CPU Utilization (%)</code></td><td>Dataplane CPU usage percentage</td><td>General traffic load monitoring</td></tr>
+        <tr><td><code>Dataplane Packet Buffer Utilization (%)</code></td><td>Dataplane buffer usage percentage</td><td>Burst traffic protection</td></tr>
+        <tr><td><code>GP Gateway Active Tunnels</code></td><td>Active GlobalProtect tunnels</td><td>VPN gateway scaling</td></tr>
+        <tr><td><code>GP Gateway Tunnel Utilization (%)</code></td><td>Tunnel utilization percentage</td><td>VPN gateway capacity</td></tr>
+        <tr><td><code>panSessionConnectionsPerSecond</code></td><td>New connections per second</td><td>Connection-heavy workloads</td></tr>
+        <tr><td><code>panSessionThroughputKbps</code></td><td>Throughput in Kbps</td><td>Bandwidth-intensive workloads</td></tr>
+        <tr><td><code>panSessionThroughputPps</code></td><td>Packets per second</td><td>High packet rate workloads</td></tr>
+        <tr><td><code>Sessions Active</code></td><td>Total active sessions</td><td>Session table capacity</td></tr>
+        <tr><td><code>Session Utilization (%)</code></td><td>Combined session utilization</td><td>Overall capacity monitoring</td></tr>
+        <tr><td><code>SSLProxyUtilization (%)</code></td><td>SSL proxy session percentage</td><td>SSL decryption scaling</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Selected metrics match the workload characteristics of your deployment (e.g., <code>panSessionThroughputKbps</code> for bandwidth-heavy AI model traffic).</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Cloud-Specific Tags and Labels</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Tags/labels required for firewall discovery and management by SCM.</p>
+    <table>
+      <thead>
+        <tr><th>Cloud</th><th>Tag Key</th><th>Tag Value</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>AWS</td><td><code>paloaltonetworks.com-monitored</code></td><td><code>enable</code></td><td>Enables SCM discovery</td></tr>
+        <tr><td>AWS</td><td><code>serialNumber</code></td><td>Comma-separated serial numbers</td><td>Associates firewall with workloads</td></tr>
+        <tr><td>AWS</td><td><code>paloaltonetworks.com-trust</code></td><td>Unique value</td><td>Identifies trust interface (manual deploy)</td></tr>
+        <tr><td>AWS</td><td><code>paloaltonetworks.com-occupied</code></td><td>Unique value</td><td>Marks occupied resources (manual deploy)</td></tr>
+        <tr><td>Azure</td><td><code>paloaltonetworks.com-monitored</code></td><td><code>enable</code></td><td>Enables SCM discovery</td></tr>
+        <tr><td>Azure</td><td><code>serialNumber</code></td><td>Comma-separated serial numbers</td><td>Associates firewall with workloads</td></tr>
+        <tr><td>GCP</td><td><code>paloaltonetworks_com-monitored</code></td><td><code>enable</code></td><td>Enables SCM discovery (underscore format)</td></tr>
+        <tr><td>GCP</td><td><code>serialnumber</code></td><td>Comma-separated serial numbers</td><td>Associates firewall (lowercase key)</td></tr>
+        <tr><td>GCP</td><td><code>paloaltonetworks_com-trust</code></td><td>Unique value</td><td>Identifies trust interface (manual deploy)</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Cloud resources have the correct tags/labels applied. SCM-generated Terraform applies these automatically; manual deployments require adding them manually.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  DEPLOYMENT CHECKLIST                                         -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="deployment-checklist">Deployment Checklist</h2>
+
+<p>Mark each item as complete for your chosen deployment model.</p>
+
+<div class="checklist-section">
+  <h4>Prerequisites (All Models)</h4>
+  <ul>
+    <li>AIRS license activated with credit pool funded</li>
+    <li>Strata Logging Service active</li>
+    <li>Device Certificate PIN generated (not expired)</li>
+    <li>Deployment profile created and associated with TSG</li>
+    <li>Cloud account onboarded in SCM</li>
+    <li>Marketplace subscription accepted</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 1: SCM Terraform Download</h4>
+  <ul>
+    <li>Cloud provider and traffic streams selected</li>
+    <li>Region, account, and applications configured</li>
+    <li>Traffic inspection configured (if namespace-level)</li>
+    <li>Deployment parameters set (FW type, instances, zones, scaling)</li>
+    <li>IP addressing configured (VPC/VNet CIDR, TGW/peering)</li>
+    <li>Licensing entered (PAN-OS version, auth code, PIN)</li>
+    <li>Management parameters configured (SCM or Panorama)</li>
+    <li>Terraform template created and downloaded</li>
+    <li>security_project Terraform applied successfully</li>
+    <li>application_project Terraform applied successfully</li>
+    <li>Azure route table associated (Azure only)</li>
+    <li>Firewall shows Connected in SCM/Panorama</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 2: Auto-Execute</h4>
+  <ul>
+    <li>Cloud provider selected (AWS or Azure only)</li>
+    <li>Auto-Execute deployment method selected</li>
+    <li>Applications and zones configured</li>
+    <li>IP addressing configured (existing TGW required for AWS)</li>
+    <li>Licensing and SCM management configured</li>
+    <li>Deployment initiated and completed</li>
+    <li>Firewall shows Connected in SCM</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 3: Panorama-Managed</h4>
+  <ul>
+    <li>Panorama 11.2.5+ with CloudConnector Plugin 2.1.0</li>
+    <li>VM auth key generated on Panorama</li>
+    <li>Device Group and Template Stack created</li>
+    <li>SCM wizard completed with Panorama management selected</li>
+    <li>Terraform applied (security_project + application_project)</li>
+    <li>Firewall IP added to Panorama security group (if applicable)</li>
+    <li>Firewall shows Connected in Panorama</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 5: Private Cloud</h4>
+  <ul>
+    <li>AIRS image downloaded (OVA or QCOW2)</li>
+    <li>VM created with 3 interfaces (mgmt, client, server)</li>
+    <li>Bootstrap folder structure created</li>
+    <li>authcodes and init-cfg.txt files populated</li>
+    <li>ISO created and attached to VM</li>
+    <li>Bootstrap completed (show system info confirms AI-Runtime-Security)</li>
+    <li>Firewall shows Connected in SCM/Panorama</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Phase 6: Manual Bootstrap</h4>
+  <ul>
+    <li>Bootstrap method chosen</li>
+    <li>init-cfg.txt configured for SCM or Panorama</li>
+    <li>Routing configured (LR or VR)</li>
+    <li>Required cloud labels applied to Terraform</li>
+    <li>Terraform deployed and firewall bootstrapped</li>
+    <li>Firewall shows Connected in management platform</li>
+  </ul>
+</div>
+
+<div class="checklist-section">
+  <h4>Post-Deployment (All Models)</h4>
+  <ul>
+    <li>AI Security Profile created (Core Guide Phase 5)</li>
+    <li>Security Policy Rule created with AI Security Profile Group</li>
+    <li>Configuration pushed to firewall(s)</li>
+    <li>AI Security logs appearing in Log Viewer</li>
+    <li>Cloud Asset Map shows updated protection status</li>
+  </ul>
+</div>
+
+
+</div><!-- /.article -->
+</main>
+</div><!-- /.layout -->
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#9650;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>
