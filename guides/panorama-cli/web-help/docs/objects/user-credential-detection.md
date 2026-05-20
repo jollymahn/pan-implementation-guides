@@ -1,0 +1,26 @@
+# User Credential Detection
+
+*Objects : Objects &gt; Security Profiles &gt; URL Filtering : User Credential Detection*
+
+User Credential Detection
+
+Select **Objects** > **Security Profiles** > **URL Filtering** > **User Credential Detection** to enable the firewall to detect when users submit corporate credentials.
+
+ Fastpath:
+ Configure user credential detection so that users can submit credentials only to sites in specified URL categories, which reduces the attack surface by preventing credential submission to sites in untrusted categories. If you block all the URL categories in a URL Filtering profile for user credential submission, you don’t need to check credentials.
+
+The firewall uses one of three methods to detect valid credentials submitted to web pages. Each method requires [User-ID™](https://docs.paloaltonetworks.com/pan-os/11-1/pan-os-admin/user-id), which enables the firewall to compare username and password submissions to web pages against valid, corporate credentials. Select one of these methods to then continue to [prevent credential phishing](https://docs.paloaltonetworks.com/advanced-url-filtering/administration/url-filtering-features/credential-phishing-prevention.html) based on URL category.
+
+ Note:**You must configure the firewall to [decrypt](https://docs.paloaltonetworks.com/pan-os/11-1/pan-os-web-interface-help/policies/policies-decryption.html)** traffic that you want to monitor for user credentials.
+
+
+| User Credential Detection Settings | Description |
+| --- | --- |
+| IP User | This credential detection method checks for valid username submissions. You can use this method to detect credential submissions that include a valid corporate username (regardless of the accompanying password). The firewall determines a username match by verifying that the username matches the user logged in the source IP address of the session. To use this method, the firewall matches the submitted username against its IP-address-to-username mapping table. To use this method you can use any of the user mapping methods described in [Map IP Addresses to Users](https://docs.paloaltonetworks.com/pan-os/11-1/pan-os-admin/user-id/map-ip-addresses-to-users). |
+| Group Mapping | The firewall determines if the username a user submits to a restricted site matches any valid corporate username. To do this, the firewall matches the submitted username to the list of usernames in its user-to-group mapping table to detect when users submit a corporate usernames to a site in a restricted category. This method only checks for corporate username submissions based on LDAP group membership, which makes it simple to configure, but more prone to false positives. You must [enable group mapping](https://docs.paloaltonetworks.com/pan-os/11-1/pan-os-admin/user-id/map-users-to-groups) to use this method. |
+| Domain Credential | This credential detection method enables the firewall to check for a valid corporate username and the associated password. The firewall determines if the username and password a user submits matches the same user’s corporate username and password. To do this, the firewall must able to match credential submissions to valid corporate usernames and passwords and verify that the username submitted maps to the IP address of the logged in user. This mode is supported only with the Windows-based User-ID agent, and requires that the User-ID agent is installed on a read-only domain controller (RODC) and equipped with the [User-ID Credential Service Add-on](https://docs.paloaltonetworks.com/advanced-url-filtering/administration/url-filtering-features/credential-phishing-prevention/configure-credential-detection-with-the-windows-based-user-id-agent.html). To use this method, you must also enable User-ID to [map IP addresses to users](https://docs.paloaltonetworks.com/pan-os/11-1/pan-os-admin/user-id/map-ip-addresses-to-users) using any of the supported user mapping methods, including Authentication Policy, Authentication Portal, and GlobalProtect.™ See [Prevent Credential Phishing](https://docs.paloaltonetworks.com/advanced-url-filtering/administration/url-filtering-features/credential-phishing-prevention.html) for details on each of the methods the firewall can use to check for valid corporate credential submissions, and for steps to enable phishing prevention. |
+| Valid Username Detected Log Severity | Set the severity for logs that indicate the firewall detected a valid username submission to a website. This log severity is associated with events where a valid username is submitted to websites with credential submission permissions to alert, block or continue. Logs that record when a user submits a valid username to a website for which credential submissions are allowed have a severity of informational. Select **Categories** to review or adjust the URL categories to which credential submissions are allowed and blocked. Fastpath:  Set the log severity to medium or stronger. |
+
+
+ Parent topic
+ [Objects > Security Profiles > URL Filtering](objects-security-profiles-url-filtering.html#ID0EQHQR)
