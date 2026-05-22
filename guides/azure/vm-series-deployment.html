@@ -864,196 +864,32 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>2A.3 Create Device Groups</span>
-  </div>
-  <div class="collapsible-body">
-    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-device-groups">Manage Device Groups</a></p>
-    <p>Use a parent/child device group hierarchy. Parents hold shared objects; children hold model-specific security and NAT policy. The hierarchy below covers both deployment models from the <a href="#architecture-overview">Architecture Overview</a>:</p>
-    <ul>
-      <li><code>DG-AZ</code> — top-level Azure parent (shared objects across all Azure deployments)</li>
-      <li><code>DG-AZ-COMMON-MODEL</code> — Common Model child (single firewall pair, all flows)</li>
-      <li><code>DG-AZ-TVNET</code> — Transit VNet (Dedicated) parent</li>
-      <li><code>DG-AZ-TVNET-INBOUND-USE</code> — Inbound dedicated tier, US-East region (Logical Router Engine)</li>
-      <li><code>DG-AZ-TVNET-OBEW-USE</code> — OBEW dedicated tier, US-East region (Logical Router Engine)</li>
-      <li><code>DG-AZ-TVNET-INBOUND-ARE-USE</code> — Inbound dedicated, US-East (Advanced Routing Engine)</li>
-      <li><code>DG-AZ-TVNET-OBEW-ARE-USE</code> — OBEW dedicated, US-East (Advanced Routing Engine)</li>
-    </ul>
-    <p>Create them top-down so each child can be assigned to its parent:</p>
-    <ol>
-      <li>Navigate to <strong>Panorama &gt; Device Groups</strong>.</li>
-      <li>Click <strong>Add</strong>. Set <strong>Name</strong> to <code>DG-AZ</code>. Click <strong>OK</strong>.</li>
-      <li>Click <strong>Add</strong>. Set <strong>Name</strong> to <code>DG-AZ-COMMON-MODEL</code>, <strong>Parent Device Group</strong> to <code>DG-AZ</code>. Click <strong>OK</strong>.</li>
-      <li>Click <strong>Add</strong>. Set <strong>Name</strong> to <code>DG-AZ-TVNET</code>, <strong>Parent</strong> to <code>DG-AZ</code>. Click <strong>OK</strong>.</li>
-      <li>For each TVNet variant (INBOUND/OBEW × LRE/ARE), click <strong>Add</strong> and set <strong>Parent</strong> to <code>DG-AZ-TVNET</code>:
-        <ul>
-          <li><code>DG-AZ-TVNET-INBOUND-USE</code></li>
-          <li><code>DG-AZ-TVNET-OBEW-USE</code></li>
-          <li><code>DG-AZ-TVNET-INBOUND-ARE-USE</code></li>
-          <li><code>DG-AZ-TVNET-OBEW-ARE-USE</code></li>
-        </ul>
-      </li>
-    </ol>
-    <div class="callout callout-note">
-      <div class="callout-title">Naming Convention</div>
-      <p><strong>Cloud prefix:</strong> <code>AZ</code> for Azure. <strong>Region suffix:</strong> <code>USE</code> for US-East (extend with <code>USW</code>, <code>EUN</code>, etc. as you deploy in other regions). <strong>Routing engine:</strong> <code>ARE</code> tag indicates the device group runs PAN-OS Advanced Routing Engine; absence means legacy Logical Router Engine.</p>
-    </div>
-    <div class="callout callout-warning">
-      <div class="callout-title">Important</div>
-      The Device Group must exist on Panorama <em>before</em> the firewall attempts to bootstrap. If the firewall cannot find its assigned Device Group, registration will fail.
-    </div>
-  </div>
-</div>
-
-<div class="collapsible">
-  <div class="collapsible-header">
-    <span class="chevron">&#9654;</span>
-    <span>2A.4 Create Templates and Template Stacks</span>
-  </div>
-  <div class="collapsible-body">
-    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-templates-and-template-stacks">Manage Templates and Template Stacks</a></p>
-    <p>Templates are layered by function and stacked in priority order. The numbering convention (1, 2, 3, 4) indicates priority — higher numbers override settings from lower numbers in the same stack.</p>
-
-    <h4>Create Templates</h4>
-    <p>Navigate to <strong>Panorama &gt; Templates</strong> and create the following templates:</p>
-    <table>
-      <tr><th>#</th><th>Template Name</th><th>Purpose</th></tr>
-      <tr><td>1</td><td><code>1-TPL-AZURE-REGIONAL-EAST-US</code></td><td>Regional settings (log collectors, RADIUS server, region-specific NTP) for the East US region</td></tr>
-      <tr><td>2</td><td><code>2-TPL-AZURE-GLOBAL</code></td><td>Global common settings: admin accounts, DNS, NTP, dynamic updates, login banners, log forwarding profile references</td></tr>
-      <tr><td>3</td><td><code>3-TPL-AZURE-INSTRUMENTATION</code></td><td>Instrumentation settings: SNMP, telemetry, packet captures, debugging hooks (used in TVNet stacks; optional for Common Model)</td></tr>
-      <tr><td>4</td><td><code>4-TPL-AZURE-COMMON-NETWORK</code></td><td>Network config for Common Model: 3 NICs (mgmt + untrust + trust), <strong>2 virtual routers</strong> (AZ-UNTRUST-VR and AZ-TRUST-VR), zone-based static routes</td></tr>
-      <tr><td>4</td><td><code>4-TPL-AZURE-INBOUND-NETWORK</code></td><td>Network config for TVNet Inbound (Logical Router Engine): 3 NICs, <strong>1 virtual router</strong> (AZ-VR), routes for inbound flows</td></tr>
-      <tr><td>4</td><td><code>4-TPL-AZURE-OBEW-NETWORK</code></td><td>Network config for TVNet OBEW (Logical Router Engine): 3 NICs, 1 VR, routes for outbound + east-west + backhaul flows</td></tr>
-      <tr><td>4</td><td><code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code></td><td>Same as INBOUND-NETWORK but using <strong>Advanced Routing Engine</strong> (Logical Router instead of legacy VR)</td></tr>
-      <tr><td>4</td><td><code>4-TPL-AZURE-OBEW-NETWORK-ARE</code></td><td>Same as OBEW-NETWORK but using <strong>Advanced Routing Engine</strong></td></tr>
-    </table>
-
-    <div class="callout callout-note">
-      <div class="callout-title">Template Numbering</div>
-      <p>Templates are numbered for stack priority &mdash; higher numbers take precedence. Template 4 (network) overrides settings from templates 1-3 when there are conflicts.</p>
-    </div>
-
-    <div class="callout callout-note">
-      <div class="callout-title">Pick one network template per stack</div>
-      <p>The <code>4-TPL-AZURE-*-NETWORK</code> templates are alternatives, not additive &mdash; pick the one that matches the deployment model and routing engine for the firewalls in that stack:</p>
-      <ul>
-        <li><code>4-TPL-AZURE-COMMON-NETWORK</code> for the Common Model (single firewall pair)</li>
-        <li><code>4-TPL-AZURE-INBOUND-NETWORK</code> + <code>4-TPL-AZURE-OBEW-NETWORK</code> for TVNet Dedicated with the legacy Logical Router Engine</li>
-        <li><code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code> + <code>4-TPL-AZURE-OBEW-NETWORK-ARE</code> for TVNet Dedicated with Advanced Routing Engine</li>
-      </ul>
-    </div>
-
-    <h4>Create Template Stacks (One per Device Group)</h4>
-    <p>Create a template stack for each device group. Each stack mounts the templates in priority order (top of the list = lowest priority, bottom = highest).</p>
-
-    <table>
-      <tr><th>Stack Name</th><th>Templates (in stack order, top→bottom)</th><th>Assigned Device Group</th></tr>
-      <tr>
-        <td><code>STK-AZ-COMMON-MODEL</code></td>
-        <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>4-TPL-AZURE-COMMON-NETWORK</code></td>
-        <td><code>DG-AZ-COMMON-MODEL</code></td>
-      </tr>
-      <tr>
-        <td><code>STK-AZ-TVNET-INBOUND-USE</code></td>
-        <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-INBOUND-NETWORK</code></td>
-        <td><code>DG-AZ-TVNET-INBOUND-USE</code></td>
-      </tr>
-      <tr>
-        <td><code>STK-AZ-TVNET-OBEW-USE</code></td>
-        <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-OBEW-NETWORK</code></td>
-        <td><code>DG-AZ-TVNET-OBEW-USE</code></td>
-      </tr>
-      <tr>
-        <td><code>STK-AZ-TVNET-INBOUND-ARE-USE</code></td>
-        <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code></td>
-        <td><code>DG-AZ-TVNET-INBOUND-ARE-USE</code></td>
-      </tr>
-      <tr>
-        <td><code>STK-AZ-TVNET-OBEW-ARE-USE</code></td>
-        <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-OBEW-NETWORK-ARE</code></td>
-        <td><code>DG-AZ-TVNET-OBEW-ARE-USE</code></td>
-      </tr>
-    </table>
-
-    <p>For each stack:</p>
-    <ol>
-      <li>Navigate to <strong>Panorama &gt; Templates</strong>, click <strong>Add Stack</strong>.</li>
-      <li>Set the <strong>Name</strong> from the table above.</li>
-      <li>Add templates in stack order (the order matters: lower-precedence first).</li>
-      <li>Enable <strong>Auto Push on 1st Connection</strong>.</li>
-      <li>Click <strong>OK</strong>.</li>
-    </ol>
-
-    <div class="callout callout-note">
-      <div class="callout-title">Template variables (set per stack)</div>
-      <p>The network templates reference variables for subnet gateway IPs (e.g. <code>$UNTRUST-CM-VR-GW</code>, <code>$TRUST-CM-VR-GW</code> for Common Model; <code>$UNTRUST-GW</code>, <code>$TRUST-GW</code> for TVNet). Define and populate these variables on each stack — see <a href="#management-config">2A.14 Set Template Variables</a>.</p>
-    </div>
-  </div>
-</div>
-
-<div class="collapsible">
-  <div class="collapsible-header">
-    <span class="chevron">&#9654;</span>
-    <span>2A.5 Create a Bootstrap Definition</span>
+    <span>2A.3 Create Bootstrap Definitions</span>
   </div>
   <div class="collapsible-body">
     <p>The Bootstrap Definition associates a deployment-profile auth code with a friendly name. We use one Bootstrap Definition per deployment tier so each tier's licensing can be tracked and rotated independently:</p>
     <table>
       <tr><th>Bootstrap Definition</th><th>Used by Tier</th><th>Auth Code</th><th>Description</th></tr>
       <tr><td><code>BD-AZ-COMMON</code></td><td>Common Model</td><td><code>D1234567</code></td><td>Common Model deployments</td></tr>
-      <tr><td><code>BD-AZ-TVNET-INBOUND</code></td><td>TVNet Dedicated — Inbound tier</td><td><code>D1234567</code></td><td>TVNet Inbound dedicated tier</td></tr>
-      <tr><td><code>BD-AZ-TVNET-OBEW</code></td><td>TVNet Dedicated — OBEW tier</td><td><code>D1234567</code></td><td>TVNet OBEW dedicated tier</td></tr>
+      <tr><td><code>BD-AZ-TVNET-INBOUND</code></td><td>TVNet Dedicated &mdash; Inbound tier</td><td><code>D1234567</code></td><td>TVNet Inbound dedicated tier</td></tr>
+      <tr><td><code>BD-AZ-TVNET-OBEW</code></td><td>TVNet Dedicated &mdash; OBEW tier</td><td><code>D1234567</code></td><td>TVNet OBEW dedicated tier</td></tr>
     </table>
     <p>For each row in the table:</p>
     <ol>
       <li>Go to <strong>Panorama &gt; SW Firewall License &gt; Bootstrap Definitions</strong>.</li>
       <li>Click <strong>Add</strong>.</li>
       <li>Enter the <strong>Name</strong> from the table.</li>
-      <li>Paste the <strong>Auth Code</strong> from your deployment profile (created in <a href="#prerequisites">1.4</a>) — format <code>D1234567</code>.</li>
-      <li>Optionally fill <strong>Description</strong> with the credit pool ID for traceability (e.g., <code>Credit Pool ID: 8267823982 — Common Model deployments</code>).</li>
+      <li>Paste the <strong>Auth Code</strong> from your deployment profile (created in <a href="#prerequisites">1.4</a>) &mdash; format <code>D1234567</code>.</li>
+      <li>Optionally fill <strong>Description</strong> with the credit pool ID for traceability (e.g., <code>Credit Pool ID: 8267823982 &mdash; Common Model deployments</code>).</li>
       <li>Click <strong>OK</strong>.</li>
     </ol>
     <div class="callout callout-note">
       <div class="callout-title">One credit pool, multiple BDs</div>
       <p>The three BDs above all use the <em>same</em> auth code because they draw from a single credit pool. Splitting them by tier (Common / TVNet-Inbound / TVNet-OBEW) gives you cleaner per-tier reporting in the SW Firewall License plugin without requiring separate credit pools. If your accounting model requires distinct pools per tier (e.g., chargeback to different cost centers), provision separate auth codes and use them here.</p>
     </div>
-  </div>
-</div>
-
-<div class="collapsible">
-  <div class="collapsible-header">
-    <span class="chevron">&#9654;</span>
-    <span>2A.6 Configure License Managers (One per Device Group)</span>
-  </div>
-  <div class="collapsible-body">
-    <p>A License Manager binds a Device Group to its Template Stack and a Bootstrap Definition. Bootstrapping firewalls reference the License Manager by name to know which DG/Stack to join and which auth code to license against.</p>
-    <p>Create one License Manager per Device Group (5 total for both deployment models, US-East region):</p>
-    <table>
-      <tr><th>License Manager Name</th><th>Device Group</th><th>Template Stack</th><th>Bootstrap Definition</th></tr>
-      <tr><td><code>AZ-COMMON-MODEL</code></td><td><code>DG-AZ-COMMON-MODEL</code></td><td><code>STK-AZ-COMMON-MODEL</code></td><td><code>BD-AZ-COMMON</code></td></tr>
-      <tr><td><code>AZ-TVNET-INBOUND-USE</code></td><td><code>DG-AZ-TVNET-INBOUND-USE</code></td><td><code>STK-AZ-TVNET-INBOUND-USE</code></td><td><code>BD-AZ-TVNET-INBOUND</code></td></tr>
-      <tr><td><code>AZ-TVNET-OBEW-USE</code></td><td><code>DG-AZ-TVNET-OBEW-USE</code></td><td><code>STK-AZ-TVNET-OBEW-USE</code></td><td><code>BD-AZ-TVNET-OBEW</code></td></tr>
-      <tr><td><code>AZ-TVNET-INBOUND-ARE-USE</code></td><td><code>DG-AZ-TVNET-INBOUND-ARE-USE</code></td><td><code>STK-AZ-TVNET-INBOUND-ARE-USE</code></td><td><code>BD-AZ-TVNET-INBOUND</code></td></tr>
-      <tr><td><code>AZ-TVNET-OBEW-ARE-USE</code></td><td><code>DG-AZ-TVNET-OBEW-ARE-USE</code></td><td><code>STK-AZ-TVNET-OBEW-ARE-USE</code></td><td><code>BD-AZ-TVNET-OBEW</code></td></tr>
-    </table>
-
-    <p>For each row:</p>
-    <ol>
-      <li>Go to <strong>Panorama &gt; SW Firewall License &gt; License Managers</strong>.</li>
-      <li>Click <strong>Add</strong>.</li>
-      <li>Fill in the four fields from the table.</li>
-      <li>Set <strong>Auto Deactivate</strong> to <code>Never</code> (for fixed-deployment firewalls — change only for autoscale).</li>
-      <li>Click <strong>OK</strong>.</li>
-    </ol>
-
-    <p>After adding all License Managers, click <strong>Commit to Panorama</strong>.</p>
-
     <div class="callout callout-note">
-      <div class="callout-title">When to set an Auto Deactivate timer</div>
-      <p>Leave <strong>Auto Deactivate</strong> set to <code>Never</code> for fixed-deployment firewalls (the model in this guide). The timer is only meaningful in <strong>auto-scaling</strong> deployments, where firewall instances come and go on demand &mdash; setting a timer there ensures licenses are released back to the pool when an instance is terminated. With a static deployment, a timer can prematurely deactivate a healthy firewall.</p>
-    </div>
-    <div class="callout callout-danger">
-      <div class="callout-title">Capture the bootstrap parameters</div>
-      <p>After committing, click <strong>Show Bootstrap Parameters</strong> in the License Manager's Action column for each License Manager you'll deploy firewalls into. Copy the <strong>auth-key</strong> and <strong>plugin-op-commands</strong> &mdash; you will need these in <a href="#spoke-onboarding">Phase 6</a> when bootstrapping VM-Series via Azure custom data. The <code>auth-key</code> is generated by the licensing plugin and is <strong>different</strong> from a manually created VM auth key.</p>
+      <div class="callout-title">License Managers &mdash; created after template configuration</div>
+      <p>The License Manager is the final piece that binds a Device Group, Template Stack, and Bootstrap Definition together. We will create License Managers in <strong>2A.11</strong> &mdash; <em>after</em> configuring all template content (baseline settings, interfaces, routing, zones, policy, and logging). This ensures that when a firewall bootstraps, it receives a complete, tested configuration rather than an empty shell.</p>
     </div>
   </div>
 </div>
@@ -1062,12 +898,175 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 
 <h3 id="template-config">Device-Group and Template Configuration</h3>
 
-<p>With the licensing plugin scaffolding in place, configure the actual content that the firewalls will receive when they bootstrap: baseline settings, network interfaces and routing, zones, tags, address objects, security and NAT policy, logging, and template variables. The order matters &mdash; build from the bottom of the stack up.</p>
+<p>With the Device Groups, Template Stacks, and Bootstrap Definitions created, configure the actual content that the firewalls will receive when they bootstrap: baseline settings, network interfaces and routing, zones, tags, address objects, security and NAT policy, logging, and template variables. The order matters &mdash; build from the bottom of the stack up. After all template content is in place, we will create the License Managers to bind everything together.</p>
 
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>2A.7 Configure Common Baseline Settings</span>
+    <span>2A.4 TPL- Create Device Groups &amp; Template Stacks</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-device-groups">Manage Device Groups</a> | <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-templates-and-template-stacks">Manage Templates and Template Stacks</a></p>
+
+    <p>Device Groups, Template Stacks, Bootstrap Definitions, and License Managers work together to bootstrap a firewall. The table below shows how they bind:</p>
+
+    <table>
+      <tr><th>Device Group</th><th>Template Stack</th><th>Bootstrap Definition</th><th>License Manager</th></tr>
+      <tr><td><code>DG-AZ-COMMON-MODEL</code></td><td><code>STK-AZ-COMMON-MODEL</code></td><td><code>BD-AZ-COMMON</code></td><td><code>AZ-COMMON-MODEL</code></td></tr>
+      <tr><td><code>DG-AZ-TVNET-INBOUND-USE</code></td><td><code>STK-AZ-TVNET-INBOUND-USE</code></td><td><code>BD-AZ-TVNET-INBOUND</code></td><td><code>AZ-TVNET-INBOUND-USE</code></td></tr>
+      <tr><td><code>DG-AZ-TVNET-OBEW-USE</code></td><td><code>STK-AZ-TVNET-OBEW-USE</code></td><td><code>BD-AZ-TVNET-OBEW</code></td><td><code>AZ-TVNET-OBEW-USE</code></td></tr>
+      <tr><td><code>DG-AZ-TVNET-INBOUND-ARE-USE</code></td><td><code>STK-AZ-TVNET-INBOUND-ARE-USE</code></td><td><code>BD-AZ-TVNET-INBOUND</code></td><td><code>AZ-TVNET-INBOUND-ARE-USE</code></td></tr>
+      <tr><td><code>DG-AZ-TVNET-OBEW-ARE-USE</code></td><td><code>STK-AZ-TVNET-OBEW-ARE-USE</code></td><td><code>BD-AZ-TVNET-OBEW</code></td><td><code>AZ-TVNET-OBEW-ARE-USE</code></td></tr>
+    </table>
+
+    <p>When a firewall bootstraps, it contacts the License Manager by name. The License Manager tells the firewall which Device Group to join, which Template Stack to receive, and which Bootstrap Definition (auth code) to license against. The firewall then pulls its full configuration &mdash; interfaces, routing, zones, policy &mdash; from the templates in that stack. We create the Device Groups, Template Stacks, and Bootstrap Definitions first, then configure all the template content, and finally create the License Managers once everything is in place.</p>
+
+    <h4>Create Parent Device Group</h4>
+
+    <p>Both deployment models share a top-level parent Device Group that holds shared address objects and profiles. Navigate to <strong>Panorama &gt; Device Groups</strong>, click <strong>Add</strong>, set <strong>Name</strong> to <code>DG-AZ</code>, and click <strong>OK</strong>.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Naming Convention</div>
+      <p><strong>Cloud prefix:</strong> <code>AZ</code> for Azure. <strong>Region suffix:</strong> <code>USE</code> for US-East (extend with <code>USW</code>, <code>EUN</code>, etc. as you deploy in other regions). <strong>Routing engine:</strong> <code>ARE</code> tag indicates the device group runs PAN-OS Advanced Routing Engine; absence means legacy Logical Router Engine.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important</div>
+      The Device Group must exist on Panorama <em>before</em> the firewall attempts to bootstrap. If the firewall cannot find its assigned Device Group, registration will fail.
+    </div>
+
+    <h4>Create Shared Templates</h4>
+
+    <p>Templates are layered by function and stacked in priority order. The numbering convention (1, 2, 3, 4) indicates priority &mdash; higher numbers override settings from lower numbers in the same stack. Navigate to <strong>Panorama &gt; Templates</strong> and create the following shared templates (used by both deployment models):</p>
+    <table>
+      <tr><th>#</th><th>Template Name</th><th>Purpose</th></tr>
+      <tr><td>1</td><td><code>1-TPL-AZURE-REGIONAL-EAST-US</code></td><td>Regional settings (log collectors, RADIUS server, region-specific NTP) for the East US region</td></tr>
+      <tr><td>2</td><td><code>2-TPL-AZURE-GLOBAL</code></td><td>Global common settings: admin accounts, DNS, NTP, dynamic updates, login banners, log forwarding profile references</td></tr>
+      <tr><td>3</td><td><code>3-TPL-AZURE-INSTRUMENTATION</code></td><td>Instrumentation settings: SNMP, telemetry, packet captures, debugging hooks (used in TVNet stacks; optional for Common Model)</td></tr>
+    </table>
+
+    <p>Select your deployment model below to see the model-specific Device Groups, network templates, and Template Stacks.</p>
+
+    <div class="mgmt-tabs" data-tab-group="dg-template-model">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="common-model">Common Model</button>
+        <button class="mgmt-tab" data-plane="transit-vnet">Transit VNet (Dedicated)</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="common-model">
+
+        <h4>Device Group</h4>
+        <p>Navigate to <strong>Panorama &gt; Device Groups</strong>, click <strong>Add</strong>. Set <strong>Name</strong> to <code>DG-AZ-COMMON-MODEL</code>, <strong>Parent Device Group</strong> to <code>DG-AZ</code>. Click <strong>OK</strong>.</p>
+
+        <h4>Network Template</h4>
+        <p>Navigate to <strong>Panorama &gt; Templates</strong> and create:</p>
+        <table>
+          <tr><th>#</th><th>Template Name</th><th>Purpose</th></tr>
+          <tr><td>4</td><td><code>4-TPL-AZURE-COMMON-NETWORK</code></td><td>Network config: 3 NICs (mgmt + untrust + trust), <strong>2 virtual routers</strong> (AZ-UNTRUST-VR and AZ-TRUST-VR), zone-based static routes</td></tr>
+        </table>
+
+        <h4>Template Stack</h4>
+        <p>Navigate to <strong>Panorama &gt; Templates</strong>, click <strong>Add Stack</strong>:</p>
+        <table>
+          <tr><th>Stack Name</th><th>Templates (in stack order, top&rarr;bottom)</th><th>Assigned Device Group</th></tr>
+          <tr>
+            <td><code>STK-AZ-COMMON-MODEL</code></td>
+            <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>4-TPL-AZURE-COMMON-NETWORK</code></td>
+            <td><code>DG-AZ-COMMON-MODEL</code></td>
+          </tr>
+        </table>
+        <ol>
+          <li>Set the <strong>Name</strong> to <code>STK-AZ-COMMON-MODEL</code>.</li>
+          <li>Add templates in stack order (the order matters: lower-precedence first).</li>
+          <li>Enable <strong>Auto Push on 1st Connection</strong>.</li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+
+      </div>
+
+      <div class="mgmt-panel" data-plane="transit-vnet">
+
+        <h4>Device Groups</h4>
+        <p>Use a parent/child hierarchy under <code>DG-AZ</code>. Navigate to <strong>Panorama &gt; Device Groups</strong> and create:</p>
+        <ol>
+          <li>Click <strong>Add</strong>. Set <strong>Name</strong> to <code>DG-AZ-TVNET</code>, <strong>Parent</strong> to <code>DG-AZ</code>. Click <strong>OK</strong>.</li>
+          <li>For each TVNet variant (INBOUND/OBEW &times; LRE/ARE), click <strong>Add</strong> and set <strong>Parent</strong> to <code>DG-AZ-TVNET</code>:
+            <ul>
+              <li><code>DG-AZ-TVNET-INBOUND-USE</code> &mdash; Inbound dedicated tier, US-East (Logical Router Engine)</li>
+              <li><code>DG-AZ-TVNET-OBEW-USE</code> &mdash; OBEW dedicated tier, US-East (Logical Router Engine)</li>
+              <li><code>DG-AZ-TVNET-INBOUND-ARE-USE</code> &mdash; Inbound dedicated, US-East (Advanced Routing Engine)</li>
+              <li><code>DG-AZ-TVNET-OBEW-ARE-USE</code> &mdash; OBEW dedicated, US-East (Advanced Routing Engine)</li>
+            </ul>
+          </li>
+        </ol>
+
+        <h4>Network Templates</h4>
+        <p>Navigate to <strong>Panorama &gt; Templates</strong> and create the network templates for each tier and routing engine variant:</p>
+        <table>
+          <tr><th>#</th><th>Template Name</th><th>Purpose</th></tr>
+          <tr><td>4</td><td><code>4-TPL-AZURE-INBOUND-NETWORK</code></td><td>TVNet Inbound (Logical Router Engine): 3 NICs, <strong>1 virtual router</strong> (AZ-VR), routes for inbound flows</td></tr>
+          <tr><td>4</td><td><code>4-TPL-AZURE-OBEW-NETWORK</code></td><td>TVNet OBEW (Logical Router Engine): 3 NICs, 1 VR, routes for outbound + east-west + backhaul flows</td></tr>
+          <tr><td>4</td><td><code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code></td><td>Same as INBOUND-NETWORK but using <strong>Advanced Routing Engine</strong></td></tr>
+          <tr><td>4</td><td><code>4-TPL-AZURE-OBEW-NETWORK-ARE</code></td><td>Same as OBEW-NETWORK but using <strong>Advanced Routing Engine</strong></td></tr>
+        </table>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Pick one network template per stack</div>
+          <p>The network templates are alternatives, not additive &mdash; pick the one that matches the tier and routing engine:</p>
+          <ul>
+            <li><code>4-TPL-AZURE-INBOUND-NETWORK</code> + <code>4-TPL-AZURE-OBEW-NETWORK</code> for the legacy Logical Router Engine</li>
+            <li><code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code> + <code>4-TPL-AZURE-OBEW-NETWORK-ARE</code> for Advanced Routing Engine</li>
+          </ul>
+        </div>
+
+        <h4>Template Stacks (One per Device Group)</h4>
+        <p>Create a template stack for each device group. Each stack mounts the templates in priority order (top = lowest priority, bottom = highest):</p>
+        <table>
+          <tr><th>Stack Name</th><th>Templates (in stack order, top&rarr;bottom)</th><th>Assigned Device Group</th></tr>
+          <tr>
+            <td><code>STK-AZ-TVNET-INBOUND-USE</code></td>
+            <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-INBOUND-NETWORK</code></td>
+            <td><code>DG-AZ-TVNET-INBOUND-USE</code></td>
+          </tr>
+          <tr>
+            <td><code>STK-AZ-TVNET-OBEW-USE</code></td>
+            <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-OBEW-NETWORK</code></td>
+            <td><code>DG-AZ-TVNET-OBEW-USE</code></td>
+          </tr>
+          <tr>
+            <td><code>STK-AZ-TVNET-INBOUND-ARE-USE</code></td>
+            <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code></td>
+            <td><code>DG-AZ-TVNET-INBOUND-ARE-USE</code></td>
+          </tr>
+          <tr>
+            <td><code>STK-AZ-TVNET-OBEW-ARE-USE</code></td>
+            <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-OBEW-NETWORK-ARE</code></td>
+            <td><code>DG-AZ-TVNET-OBEW-ARE-USE</code></td>
+          </tr>
+        </table>
+        <p>For each stack:</p>
+        <ol>
+          <li>Navigate to <strong>Panorama &gt; Templates</strong>, click <strong>Add Stack</strong>.</li>
+          <li>Set the <strong>Name</strong> from the table above.</li>
+          <li>Add templates in stack order (the order matters: lower-precedence first).</li>
+          <li>Enable <strong>Auto Push on 1st Connection</strong>.</li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+
+      </div>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Template variables (set per stack)</div>
+      <p>The network templates reference variables for subnet gateway IPs (e.g. <code>$UNTRUST-CM-VR-GW</code>, <code>$TRUST-CM-VR-GW</code> for Common Model; <code>$UNTRUST-GW</code>, <code>$TRUST-GW</code> for TVNet). Define and populate these variables on each stack &mdash; see <a href="#management-config">2A.12 Set Template Variables</a>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.5 Configure Common Baseline Settings</span>
   </div>
   <div class="collapsible-body">
     <p>These settings live in <code>2-TPL-AZURE-GLOBAL</code> and are inherited by every stack. Configure them once.</p>
@@ -1094,7 +1093,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 
     <div class="callout callout-note">
       <div class="callout-title">Where to set log forwarding</div>
-      <p>Log forwarding profile <em>references</em> are configured per-DG in 2A.13 (so they can vary by deployment model). The transport configuration (Strata Logging Service / Cortex Data Lake / syslog endpoints) lives in <code>2-TPL-AZURE-GLOBAL</code> under <strong>Device &gt; Server Profiles</strong>.</p>
+      <p>Log forwarding profile <em>references</em> are configured per-DG in 2A.10 (so they can vary by deployment model). The transport configuration (Strata Logging Service / Cortex Data Lake / syslog endpoints) lives in <code>2-TPL-AZURE-GLOBAL</code> under <strong>Device &gt; Server Profiles</strong>.</p>
     </div>
   </div>
 </div>
@@ -1102,92 +1101,135 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>2A.8 Configure Interfaces &amp; Routing</span>
+    <span>2A.6 TPL- Configure Interfaces, Routing &amp; Security Zones</span>
   </div>
   <div class="collapsible-body">
-    <p>Each network template defines the firewall's data-plane interfaces and the virtual router(s) that hold its routes. The Common Model and TVNet templates differ in two ways: <strong>number of virtual routers</strong> (Common = 2, TVNet = 1) and <strong>routing engine</strong> (legacy Logical Router Engine vs Advanced Routing Engine).</p>
+    <p>Each network template defines the firewall's data-plane interfaces, virtual router(s), static routes, and security zones. The Common Model and Transit VNet templates differ in two ways: <strong>number of virtual routers</strong> (Common = 2, TVNet = 1) and <strong>zone naming</strong> (Common uses UNTRUST/TRUST, TVNet uses INTERNET/TRUST).</p>
 
-    <h4>Common Model — <code>4-TPL-AZURE-COMMON-NETWORK</code></h4>
+    <p>Select the deployment model below to see the template configuration for that path.</p>
 
-    <p><strong>Interfaces</strong> (Network &gt; Interfaces &gt; Ethernet):</p>
-    <table>
-      <tr><th>Interface</th><th>Type</th><th>IP Assignment</th><th>Comment</th></tr>
-      <tr><td><code>ethernet1/1</code></td><td>Layer3</td><td>DHCP Client</td><td>UNTRUST (untagged)</td></tr>
-      <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td>DHCP Client</td><td>TRUST</td></tr>
-      <tr><td><code>loopback.51</code></td><td>Loopback</td><td>Static (Azure ILB health-probe target)</td><td>used by AZ-TRUST-VR for health probe origination</td></tr>
-    </table>
+    <div class="mgmt-tabs" data-tab-group="tpl-network">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="common-model">Common Model</button>
+        <button class="mgmt-tab" data-plane="transit-vnet">Transit VNet (Dedicated)</button>
+      </div>
 
-    <p><strong>Virtual Routers</strong> (Network &gt; Virtual Routers) — two VRs create an air-gap between the inbound and OBEW paths:</p>
-    <table>
-      <tr><th>VR Name</th><th>Interfaces</th><th>Static Routes</th></tr>
-      <tr>
-        <td><code>AZ-UNTRUST-VR</code></td>
-        <td><code>ethernet1/1</code></td>
-        <td>
-          <code>DEFAULT</code>: <code>0.0.0.0/0</code> → <code>$UNTRUST-CM-VR-GW</code><br>
-          <code>AZ-UNTRUST-PROBE</code>: <code>168.63.129.16/32</code> → <code>$UNTRUST-CM-VR-GW</code><br>
-          <code>RFC-1918-10/172/192</code>: black-hole (next-hop None)
-        </td>
-      </tr>
-      <tr>
-        <td><code>AZ-TRUST-VR</code></td>
-        <td><code>ethernet1/2</code>, <code>loopback.51</code></td>
-        <td>
-          <code>RFC-1918-10</code>: <code>10.0.0.0/8</code> → <code>$TRUST-CM-VR-GW</code><br>
-          <code>RFC-1918-172</code>: <code>172.16.0.0/12</code> → <code>$TRUST-CM-VR-GW</code><br>
-          <code>RFC-1918-192</code>: <code>192.168.0.0/16</code> → <code>$TRUST-CM-VR-GW</code><br>
-          <code>AZURE-PROBE</code>: <code>168.63.129.16/32</code> → <code>$TRUST-CM-VR-GW</code><br>
-          <code>DEFAULT</code>: black-hole (next-hop None &mdash; trust VR has no internet path)
-        </td>
-      </tr>
-    </table>
+      <div class="mgmt-panel active" data-plane="common-model">
 
-    <h4>TVNet INBOUND — <code>4-TPL-AZURE-INBOUND-NETWORK</code> (Logical Router Engine)</h4>
+        <h4>Interfaces &mdash; <code>4-TPL-AZURE-COMMON-NETWORK</code></h4>
 
-    <p><strong>Interfaces:</strong></p>
-    <table>
-      <tr><th>Interface</th><th>Type</th><th>IP Assignment</th><th>Comment</th></tr>
-      <tr><td><code>ethernet1/1</code></td><td>Layer3</td><td>DHCP Client</td><td>INTERNET (untagged)</td></tr>
-      <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td>DHCP Client</td><td>TRUST</td></tr>
-    </table>
+        <p>Configure under <strong>Network &gt; Interfaces &gt; Ethernet</strong>:</p>
+        <table>
+          <tr><th>Interface</th><th>Type</th><th>IP Assignment</th><th>Comment</th></tr>
+          <tr><td><code>ethernet1/1</code></td><td>Layer3</td><td>DHCP Client</td><td>UNTRUST (untagged)</td></tr>
+          <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td>DHCP Client</td><td>TRUST</td></tr>
+          <tr><td><code>loopback.51</code></td><td>Loopback</td><td>Static (Azure ILB health-probe target)</td><td>used by AZ-TRUST-VR for health probe origination</td></tr>
+        </table>
 
-    <p><strong>Virtual Router</strong> &mdash; single VR <code>AZ-VR</code> contains both interfaces:</p>
-    <table>
-      <tr><th>Route Name</th><th>Destination</th><th>Next Hop</th></tr>
-      <tr><td><code>DEFAULT</code></td><td><code>0.0.0.0/0</code></td><td><code>$UNTRUST-GW</code></td></tr>
-      <tr><td><code>AZURE-PROBE</code></td><td><code>168.63.129.16/32</code></td><td><code>$UNTRUST-GW</code></td></tr>
-      <tr><td><code>RFC-1918-10</code></td><td><code>10.0.0.0/8</code></td><td><code>$TRUST-GW</code></td></tr>
-    </table>
+        <h4>Virtual Routers &mdash; two VRs for zone isolation</h4>
 
-    <h4>TVNet OBEW — <code>4-TPL-AZURE-OBEW-NETWORK</code> (Logical Router Engine)</h4>
+        <p>Configure under <strong>Network &gt; Virtual Routers</strong>. Two VRs create an air-gap between the inbound and OBEW paths:</p>
+        <table>
+          <tr><th>VR Name</th><th>Interfaces</th><th>Static Routes</th></tr>
+          <tr>
+            <td><code>AZ-UNTRUST-VR</code></td>
+            <td><code>ethernet1/1</code></td>
+            <td>
+              <code>DEFAULT</code>: <code>0.0.0.0/0</code> &rarr; <code>$UNTRUST-CM-VR-GW</code><br>
+              <code>AZ-UNTRUST-PROBE</code>: <code>168.63.129.16/32</code> &rarr; <code>$UNTRUST-CM-VR-GW</code><br>
+              <code>RFC-1918-10/172/192</code>: black-hole (next-hop None)
+            </td>
+          </tr>
+          <tr>
+            <td><code>AZ-TRUST-VR</code></td>
+            <td><code>ethernet1/2</code>, <code>loopback.51</code></td>
+            <td>
+              <code>RFC-1918-10</code>: <code>10.0.0.0/8</code> &rarr; <code>$TRUST-CM-VR-GW</code><br>
+              <code>RFC-1918-172</code>: <code>172.16.0.0/12</code> &rarr; <code>$TRUST-CM-VR-GW</code><br>
+              <code>RFC-1918-192</code>: <code>192.168.0.0/16</code> &rarr; <code>$TRUST-CM-VR-GW</code><br>
+              <code>AZURE-PROBE</code>: <code>168.63.129.16/32</code> &rarr; <code>$TRUST-CM-VR-GW</code><br>
+              <code>DEFAULT</code>: black-hole (next-hop None &mdash; trust VR has no internet path)
+            </td>
+          </tr>
+        </table>
 
-    <p><strong>Interfaces:</strong> same as TVNet INBOUND &mdash; <code>ethernet1/1</code> on INTERNET zone, <code>ethernet1/2</code> on TRUST zone, both DHCP.</p>
+        <div class="callout callout-note">
+          <div class="callout-title">Two VRs in Common Model &mdash; why?</div>
+          <p>The Common Model uses two virtual routers (<code>AZ-UNTRUST-VR</code> and <code>AZ-TRUST-VR</code>) so the routing tables for the inbound (untrust) side and the OBEW (trust) side are completely separate. This prevents accidental route leakage between zones and forces all traffic to pass through the firewall's policy engine when crossing zones (instead of being routed within a single VR). The TVNet model already gets this isolation by physical separation (two distinct firewall sets), so a single VR per firewall is sufficient.</p>
+        </div>
 
-    <p><strong>Virtual Router</strong> <code>AZ-VR</code>:</p>
-    <table>
-      <tr><th>Route Name</th><th>Destination</th><th>Next Hop</th></tr>
-      <tr><td><code>DEFAULT</code></td><td><code>0.0.0.0/0</code></td><td><code>$UNTRUST-GW</code></td></tr>
-      <tr><td><code>RFC-1918-10</code></td><td><code>10.0.0.0/8</code></td><td><code>$TRUST-GW</code></td></tr>
-      <tr><td><code>AZURE-PROBE</code></td><td><code>168.63.129.16/32</code></td><td><code>$TRUST-GW</code></td></tr>
-    </table>
+        <h4>Security Zones</h4>
 
-    <h4>TVNet — Advanced Routing Engine variants</h4>
+        <p>Configure under <strong>Network &gt; Zones</strong> in <code>4-TPL-AZURE-COMMON-NETWORK</code>:</p>
+        <table>
+          <tr><th>Zone</th><th>Type</th><th>Interfaces</th></tr>
+          <tr><td><code>UNTRUST</code></td><td>Layer3</td><td><code>ethernet1/1</code></td></tr>
+          <tr><td><code>TRUST</code></td><td>Layer3</td><td><code>ethernet1/2</code></td></tr>
+          <tr><td><code>LOOPBACK</code></td><td>Layer3</td><td><code>loopback.51</code></td></tr>
+        </table>
 
-    <p>The <code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code> and <code>4-TPL-AZURE-OBEW-NETWORK-ARE</code> templates use PAN-OS <strong>Advanced Routing Engine</strong> (Logical Router) instead of the legacy Virtual Router. The route entries are identical to the LRE templates above &mdash; only the navigation differs:</p>
-    <ul>
-      <li>Configure under <strong>Network &gt; Routing &gt; Logical Routers</strong> (instead of Network &gt; Virtual Routers)</li>
-      <li>Each Logical Router supports the same static-route definitions, plus richer features (BGP, OSPFv3, BFD) that LRE does not</li>
-      <li>Enable Advanced Routing once per stack under <strong>Device &gt; Setup &gt; Management &gt; Advanced Routing</strong> &mdash; this is a stack-wide commit-required toggle</li>
-    </ul>
+      </div><!-- end common-model panel -->
+
+      <div class="mgmt-panel" data-plane="transit-vnet">
+
+        <h4>TVNet INBOUND &mdash; <code>4-TPL-AZURE-INBOUND-NETWORK</code> (Logical Router Engine)</h4>
+
+        <p><strong>Interfaces</strong> (Network &gt; Interfaces &gt; Ethernet):</p>
+        <table>
+          <tr><th>Interface</th><th>Type</th><th>IP Assignment</th><th>Comment</th></tr>
+          <tr><td><code>ethernet1/1</code></td><td>Layer3</td><td>DHCP Client</td><td>INTERNET (untagged)</td></tr>
+          <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td>DHCP Client</td><td>TRUST</td></tr>
+        </table>
+
+        <p><strong>Virtual Router</strong> &mdash; single VR <code>AZ-VR</code> contains both interfaces:</p>
+        <table>
+          <tr><th>Route Name</th><th>Destination</th><th>Next Hop</th></tr>
+          <tr><td><code>DEFAULT</code></td><td><code>0.0.0.0/0</code></td><td><code>$UNTRUST-GW</code></td></tr>
+          <tr><td><code>AZURE-PROBE</code></td><td><code>168.63.129.16/32</code></td><td><code>$UNTRUST-GW</code></td></tr>
+          <tr><td><code>RFC-1918-10</code></td><td><code>10.0.0.0/8</code></td><td><code>$TRUST-GW</code></td></tr>
+        </table>
+
+        <h4>TVNet OBEW &mdash; <code>4-TPL-AZURE-OBEW-NETWORK</code> (Logical Router Engine)</h4>
+
+        <p><strong>Interfaces:</strong> same as TVNet INBOUND &mdash; <code>ethernet1/1</code> on INTERNET zone, <code>ethernet1/2</code> on TRUST zone, both DHCP.</p>
+
+        <p><strong>Virtual Router</strong> <code>AZ-VR</code>:</p>
+        <table>
+          <tr><th>Route Name</th><th>Destination</th><th>Next Hop</th></tr>
+          <tr><td><code>DEFAULT</code></td><td><code>0.0.0.0/0</code></td><td><code>$UNTRUST-GW</code></td></tr>
+          <tr><td><code>RFC-1918-10</code></td><td><code>10.0.0.0/8</code></td><td><code>$TRUST-GW</code></td></tr>
+          <tr><td><code>AZURE-PROBE</code></td><td><code>168.63.129.16/32</code></td><td><code>$TRUST-GW</code></td></tr>
+        </table>
+
+        <h4>TVNet &mdash; Advanced Routing Engine variants</h4>
+
+        <p>The <code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code> and <code>4-TPL-AZURE-OBEW-NETWORK-ARE</code> templates use PAN-OS <strong>Advanced Routing Engine</strong> (Logical Router) instead of the legacy Virtual Router. The route entries are identical to the LRE templates above &mdash; only the navigation differs:</p>
+        <ul>
+          <li>Configure under <strong>Network &gt; Routing &gt; Logical Routers</strong> (instead of Network &gt; Virtual Routers)</li>
+          <li>Each Logical Router supports the same static-route definitions, plus richer features (BGP, OSPFv3, BFD) that LRE does not</li>
+          <li>Enable Advanced Routing once per stack under <strong>Device &gt; Setup &gt; Management &gt; Advanced Routing</strong> &mdash; this is a stack-wide commit-required toggle</li>
+        </ul>
+
+        <h4>Security Zones (all TVNet templates)</h4>
+
+        <p>Configure under <strong>Network &gt; Zones</strong> in each TVNet network template (<code>4-TPL-AZURE-INBOUND-NETWORK</code>, <code>4-TPL-AZURE-OBEW-NETWORK</code>, and their <code>-ARE</code> variants):</p>
+        <table>
+          <tr><th>Zone</th><th>Type</th><th>Interfaces</th></tr>
+          <tr><td><code>INTERNET</code></td><td>Layer3</td><td><code>ethernet1/1</code></td></tr>
+          <tr><td><code>TRUST</code></td><td>Layer3</td><td><code>ethernet1/2</code></td></tr>
+        </table>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Why INTERNET instead of UNTRUST?</div>
+          <p>TVNet Inbound and OBEW are scale-tier deployments where <code>INTERNET</code> more clearly signals "the wild" since each tier handles only one direction of traffic. The Common Model carries internet-facing services (the firewalls hold inbound NAT for published apps), so <code>UNTRUST</code> conveys "outside-of-trust-domain" semantics. Either name works &mdash; pick one convention per project and apply it consistently. Security policy in 2A.8 references these zone names, so renaming after the fact requires touching every rule.</p>
+        </div>
+
+      </div><!-- end transit-vnet panel -->
+    </div><!-- end tpl-network tabs -->
 
     <div class="callout callout-warning">
       <div class="callout-title">Azure Health Probe IP <code>168.63.129.16</code></div>
-      <p>Azure load balancers (both public NLB and internal ILB) probe firewall health from the well-known IP <code>168.63.129.16</code>. The firewall must (1) have a route back to this IP via the relevant subnet gateway, and (2) have a security rule allowing it &mdash; covered in <a href="#management-config">2A.11</a>. Without the route, probes timeout and Azure marks the firewall unhealthy, dropping it from the LB pool.</p>
-    </div>
-
-    <div class="callout callout-note">
-      <div class="callout-title">Two VRs in Common Model — why?</div>
-      <p>The Common Model uses two virtual routers (<code>AZ-UNTRUST-VR</code> and <code>AZ-TRUST-VR</code>) so the routing tables for the inbound (untrust) side and the OBEW (trust) side are completely separate. This prevents accidental route leakage between zones and forces all traffic to pass through the firewall's policy engine when crossing zones (instead of being routed within a single VR). The TVNet model already gets this isolation by physical separation (two distinct firewall sets), so a single VR per firewall is sufficient.</p>
+      <p>Azure load balancers (both public NLB and internal ILB) probe firewall health from the well-known IP <code>168.63.129.16</code>. The firewall must (1) have a route back to this IP via the relevant subnet gateway, and (2) have a security rule allowing it &mdash; covered in <a href="#management-config">2A.8</a>. Without the route, probes timeout and Azure marks the firewall unhealthy, dropping it from the LB pool.</p>
     </div>
   </div>
 </div>
@@ -1195,33 +1237,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>2A.9 Configure Security Zones</span>
-  </div>
-  <div class="collapsible-body">
-    <p>Zone names differ between Common Model and TVNet by convention. Configure under <strong>Network &gt; Zones</strong> in each network template:</p>
-
-    <table>
-      <tr><th>Network Template</th><th>Zone</th><th>Type</th><th>Interfaces</th></tr>
-      <tr><td rowspan="3"><code>4-TPL-AZURE-COMMON-NETWORK</code></td><td><code>UNTRUST</code></td><td>Layer3</td><td><code>ethernet1/1</code></td></tr>
-      <tr><td><code>TRUST</code></td><td>Layer3</td><td><code>ethernet1/2</code></td></tr>
-      <tr><td><code>LOOPBACK</code></td><td>Layer3</td><td><code>loopback.51</code></td></tr>
-      <tr><td rowspan="2"><code>4-TPL-AZURE-INBOUND-NETWORK</code><br>(and <code>-ARE</code> variant)</td><td><code>INTERNET</code></td><td>Layer3</td><td><code>ethernet1/1</code></td></tr>
-      <tr><td><code>TRUST</code></td><td>Layer3</td><td><code>ethernet1/2</code></td></tr>
-      <tr><td rowspan="2"><code>4-TPL-AZURE-OBEW-NETWORK</code><br>(and <code>-ARE</code> variant)</td><td><code>INTERNET</code></td><td>Layer3</td><td><code>ethernet1/1</code></td></tr>
-      <tr><td><code>TRUST</code></td><td>Layer3</td><td><code>ethernet1/2</code></td></tr>
-    </table>
-
-    <div class="callout callout-note">
-      <div class="callout-title">Why the naming difference?</div>
-      <p>The Common Model carries internet-facing services (the firewalls hold inbound NAT for published apps), so <code>UNTRUST</code> conveys "outside-of-trust-domain" semantics. TVNet Inbound and OBEW are scale-tier deployments where <code>INTERNET</code> more clearly signals "the wild" since each tier handles only one direction of traffic. Either name works &mdash; pick one convention per project and apply it consistently. Security policy in 2A.11 references these zone names, so renaming after the fact requires touching every rule.</p>
-    </div>
-  </div>
-</div>
-
-<div class="collapsible">
-  <div class="collapsible-header">
-    <span class="chevron">&#9654;</span>
-    <span>2A.10 Configure Tags</span>
+    <span>2A.7 DG- Configure Tags</span>
   </div>
   <div class="collapsible-body">
     <p>Tags are reused across address objects, security rules, and NAT rules to enable filtering and bulk operations. Decide the taxonomy <em>before</em> creating policy &mdash; retro-tagging hundreds of objects is painful.</p>
@@ -1235,16 +1251,22 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
       <tr><td>Direction</td><td><code>INBOUND</code>, <code>OUTBOUND</code>, <code>EAST-WEST</code></td><td>Traffic direction (used on rules and NAT)</td></tr>
       <tr><td>Workload</td><td><code>app-web</code>, <code>DMZ</code>, <code>INFRASTRUCTURE</code>, <code>INTERNAL</code></td><td>Workload class</td></tr>
       <tr><td>Action</td><td><code>BLOCK</code>, <code>APP-ID</code>, <code>REVIEW</code>, <code>REMOVE ME</code></td><td>Operational hints</td></tr>
+      <tr><td>DNAT</td><td><code>DNAT-1</code>, <code>DNAT-2</code>, <code>DNAT-3</code></td><td>Destination NAT correlation &mdash; tags every object associated with a specific DNAT mapping</td></tr>
     </table>
 
     <p>Every non-trivial address object should carry at minimum a <strong>Cloud</strong>, <strong>Region</strong>, and <strong>Environment</strong> tag. Every rule should also carry a <strong>Direction</strong> tag.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">DNAT tags &mdash; why and what to tag</div>
+      <p>Each destination NAT mapping involves multiple objects that must stay in sync: the <strong>NAT policy</strong>, the corresponding <strong>security policy</strong>, the <strong>public IP address object</strong>, the <strong>private host IP address object</strong>, the <strong>service object</strong>, and the <strong>application</strong>. Tagging every element with the same <code>DNAT-<em>n</em></code> tag (e.g., <code>DNAT-1</code> for the first published app) lets you filter by tag to see the complete picture for a single DNAT mapping &mdash; invaluable when troubleshooting, auditing, or decommissioning a published service.</p>
+    </div>
   </div>
 </div>
 
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>2A.11 Configure Address Objects &amp; Security Policy</span>
+    <span>2A.8 DG- Configure Address Objects &amp; Security Policy</span>
   </div>
   <div class="collapsible-body">
     <p>Address objects and policy live in two layers: <strong>shared</strong> (objects that span all DGs) and <strong>per-DG</strong> (model-specific or environment-specific objects and rules).</p>
@@ -1297,7 +1319,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 
     <div class="callout callout-warning">
       <div class="callout-title">Always tag the policy and add log forwarding</div>
-      <p>Apply the relevant <strong>tags</strong> from 2A.10 (e.g. <code>azure</code>, <code>azure-eastus</code>, <code>prod</code>, <code>INBOUND</code>) and select the <strong>log forwarding profile</strong> on every rule. Untagged rules are nearly impossible to filter or bulk-edit later, and rules without log forwarding produce no telemetry in the Strata Logging Service.</p>
+      <p>Apply the relevant <strong>tags</strong> from 2A.7 (e.g. <code>azure</code>, <code>azure-eastus</code>, <code>prod</code>, <code>INBOUND</code>) and select the <strong>log forwarding profile</strong> on every rule. Untagged rules are nearly impossible to filter or bulk-edit later, and rules without log forwarding produce no telemetry in the Strata Logging Service.</p>
     </div>
   </div>
 </div>
@@ -1305,7 +1327,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>2A.12 Configure NAT Policy</span>
+    <span>2A.9 DG- Configure NAT Policy</span>
   </div>
   <div class="collapsible-body">
     <p>NAT in this design uses two patterns: <strong>destination NAT</strong> for inbound traffic to published spoke workloads (because the public LB / AppGW frontend IP is different from the spoke workload IP), and <strong>source NAT</strong> for outbound traffic so the firewall's untrust IP becomes the source on the wire.</p>
@@ -1333,7 +1355,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 
     <div class="callout callout-note">
       <div class="callout-title">Why DNAT rules are From/To = same zone</div>
-      <p>Azure's NAT rules in this design use <strong>pre-NAT zones</strong>: the From and To zones are evaluated <em>before</em> destination translation. The packet arrives on the UNTRUST/INTERNET interface destined for the firewall's own untrust IP (the LB frontend resolves to it via DNAT in Azure). The PAN-OS NAT rule then DNATs to the spoke workload. Even though the post-NAT path leads into TRUST, the rule's From/To are both UNTRUST/INTERNET because that's what the original packet header looks like. The matching <em>security</em> rule (in 2A.11) uses the post-NAT zone for the destination (TRUST), which is the standard PAN-OS pattern.</p>
+      <p>Azure's NAT rules in this design use <strong>pre-NAT zones</strong>: the From and To zones are evaluated <em>before</em> destination translation. The packet arrives on the UNTRUST/INTERNET interface destined for the firewall's own untrust IP (the LB frontend resolves to it via DNAT in Azure). The PAN-OS NAT rule then DNATs to the spoke workload. Even though the post-NAT path leads into TRUST, the rule's From/To are both UNTRUST/INTERNET because that's what the original packet header looks like. The matching <em>security</em> rule (in 2A.8) uses the post-NAT zone for the destination (TRUST), which is the standard PAN-OS pattern.</p>
     </div>
   </div>
 </div>
@@ -1341,7 +1363,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>2A.13 Configure Logging</span>
+    <span>2A.10 DG- Configure Logging</span>
   </div>
   <div class="collapsible-body">
     <p>Configure the firewall to forward traffic, threat, URL, WildFire, and system logs to Strata Logging Service (or a syslog/SNMP endpoint of your choice).</p>
@@ -1367,38 +1389,43 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
     </table>
 
     <h4>Reference the profile on every allow rule</h4>
-    <p>In each per-DG security policy (2A.11), set the rule's <strong>Log Forwarding</strong> field to the shared log forwarding profile. Without this, allowed traffic produces no logs &mdash; even though the rule has <em>Log at Session End</em> enabled, the logs go nowhere.</p>
+    <p>In each per-DG security policy (2A.8), set the rule's <strong>Log Forwarding</strong> field to the shared log forwarding profile. Without this, allowed traffic produces no logs &mdash; even though the rule has <em>Log at Session End</em> enabled, the logs go nowhere.</p>
   </div>
 </div>
 
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>2A.14 Set Template Variables</span>
+    <span>2A.11 Configure License Managers (One per Device Group)</span>
   </div>
   <div class="collapsible-body">
-    <p>Each template stack defines values for the gateway-IP variables referenced inside the network templates. The variables differ between Common Model and TVNet by naming convention.</p>
-
-    <h4>Common Model Stack (<code>STK-AZ-COMMON-MODEL</code>)</h4>
+    <p>With all template content configured, create the License Managers that bind each Device Group to its Template Stack and Bootstrap Definition. Bootstrapping firewalls reference the License Manager by name to know which DG/Stack to join and which auth code to license against.</p>
+    <p>Create one License Manager per Device Group (5 total for both deployment models, US-East region):</p>
     <table>
-      <tr><th>Variable</th><th>Type</th><th>Example Value</th><th>Source</th></tr>
-      <tr><td><code>$UNTRUST-CM-VR-GW</code></td><td>IP / netmask</td><td><code>10.51.0.33</code></td><td>First usable IP of the UNTRUST subnet (e.g. <code>10.51.0.32/27</code> → <code>.33</code>)</td></tr>
-      <tr><td><code>$TRUST-CM-VR-GW</code></td><td>IP / netmask</td><td><code>10.51.0.97</code></td><td>First usable IP of the TRUST subnet</td></tr>
-      <tr><td><code>$PANORAMA-1</code></td><td>IP / netmask</td><td><code>10.52.0.4</code></td><td>Panorama mgmt IP</td></tr>
+      <tr><th>License Manager Name</th><th>Device Group</th><th>Template Stack</th><th>Bootstrap Definition</th></tr>
+      <tr><td><code>AZ-COMMON-MODEL</code></td><td><code>DG-AZ-COMMON-MODEL</code></td><td><code>STK-AZ-COMMON-MODEL</code></td><td><code>BD-AZ-COMMON</code></td></tr>
+      <tr><td><code>AZ-TVNET-INBOUND-USE</code></td><td><code>DG-AZ-TVNET-INBOUND-USE</code></td><td><code>STK-AZ-TVNET-INBOUND-USE</code></td><td><code>BD-AZ-TVNET-INBOUND</code></td></tr>
+      <tr><td><code>AZ-TVNET-OBEW-USE</code></td><td><code>DG-AZ-TVNET-OBEW-USE</code></td><td><code>STK-AZ-TVNET-OBEW-USE</code></td><td><code>BD-AZ-TVNET-OBEW</code></td></tr>
+      <tr><td><code>AZ-TVNET-INBOUND-ARE-USE</code></td><td><code>DG-AZ-TVNET-INBOUND-ARE-USE</code></td><td><code>STK-AZ-TVNET-INBOUND-ARE-USE</code></td><td><code>BD-AZ-TVNET-INBOUND</code></td></tr>
+      <tr><td><code>AZ-TVNET-OBEW-ARE-USE</code></td><td><code>DG-AZ-TVNET-OBEW-ARE-USE</code></td><td><code>STK-AZ-TVNET-OBEW-ARE-USE</code></td><td><code>BD-AZ-TVNET-OBEW</code></td></tr>
     </table>
 
-    <h4>TVNet Stacks (INBOUND, OBEW; LRE and ARE variants)</h4>
-    <table>
-      <tr><th>Variable</th><th>Type</th><th>Example Value</th></tr>
-      <tr><td><code>$UNTRUST-GW</code></td><td>IP / netmask</td><td>First usable IP of the INTERNET subnet</td></tr>
-      <tr><td><code>$TRUST-GW</code></td><td>IP / netmask</td><td>First usable IP of the TRUST subnet</td></tr>
-    </table>
+    <p>For each row:</p>
+    <ol>
+      <li>Go to <strong>Panorama &gt; SW Firewall License &gt; License Managers</strong>.</li>
+      <li>Click <strong>Add</strong>.</li>
+      <li>Fill in the four fields from the table.</li>
+      <li>Set <strong>Auto Deactivate</strong> to <code>Never</code> (for fixed-deployment firewalls &mdash; change only for autoscale).</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
 
-    <p>Set values under <strong>Panorama &gt; Templates &gt; (stack) &gt; Variables</strong>.</p>
-
-    <div class="callout callout-warning">
-      <div class="callout-title">Get the gateway IPs from Azure, not from convention</div>
-      <p>Azure subnets reserve the first three usable IPs (<code>.0</code> network, <code>.1</code> default gateway, <code>.2</code> and <code>.3</code> Azure DNS). The firewall reaches its subnet gateway via <code>.1</code> &mdash; <em>not</em> <code>.4</code> or whatever the firewall NIC was assigned. Verify the gateway IP for each subnet from the Azure Portal (<strong>Subnet &gt; Overview &gt; Address range</strong>) or from <code>az network vnet subnet show</code> output.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">When to set an Auto Deactivate timer</div>
+      <p>Leave <strong>Auto Deactivate</strong> set to <code>Never</code> for fixed-deployment firewalls (the model in this guide). The timer is only meaningful in <strong>auto-scaling</strong> deployments, where firewall instances come and go on demand &mdash; setting a timer there ensures licenses are released back to the pool when an instance is terminated. With a static deployment, a timer can prematurely deactivate a healthy firewall.</p>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Capture the bootstrap parameters</div>
+      <p>After committing (2A.13), click <strong>Show Bootstrap Parameters</strong> in the License Manager's Action column for each License Manager you'll deploy firewalls into. Copy the <strong>auth-key</strong> and <strong>plugin-op-commands</strong> &mdash; you will need these in <a href="#spoke-onboarding">Phase 6</a> when bootstrapping VM-Series via Azure custom data. The <code>auth-key</code> is generated by the licensing plugin and is <strong>different</strong> from a manually created VM auth key.</p>
     </div>
   </div>
 </div>
@@ -1406,7 +1433,67 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>2A.15 Commit to Panorama</span>
+    <span>2A.12 TPL- Set Template Variables</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each template stack defines values for the gateway-IP variables referenced inside the network templates. The variables are set at the <strong>template stack</strong> level, not on individual templates.</p>
+
+    <p>To set variables on a stack:</p>
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Templates</strong>.</li>
+      <li>Find the template stack in the list.</li>
+      <li>Click <strong>Manage</strong> in the <strong>Variables</strong> column for that stack.</li>
+      <li>In the <strong>Template Variables</strong> dialog, update the <strong>Value</strong> for each variable with the correct gateway address for your environment.</li>
+      <li>Click <strong>Close</strong>.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Get the gateway IPs from Azure, not from convention</div>
+      <p>Azure subnets reserve the first three usable IPs (<code>.0</code> network, <code>.1</code> default gateway, <code>.2</code> and <code>.3</code> Azure DNS). The firewall reaches its subnet gateway via <code>.1</code> &mdash; <em>not</em> <code>.4</code> or whatever the firewall NIC was assigned. Verify the gateway IP for each subnet from the Azure Portal (<strong>Subnet &gt; Overview &gt; Address range</strong>) or from <code>az network vnet subnet show</code> output.</p>
+    </div>
+
+    <p>Select your deployment model below to see the variables for that path.</p>
+
+    <div class="mgmt-tabs" data-tab-group="tpl-variables">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="common-model">Common Model</button>
+        <button class="mgmt-tab" data-plane="transit-vnet">Transit VNet (Dedicated)</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="common-model">
+
+        <h4>Stack: <code>STK-AZ-COMMON-MODEL</code></h4>
+        <table>
+          <tr><th>Variable</th><th>Type</th><th>Example Value</th><th>Source</th></tr>
+          <tr><td><code>$UNTRUST-CM-VR-GW</code></td><td>IP / netmask</td><td><code>10.51.0.33</code></td><td>First usable IP of the UNTRUST subnet (e.g. <code>10.51.0.32/27</code> &rarr; <code>.33</code>)</td></tr>
+          <tr><td><code>$TRUST-CM-VR-GW</code></td><td>IP / netmask</td><td><code>10.51.0.97</code></td><td>First usable IP of the TRUST subnet</td></tr>
+          <tr><td><code>$PANORAMA-1</code></td><td>IP / netmask</td><td><code>10.52.0.4</code></td><td>Panorama mgmt IP</td></tr>
+        </table>
+
+      </div>
+
+      <div class="mgmt-panel" data-plane="transit-vnet">
+
+        <p>Set the following variables on each TVNet stack (INBOUND, OBEW; LRE and ARE variants). The variable names are the same across all TVNet stacks &mdash; only the values change per subnet.</p>
+
+        <h4>Stacks: <code>STK-AZ-TVNET-*</code></h4>
+        <table>
+          <tr><th>Variable</th><th>Type</th><th>Example Value</th><th>Source</th></tr>
+          <tr><td><code>$UNTRUST-GW</code></td><td>IP / netmask</td><td><code>10.51.1.1</code></td><td>First usable IP of the INTERNET subnet for this tier</td></tr>
+          <tr><td><code>$TRUST-GW</code></td><td>IP / netmask</td><td><code>10.51.1.65</code></td><td>First usable IP of the TRUST subnet for this tier</td></tr>
+        </table>
+
+        <p>Repeat for each TVNet stack, updating the values to match each tier's subnet gateway addresses.</p>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.13 Commit to Panorama</span>
   </div>
   <div class="collapsible-body">
     <p>Commit all changes to Panorama before deploying any infrastructure. The commit validates the entire configuration tree and surfaces errors that would otherwise only appear at firewall bootstrap time.</p>
@@ -1510,7 +1597,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
       <tr><td><code>panorama-server</code></td><td><strong>Customer / your network</strong> — IP/FQDN reachable from the FW mgmt subnet via VNet peering, ExpressRoute, or VPN</td><td><em>e.g., 10.52.0.4</em></td></tr>
       <tr><td><code>panorama-server-2</code></td><td><strong>Customer / your network</strong> — secondary Panorama (HA peer)</td><td><em>e.g., 10.52.0.5</em></td></tr>
       <tr><td><code>dgname</code></td><td>Device Group name (Phase 2A.3)</td><td><em>e.g., DG-AZ-COMMON-MODEL</em></td></tr>
-      <tr><td><code>tplname</code></td><td>Template Stack name (Phase 2A.4)</td><td><em>e.g., STK-AZ-COMMON-MODEL</em></td></tr>
+      <tr><td><code>tplname</code></td><td>Template Stack name (Phase 2A.3)</td><td><em>e.g., STK-AZ-COMMON-MODEL</em></td></tr>
       <tr><td><code>vm-series-auto-registration-pin-id</code></td><td>CSP Portal (Phase 1.6)</td><td><em>(UUID)</em></td></tr>
       <tr><td><code>vm-series-auto-registration-pin-value</code></td><td>CSP Portal (Phase 1.6)</td><td><em>(hex string)</em></td></tr>
     </table>
@@ -1994,7 +2081,7 @@ load_balancers = {
       <tr><th>Bootstrap key</th><th>Source</th><th>Common Model value</th></tr>
       <tr><td><code>panorama-server</code></td><td>Your Panorama mgmt IP</td><td><code>10.52.0.4</code></td></tr>
       <tr><td><code>panorama-server-2</code></td><td>HA peer</td><td><code>10.52.0.5</code></td></tr>
-      <tr><td><code>tplname</code></td><td>Template Stack from 2A.4</td><td><code>STK-AZ-COMMON-MODEL</code></td></tr>
+      <tr><td><code>tplname</code></td><td>Template Stack from 2A.3</td><td><code>STK-AZ-COMMON-MODEL</code></td></tr>
       <tr><td><code>dgname</code></td><td>Device Group from 2A.3</td><td><code>DG-AZ-COMMON-MODEL</code></td></tr>
       <tr><td><code>auth-key</code></td><td>From <em>Show Bootstrap Parameters</em></td><td><code>&lt;copy from Panorama&gt;</code></td></tr>
       <tr><td><code>plugin-op-commands</code></td><td>From <em>Show Bootstrap Parameters</em></td><td><code>advance-routing:enable,panorama-licensing-mode-on</code></td></tr>
