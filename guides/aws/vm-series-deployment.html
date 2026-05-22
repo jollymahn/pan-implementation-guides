@@ -82,6 +82,11 @@
     <a href="#ip-schema" data-section="ip-schema">IP Schema</a>
     <a href="#reference-tfvars" data-section="reference-tfvars">Reference tfvars</a>
   </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Appendix</div>
+    <a href="#appendix-routing" data-section="appendix-routing">How Routing Works</a>
+    <a href="#appendix-flows" data-section="appendix-flows">Traffic Flows Explained</a>
+  </div>
 </aside>
 
 <!-- ── Main Content ──────────────────────────────────────────── -->
@@ -157,6 +162,11 @@
 <p>Before deploying anything, study the target architecture. The diagrams below are organized into five groups: <strong>inbound design choices</strong>, the <strong>Security VPC</strong>, the <strong>Spoke (App) VPC</strong>, the <strong>Transit Gateway</strong>, and end-to-end <strong>traffic flows</strong> through the inspection layer.</p>
 
 <p>Each diagram below is collapsed by default — expand the ones you need.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">New to AWS networking?</div>
+  <p>The route tables and traffic flows below can be dense on first read. For a plain-language walkthrough of how every piece fits together, see <a href="#appendix-routing">Appendix: How Routing Works</a> and <a href="#appendix-flows">Appendix: Traffic Flows Explained</a>.</p>
+</div>
 
 <h3>Inbound Design Models</h3>
 
@@ -4726,6 +4736,383 @@ aws ec2 describe-vpcs \
 <div class="callout callout-warning">
   <div class="callout-title">Autoscale variants pending</div>
   <p>Reference <code>.tfvars</code> for <code>combined_design_autoscale</code> and <code>centralized_design_autoscale</code> are not yet published. Use the upstream <code>example.tfvars</code> directly and apply the schema by hand if you need autoscaling today.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  APPENDIX: HOW ROUTING WORKS                                 -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="appendix-routing">Appendix: How Routing Works (The Simple Version)</h2>
+
+<p>The route tables in the Architecture Overview section above can look intimidating. This appendix explains them in plain language &mdash; what each piece does and why it exists. If you understand the three ideas below, you understand the whole design.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">The one rule that explains everything</div>
+  <p><strong>Every packet must pass through a firewall before it reaches its destination.</strong> The entire routing design exists to enforce this single rule. Every route table, every GWLB endpoint, every TGW route &mdash; they are all just guardrails that funnel traffic through the Security VPC for inspection. If you ever get lost reading a route table, ask yourself: <em>"Is this route making sure traffic goes through the firewall?"</em> The answer is almost always yes.</p>
+</div>
+
+<h3>Part 1: The Security VPC &mdash; Your Building's Security Desk</h3>
+
+<p>Think of the Security VPC as a building with a security desk in the lobby. Nobody gets in or out without walking past the guard (the VM-Series firewall). The building has six rooms on each floor (availability zone), and each room has a specific job:</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>The six subnets &mdash; what they are and what they do</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Subnet</th><th>The simple version</th></tr>
+      <tr>
+        <td><strong>TGW-Attach</strong></td>
+        <td>The <strong>front door</strong>. This is where traffic from other VPCs and on-prem arrives via the Transit Gateway. Think of it as the building entrance &mdash; everyone walks in here first.</td>
+      </tr>
+      <tr>
+        <td><strong>EAST-WEST Endpoint</strong></td>
+        <td>The <strong>internal mail room</strong>. When one app VPC needs to talk to another app VPC, traffic goes through this endpoint. It handles the "staying inside the building" traffic.</td>
+      </tr>
+      <tr>
+        <td><strong>OUTBOUND Endpoint</strong></td>
+        <td>The <strong>exit turnstile</strong>. Traffic heading to the internet (or coming from the internet) goes through this endpoint. It handles the "leaving or entering the building" traffic.</td>
+      </tr>
+      <tr>
+        <td><strong>Data (Private)</strong></td>
+        <td>The <strong>security guard's desk</strong>. This is the VM-Series firewall's data interface &mdash; the actual thing that inspects packets. Every flow ends up here, gets checked, and gets sent on its way.</td>
+      </tr>
+      <tr>
+        <td><strong>MGMT</strong></td>
+        <td>The <strong>staff entrance</strong>. You (the admin) use this to log into the firewall, push configuration from Panorama, or troubleshoot. User traffic never touches this subnet.</td>
+      </tr>
+      <tr>
+        <td><strong>PUBLIC + NAT-GW</strong></td>
+        <td>The <strong>loading dock</strong>. Outbound traffic leaves the building here. The NAT gateway swaps the private source IP for a public one (like putting a return address on a package), and the Internet Gateway sends it to the internet.</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>The route tables &mdash; hallway signs that say "go this way"</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A route table is just a list of directions. Each subnet has one, and it says: <em>"If a packet is going to <strong>X</strong>, send it to <strong>Y</strong>."</em> Here is every Security VPC route table in plain English:</p>
+
+    <h4>TGW-Attach Route Table</h4>
+    <p><em>"You just walked in the front door. Where are you going?"</em></p>
+    <ul>
+      <li><strong>Going to the internet?</strong> (destination <code>0.0.0.0/0</code>) &rarr; Go to the <strong>OUTBOUND endpoint</strong>. The outbound endpoint will send you to the firewall, and then the firewall will send you out through the NAT gateway.</li>
+      <li><strong>Going to another internal network?</strong> (destination is RFC-1918 private space) &rarr; Go to the <strong>EAST-WEST endpoint</strong>. The east-west endpoint will send you to the firewall, and after inspection the firewall will send you back out through TGW to the destination VPC.</li>
+    </ul>
+    <p>This is the most important route table. It is the <strong>fork in the road</strong> &mdash; internet-bound traffic goes one way, internal traffic goes the other. Both paths lead through the firewall, just through different doors.</p>
+
+    <h4>EAST-WEST Endpoint Route Table</h4>
+    <p><em>"The firewall just finished inspecting this internal traffic. Where does it go now?"</em></p>
+    <ul>
+      <li><strong>Any private destination</strong> (RFC-1918) &rarr; Send it back to the <strong>TGW</strong>. The TGW will route it to the correct spoke VPC. The firewall already approved it &mdash; now it is just delivering the mail.</li>
+    </ul>
+
+    <h4>OUTBOUND Endpoint Route Table</h4>
+    <p><em>"The firewall just finished inspecting this internet-bound traffic. Where does it go now?"</em></p>
+    <ul>
+      <li><strong>Default route</strong> (<code>0.0.0.0/0</code>) &rarr; Send it to the <strong>NAT Gateway</strong>. The NAT gateway gives it a public IP and hands it to the Internet Gateway.</li>
+    </ul>
+
+    <h4>NAT-GW Route Table</h4>
+    <p><em>"I'm the NAT gateway. I just got a reply back from the internet. Where does the return traffic go?"</em></p>
+    <ul>
+      <li><strong>Going to the internet?</strong> (<code>0.0.0.0/0</code>) &rarr; Send it to the <strong>Internet Gateway</strong>.</li>
+      <li><strong>Going to a private IP?</strong> (RFC-1918) &rarr; This is a reply coming back in. Send it to the <strong>OUTBOUND endpoint</strong> so the firewall can inspect the return traffic too. (The firewall checks both directions &mdash; it is not a one-way door.)</li>
+    </ul>
+
+    <h4>MGMT Route Table</h4>
+    <p><em>"Admin traffic needs to reach the internet for updates and Panorama connectivity."</em></p>
+    <ul>
+      <li><strong>Internet</strong> (<code>0.0.0.0/0</code>) &rarr; <strong>Internet Gateway</strong> (management traffic has its own direct path out &mdash; it does not go through the firewall's own inspection).</li>
+      <li><strong>Private networks</strong> (RFC-1918) &rarr; <strong>TGW</strong> (so Panorama in another VPC can reach the management interface).</li>
+    </ul>
+
+    <h4>PUBLIC (Data) Route Table</h4>
+    <p><em>"The firewall's outward-facing network interface."</em></p>
+    <ul>
+      <li><strong>Default route</strong> (<code>0.0.0.0/0</code>) &rarr; <strong>Internet Gateway</strong>. This is how the firewall reaches the internet directly for things like DNAT return traffic.</li>
+    </ul>
+
+    <div class="callout callout-success">
+      <div class="callout-title">The pattern</div>
+      <p>Notice how every route table is doing the same thing: pointing traffic toward the firewall, or pointing <em>already-inspected</em> traffic toward its final destination. There are no shortcuts. There are no "skip the firewall" routes. That is the whole point.</p>
+    </div>
+  </div>
+</div>
+
+<h3>Part 2: The Transit Gateway &mdash; The Highway System</h3>
+
+<p>If the Security VPC is the security checkpoint, the Transit Gateway (TGW) is the highway system that connects all the neighborhoods (VPCs) together. The trick is: <strong>every highway on-ramp forces you through the security checkpoint.</strong> There is no direct road between neighborhoods.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>TGW route tables &mdash; how the highway forces you through security</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The TGW uses separate route tables for different types of traffic sources. Each route table answers one question: <em>"Traffic just arrived from <strong>this type of place</strong>. Where should it go next?"</em></p>
+
+    <h4>Combined Design (Distributed Inbound)</h4>
+    <p>Three route tables:</p>
+
+    <table>
+      <tr><th>Route Table</th><th>Who uses it</th><th>What it does (the simple version)</th></tr>
+      <tr>
+        <td><code>FROM-SPOKES</code></td>
+        <td>All app VPCs</td>
+        <td><em>"I'm an app and I want to go somewhere."</em> &rarr; <strong>Everything goes to the Security VPC.</strong> It does not matter if the app wants to reach the internet, another app, or on-prem. The default route points to Security. No exceptions. No shortcuts.</td>
+      </tr>
+      <tr>
+        <td><code>FROM-SECURITY</code></td>
+        <td>Security VPC</td>
+        <td><em>"The firewall approved this traffic. Now deliver it."</em> &rarr; This route table knows about <strong>every destination</strong> &mdash; all the spoke VPCs (via propagation), on-prem networks (via BGP), everything. After inspection, TGW can route the packet anywhere it needs to go.</td>
+      </tr>
+      <tr>
+        <td><code>FROM-BACKHAUL</code></td>
+        <td>VPN / Direct Connect</td>
+        <td><em>"I'm traffic from on-prem."</em> &rarr; <strong>Go to the Security VPC for inspection first.</strong> Same idea as the spokes &mdash; on-prem traffic does not get a free pass either.</td>
+      </tr>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Why this works</div>
+      <p>The trick is asymmetry. The <code>FROM-SPOKES</code> and <code>FROM-BACKHAUL</code> route tables only know about <strong>one destination</strong>: the Security VPC. They are deliberately blind to everything else. The <code>FROM-SECURITY</code> route table is the only one that knows about all the spoke VPCs and on-prem. This means traffic <em>has</em> to go through the Security VPC to learn where to go next. The firewall is not just a checkpoint &mdash; it is the only one with the map.</p>
+    </div>
+
+    <h4>Combined Design (Dedicated Inbound)</h4>
+    <p>Same as above, plus one extra route table:</p>
+
+    <table>
+      <tr><th>Route Table</th><th>Who uses it</th><th>What it does</th></tr>
+      <tr>
+        <td><code>FROM-DEDICATED-INBOUND</code></td>
+        <td>The dedicated inbound VPC</td>
+        <td><em>"I'm the inbound VPC and I have traffic destined for an app."</em> &rarr; This route table propagates the spoke VPC prefixes directly, so the inbound VPC can reach the app VPCs through TGW. The traffic has <strong>already been inspected</strong> by the GWLB in the inbound VPC before reaching TGW, so it does not need to go through the Security VPC again.</td>
+      </tr>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">The one thing you must never do</div>
+      <p>Never add routes in the <code>FROM-SPOKES</code> table that point directly to other spokes or to on-prem. The moment you do that, you have created a shortcut that bypasses the firewall. All the security policy in the world will not help if traffic never reaches the firewall. If someone asks you to "just add a quick route so App1 can talk to App2 directly" &mdash; the answer is no. The whole design depends on the Security VPC being the only way through.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>The GWLB &mdash; why the traffic goes through a tunnel</span>
+  </div>
+  <div class="collapsible-body">
+    <p>You might wonder: why not just route traffic directly to the firewall's IP address? Why the Gateway Load Balancer, the endpoints, the Geneve tunnels?</p>
+
+    <p>Three reasons:</p>
+    <ol>
+      <li><strong>Scaling.</strong> The GWLB can spread traffic across multiple firewalls. Add more firewalls, the GWLB automatically uses them. Remove one, the GWLB stops sending it traffic. You never change a route table.</li>
+      <li><strong>Transparency.</strong> The Geneve tunnel preserves the original packet headers. The firewall sees the real source and destination IPs, not the GWLB's IP. This means your security policy can match on the actual client IP, not some intermediate address.</li>
+      <li><strong>Cross-VPC reach.</strong> GWLB endpoints can live in any VPC (spoke, inbound, wherever) and tunnel traffic to the GWLB in the Security VPC. The spoke VPC does not need a direct route to the firewall. The endpoint handles all of that over PrivateLink. This is how inbound inspection works without touching the Transit Gateway.</li>
+    </ol>
+
+    <p>Think of it like a pneumatic tube system in a bank. You put your packet in the tube (the GWLB endpoint), it gets whisked away to the teller (the firewall) for review, and it comes back through the same tube with an "approved" stamp. The tube is the Geneve tunnel.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Putting it all together &mdash; the 30-second summary</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li><strong>Spokes are blind.</strong> Their default route sends everything to the Security VPC via TGW. They do not know about each other.</li>
+      <li><strong>TGW is a funnel.</strong> It has separate route tables for spokes, security, and on-prem. The spoke and on-prem tables only know one destination: Security VPC. This forces all traffic through inspection.</li>
+      <li><strong>Security VPC is the checkpoint.</strong> Traffic arrives, gets routed to a GWLB endpoint (outbound or east-west depending on destination), gets inspected by a firewall, and exits.</li>
+      <li><strong>Post-inspection traffic knows where to go.</strong> The Security VPC's TGW route table (<code>FROM-SECURITY</code>) has routes to everywhere, so after the firewall approves a packet, TGW delivers it.</li>
+      <li><strong>Inbound traffic skips TGW entirely.</strong> In the distributed inbound model, the spoke's own GWLB endpoint tunnels directly to the Security VPC's GWLB. No TGW hop needed &mdash; the endpoint and GWLB handle it over PrivateLink.</li>
+    </ol>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  APPENDIX: TRAFFIC FLOWS EXPLAINED                           -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="appendix-flows">Appendix: Traffic Flows Explained (The Simple Version)</h2>
+
+<p>The traffic flow diagrams in the <a href="#architecture-overview">Architecture Overview</a> show numbered steps across complex topology diagrams. This appendix retells those same flows as simple stories &mdash; no diagram required.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Outbound &mdash; "My app wants to reach the internet"</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>The scenario:</strong> An EC2 instance in App1's spoke VPC wants to download an update from the internet.</p>
+
+    <p><strong>The journey:</strong></p>
+    <ol>
+      <li><strong>App1 says "I want to go to the internet."</strong> The workload sends a packet to an internet address. The subnet's route table sees the destination is not local, so it follows the default route &mdash; which points at the Transit Gateway.</li>
+      <li><strong>TGW says "Go to Security."</strong> The TGW consults the <code>FROM-SPOKES</code> route table. That table has exactly one instruction: send everything to the Security VPC. So the packet enters the Security VPC through the TGW attachment subnet.</li>
+      <li><strong>Security VPC says "You want the internet? Go through the OUTBOUND door."</strong> The TGW-Attach subnet's route table sees the destination is <code>0.0.0.0/0</code> (internet), so it sends the packet to the OUTBOUND GWLB endpoint.</li>
+      <li><strong>The endpoint puts the packet in a tunnel.</strong> The GWLB endpoint wraps the packet in a Geneve tunnel and sends it to the Gateway Load Balancer, which picks a firewall.</li>
+      <li><strong>The firewall inspects the packet.</strong> It checks: is this allowed by policy? Is it malware? Is the URL blocked? If it passes, the firewall sends it back through the GWLB.</li>
+      <li><strong>The approved packet comes back to the OUTBOUND endpoint.</strong> The endpoint unwraps the tunnel. The packet is now sitting in the OUTBOUND subnet. The route table says: <code>0.0.0.0/0</code> &rarr; NAT Gateway.</li>
+      <li><strong>The NAT Gateway gives it a public address.</strong> It swaps the private source IP for a public one (so the internet server knows where to send the reply) and hands the packet to the Internet Gateway.</li>
+      <li><strong>The packet reaches the internet.</strong> Done.</li>
+    </ol>
+
+    <p><strong>The return trip:</strong></p>
+    <ol>
+      <li>The internet server replies. The packet hits the IGW, lands at the NAT Gateway (which recognizes the translation), and ends up in the NAT-GW subnet.</li>
+      <li>The NAT-GW route table sees the destination is a private IP (the original App1 workload). Private IP &rarr; send to the OUTBOUND endpoint. The endpoint tunnels it to the firewall again.</li>
+      <li>The firewall sees this is a return packet for an existing session. It matches, approves, and sends it back through the GWLB.</li>
+      <li>The packet comes back to the EAST-WEST endpoint. The route table sends it to TGW.</li>
+      <li>TGW uses the <code>FROM-SECURITY</code> route table (which knows about App1), delivers the packet to App1's VPC, and the workload gets its reply.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Why the return traffic goes through EAST-WEST, not OUTBOUND</div>
+      <p>On the way out, the packet used the OUTBOUND endpoint because its destination was the internet. On the way back, the packet's destination is a private IP (App1). The firewall sends it back through the GWLB, and when it lands at the EAST-WEST endpoint, that endpoint's route table knows: private destinations go to TGW. This is the fork in the road working in reverse &mdash; outbound door for internet, internal door for private networks.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Inbound &mdash; "Someone on the internet wants to reach my app"</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>The scenario:</strong> A customer on the internet opens your web application, which runs in App2's spoke VPC behind an Application Load Balancer.</p>
+
+    <p><strong>The journey (distributed inbound model):</strong></p>
+    <ol>
+      <li><strong>The customer types in the URL.</strong> DNS resolves to a public IP associated with the spoke VPC's ALB. The packet travels across the internet and arrives at the spoke VPC's Internet Gateway.</li>
+      <li><strong>The IGW checks its Edge Association route table.</strong> This is a special route table attached to the IGW itself (not a subnet). It says: <em>"Traffic going to the ALB subnets? Do not deliver it directly. Send it to the GWLB endpoint first."</em> This is the key trick &mdash; the IGW <strong>intercepts</strong> the packet before it reaches the application.</li>
+      <li><strong>The GWLB endpoint tunnels the packet to the Security VPC.</strong> Same Geneve tunnel as before. The packet crosses VPC boundaries through PrivateLink and arrives at a firewall in the Security VPC. <strong>Notice: no Transit Gateway involved.</strong> This is a direct PrivateLink connection between the spoke's endpoint and the Security VPC's GWLB.</li>
+      <li><strong>The firewall inspects.</strong> It checks policy, scans for threats, and approves or denies.</li>
+      <li><strong>The approved packet returns through the tunnel to the spoke.</strong> Back at the GWLB endpoint in the spoke VPC, the packet is unwrapped. The endpoint's route table looks at the destination &mdash; it is a local subnet (the ALB). So the packet is delivered to the ALB.</li>
+      <li><strong>The ALB delivers the packet to the workload.</strong> The application processes the request and generates a reply.</li>
+    </ol>
+
+    <p><strong>The return trip:</strong></p>
+    <ol>
+      <li>The application sends a response back through the ALB.</li>
+      <li>The ALB's subnet route table has a default route pointing to the GWLB endpoint. So the reply goes to the endpoint &rarr; tunnel &rarr; firewall.</li>
+      <li>The firewall matches the existing session, approves, and sends it back through the GWLB.</li>
+      <li>The packet returns to the GWLB endpoint in the spoke. The endpoint's route table sends it to the IGW (<code>0.0.0.0/0</code>).</li>
+      <li>The IGW translates the source IP back to public and sends the reply to the customer on the internet.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">The big difference from outbound</div>
+      <p>Inbound traffic <strong>never touches the Transit Gateway</strong>. The GWLB endpoint in the spoke has a direct PrivateLink tunnel to the GWLB in the Security VPC. This is faster (fewer hops) and means you do not need TGW route table entries for inbound flows. The Edge Association route table on the IGW is what makes this work &mdash; without it, traffic would go straight to the ALB and skip the firewall entirely.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>East-West &mdash; "App1 wants to talk to App2"</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>The scenario:</strong> A microservice in App1 needs to call an API in App2. Both are in separate spoke VPCs.</p>
+
+    <p><strong>The journey:</strong></p>
+    <ol>
+      <li><strong>App1 sends a packet to App2's IP.</strong> The workload subnet route table sees the destination is not local. Default route &rarr; TGW.</li>
+      <li><strong>TGW says "Go to Security."</strong> The <code>FROM-SPOKES</code> route table only knows one destination: Security VPC. Even though App2 is a spoke too, TGW refuses to route directly. All roads lead to the checkpoint.</li>
+      <li><strong>Security VPC says "You want a private network? Go through the EAST-WEST door."</strong> The TGW-Attach route table sees the destination is RFC-1918 (private), so it sends the packet to the EAST-WEST GWLB endpoint.</li>
+      <li><strong>Endpoint &rarr; tunnel &rarr; GWLB &rarr; firewall.</strong> Same pattern. The firewall inspects.</li>
+      <li><strong>Firewall approves.</strong> The packet exits through the GWLB, returns to the EAST-WEST endpoint. The endpoint's route table says: private destination &rarr; TGW.</li>
+      <li><strong>TGW delivers to App2.</strong> This time the packet enters TGW from the Security VPC, so TGW uses the <code>FROM-SECURITY</code> route table. That table has App2's prefix (propagated). Packet is delivered to App2's VPC.</li>
+      <li><strong>App2 gets the packet.</strong></li>
+    </ol>
+
+    <p><strong>The return trip:</strong></p>
+    <p>Same thing in reverse. App2 replies &rarr; default route &rarr; TGW &rarr; Security VPC &rarr; EAST-WEST endpoint &rarr; firewall inspects &rarr; EAST-WEST endpoint &rarr; TGW &rarr; App1. The firewall sees both directions of the conversation.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Why this is a security win</div>
+      <p>In a traditional flat network, App1 and App2 could talk directly and you would rely on host-based firewalls or security groups to control access. In this design, every cross-VPC packet physically passes through a VM-Series firewall that can do App-ID, threat prevention, URL filtering, and data loss prevention. You get Layer 7 visibility between your own apps &mdash; not just at the perimeter.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>On-Prem to Cloud &mdash; "The office wants to reach an AWS app"</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>The scenario:</strong> A user in your corporate office (connected via Direct Connect or VPN) needs to access an application running in App1's spoke VPC.</p>
+
+    <p><strong>The journey:</strong></p>
+    <ol>
+      <li><strong>The office sends a packet.</strong> It travels over Direct Connect or Site-to-Site VPN and arrives at the Transit Gateway.</li>
+      <li><strong>TGW checks the <code>FROM-BACKHAUL</code> route table.</strong> Just like the spoke route table, it has one instruction: send everything to the Security VPC. On-prem traffic does not get special treatment.</li>
+      <li><strong>Security VPC inspects.</strong> TGW-Attach &rarr; OUTBOUND endpoint &rarr; firewall. The firewall checks the packet against policy, scans for threats.</li>
+      <li><strong>After inspection, TGW delivers to App1.</strong> The firewall returns the packet through the GWLB. The EAST-WEST endpoint sends it to TGW. The <code>FROM-SECURITY</code> route table knows about App1 (propagated prefix). Packet is delivered.</li>
+      <li><strong>App1 replies.</strong> Reply takes the spoke path: TGW &rarr; Security VPC &rarr; firewall &rarr; TGW &rarr; the <code>FROM-SECURITY</code> table has the on-prem routes (via BGP propagation) &rarr; Direct Connect / VPN &rarr; office.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Why the FROM-SECURITY route table is the only one with the full map</div>
+      <p>The <code>FROM-SECURITY</code> table propagates routes from <strong>everything</strong> &mdash; all spokes, the backhaul/VPN, all of it. This is intentional. After the firewall has inspected and approved a packet, TGW needs to know where to send it. If the <code>FROM-SECURITY</code> table did not have a route to on-prem (via BGP), the reply would black-hole and the office user would see a timeout.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Centralized Inbound &mdash; "One front door for all apps"</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>The scenario:</strong> Instead of each spoke VPC having its own internet gateway, you have a single dedicated inbound VPC with a public-facing load balancer that serves all your applications.</p>
+
+    <p><strong>How it differs from distributed inbound:</strong></p>
+    <ol>
+      <li>Internet traffic hits the dedicated inbound VPC's public load balancer (NLB or ALB). This VPC has an IGW, GWLB endpoints, and is the single point of entry for all inbound traffic.</li>
+      <li>The GWLB endpoint in the inbound VPC tunnels the packet to the Security VPC for inspection &mdash; same as the distributed model.</li>
+      <li>After inspection, the packet needs to reach the app in a spoke VPC. Now the TGW gets involved. The packet goes through TGW, and the <code>FROM-DEDICATED-INBOUND</code> route table has the spoke VPC prefixes propagated, so it routes directly to the destination spoke.</li>
+      <li>The spoke receives the traffic and processes it.</li>
+    </ol>
+
+    <p><strong>Why choose this model:</strong></p>
+    <ul>
+      <li>You want one set of public IPs, one place to manage certificates, one WAF configuration.</li>
+      <li>Security teams prefer a single ingress point they can monitor.</li>
+      <li>You have many apps and do not want each team managing their own IGW and GWLB endpoints.</li>
+    </ul>
+
+    <p><strong>The trade-off:</strong> All inbound traffic funnels through one VPC, which can become a bottleneck. The distributed model spreads the load but requires each spoke to have its own internet gateway and GWLB endpoint.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Quick reference &mdash; which path does each flow take?</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Flow</th><th>Path through Security VPC</th><th>Uses TGW?</th><th>Which GWLB endpoint?</th></tr>
+      <tr><td>Outbound (app &rarr; internet)</td><td>TGW-Attach &rarr; OUTBOUND &rarr; FW &rarr; NAT GW &rarr; IGW</td><td>Yes (spoke &rarr; security, then security &rarr; spoke for reply)</td><td>OUTBOUND</td></tr>
+      <tr><td>Inbound (internet &rarr; app, distributed)</td><td>Spoke GWLB endpoint &rarr; FW &rarr; back to spoke</td><td>No</td><td>Spoke's local endpoint</td></tr>
+      <tr><td>Inbound (internet &rarr; app, dedicated)</td><td>Inbound VPC GWLB endpoint &rarr; FW &rarr; TGW &rarr; spoke</td><td>Yes (post-inspection to reach spoke)</td><td>Inbound VPC's endpoint</td></tr>
+      <tr><td>East-West (app &rarr; app)</td><td>TGW-Attach &rarr; EAST-WEST &rarr; FW &rarr; EAST-WEST &rarr; TGW</td><td>Yes (both directions)</td><td>EAST-WEST</td></tr>
+      <tr><td>On-prem &rarr; app</td><td>TGW-Attach &rarr; OUTBOUND &rarr; FW &rarr; EAST-WEST &rarr; TGW</td><td>Yes (both directions)</td><td>OUTBOUND (inbound leg), EAST-WEST (reply leg)</td></tr>
+    </table>
+  </div>
 </div>
 
 </div><!-- .article -->
