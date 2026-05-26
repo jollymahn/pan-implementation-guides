@@ -153,6 +153,11 @@
 <h1>Cloud NGFW Deployment</h1>
 <p class="subtitle">End-to-end guide: marketplace subscription through verified traffic inspection with Cloud NGFW as a managed firewall service</p>
 
+<div class="cloud-links">
+  <a href="../aws/vm-series-deployment.html">AWS VM-Series</a>
+  <a href="../azure/vm-series-deployment.html">Azure VM-Series</a>
+</div>
+
 <!-- ── Cloud Picker ──────────────────────────────────────────── -->
 <div class="guide-cloud-picker">
   <button class="guide-cloud-btn active" data-cloud="aws" onclick="pickGuideCloud('aws')">AWS</button>
@@ -231,6 +236,18 @@
   </ul>
 </div>
 
+<h4>Key Concepts</h4>
+
+<p><strong>Availability Zone mapping is account-specific.</strong> AWS maps AZ <em>names</em> (e.g., <code>us-east-1a</code>) to physical AZ <em>IDs</em> (e.g., <code>use1-az1</code>) independently per account. This means <code>us-east-1a</code> in Account A may correspond to a different physical data center than <code>us-east-1a</code> in Account B. When deploying cross-account NGFW endpoints, always use <strong>AZ IDs</strong> — not AZ names — to ensure endpoints and workloads share the same physical AZ and avoid cross-AZ data transfer charges.</p>
+
+<p><em>AZ name-to-ID mapping varies per AWS account:</em></p>
+<img src="diagrams/aws/Availability Zone Concept.png" alt="AWS Availability Zone mapping showing how AZ names like us-east-1a map to different physical AZ IDs (use1-az1, use1-az2, use1-az3) depending on the AWS account, demonstrating why AZ IDs must be used for cross-account deployments" loading="lazy">
+
+<p><strong>Cross-account endpoint sharing.</strong> In the Combined and Isolated models, Cloud NGFW runs in a dedicated security account while NGFW endpoints are placed in spoke VPCs that may reside in separate AWS accounts. The Cloud NGFW resource owner shares the GWLB service via <strong>AWS PrivateLink</strong>, and spoke account administrators create GWLB endpoints referencing the shared service name.</p>
+
+<p><em>Multi-account architecture — Cloud NGFW in a security account with cross-account endpoints in spoke VPCs:</em></p>
+<img src="diagrams/aws/Combined Account Concept.png" alt="AWS multi-account architecture showing Cloud NGFW in a security account with cross-account NGFW endpoints deployed into App01 and App02 spoke accounts via AWS PrivateLink" loading="lazy">
+
 <!-- ── Combined Model ────────────────────────────────────────── -->
 <div class="collapsible">
   <div class="collapsible-header">
@@ -291,6 +308,12 @@
       <li>The ELB distributes the request to healthy EC2 targets.</li>
     </ol>
 
+    <p><em>Combined inbound traffic flow:</em></p>
+    <img src="diagrams/aws/Combined Inbound Flow.png" alt="AWS Combined Design inbound traffic flow showing client request entering spoke VPC IGW, routed to inbound NGFW endpoint, inspected by Cloud NGFW, then forwarded to ELB and application targets" loading="lazy">
+
+    <p><em>Combined inbound return path:</em></p>
+    <img src="diagrams/aws/Combined Inbound Flow Return.png" alt="AWS Combined Design inbound return path showing response from application target through ELB, NGFW endpoint, and IGW back to client" loading="lazy">
+
     <h4>Outbound Traffic Flow (Combined)</h4>
     <ol>
       <li>An instance in a spoke VPC sends traffic to the internet. The instance subnet route table directs it to the TGW attachment.</li>
@@ -303,6 +326,12 @@
       <li>The IGW sends the packet to the internet.</li>
     </ol>
 
+    <p><em>Combined outbound traffic flow:</em></p>
+    <img src="diagrams/aws/Comb Out Flow.png" alt="AWS Combined Design outbound traffic flow showing spoke instance through TGW to security VPC NGFW endpoint, inspected by Cloud NGFW, then through NAT gateway and IGW to internet" loading="lazy">
+
+    <p><em>Combined outbound return path:</em></p>
+    <img src="diagrams/aws/Comb Out Return Flow.png" alt="AWS Combined Design outbound return path showing internet response through IGW, NAT gateway, NGFW endpoint, Cloud NGFW inspection, then TGW back to spoke VPC" loading="lazy">
+
     <h4>East-West Traffic Flow (Combined)</h4>
     <ol>
       <li>An instance in App01 VPC sends traffic to an instance in App02 VPC. The instance subnet route table directs it to the TGW attachment.</li>
@@ -314,6 +343,12 @@
       <li>The TGW security route table forwards to the App02 VPC attachment.</li>
       <li>The TGW attachment in App02 delivers the packet to the destination instance.</li>
     </ol>
+
+    <p><em>Combined east-west traffic flow:</em></p>
+    <img src="diagrams/aws/Comb E-W Flow.png" alt="AWS Combined Design east-west traffic flow showing App01 instance through TGW to security VPC NGFW endpoint, inspected by Cloud NGFW, then returned via TGW to App02 instance" loading="lazy">
+
+    <p><em>Combined east-west return path:</em></p>
+    <img src="diagrams/aws/Comb E-W Return Flow.png" alt="AWS Combined Design east-west return path showing App02 response through TGW, security VPC NGFW inspection, then TGW back to App01" loading="lazy">
 
     <h4>Route Tables (Combined Model)</h4>
 
@@ -347,6 +382,28 @@
       </tbody>
     </table>
     <p><em>AZ-b route tables mirror AZ-a with corresponding <code>-b</code> endpoints.</em></p>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>See detailed routing diagram</span>
+      </div>
+      <div class="collapsible-body">
+        <p><em>Combined Design — complete architecture with all route tables and endpoints:</em></p>
+        <img src="diagrams/aws/Combined Complete.png" alt="AWS Combined Design complete architecture showing all VPCs, subnets, route tables, NGFW endpoints, NAT gateways, TGW route tables, and traffic paths with full routing detail" loading="lazy">
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>See TGW attachment diagram</span>
+      </div>
+      <div class="collapsible-body">
+        <p><em>Combined Design — TGW attachments and route table associations:</em></p>
+        <img src="diagrams/aws/Combined TGW Attachments.png" alt="AWS Combined Design TGW attachment detail showing spoke and security VPC attachments, route table associations, and route propagation" loading="lazy">
+      </div>
+    </div>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
@@ -405,12 +462,52 @@
       <li>The spoke VPC TGW attachment delivers the packet to the instance or internal ELB.</li>
     </ol>
 
+    <p><em>Centralized inbound traffic flow:</em></p>
+    <img src="diagrams/aws/Cent In Traffic Flow.png" alt="AWS Centralized Design inbound traffic flow showing client request entering inbound security VPC ELB, routed to NGFW endpoint, inspected by Cloud NGFW, then forwarded via TGW to spoke VPC" loading="lazy">
+
+    <p><em>Centralized inbound return path:</em></p>
+    <img src="diagrams/aws/Cent In Return Traffic Flow.png" alt="AWS Centralized Design inbound return path showing response from spoke VPC through TGW, inbound security VPC NGFW inspection, then through ELB and IGW back to client" loading="lazy">
+
     <div class="callout callout-note">
       <div class="callout-title">Centralized Inbound Limitation</div>
       <p>Centralized inbound inspection supports only TCP traffic with IP address targets in the ELB target group. UDP-based or non-ELB inbound workloads require the Combined model instead.</p>
     </div>
 
     <p>Outbound and east-west traffic flows are identical to the Combined model — they route through the centralized East-West &amp; Outbound security VPC via TGW.</p>
+
+    <p><em>Centralized outbound traffic flow:</em></p>
+    <img src="diagrams/aws/Cent Out Flow.png" alt="AWS Centralized Design outbound traffic flow showing spoke instance through TGW to east-west/outbound security VPC NGFW endpoint, inspected by Cloud NGFW, then through NAT gateway and IGW to internet" loading="lazy">
+
+    <p><em>Centralized outbound return path:</em></p>
+    <img src="diagrams/aws/Cent Out Return.png" alt="AWS Centralized Design outbound return path showing internet response through IGW, NAT gateway, NGFW endpoint, Cloud NGFW inspection, then TGW back to spoke VPC" loading="lazy">
+
+    <p><em>Centralized east-west traffic flow:</em></p>
+    <img src="diagrams/aws/Cent E-W Flow.png" alt="AWS Centralized Design east-west traffic flow showing App01 instance through TGW to security VPC NGFW endpoint, inspected by Cloud NGFW, then returned via TGW to App02 instance" loading="lazy">
+
+    <p><em>Centralized east-west return path:</em></p>
+    <img src="diagrams/aws/Cent E-W Return.png" alt="AWS Centralized Design east-west return path showing App02 response through TGW, security VPC NGFW inspection, then TGW back to App01" loading="lazy">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>See detailed routing diagram</span>
+      </div>
+      <div class="collapsible-body">
+        <p><em>Centralized Design — complete architecture with all route tables and endpoints:</em></p>
+        <img src="diagrams/aws/Centralized Complete.png" alt="AWS Centralized Design complete architecture showing all VPCs, subnets, route tables, NGFW endpoints, NAT gateways, TGW route tables, and traffic paths with full routing detail" loading="lazy">
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>See TGW attachment diagram</span>
+      </div>
+      <div class="collapsible-body">
+        <p><em>Centralized Design — TGW attachments and route table associations:</em></p>
+        <img src="diagrams/aws/Centralized TGW Attachments.png" alt="AWS Centralized Design TGW attachment detail showing spoke and security VPC attachments, route table associations, and route propagation" loading="lazy">
+      </div>
+    </div>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
@@ -788,6 +885,9 @@
           <div class="callout-title">Verification</div>
           <p>Panorama is running PAN-OS <code>10.2.5</code>+ in management-only mode with a valid device certificate. Cortex Data Lake status is <code>OK</code> and the tenant IDs match.</p>
         </div>
+
+        <p><em>Panorama management plane — Panorama pushes policy and configuration to Cloud NGFW resources in the AWS VPC:</em></p>
+        <img src="diagrams/aws/PN Mgmt.png" alt="Panorama management architecture showing Panorama on a management network pushing policy to two Cloud NGFW resources in an AWS VPC, with administrators accessing Panorama for centralized management" loading="lazy">
       </div>
     </div>
 
@@ -842,6 +942,9 @@
           <div class="callout-title">Verification</div>
           <p>The Integrations page in the Cloud NGFW console shows the Panorama link with status <code>Connected</code>. In Panorama, the Cloud NGFW tenant appears under the <code>Panorama</code> tab when selecting the tenant and region.</p>
         </div>
+
+        <p><em>Panorama with Cortex Data Lake — Panorama manages Cloud NGFW policy while CDL collects traffic logs:</em></p>
+        <img src="diagrams/aws/PN Mgmt &amp; CDL.png" alt="Panorama management with Cortex Data Lake integration showing Panorama pushing policy to Cloud NGFW resources in an AWS VPC, with Cloud NGFW forwarding traffic logs to Cortex Data Lake for centralized logging and analytics" loading="lazy">
       </div>
     </div>
 
@@ -970,22 +1073,37 @@
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>Step 2B.1: Link Cloud NGFW Tenant to SCM</span>
+        <span>Step 2B.1: Verify SCM Tenant Readiness</span>
       </div>
       <div class="collapsible-body">
-        <p>Strata Cloud Manager (SCM) provides cloud-native policy management for Cloud NGFW. Link the Cloud NGFW tenant to SCM to enable centralized policy push and log collection.</p>
+        <p>Confirm that your Strata Cloud Manager (SCM) tenant is activated and has the correct license tier before linking Cloud NGFW resources.</p>
 
         <ol>
-          <li>Log in to the Cloud NGFW console with a tenant administrator account.</li>
-          <li>Navigate to <code>Settings</code> &rarr; <code>Integrations</code>.</li>
-          <li>Click <code>Add SCM</code> (or <code>Add Strata Cloud Manager</code>).</li>
-          <li>Follow the on-screen wizard to authenticate with the SCM tenant.</li>
-          <li>Select the SCM tenant to link and confirm.</li>
+          <li>Sign in to <a href="https://stratacloudmanager.paloaltonetworks.com">Strata Cloud Manager</a> with a tenant administrator account.</li>
+          <li>Navigate to <code>Settings</code> &rarr; <code>Tenant Management</code>.</li>
+          <li>Confirm the following:
+            <table>
+              <thead>
+                <tr><th>Setting</th><th>Required Value</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>License Tier</td><td><code>Strata Cloud Manager Essentials</code> or <code>Pro</code></td></tr>
+                <tr><td>Strata Logging Service</td><td><code>Active</code> (included with Pro; optional add-on for Essentials)</td></tr>
+                <tr><td>Tenant Status</td><td><code>Active</code></td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Note the <strong>Tenant ID</strong> &mdash; you will need this when configuring the Cloud NGFW resource in Phase 4.</li>
         </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">SCM Pro for Cloud NGFW</div>
+          <p>Cloud NGFW for AWS automatically enables SCM Pro features when registered with an SCM tenant. This includes Strata Logging Service with one year retention, Command Center dashboards, and Activity Insights &mdash; no separate license purchase is required for these Cloud NGFW-specific capabilities.</p>
+        </div>
 
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>The Integrations page shows the SCM link with status <code>Connected</code>. The Cloud NGFW tenant appears in the SCM console under managed tenants.</p>
+          <p>The SCM tenant shows <code>Active</code> status. Strata Logging Service is active. You have recorded the Tenant ID for use in Phase 4.</p>
         </div>
       </div>
     </div>
@@ -994,25 +1112,28 @@
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>Step 2B.2: Create Folder Structure</span>
+        <span>Step 2B.2: Link Cloud NGFW Tenant to SCM</span>
       </div>
       <div class="collapsible-body">
-        <p>Folders in SCM organize policy hierarchically. Create folders to separate east-west/outbound and inbound policy sets.</p>
+        <p>Link the Cloud NGFW for AWS tenant to SCM so that SCM becomes the centralized policy manager. This replaces the need for Panorama and the Cloud Connector plugin.</p>
 
         <ol>
-          <li>In SCM, navigate to <code>Configuration</code> &rarr; <code>NGFW and Prisma Access</code> &rarr; <code>Folders</code>.</li>
-          <li>Create a folder named <code>Cloud NGFW - AWS</code> at the appropriate level in the hierarchy.</li>
-          <li>Under that folder, create sub-folders:
-            <ul>
-              <li><code>East-West-Outbound</code></li>
-              <li><code>Inbound</code></li>
-            </ul>
-          </li>
+          <li>Log in to the <a href="https://cloudngfw.paloaltonetworks.com">Cloud NGFW console</a> with a tenant administrator account.</li>
+          <li>Navigate to <code>Settings</code> &rarr; <code>Management</code>.</li>
+          <li>Select <strong>Strata Cloud Manager</strong> as the policy manager.</li>
+          <li>Authenticate with your SCM tenant credentials when prompted.</li>
+          <li>Select the SCM tenant to link and click <code>Confirm</code>.</li>
+          <li>Wait for the integration to complete (typically 2&ndash;5 minutes).</li>
         </ol>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">CSP Account Requirement</div>
+          <p>The email used to create the Cloud NGFW tenant must be a registered user in the Palo Alto Networks Customer Support Portal (CSP) under the same support account as the SCM tenant. If it is not listed, add it via <code>Manage Users</code> in the CSP portal before proceeding.</p>
+        </div>
 
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>The folder tree in SCM shows <code>Cloud NGFW - AWS</code> with two sub-folders. Selecting each folder shows an empty policy rulebase ready for configuration.</p>
+          <p>The Management page in the Cloud NGFW console shows <code>Strata Cloud Manager</code> with status <code>Connected</code>. In SCM, the Cloud NGFW tenant appears under managed resources.</p>
         </div>
       </div>
     </div>
@@ -1021,39 +1142,222 @@
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>Step 2B.3: Configure Security Policy in SCM</span>
+        <span>Step 2B.3: Create Folder Structure</span>
       </div>
       <div class="collapsible-body">
-        <p>Create security rules in each folder to define allowed and denied traffic, mirroring the same policy intent as the Panorama path.</p>
+        <p>SCM uses a hierarchical folder structure to organize policy &mdash; this is the SCM equivalent of Panorama device groups. Folders support up to four levels of nesting, and child folders inherit rules from their parents. Create a folder for the AWS Cloud NGFW deployment with sub-folders to separate traffic policies.</p>
 
         <ol>
-          <li>In SCM, select the <code>East-West-Outbound</code> folder.</li>
+          <li>In SCM, navigate to <code>Manage</code> &rarr; <code>Configuration</code> &rarr; <code>NGFW and Prisma Access</code>.</li>
+          <li>In the <strong>Configuration Scope</strong> dropdown, click <code>Manage Folders</code>.</li>
+          <li>Click <code>Add Folder</code>.</li>
+          <li>Set <strong>Name</strong> to <code>Cloud-NGFW-AWS</code> and select the appropriate parent folder (e.g., <code>All</code>).</li>
+          <li>Click <code>Save</code>.</li>
+          <li>Create two sub-folders under <code>Cloud-NGFW-AWS</code>:
+            <table>
+              <thead>
+                <tr><th>Sub-Folder Name</th><th>Purpose</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>East-West-Outbound</code></td><td>Policies for spoke-to-spoke and spoke-to-internet traffic</td></tr>
+                <tr><td><code>Inbound</code></td><td>Policies for internet-to-application inbound traffic</td></tr>
+              </tbody>
+            </table>
+          </li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Folders vs. Panorama Device Groups</div>
+          <p>SCM folders serve the same organizational role as Panorama device groups. Rules defined at the parent folder level act as <strong>pre-rules</strong> (evaluated first) for all child folders. Use the parent <code>Cloud-NGFW-AWS</code> folder for shared objects like address groups and security profiles, and the sub-folders for traffic-specific rules.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The Configuration Scope dropdown shows <code>Cloud-NGFW-AWS</code> with two sub-folders. Selecting each sub-folder shows an empty policy rulebase ready for configuration.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2B.4 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2B.4: Configure Security Profiles and Profile Group</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Security profiles enable Cloud NGFW to inspect traffic for threats beyond basic allow/deny. Create profiles for each threat type, then bundle them into a Security Profile Group for easy attachment to rules.</p>
+
+        <h4>Create Security Profiles</h4>
+        <ol>
+          <li>In SCM, select the <code>Cloud-NGFW-AWS</code> parent folder from the Configuration Scope dropdown.</li>
+          <li>Navigate to <code>Manage</code> &rarr; <code>Configuration</code> &rarr; <code>NGFW and Prisma Access</code> &rarr; <code>Security Services</code>.</li>
+          <li>Create the following profiles (use predefined <code>Strict</code> profiles for initial deployment, or create custom ones):
+            <table>
+              <thead>
+                <tr><th>Profile Type</th><th>Name</th><th>Recommended Setting</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Anti-Spyware</td><td><code>strict-antispyware</code></td><td>Block critical/high/medium; alert on low</td></tr>
+                <tr><td>Vulnerability Protection</td><td><code>strict-vulnerability</code></td><td>Block critical/high; alert on medium/low</td></tr>
+                <tr><td>URL Filtering</td><td><code>strict-url</code></td><td>Block high-risk categories (malware, phishing, C2)</td></tr>
+                <tr><td>WildFire Analysis</td><td><code>strict-wildfire</code></td><td>Forward all file types for analysis</td></tr>
+              </tbody>
+            </table>
+          </li>
+        </ol>
+
+        <h4>Create Security Profile Group</h4>
+        <ol start="4">
+          <li>Navigate to <code>Security Services</code> &rarr; <code>Security Profile Groups</code>.</li>
+          <li>Click <code>Add</code>.</li>
+          <li>Set <strong>Name</strong> to <code>cloud-ngfw-protection</code>.</li>
+          <li>Attach each profile created above:
+            <table>
+              <thead>
+                <tr><th>Field</th><th>Value</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Anti-Spyware</td><td><code>strict-antispyware</code></td></tr>
+                <tr><td>Vulnerability Protection</td><td><code>strict-vulnerability</code></td></tr>
+                <tr><td>URL Filtering</td><td><code>strict-url</code></td></tr>
+                <tr><td>WildFire Analysis</td><td><code>strict-wildfire</code></td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Click <code>Save</code>.</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Predefined vs. Custom Profiles</div>
+          <p>SCM includes predefined <code>Default</code> and <code>Strict</code> profiles. For production deployments, the <code>Strict</code> profiles provide a strong security baseline. Create custom profiles only if you need to tune actions for specific threat signatures or URL categories.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Four security profiles appear under Security Services in the <code>Cloud-NGFW-AWS</code> folder. The <code>cloud-ngfw-protection</code> profile group lists all four profiles. These objects are defined at the parent folder level and will be available to both sub-folders.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2B.5 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2B.5: Configure Security Policy</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Create security rules in each sub-folder to define allowed and denied traffic, with the security profile group attached for threat inspection.</p>
+
+        <h4>East-West and Outbound Rules</h4>
+        <ol>
+          <li>In SCM, select the <code>East-West-Outbound</code> folder from the Configuration Scope dropdown.</li>
           <li>Navigate to <code>Security Services</code> &rarr; <code>Security Policy</code>.</li>
-          <li>Click <code>Add Rule</code>.</li>
-          <li>Configure an outbound allow rule:
+          <li>Click <code>Add Rule</code> and configure an outbound allow rule:
             <table>
               <thead>
                 <tr><th>Field</th><th>Value</th></tr>
               </thead>
               <tbody>
                 <tr><td>Name</td><td><code>allow-outbound-web</code></td></tr>
+                <tr><td>Source Zone</td><td><code>any</code></td></tr>
                 <tr><td>Source Address</td><td><code>10.104.0.0/16</code>, <code>10.105.0.0/16</code></td></tr>
+                <tr><td>Destination Zone</td><td><code>any</code></td></tr>
                 <tr><td>Destination Address</td><td><code>any</code></td></tr>
                 <tr><td>Application</td><td><code>ssl</code>, <code>web-browsing</code></td></tr>
                 <tr><td>Action</td><td><code>Allow</code></td></tr>
+                <tr><td>Profile Group</td><td><code>cloud-ngfw-protection</code></td></tr>
                 <tr><td>Log at Session End</td><td>Enabled</td></tr>
               </tbody>
             </table>
           </li>
-          <li>Add east-west rules as needed.</li>
-          <li>Add a <strong>deny-all</strong> rule at the bottom.</li>
-          <li>Switch to the <code>Inbound</code> folder and create inbound application rules.</li>
-          <li>Push the configuration from SCM.</li>
+          <li>Add east-west rules for spoke-to-spoke traffic as needed (use specific source/destination address ranges to differentiate flows).</li>
+          <li>Add a <strong>deny-all</strong> cleanup rule at the bottom of the rulebase.</li>
         </ol>
+
+        <h4>Inbound Rules</h4>
+        <ol start="6">
+          <li>Switch to the <code>Inbound</code> folder in the Configuration Scope dropdown.</li>
+          <li>Click <code>Add Rule</code> and create inbound application rules appropriate for your published services (e.g., web servers, APIs).</li>
+          <li>Attach the <code>cloud-ngfw-protection</code> profile group to each allow rule.</li>
+          <li>Add a <strong>deny-all</strong> cleanup rule at the bottom.</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Cloud NGFW Zone Handling</div>
+          <p>Cloud NGFW for AWS does not use traditional PAN-OS zones. Set both source and destination zones to <code>any</code>. Differentiate traffic flows using source and destination IP address ranges (e.g., <code>10.104.0.0/16</code> for App01, <code>10.105.0.0/16</code> for App02).</p>
+        </div>
 
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>Each folder contains at least one allow rule and a final deny-all. The push operation completes without errors. Policies are visible in the Cloud NGFW console under the associated rulestack.</p>
+          <p>Each sub-folder contains at least one allow rule with the <code>cloud-ngfw-protection</code> profile group attached, and a final deny-all rule. The Profile Group column shows <code>cloud-ngfw-protection</code> for every allow rule.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2B.6 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2B.6: Configure Log Forwarding</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Configure log forwarding to ensure all traffic and threat logs are sent to Strata Logging Service for centralized visibility in SCM dashboards.</p>
+
+        <ol>
+          <li>In SCM, select the <code>Cloud-NGFW-AWS</code> parent folder from the Configuration Scope dropdown.</li>
+          <li>Navigate to <code>Manage</code> &rarr; <code>Configuration</code> &rarr; <code>NGFW and Prisma Access</code> &rarr; <code>Objects</code> &rarr; <code>Log Forwarding</code>.</li>
+          <li>Click <code>Add</code> to create a new log forwarding profile.</li>
+          <li>Set <strong>Name</strong> to <code>default</code>.</li>
+          <li>Add match entries for the following log types, each forwarding to <strong>Strata Logging Service</strong>:
+            <ul>
+              <li><code>traffic</code></li>
+              <li><code>threat</code></li>
+              <li><code>url</code></li>
+              <li><code>data</code></li>
+              <li><code>wildfire</code></li>
+            </ul>
+          </li>
+          <li>Click <code>Save</code>.</li>
+          <li>Attach the log forwarding profile to each security rule: edit each rule in both sub-folders, go to the <code>Actions</code> tab, and select the <code>default</code> log forwarding profile.</li>
+        </ol>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">The "default" Keyword</div>
+          <p>Naming the log forwarding profile exactly <code>default</code> (lowercase) causes SCM to auto-attach it to <strong>new</strong> security rules created in this folder scope. This is case-sensitive and not retroactive &mdash; existing rules without a log forwarding profile must be updated manually.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>A log forwarding profile named <code>default</code> exists in the <code>Cloud-NGFW-AWS</code> folder. Every security rule in both sub-folders shows the log forwarding profile in the Actions column.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2B.7 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2B.7: Push Configuration</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Push the complete configuration from SCM to apply all security profiles, rules, and log forwarding settings to the Cloud NGFW tenant. Unlike Panorama&rsquo;s commit-and-push, SCM uses a single push action.</p>
+
+        <ol>
+          <li>In SCM, click <code>Push Config</code> in the top-right corner of the interface.</li>
+          <li>Review the summary of pending changes (folders, rules, profiles, objects).</li>
+          <li>Select the <code>Cloud-NGFW-AWS</code> folder scope and all sub-folders.</li>
+          <li>Click <code>Push</code> to apply changes.</li>
+          <li>Wait for the push operation to complete (status changes from <code>Pending</code> to <code>Completed</code>).</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Push Timing</div>
+          <p>At this point in the workflow, the Cloud NGFW resource has not been deployed yet (that happens in Phase 4). The push operation stores the configuration in SCM. When the Cloud NGFW resource is created with Terraform and linked to this SCM tenant, it automatically pulls and applies the prepared configuration.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The push operation completes with status <code>Completed</code> and no errors. The Push Log (accessible from the push confirmation dialog) shows all folders, rules, and objects successfully committed.</p>
         </div>
       </div>
     </div>
@@ -1206,25 +1510,30 @@ git checkout tags/v&lt;version&gt;</code></pre>
         <tr><th>Variable</th><th>Purpose</th><th>What to Customize</th></tr>
       </thead>
       <tbody>
-        <tr><td><code>cloudngfws</code></td><td>Cloud NGFW resource definitions</td><td>NGFW names, VPC associations, AZ selections, rulestack association</td></tr>
-        <tr><td><code>gwlb_endpoints</code></td><td>NGFW endpoint placements</td><td>Subnets, AZs, cross-account settings for inbound endpoints</td></tr>
-        <tr><td><code>tgws</code></td><td>Transit Gateway configuration</td><td>ASN, route tables, attachments, appliance mode settings</td></tr>
-        <tr><td><code>vpcs</code></td><td>VPC definitions (security + spoke)</td><td>CIDR blocks, subnet allocations, AZ mappings</td></tr>
-        <tr><td><code>spoke_albs</code></td><td>Application Load Balancers in spoke VPCs</td><td>Listener ports, target group health checks, target IPs</td></tr>
-        <tr><td><code>spoke_nlbs</code></td><td>Network Load Balancers (if applicable)</td><td>Listener configuration, target IPs</td></tr>
+        <tr><td><code>provider_account</code></td><td>AWS account ID for deployment</td><td>The 12-digit AWS account ID where Cloud NGFW resources will be created</td></tr>
+        <tr><td><code>provider_role</code></td><td>AWS IAM assumed role for Cloud NGFW</td><td>Defaults to <code>cloudngfw</code> — the cross-account role created during subscription</td></tr>
+        <tr><td><code>cloudngfws</code></td><td>Cloud NGFW resource definitions</td><td>NGFW names, VPC/subnet associations, inline security rules, log profiles (CloudWatch), and security profile config (BestPractice defaults)</td></tr>
+        <tr><td><code>gwlb_endpoints</code></td><td>NGFW endpoint placements</td><td>Subnets, AZs, cross-account settings for inbound endpoints, <code>cloudngfw_key</code> association</td></tr>
+        <tr><td><code>tgws</code></td><td>Transit Gateway configuration</td><td>TGW name, ASN, route table definitions</td></tr>
+        <tr><td><code>tgw_attachments</code></td><td>TGW attachment configuration</td><td>VPC-to-TGW attachments, route table associations, route propagation, appliance mode</td></tr>
+        <tr><td><code>vpcs</code></td><td>VPC definitions (security + spoke)</td><td>CIDR blocks, subnet allocations, AZ mappings, route tables, security groups</td></tr>
         <tr><td><code>natgws</code></td><td>NAT Gateways in security VPC</td><td>Subnet placement per AZ</td></tr>
+        <tr><td><code>spoke_vms</code></td><td>Test VMs in spoke VPCs</td><td>AZ, VPC, subnet group, security group, instance type per VM</td></tr>
+        <tr><td><code>spoke_albs</code></td><td>Application Load Balancers in spoke VPCs</td><td>Listener rules, target VMs, health checks</td></tr>
+        <tr><td><code>spoke_nlbs</code></td><td>Network Load Balancers (if applicable)</td><td>Listener configuration, target VMs</td></tr>
       </tbody>
     </table>
 
     <ol>
       <li>Open <code>variables.tf</code> and read the description for each variable.</li>
-      <li>Open the example tfvars file (e.g., <code>example.tfvars</code>) to see reference values.</li>
+      <li>Open the example tfvars file (<code>example.tfvars</code>) to see reference values.</li>
       <li>Pay special attention to:
         <ul>
+          <li><strong>Provider Account</strong> — Set <code>provider_account</code> to the AWS account ID. This is required and has no default.</li>
           <li><strong>Region</strong> — Set to the AWS region matching the Cloud NGFW tenant (e.g., <code>us-east-1</code>).</li>
           <li><strong>Availability Zones</strong> — Must match the AZs configured on the Cloud NGFW resource. Use at least two AZs for resiliency.</li>
-          <li><strong>VPC CIDRs</strong> — Must be non-overlapping. The example uses <code>10.104.0.0/16</code>, <code>10.105.0.0/16</code>, and <code>10.107.0.0/16</code>.</li>
-          <li><strong>Cloud NGFW Rulestack</strong> — Reference the global rulestack name created by Panorama or SCM.</li>
+          <li><strong>VPC CIDRs</strong> — Must be non-overlapping. The example uses <code>10.100.0.0/16</code> (security), <code>10.104.0.0/16</code> (app1), and <code>10.105.0.0/16</code> (app2).</li>
+          <li><strong>Security Rules &amp; Log Profiles</strong> — The <code>cloudngfws</code> variable includes inline security rules and CloudWatch log profiles. When managed by Panorama or SCM, these provide a baseline local rulestack; the global rulestack from Panorama/SCM takes precedence.</li>
         </ul>
       </li>
     </ol>
@@ -1259,7 +1568,11 @@ git checkout tags/v&lt;version&gt;</code></pre>
       </li>
       <li>Edit <code>terraform.tfvars</code> and set values for the environment. Key settings include:
         <div class="code-block">
-          <pre><code># Region
+          <pre><code># Provider — AWS account and Cloud NGFW IAM role
+provider_account = "123456789012"  # Your AWS account ID
+provider_role    = "cloudngfw"
+
+# Region
 region = "us-east-1"
 
 # Name prefix for all resources
@@ -2128,6 +2441,11 @@ terraform init -upgrade</code></pre>
 
 <p>Cloud NGFW for Azure is a Palo Alto Networks next-generation firewall delivered as a fully managed, cloud-native Azure service (FWaaS). There is no firewall infrastructure to deploy, patch, or scale — Palo Alto Networks manages the underlying compute, and the Cloud NGFW resource scales automatically up to 50 Gbps per resource with built-in multi-AZ redundancy.</p>
 
+<p>Cloud NGFW for Azure supports multi-region deployments. Each Cloud NGFW resource is deployed within a specific Azure region and spans all availability zones in that region for high availability. For multi-region protection, deploy a separate Cloud NGFW resource in each region.</p>
+
+<p><em>Multi-region deployment — Cloud NGFW spans availability zones within each region:</em></p>
+<img src="diagrams/azure/Regions.png" alt="Azure multi-region Cloud NGFW deployment showing East US and West US regions, each with three availability zones and Cloud NGFW resources distributed across zones for high availability" loading="lazy">
+
 <p>Two deployment models exist. The right choice depends on whether the Azure environment uses traditional hub-and-spoke VNets or Azure Virtual WAN.</p>
 
 <div class="callout callout-note">
@@ -2216,6 +2534,64 @@ terraform init -upgrade</code></pre>
 
     <p><em>Virtual WAN architecture:</em></p>
     <img src="diagrams/azure/vwan.png" alt="Azure Virtual WAN architecture with Cloud NGFW as SaaS NVA in vWAN hub, routing intent table directing internet and private traffic to Cloud NGFW, spoke VNets, and remote sites via S2S VPN and ExpressRoute" loading="lazy">
+
+    <h4>vWAN Traffic Flows</h4>
+
+    <p><strong>Egress (spoke to internet):</strong></p>
+    <ol>
+      <li>A workload VM in a spoke VNet (e.g., App02 at <code>10.113.2.4</code>) sends traffic to an internet destination.</li>
+      <li>The vWAN hub's routing intent policy (Internet → Cloud NGFW) directs the traffic to Cloud NGFW.</li>
+      <li>Cloud NGFW inspects the traffic and performs <strong>SNAT</strong> — translating the source from the spoke VM's private IP to the Cloud NGFW's public IP (<code>191.237.87.98</code>).</li>
+      <li>Traffic egresses to the internet destination.</li>
+    </ol>
+
+    <p><em>vWAN egress traffic flow:</em></p>
+    <img src="diagrams/azure/vwan - outbound.png" alt="Azure vWAN egress traffic flow showing spoke VM through virtual connection to vWAN hub, routing intent directing to Cloud NGFW for inspection and SNAT, then to internet, with source and destination IP translations at each hop" loading="lazy">
+
+    <p><strong>Ingress (internet to spoke):</strong></p>
+    <ol>
+      <li>An external client sends traffic to the Cloud NGFW's public IP (<code>191.237.87.98</code>).</li>
+      <li>Cloud NGFW performs <strong>DNAT</strong> — translating the destination to the spoke workload's private IP (e.g., <code>10.112.1.4</code> in App01) — and <strong>SNAT</strong> — translating the source to the Cloud NGFW's internal IP.</li>
+      <li>The vWAN hub forwards the traffic to the spoke VNet via the virtual network connection.</li>
+      <li>Traffic arrives at the destination workload in the spoke VNet.</li>
+    </ol>
+
+    <p><em>vWAN ingress traffic flow:</em></p>
+    <img src="diagrams/azure/vwan - inbound.png" alt="Azure vWAN ingress traffic flow showing internet client through Cloud NGFW with DNAT and SNAT translation, vWAN hub routing to spoke VNet via virtual connection, with source and destination IP translations at each hop" loading="lazy">
+
+    <p><strong>East-West (spoke to spoke):</strong></p>
+    <ol>
+      <li>A workload in App01 (<code>10.112.1.4</code>) sends traffic to a workload in App02 (<code>10.113.2.4</code>).</li>
+      <li>The vWAN hub's routing intent policy (Private → Cloud NGFW) directs the traffic to Cloud NGFW for inspection.</li>
+      <li>Cloud NGFW inspects the traffic and returns it to the vWAN hub. <strong>No NAT</strong> is performed on east-west traffic.</li>
+      <li>The vWAN hub forwards the traffic to the destination spoke VNet via the virtual network connection.</li>
+    </ol>
+
+    <p><em>vWAN east-west traffic flow:</em></p>
+    <img src="diagrams/azure/vwan - east-west.png" alt="Azure vWAN east-west traffic flow showing App01 through vWAN hub routing intent to Cloud NGFW for inspection, then back through vWAN hub to App02, with no NAT — source and destination IPs preserved" loading="lazy">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>See advanced vWAN topologies</span>
+      </div>
+      <div class="collapsible-body">
+        <p><em>vWAN hub connectivity — spoke VNets via virtual connections, branch sites via ExpressRoute, S2S VPN, and P2S VPN:</em></p>
+        <img src="diagrams/azure/vwan overview.png" alt="Azure vWAN hub connectivity showing App01 and App02 spoke VNets connected to a Virtual WAN hub, with remote site connectivity via ExpressRoute, S2S VPN, and P2S VPN" loading="lazy">
+
+        <p><em>vWAN hub — alternative view showing VNets and branch connections:</em></p>
+        <img src="diagrams/azure/vwan overview (Page 008).png" alt="Azure vWAN hub alternative view showing three spoke VNets connected via virtual connections at the top, with remote sites connected via ExpressRoute, S2S VPN, and P2S VPN at the bottom" loading="lazy">
+
+        <p><em>Transit VNet with VM-Series — when integrating VM-Series firewalls in a transit VNet alongside vWAN for branch connectivity:</em></p>
+        <img src="diagrams/azure/vwan transit high level.png" alt="Azure transit VNet architecture with VM-Series inbound and outbound/east-west firewall pairs in a transit VNet, spoke VNets for App01-03, and a vWAN hub providing ExpressRoute, S2S VPN, and P2S VPN connectivity to remote sites" loading="lazy">
+
+        <p><em>Transit VNet — detailed view with subnet addressing and interface assignments:</em></p>
+        <img src="diagrams/azure/vwan with transit.png" alt="Azure transit VNet detailed architecture showing VM-Series firewalls with specific IP addresses on management (10.110.255.0/24), public (10.110.129.0/24), and private (10.110.0.0/24) subnets, connected to App01 spoke VNets and a vWAN hub for remote site access" loading="lazy">
+
+        <p><em>Multi-region vWAN — hub-to-hub mesh with per-region spoke VNets and branch connectivity:</em></p>
+        <img src="diagrams/azure/vwan multi-region.png" alt="Azure multi-region vWAN architecture showing two Virtual WAN hubs connected hub-to-hub, each with local spoke VNets (App01, App02) and remote site connectivity via ExpressRoute, S2S VPN, and P2S VPN" loading="lazy">
+      </div>
+    </div>
 
     <h4>Key Differences from Centralized VNet</h4>
     <table>
@@ -2535,6 +2911,9 @@ terraform init -upgrade</code></pre>
           <div class="callout-title">Verification</div>
           <p>Dashboard shows PAN-OS <code>10.2.x</code> or later in Panorama mode. The <code>azure</code> plugin is installed and shows version <code>5.x</code> in the Plugins list.</p>
         </div>
+
+        <p><em>Panorama management plane — Panorama in Panorama mode manages Cloud NGFW resources and collects logs via a management VNet:</em></p>
+        <img src="diagrams/azure/PN Management.png" alt="Panorama in Panorama mode on a Management Virtual Network managing two Cloud NGFW resources in an Azure Virtual Network, with management and logging connections from Cloud NGFW to Panorama" loading="lazy">
       </div>
     </div>
 
@@ -2566,6 +2945,9 @@ terraform init -upgrade</code></pre>
           <div class="callout-title">Verification</div>
           <p>The service principal entry on the <strong>Service Principal</strong> tab shows <code>Valid for Azure Monitoring: Yes</code> (green checkmark).</p>
         </div>
+
+        <p><em>Dynamic Address Groups — the Azure plugin uses the service principal and VM-Monitoring to discover tagged VMs and automatically populate DAG membership:</em></p>
+        <img src="diagrams/azure/DAGs.png" alt="Dynamic Address Groups workflow showing Panorama with Azure plugin using VM-Monitoring XML API to discover VMs with tagged roles (Public Web Servers, Admin Servers, Sharepoint Servers, App03 Servers) and automatically building DAG membership with learned IP addresses" loading="lazy">
       </div>
     </div>
 
@@ -2596,6 +2978,9 @@ terraform init -upgrade</code></pre>
           <div class="callout-title">Verification</div>
           <p>Navigate to <code>Panorama &gt; Collector Groups</code>. The <code>CloudNGFW-cg</code> collector group appears with the Panorama collector listed as a member. The collector status shows <code>Connected</code>.</p>
         </div>
+
+        <p><em>On-premises Panorama with Azure log collector — when Panorama runs on-prem, a Panorama instance in Log Collector mode in the Azure VNet collects logs locally, connected via Azure VPN Gateway:</em></p>
+        <img src="diagrams/azure/PN onprem.png" alt="On-premises Panorama managing Cloud NGFW resources in an Azure Virtual Network via Azure VPN Gateway, with a Panorama instance in Log Collector mode deployed in the VNet for local log collection" loading="lazy">
       </div>
     </div>
 
@@ -2656,6 +3041,9 @@ terraform init -upgrade</code></pre>
           <div class="callout-title">Verification</div>
           <p>Navigate to <code>Panorama &gt; Azure &gt; Cloud NGFW</code>. The <code>cngfw-az-device-group-vnet</code> entry appears with the correct template stack, collector group, and parent device group.</p>
         </div>
+
+        <p><em>Template stack hierarchy — Panorama admins define configuration in prioritized templates within a stack; local admins can apply overrides at the device level:</em></p>
+        <img src="diagrams/azure/PN templates.png" alt="Panorama template stack hierarchy showing Panorama admins applying overrides at the stack level, up to 8 templates with priority ordering, pushing configuration to individual devices including PA-Series, VM-Series, CN-Series, and Cloud NGFW" loading="lazy">
       </div>
     </div>
 
@@ -2761,23 +3149,37 @@ terraform init -upgrade</code></pre>
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>Step 2B.1: Access SCM and Create Folder Structure</span>
+        <span>Step 2B.1: Verify SCM Tenant Readiness</span>
       </div>
       <div class="collapsible-body">
-        <p>Strata Cloud Manager uses a folder hierarchy for policy organization. Create a folder for the Azure Cloud NGFW deployment.</p>
+        <p>Confirm that your Strata Cloud Manager (SCM) tenant is activated and has the correct license tier before deploying Azure Cloud NGFW resources with SCM management.</p>
 
         <ol>
-          <li>Sign in to <a href="https://stratacloudmanager.paloaltonetworks.com">Strata Cloud Manager</a>.</li>
-          <li>Navigate to <code>Manage &gt; Folders</code>.</li>
-          <li>Click <code>Add Folder</code>.</li>
-          <li>Set <strong>Name</strong> to <code>Azure-CloudNGFW</code>.</li>
-          <li>Set the <strong>Parent Folder</strong> to the appropriate location in the hierarchy (e.g., <code>Cloud Firewalls</code>).</li>
-          <li>Click <code>Save</code>.</li>
+          <li>Sign in to <a href="https://stratacloudmanager.paloaltonetworks.com">Strata Cloud Manager</a> with a tenant administrator account.</li>
+          <li>Navigate to <code>Settings</code> &rarr; <code>Tenant Management</code>.</li>
+          <li>Confirm the following:
+            <table>
+              <thead>
+                <tr><th>Setting</th><th>Required Value</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>License Tier</td><td><code>Strata Cloud Manager Essentials</code> or <code>Pro</code></td></tr>
+                <tr><td>Strata Logging Service</td><td><code>Active</code> (included with Pro; optional add-on for Essentials)</td></tr>
+                <tr><td>Tenant Status</td><td><code>Active</code></td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Note the <strong>SCM Tenant Name</strong> &mdash; you will need this when configuring the <code>strata_cloud_manager_tenant_name</code> in the Terraform deployment (Phase 4).</li>
         </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">SCM Pro for Cloud NGFW on Azure</div>
+          <p>Registering a Cloud NGFW for Azure resource with SCM automatically enables SCM Pro features. The upgrade from Essentials to Pro may take 45&ndash;50 minutes on first resource registration. This includes Strata Logging Service with one year retention, centralized dashboards, and Activity Insights.</p>
+        </div>
 
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>The <code>Azure-CloudNGFW</code> folder appears in the folder hierarchy under the selected parent.</p>
+          <p>The SCM tenant shows <code>Active</code> status. Strata Logging Service is active. You have recorded the SCM Tenant Name for use in Phase 4.</p>
         </div>
       </div>
     </div>
@@ -2786,28 +3188,38 @@ terraform init -upgrade</code></pre>
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>Step 2B.2: Configure Security Policy in SCM</span>
+        <span>Step 2B.2: Create Folder Structure</span>
       </div>
       <div class="collapsible-body">
-        <p>Create baseline security rules in the folder. Cloud NGFW resources created with <code>management_mode = "scm"</code> inherit policy from the associated SCM folder.</p>
+        <p>SCM uses a hierarchical folder structure to organize policy &mdash; this is the SCM equivalent of Panorama device groups. Create a folder for the Azure Cloud NGFW deployment. Unlike AWS, Azure Cloud NGFW uses exactly two zones (<code>public</code> and <code>private</code>), so a single folder is sufficient rather than separate east-west and inbound sub-folders.</p>
 
         <ol>
-          <li>Navigate to <code>Manage &gt; Security</code> and select the <code>Azure-CloudNGFW</code> folder.</li>
-          <li>Click <code>Add Rule</code>.</li>
-          <li>Create an <strong>outbound rule</strong>: Source Zone <code>private</code>, Destination Zone <code>public</code>, applications as needed, Action <code>Allow</code>.</li>
-          <li>Create an <strong>east-west rule</strong>: Source Zone <code>private</code>, Destination Zone <code>private</code>, specific applications, Action <code>Allow</code>.</li>
-          <li>Ensure a <strong>deny-all</strong> rule exists at the bottom of the rulebase.</li>
-          <li>Click <code>Push Config</code> to push the configuration.</li>
+          <li>In SCM, navigate to <code>Manage</code> &rarr; <code>Configuration</code> &rarr; <code>NGFW and Prisma Access</code>.</li>
+          <li>In the <strong>Configuration Scope</strong> dropdown, click <code>Manage Folders</code>.</li>
+          <li>Click <code>Add Folder</code>.</li>
+          <li>Set <strong>Name</strong> to <code>Cloud-NGFW-Azure</code> and select the appropriate parent folder (e.g., <code>All</code>).</li>
+          <li>Click <code>Save</code>.</li>
+          <li>Optionally, create sub-folders if you plan to separate policy by environment or region:
+            <table>
+              <thead>
+                <tr><th>Sub-Folder Name</th><th>Purpose</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>Production</code></td><td>Production workload policies</td></tr>
+                <tr><td><code>Development</code></td><td>Non-production/test policies</td></tr>
+              </tbody>
+            </table>
+          </li>
         </ol>
 
         <div class="callout callout-note">
-          <div class="callout-title">Note: SCM Zone Names</div>
-          <p>Cloud NGFW on Azure supports exactly two zones: <code>public</code> and <code>private</code>. Use these zone names in SCM security rules.</p>
+          <div class="callout-title">Azure Zone Model</div>
+          <p>Cloud NGFW on Azure supports exactly two zones: <code>public</code> (internet-facing) and <code>private</code> (VNet-facing). All traffic direction is determined by zone pairs in security rules. This is simpler than the AWS model where zones are set to <code>any</code> and traffic is differentiated by address ranges.</p>
         </div>
 
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>The <code>Azure-CloudNGFW</code> folder shows the baseline security rules. A push confirmation message appears with no errors.</p>
+          <p>The Configuration Scope dropdown shows <code>Cloud-NGFW-Azure</code> (and any sub-folders). Selecting the folder shows an empty policy rulebase ready for configuration.</p>
         </div>
       </div>
     </div>
@@ -2816,20 +3228,221 @@ terraform init -upgrade</code></pre>
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>Step 2B.3: Note SCM Tenant ID for Terraform</span>
+        <span>Step 2B.3: Configure Security Profiles and Profile Group</span>
       </div>
       <div class="collapsible-body">
-        <p>When using SCM with Terraform, the Cloud NGFW resource references the SCM tenant. Collect the SCM tenant identifier for use in Phase 4.</p>
+        <p>Security profiles enable Cloud NGFW to inspect traffic for threats beyond basic allow/deny. Create profiles for each threat type, then bundle them into a Security Profile Group.</p>
+
+        <h4>Create Security Profiles</h4>
+        <ol>
+          <li>In SCM, select the <code>Cloud-NGFW-Azure</code> folder from the Configuration Scope dropdown.</li>
+          <li>Navigate to <code>Manage</code> &rarr; <code>Configuration</code> &rarr; <code>NGFW and Prisma Access</code> &rarr; <code>Security Services</code>.</li>
+          <li>Create the following profiles (use predefined <code>Strict</code> profiles for initial deployment, or create custom ones):
+            <table>
+              <thead>
+                <tr><th>Profile Type</th><th>Name</th><th>Recommended Setting</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Anti-Spyware</td><td><code>strict-antispyware</code></td><td>Block critical/high/medium; alert on low</td></tr>
+                <tr><td>Vulnerability Protection</td><td><code>strict-vulnerability</code></td><td>Block critical/high; alert on medium/low</td></tr>
+                <tr><td>URL Filtering</td><td><code>strict-url</code></td><td>Block high-risk categories (malware, phishing, C2)</td></tr>
+                <tr><td>WildFire Analysis</td><td><code>strict-wildfire</code></td><td>Forward all file types for analysis</td></tr>
+              </tbody>
+            </table>
+          </li>
+        </ol>
+
+        <h4>Create Security Profile Group</h4>
+        <ol start="4">
+          <li>Navigate to <code>Security Services</code> &rarr; <code>Security Profile Groups</code>.</li>
+          <li>Click <code>Add</code>.</li>
+          <li>Set <strong>Name</strong> to <code>cloud-ngfw-protection</code>.</li>
+          <li>Attach each profile:
+            <table>
+              <thead>
+                <tr><th>Field</th><th>Value</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Anti-Spyware</td><td><code>strict-antispyware</code></td></tr>
+                <tr><td>Vulnerability Protection</td><td><code>strict-vulnerability</code></td></tr>
+                <tr><td>URL Filtering</td><td><code>strict-url</code></td></tr>
+                <tr><td>WildFire Analysis</td><td><code>strict-wildfire</code></td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Click <code>Save</code>.</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Azure CDSS Registration</div>
+          <p>Advanced Cloud-Delivered Security Services (Advanced Threat Prevention, Advanced URL Filtering, WildFire, DNS Security) require registering your Azure tenant at the Customer Support Portal (CSP) after the Cloud NGFW resource is created. The profiles you define here will only take full effect once CDSS activation is complete in Phase 5.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Four security profiles appear under Security Services in the <code>Cloud-NGFW-Azure</code> folder. The <code>cloud-ngfw-protection</code> profile group lists all four profiles.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2B.4 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2B.4: Configure Security Policy</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Create security rules using Azure&rsquo;s two-zone model (<code>public</code> and <code>private</code>) with the security profile group attached for threat inspection.</p>
 
         <ol>
-          <li>In SCM, navigate to <code>Settings &gt; Tenant</code>.</li>
-          <li>Copy the <strong>Tenant ID</strong> (this is the SCM/CDL tenant, distinct from the Azure tenant ID).</li>
-          <li>Store it securely alongside the Azure credentials for use in the <code>terraform.tfvars</code> file.</li>
+          <li>In SCM, select the <code>Cloud-NGFW-Azure</code> folder (or the appropriate sub-folder) from the Configuration Scope dropdown.</li>
+          <li>Navigate to <code>Security Services</code> &rarr; <code>Security Policy</code>.</li>
+          <li>Click <code>Add Rule</code> and configure an <strong>outbound rule</strong>:
+            <table>
+              <thead>
+                <tr><th>Field</th><th>Value</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Name</td><td><code>allow-outbound-web</code></td></tr>
+                <tr><td>Source Zone</td><td><code>private</code></td></tr>
+                <tr><td>Source Address</td><td><code>10.0.0.0/8</code> (or your spoke VNet ranges)</td></tr>
+                <tr><td>Destination Zone</td><td><code>public</code></td></tr>
+                <tr><td>Destination Address</td><td><code>any</code></td></tr>
+                <tr><td>Application</td><td><code>ssl</code>, <code>web-browsing</code></td></tr>
+                <tr><td>Action</td><td><code>Allow</code></td></tr>
+                <tr><td>Profile Group</td><td><code>cloud-ngfw-protection</code></td></tr>
+                <tr><td>Log at Session End</td><td>Enabled</td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Add an <strong>east-west rule</strong> for spoke-to-spoke traffic:
+            <table>
+              <thead>
+                <tr><th>Field</th><th>Value</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Name</td><td><code>allow-east-west</code></td></tr>
+                <tr><td>Source Zone</td><td><code>private</code></td></tr>
+                <tr><td>Destination Zone</td><td><code>private</code></td></tr>
+                <tr><td>Application</td><td>As needed</td></tr>
+                <tr><td>Action</td><td><code>Allow</code></td></tr>
+                <tr><td>Profile Group</td><td><code>cloud-ngfw-protection</code></td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Add an <strong>inbound rule</strong> for internet-to-application traffic (Source Zone <code>public</code>, Destination Zone <code>private</code>).</li>
+          <li>Add a <strong>deny-all</strong> cleanup rule at the bottom of the rulebase.</li>
         </ol>
 
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>The SCM tenant ID is recorded alongside the Azure subscription ID, tenant ID, and service principal credentials.</p>
+          <p>The folder contains outbound, east-west, and inbound allow rules with the <code>cloud-ngfw-protection</code> profile group attached, plus a final deny-all rule. The Profile Group column shows <code>cloud-ngfw-protection</code> for every allow rule.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2B.5 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2B.5: Configure Log Forwarding</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Configure log forwarding to send all traffic and threat logs to Strata Logging Service for centralized visibility in SCM dashboards.</p>
+
+        <ol>
+          <li>In SCM, select the <code>Cloud-NGFW-Azure</code> folder from the Configuration Scope dropdown.</li>
+          <li>Navigate to <code>Manage</code> &rarr; <code>Configuration</code> &rarr; <code>NGFW and Prisma Access</code> &rarr; <code>Objects</code> &rarr; <code>Log Forwarding</code>.</li>
+          <li>Click <code>Add</code> to create a new log forwarding profile.</li>
+          <li>Set <strong>Name</strong> to <code>default</code>.</li>
+          <li>Add match entries for the following log types, each forwarding to <strong>Strata Logging Service</strong>:
+            <ul>
+              <li><code>traffic</code></li>
+              <li><code>threat</code></li>
+              <li><code>url</code></li>
+              <li><code>data</code></li>
+              <li><code>wildfire</code></li>
+            </ul>
+          </li>
+          <li>Click <code>Save</code>.</li>
+          <li>Attach the log forwarding profile to each security rule: edit each rule, go to the <code>Actions</code> tab, and select the <code>default</code> log forwarding profile.</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Azure-Native Logging (Complement, Not Replacement)</div>
+          <p>In addition to Strata Logging Service, you can configure Azure-native log destinations (Log Analytics Workspace, Storage Account, Event Hub) during the Terraform deployment in Phase 4. These complement the SCM logging and are useful for Azure-native SIEM integrations or compliance requirements.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>A log forwarding profile named <code>default</code> exists in the <code>Cloud-NGFW-Azure</code> folder. Every security rule shows the log forwarding profile in the Actions column.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2B.6 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2B.6: Push Configuration</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Push the complete configuration from SCM to store all security profiles, rules, and log forwarding settings. The Cloud NGFW resource will pull this configuration automatically when it is deployed with <code>management_mode = "scm"</code> in Phase 4.</p>
+
+        <ol>
+          <li>In SCM, click <code>Push Config</code> in the top-right corner of the interface.</li>
+          <li>Review the summary of pending changes (folders, rules, profiles, objects).</li>
+          <li>Select the <code>Cloud-NGFW-Azure</code> folder scope.</li>
+          <li>Click <code>Push</code> to apply changes.</li>
+          <li>Wait for the push operation to complete (status changes from <code>Pending</code> to <code>Completed</code>).</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Push Timing</div>
+          <p>At this point, the Azure Cloud NGFW resource has not been deployed yet (that happens in Phase 4). The push operation commits the configuration in SCM. When the Cloud NGFW resource is created via Terraform with <code>management_mode = "scm"</code> and your SCM tenant name, it automatically inherits and applies the prepared configuration from this folder.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The push operation completes with status <code>Completed</code> and no errors. The Push Log shows all folders, rules, and objects successfully committed.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2B.7 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2B.7: Collect SCM Details for Terraform</span>
+      </div>
+      <div class="collapsible-body">
+        <p>When deploying Cloud NGFW for Azure with SCM management, Terraform needs the SCM tenant name to link the resource. Unlike Panorama (which uses a registration string), SCM linking uses the tenant name directly in the Terraform resource block.</p>
+
+        <ol>
+          <li>In SCM, navigate to <code>Settings</code> &rarr; <code>Tenant Management</code>.</li>
+          <li>Copy the <strong>SCM Tenant Name</strong> (this is distinct from your Azure tenant ID).</li>
+          <li>Record the following values for your <code>terraform.tfvars</code> file in Phase 4:
+            <table>
+              <thead>
+                <tr><th>Terraform Variable</th><th>Source</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>management_mode</code></td><td><code>"scm"</code> (literal value)</td></tr>
+                <tr><td><code>strata_cloud_manager_tenant_name</code></td><td>SCM Tenant Name from step 2</td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Store these securely alongside the Azure subscription ID, tenant ID, and service principal credentials.</li>
+        </ol>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">No pan_rulestack_id with SCM</div>
+          <p>When using <code>management_mode = "scm"</code>, you do <strong>not</strong> use the <code>pan_rulestack_id</code> Terraform attribute. Policy is managed entirely through SCM folders &mdash; not through Azure-native local rulestacks. These two approaches are mutually exclusive.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The SCM tenant name is recorded alongside the Azure credentials. You have confirmed that <code>management_mode</code> will be set to <code>"scm"</code> (not <code>"rulestack"</code>) in the Terraform configuration.</p>
         </div>
       </div>
     </div>
@@ -2999,54 +3612,37 @@ cd terraform-azurerm-swfw-modules</code></pre>
 
     <table>
       <thead>
-        <tr>
-          <th>Variable</th>
-          <th>Purpose</th>
-          <th>Example Value</th>
-        </tr>
+        <tr><th>Variable</th><th>Purpose</th><th>What to Customize</th></tr>
       </thead>
       <tbody>
-        <tr>
-          <td><code>resource_group_name</code></td>
-          <td>Azure resource group for all resources</td>
-          <td><code>rg-cloudngfw-hub</code></td>
-        </tr>
-        <tr>
-          <td><code>location</code></td>
-          <td>Azure region</td>
-          <td><code>eastus</code></td>
-        </tr>
-        <tr>
-          <td><code>vnets</code></td>
-          <td>Map of VNet definitions (hub + spokes) with CIDRs and subnets</td>
-          <td>See Step 4.4</td>
-        </tr>
-        <tr>
-          <td><code>cloudngfws</code></td>
-          <td>Map of Cloud NGFW resource definitions including <code>management_mode</code></td>
-          <td>See Step 4.4</td>
-        </tr>
-        <tr>
-          <td><code>vnet_peerings</code></td>
-          <td>Map of VNet peering relationships (hub ↔ spoke)</td>
-          <td>See Step 4.4</td>
-        </tr>
-        <tr>
-          <td><code>management_mode</code></td>
-          <td>Management platform for Cloud NGFW: <code>panorama</code>, <code>scm</code>, or <code>rulestack</code></td>
-          <td><code>panorama</code></td>
-        </tr>
-        <tr>
-          <td><code>panorama_registration_string</code></td>
-          <td>Registration string from Panorama (Panorama path only)</td>
-          <td>Generated in Step 2A.6</td>
-        </tr>
+        <tr><td><code>subscription_id</code></td><td>Azure Subscription ID</td><td>Set via <code>ARM_SUBSCRIPTION_ID</code> environment variable (recommended) or directly in tfvars</td></tr>
+        <tr><td><code>region</code></td><td>Azure region for deployment</td><td>Must match the region where Cloud NGFW is available (e.g., <code>North Europe</code>)</td></tr>
+        <tr><td><code>resource_group_name</code></td><td>Azure resource group for all resources</td><td>Name for the resource group (created automatically when <code>create_resource_group = true</code>)</td></tr>
+        <tr><td><code>name_prefix</code></td><td>Prefix added to all created resource names</td><td>Include trailing delimiter (e.g., <code>example-</code>). Not applied to existing/sourced resources</td></tr>
+        <tr><td><code>vnets</code></td><td>Transit VNet definitions with subnets, NSGs, and route tables</td><td>CIDR blocks, subnet allocations, Cloud NGFW delegation on public/private subnets</td></tr>
+        <tr><td><code>cloudngfws</code></td><td>Cloud NGFW resource definitions</td><td>Attachment type (<code>vnet</code>/<code>vwan</code>), <code>management_mode</code> (<code>panorama</code>/<code>scm</code>/<code>rulestack</code>), subnet keys, <code>cloudngfw_config</code> with management credentials and DNAT rules</td></tr>
+        <tr><td><code>vnet_peerings</code></td><td>VNet peering relationships (transit ↔ Panorama)</td><td>Local and remote VNet names, resource group names for cross-RG peering</td></tr>
+        <tr><td><code>test_infrastructure</code></td><td>Spoke VNets, test VMs, Azure Bastion hosts, and load balancers</td><td>Spoke VNet CIDRs, VM placement, NSG rules, UDR routes pointing to Cloud NGFW private IP, Bastion subnets</td></tr>
       </tbody>
     </table>
 
+    <ol>
+      <li>Open <code>variables.tf</code> and read the description for each variable.</li>
+      <li>Open the example tfvars file (<code>example.tfvars</code>) to see reference values.</li>
+      <li>Pay special attention to:
+        <ul>
+          <li><strong>Subscription ID</strong> — Set <code>ARM_SUBSCRIPTION_ID</code> as an environment variable, or set <code>subscription_id</code> directly in tfvars.</li>
+          <li><strong>Region</strong> — Must be a region where Cloud NGFW for Azure is available.</li>
+          <li><strong>Transit VNet</strong> — Minimum <code>/25</code> CIDR with <code>public</code> and <code>private</code> subnets (minimum <code>/26</code> each), both with <code>enable_cloudngfw_delegation = true</code>.</li>
+          <li><strong>Management Mode</strong> — Set inside <code>cloudngfws</code>: <code>panorama</code> requires <code>panorama_base64_config</code>, <code>scm</code> requires <code>strata_cloud_manager_tenant_name</code>, <code>rulestack</code> requires <code>rulestack_id</code>.</li>
+          <li><strong>UDR Routes</strong> — Spoke subnet route tables must point <code>0.0.0.0/0</code> to the Cloud NGFW trusted subnet IP as a <code>VirtualAppliance</code> next hop.</li>
+        </ul>
+      </li>
+    </ol>
+
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Each variable in <code>variables.tf</code> has been reviewed. The required values — region, VNet CIDRs, management mode, and registration string — are understood and ready to populate in <code>terraform.tfvars</code>.</p>
+      <p>Each variable in <code>variables.tf</code> has been reviewed. The required values — subscription ID, region, transit VNet CIDRs, management mode, and management credentials — are understood and ready to populate in <code>terraform.tfvars</code>.</p>
     </div>
   </div>
 </div>
@@ -3058,49 +3654,59 @@ cd terraform-azurerm-swfw-modules</code></pre>
     <span>Step 4.4: Create terraform.tfvars</span>
   </div>
   <div class="collapsible-body">
-    <p>Create a <code>terraform.tfvars</code> file with values specific to the deployment environment. The example below uses the reference IP schema from the Palo Alto Networks deployment architecture.</p>
+    <p>Create a <code>terraform.tfvars</code> file with values specific to the deployment environment. The example below follows the reference IP schema from the SWFW modules <code>cloudngfw_centralized_vnet</code> example.</p>
 
-    <div class="code-block">
-      <pre><code># terraform.tfvars — Cloud NGFW Centralized VNet Deployment
+    <ol>
+      <li>Copy the example tfvars as a starting point:
+        <div class="code-block">
+          <pre><code>cp example.tfvars terraform.tfvars</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Edit <code>terraform.tfvars</code> and set values for the environment. Key settings include:
+        <div class="code-block">
+          <pre><code># terraform.tfvars — Cloud NGFW Centralized VNet Deployment
 
-resource_group_name = "rg-cloudngfw-hub"
-location            = "eastus"
+# General
+subscription_id     = null  # Use ARM_SUBSCRIPTION_ID env var (recommended)
+region              = "North Europe"
+resource_group_name = "cloudngfw-vnet-common"
+name_prefix         = "example-"
 
-# Hub VNet — minimum /25, subnets minimum /26 each, delegated to Cloud NGFW
+# Transit VNet — minimum /25, subnets minimum /26 each
 vnets = {
-  hub = {
-    name          = "hub-vnet"
-    address_space = ["10.10.0.0/16"]
-    subnets = {
-      public = {
-        name             = "public"
-        address_prefixes = ["10.10.1.0/24"]
-        delegation       = "PaloAltoNetworks.Cloudngfw/firewalls"
-      }
-      private = {
-        name             = "private"
-        address_prefixes = ["10.10.2.0/24"]
-        delegation       = "PaloAltoNetworks.Cloudngfw/firewalls"
-      }
-    }
-  }
-  app01 = {
-    name          = "app01-vnet"
-    address_space = ["192.168.0.0/16"]
-    subnets = {
-      app01 = {
-        name             = "app01"
-        address_prefixes = ["192.168.1.0/24"]
+  "transit" = {
+    name          = "transit"
+    address_space = ["10.0.0.0/25"]
+    network_security_groups = {
+      "cloudngfw-dnat" = {
+        name = "cloudngfw-dnat-nsg"
+        rules = {
+          cloudngfw-dnat-ports-allow = {
+            name                         = "cloudngfw-dnat-ports-allow"
+            priority                     = 100
+            direction                    = "Inbound"
+            access                       = "Allow"
+            protocol                     = "Tcp"
+            source_address_prefixes      = ["YOUR_PUBLIC_IP/32"]
+            source_port_range            = "*"
+            destination_address_prefixes = ["0.0.0.0/0"]
+            destination_port_ranges      = ["80", "443"]
+          }
+        }
       }
     }
-  }
-  app02 = {
-    name          = "app02-vnet"
-    address_space = ["172.16.0.0/16"]
     subnets = {
-      app02 = {
-        name             = "app02"
-        address_prefixes = ["172.16.1.0/24"]
+      "public" = {
+        name                        = "public"
+        address_prefixes            = ["10.0.0.0/26"]
+        network_security_group_key  = "cloudngfw-dnat"
+        enable_cloudngfw_delegation = true
+      }
+      "private" = {
+        name                        = "private"
+        address_prefixes            = ["10.0.0.64/26"]
+        enable_cloudngfw_delegation = true
       }
     }
   }
@@ -3108,37 +3714,101 @@ vnets = {
 
 # Cloud NGFW resource
 cloudngfws = {
-  cloudngfw = {
-    name            = "cloudngfw-hub"
-    management_mode = "panorama"  # Change to "scm" or "rulestack" as needed
-    panorama_registration_string = "PASTE_REGISTRATION_STRING_HERE"
-    public_ip_name  = "cloudngfw-pip"
-    enable_snat     = true
+  "cloudngfw" = {
+    name                 = "cloudngfw"
+    attachment_type      = "vnet"
+    virtual_network_key  = "transit"
+    untrusted_subnet_key = "public"
+    trusted_subnet_key   = "private"
+    management_mode      = "panorama"  # Change to "scm" or "rulestack"
+    cloudngfw_config = {
+      # Panorama: paste base64 connection string from Step 2A.6
+      panorama_base64_config = "PASTE_BASE64_STRING_HERE"
+      # SCM: uncomment and set tenant name instead
+      # strata_cloud_manager_tenant_name = "your-tenant-name"
+      # Rulestack: uncomment and set rulestack ID instead
+      # rulestack_id = "/subscriptions/.../localRulestacks/your-rulestack"
+      destination_nats = {
+        "app1-tcp80-dnat" = {
+          destination_nat_name     = "app1-tcp80-dnat"
+          destination_nat_protocol = "TCP"
+          frontend_port            = 80
+          backend_port             = 80
+          backend_ip_address       = "10.100.0.4"
+        }
+      }
+    }
   }
 }
 
-# VNet peering — hub to each spoke
-vnet_peerings = {
-  hub-to-app01 = {
-    local_vnet  = "hub"
-    remote_vnet = "app01"
-  }
-  hub-to-app02 = {
-    local_vnet  = "hub"
-    remote_vnet = "app02"
+# Spoke infrastructure (VNets, test VMs, Bastion)
+test_infrastructure = {
+  "app1_testenv" = {
+    vnets = {
+      "app1" = {
+        name          = "app1-vnet"
+        address_space = ["10.100.0.0/25"]
+        hub_vnet_key  = "transit"
+        route_tables = {
+          nva = {
+            name = "app1-rt"
+            routes = {
+              "toNVA" = {
+                name                = "toNVA-udr"
+                address_prefix      = "0.0.0.0/0"
+                next_hop_type       = "VirtualAppliance"
+                next_hop_ip_address = "10.0.0.68"  # Cloud NGFW private IP
+              }
+            }
+          }
+        }
+        subnets = {
+          "vms" = {
+            name             = "vms"
+            address_prefixes = ["10.100.0.0/26"]
+            route_table_key  = "nva"
+          }
+          "bastion" = {
+            name             = "AzureBastionSubnet"
+            address_prefixes = ["10.100.0.64/26"]
+          }
+        }
+      }
+    }
+    spoke_vms = {
+      "app1_vm" = {
+        name       = "app1-vm"
+        vnet_key   = "app1"
+        subnet_key = "vms"
+      }
+    }
+    bastions = {
+      "app1_bastion" = {
+        name       = "app1-bastion"
+        vnet_key   = "app1"
+        subnet_key = "bastion"
+      }
+    }
   }
 }</code></pre>
-      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-    </div>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
 
     <div class="callout callout-warning">
       <div class="callout-title">Important: Replace placeholder values</div>
-      <p>Replace <code>PASTE_REGISTRATION_STRING_HERE</code> with the registration string generated in Step 2A.6 (Panorama path) or configure the appropriate SCM/rulestack parameters. Adjust VNet CIDRs to avoid conflicts with existing address spaces.</p>
+      <p>Replace <code>PASTE_BASE64_STRING_HERE</code> with the base64 connection string generated in Step 2A.6 (Panorama path), or uncomment the <code>strata_cloud_manager_tenant_name</code> line (SCM path) or <code>rulestack_id</code> line (Rulestack path). Replace <code>YOUR_PUBLIC_IP/32</code> with the IP address that will access the test infrastructure. Adjust VNet CIDRs to avoid conflicts with existing address spaces.</p>
     </div>
 
     <div class="callout callout-note">
       <div class="callout-title">Note: Subnet delegation</div>
-      <p>Both the <code>public</code> and <code>private</code> subnets in the hub VNet must be delegated to <code>PaloAltoNetworks.Cloudngfw/firewalls</code>. The SWFW modules handle this delegation automatically when the <code>delegation</code> attribute is set in the subnet configuration.</p>
+      <p>Both the <code>public</code> and <code>private</code> subnets in the transit VNet must be delegated to Cloud NGFW. The SWFW modules handle this delegation automatically when <code>enable_cloudngfw_delegation = true</code> is set in the subnet configuration. The minimum subnet size is <code>/26</code>.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note: Spoke VNet architecture</div>
+      <p>Spoke VNets and test VMs are defined inside the <code>test_infrastructure</code> variable, not in the main <code>vnets</code> map. The module automatically creates VNet peering between each spoke and the transit VNet via the <code>hub_vnet_key</code> reference. UDR routes on spoke subnets point <code>0.0.0.0/0</code> to the Cloud NGFW's trusted subnet IP (<code>10.0.0.68</code> in the example) as a <code>VirtualAppliance</code> next hop.</p>
     </div>
 
     <div class="callout callout-success">
