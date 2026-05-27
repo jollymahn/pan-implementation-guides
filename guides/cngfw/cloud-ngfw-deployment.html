@@ -4434,7 +4434,7 @@ test_infrastructure = {
 
 <h2 id="azure-deploy-verify">Phase 5: Deploy &amp; Verify Infrastructure</h2>
 
-<p>Execute the Terraform workflow to deploy the hub VNet, spoke VNets, Cloud NGFW resource, VNet peering, and UDR route tables. Each step includes specific verification points.</p>
+<p>Execute the Terraform workflow to deploy the infrastructure defined in Phase 4. The exact resources depend on the deployment model — VNets, Cloud NGFW instances, connectivity (peering, vWAN connections, or per-VNet isolation), and traffic steering (UDRs or routing intent). Each step includes specific verification points.</p>
 
 <!-- Step 5.1 -->
 <div class="collapsible">
@@ -4464,7 +4464,7 @@ test_infrastructure = {
     <span>Step 5.2: Review Terraform Plan</span>
   </div>
   <div class="collapsible-body">
-    <p>Generate an execution plan to review all resources that will be created. Pay close attention to the Cloud NGFW resource, subnet delegations, and VNet peering.</p>
+    <p>Generate an execution plan to review all resources that will be created. Pay close attention to the Cloud NGFW resource, subnet delegations, and connectivity resources.</p>
 
     <div class="code-block">
       <pre><code>terraform plan -out=tfplan</code></pre>
@@ -4473,16 +4473,17 @@ test_infrastructure = {
 
     <p>Review the plan output for:</p>
     <ul>
-      <li>Hub VNet with <code>public</code> and <code>private</code> subnets, both delegated to <code>PaloAltoNetworks.Cloudngfw/firewalls</code></li>
-      <li>Cloud NGFW resource with the correct <code>management_mode</code></li>
-      <li>Public IP association on the Cloud NGFW</li>
-      <li>VNet peering between hub and each spoke VNet</li>
-      <li>UDR route tables on spoke subnets with <code>0.0.0.0/0</code> → Cloud NGFW private IP</li>
+      <li>Cloud NGFW resource(s) with the correct <code>management_mode</code></li>
+      <li>Subnets delegated to <code>PaloAltoNetworks.Cloudngfw/firewalls</code> (<code>public</code> and <code>private</code> in each VNet that hosts a Cloud NGFW)</li>
+      <li>Public IP association(s) on the Cloud NGFW</li>
+      <li><strong>Centralized VNet:</strong> VNet peering between hub and each spoke, UDR route tables on spoke subnets with <code>0.0.0.0/0</code> → Cloud NGFW private IP</li>
+      <li><strong>Virtual WAN:</strong> vWAN hub, virtual network connections to spokes, routing intent policies (PrivateTraffic + Internet → Cloud NGFW)</li>
+      <li><strong>Distributed:</strong> per-VNet UDR route tables with <code>0.0.0.0/0</code> → local Cloud NGFW private IP, no peering resources</li>
     </ul>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The plan completes without errors. The resource count matches expectations (VNets, subnets, NSGs, Cloud NGFW, peering, UDRs, public IP). No unexpected destroy or modify actions appear.</p>
+      <p>The plan completes without errors. The resource count matches expectations for the chosen model. No unexpected destroy or modify actions appear.</p>
     </div>
   </div>
 </div>
@@ -4546,20 +4547,31 @@ test_infrastructure = {
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 5.5: Verify VNet Peering Connections</span>
+    <span>Step 5.5: Verify Network Connectivity</span>
   </div>
   <div class="collapsible-body">
-    <p>Confirm VNet peering between the hub and each spoke is established and connected.</p>
+    <p>Confirm the connectivity model deployed in Phase 4 is established. The verification depends on the deployment model.</p>
 
+    <h4>Centralized VNet — Verify VNet Peering</h4>
     <ol>
       <li>Navigate to <code>Home &gt; Virtual networks &gt; hub-vnet &gt; Peerings</code>.</li>
       <li>Confirm each peering entry shows <strong>Peering Status</strong> = <code>Connected</code>.</li>
       <li>Confirm <code>Allow forwarded traffic</code> is enabled on the spoke side of each peering.</li>
     </ol>
 
+    <h4>Virtual WAN — Verify Virtual Hub Connections</h4>
+    <ol>
+      <li>Navigate to <code>Home &gt; Virtual WANs &gt; [your-vwan] &gt; Virtual network connections</code>.</li>
+      <li>Confirm each spoke VNet connection shows <strong>Connectivity status</strong> = <code>Connected</code>.</li>
+      <li>Navigate to <code>Routing Intent and Policies</code> on the virtual hub and confirm both <code>PrivateTraffic</code> and <code>Internet</code> policies route to the Cloud NGFW next hop.</li>
+    </ol>
+
+    <h4>Distributed — No Connectivity to Verify</h4>
+    <p>Application VNets are isolated by design — there is no peering or hub connectivity to verify. Proceed to Step 5.6.</p>
+
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The hub VNet peerings page shows <code>hub-to-app01</code> and <code>hub-to-app02</code> (or equivalent names) with status <code>Connected</code>.</p>
+      <p><strong>Centralized VNet:</strong> Hub VNet peerings show <code>Connected</code> status. <strong>Virtual WAN:</strong> Virtual network connections show <code>Connected</code> and routing intent policies are active. <strong>Distributed:</strong> Skip — VNets are intentionally isolated.</p>
     </div>
   </div>
 </div>
@@ -4568,19 +4580,20 @@ test_infrastructure = {
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 5.6: Verify UDR Route Tables</span>
+    <span>Step 5.6: Verify Traffic Steering</span>
   </div>
   <div class="collapsible-body">
-    <p>Confirm the User-Defined Routes on spoke subnets point all traffic to the Cloud NGFW private IP.</p>
+    <p>Confirm traffic steering is configured to route workload traffic through the Cloud NGFW.</p>
 
+    <h4>Centralized VNet &amp; Distributed — Verify UDR Route Tables</h4>
     <ol>
       <li>Navigate to <code>Home &gt; Route tables</code>.</li>
-      <li>Select the route table associated with the <code>app01</code> subnet.</li>
+      <li>Select the route table associated with a workload subnet (e.g., <code>app01</code>).</li>
       <li>Under <strong>Routes</strong>, confirm a route exists: <strong>Address prefix</strong> = <code>0.0.0.0/0</code>, <strong>Next hop type</strong> = <code>Virtual appliance</code>, <strong>Next hop address</strong> = Cloud NGFW private IP.</li>
-      <li>Repeat for the <code>app02</code> subnet route table.</li>
+      <li>Repeat for each workload subnet's route table.</li>
     </ol>
 
-    <p>Alternatively, verify effective routes on a spoke VM's NIC:</p>
+    <p>Alternatively, verify effective routes on a workload VM's NIC:</p>
 
     <div class="code-block">
       <pre><code>az network nic show-effective-route-table \
@@ -4590,9 +4603,17 @@ test_infrastructure = {
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
+    <div class="callout callout-note">
+      <div class="callout-title">Distributed model: per-VNet UDRs</div>
+      <p>In the distributed model, each VNet has its own Cloud NGFW with its own private IP. Verify that each VNet's route table points to <strong>its own</strong> Cloud NGFW private IP, not a shared hub address.</p>
+    </div>
+
+    <h4>Virtual WAN — Verify Routing Intent</h4>
+    <p>vWAN deployments use routing intent policies instead of UDRs. Traffic steering is verified in Step 5.5 when confirming routing intent policies are active on the virtual hub. No UDR route tables exist for vWAN spoke subnets.</p>
+
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Each spoke subnet's route table contains <code>0.0.0.0/0 → Virtual appliance → [Cloud NGFW private IP]</code>. The effective routes on a spoke VM NIC show the UDR overriding the default internet route.</p>
+      <p><strong>Centralized VNet / Distributed:</strong> Each workload subnet's route table contains <code>0.0.0.0/0 → Virtual appliance → [Cloud NGFW private IP]</code>. The effective routes on a workload VM NIC show the UDR overriding the default internet route. <strong>Virtual WAN:</strong> Routing intent confirmed in Step 5.5 — no UDRs to verify.</p>
     </div>
   </div>
 </div>
@@ -4604,7 +4625,7 @@ test_infrastructure = {
 
 <h2 id="azure-spoke-onboarding">Phase 6: Spoke VNet Onboarding</h2>
 
-<p>After the hub infrastructure is deployed, onboard additional spoke VNets by creating the VNet, peering it to the hub, and configuring UDR routing to send all traffic through the Cloud NGFW. This is the most-repeated process in the deployment lifecycle.</p>
+<p>After the core infrastructure is deployed, onboard additional spoke VNets. For the Centralized VNet model, this means creating the VNet, peering it to the hub, and configuring UDR routing. For Virtual WAN, add a virtual network connection to the hub. For the Distributed model, add a new VNet with its own Cloud NGFW instance in the Terraform configuration (Phase 4) and re-apply.</p>
 
 <div class="callout callout-note">
   <div class="callout-title">Note: Terraform vs. manual</div>
