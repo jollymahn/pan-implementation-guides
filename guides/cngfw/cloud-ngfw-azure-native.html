@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Cloud NGFW on Azure — Native Rulestack Managed by SCM | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">Cloud NGFW on Azure</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html" class="active">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="../bootstrap/index.html">Bootstrap</a>
+    <a href="../../globalprotect/index.html">GlobalProtect</a>
+    <a href="../../scm-onboarding/index.html">SCM</a>
+    <a href="../cloud-identity-engine/cie-implementation.html">CIE</a>
+    <a href="../airs/airs-api-intercept.html">AIRS</a>
+  </nav>
+</header>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<!-- ── Sidebar Backdrop (mobile) ──────────────────────────────── -->
+<div class="sidebar-backdrop"></div>
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prerequisites</div>
+    <a href="#prerequisites" data-section="prerequisites">Azure &amp; CSP Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Deploy</div>
+    <a href="#deploy-cngfw" data-section="deploy-cngfw">Cloud NGFW Resource</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Network</div>
+    <a href="#network-plumbing" data-section="network-plumbing">Network Plumbing</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Bridge</div>
+    <a href="#connect-scm" data-section="connect-scm">Connect to SCM</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Security Policy</div>
+    <a href="#security-policy" data-section="security-policy">Security Policy (SCM)</a>
+    <a href="#advanced-security" data-section="advanced-security">Advanced Security (SCM)</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">NAT</div>
+    <a href="#nat-config" data-section="nat-config">NAT Configuration</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Verify</div>
+    <a href="#logging-monitoring" data-section="logging-monitoring">Logging &amp; Monitoring</a>
+    <a href="#verify-validate" data-section="verify-validate">Verify &amp; Validate</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#scm-limitations" data-section="scm-limitations">SCM Limitations</a>
+    <a href="#appendix-migration" data-section="appendix-migration">Migrate from Azure FW</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../azure/index.html">Azure</a>
+  <span class="sep">|</span>
+  Cloud NGFW Native Rulestack
+</div>
+
+<div class="article">
+
+<h1>Cloud NGFW on Azure — Native Rulestack Managed by SCM</h1>
+<p class="subtitle">End-to-end guide: Azure subscription setup through SCM-managed security policy with native rulestack deployment</p>
+
+<div class="cloud-links">
+  <a href="cloud-ngfw-deployment.html">Cloud NGFW (Panorama/SCM Managed)</a>
+  <a href="../azure/vm-series-deployment.html">VM-Series on Azure</a>
+</div>
+
+<!-- ── Phase Progress ────────────────────────────────────────── -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#deploy-cngfw" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Deploy
+  </a>
+  <a href="#network-plumbing" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Network
+  </a>
+  <a href="#connect-scm" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Connect SCM
+  </a>
+  <a href="#security-policy" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Security Policy
+  </a>
+  <a href="#advanced-security" class="progress-phase">
+    <span class="progress-phase-label">Phase 6</span>
+    Advanced
+  </a>
+  <a href="#nat-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 7</span>
+    NAT
+  </a>
+  <a href="#logging-monitoring" class="progress-phase">
+    <span class="progress-phase-label">Phase 8</span>
+    Logging
+  </a>
+  <a href="#verify-validate" class="progress-phase">
+    <span class="progress-phase-label">Phase 9</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide follows a <strong>deploy-then-connect</strong> approach. Cloud NGFW is deployed with a native local rulestack through the Azure portal, then connected to <strong>Strata Cloud Manager (SCM)</strong> for centralized security policy management. The core principle: <strong>Azure portal for infrastructure, SCM for security policy.</strong></p>
+  <p><strong>Design model:</strong> Cloud NGFW for Azure with native local rulestack, supporting both VNet and vWAN deployment topologies (tabbed where they diverge). NAT, DNS proxy, and network plumbing remain in the Azure portal; security rules, profiles, and advanced features are managed in SCM.</p>
+  <p><strong>Deployment method:</strong> Azure portal for Cloud NGFW resource creation and network configuration. No Terraform or IaC required — all infrastructure is provisioned through the Azure console. Security policy is configured and pushed through the <a href="https://docs.paloaltonetworks.com/strata-cloud-manager">Strata Cloud Manager</a> UI.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <!-- Phase 1 content: Azure subscription + RBAC roles, CSP account creation, SCM tenant activation, subnet planning -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: DEPLOY CLOUD NGFW RESOURCE                         -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="deploy-cngfw">Phase 2: Deploy Cloud NGFW Resource (Azure Portal)</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <!-- Phase 2 content: Create local rulestack, deploy Cloud NGFW (VNet/vWAN tabbed), verify deployment, register with CSP -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: NETWORK PLUMBING                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="network-plumbing">Phase 3: Network Plumbing (Azure Portal)</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <!-- Phase 3 content: VNet peering / vWAN connections (tabbed), UDRs / routing (tabbed), NSGs, DNS Proxy -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: CONNECT TO SCM                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="connect-scm">Phase 4: Connect to Strata Cloud Manager</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <!-- Phase 4 content: Switch management mode, select SCM tenant, verify device in SCM, organize folders, wait for sync -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: SECURITY POLICY (SCM)                              -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="security-policy">Phase 5: Security Policy (SCM)</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <!-- Phase 5 content: Security rules (ANY zone), source/dest matching, app/URL controls, security profiles, push config, verify sync -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 6: ADVANCED SECURITY (SCM)                            -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="advanced-security">Phase 6: Advanced Security (SCM)</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <!-- Phase 6 content: IP Tag Collection, dynamic address groups, tag-based policies, DNS Security, Advanced URL Filtering, TLS Decryption -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 7: NAT CONFIGURATION (AZURE PORTAL)                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="nat-config">Phase 7: NAT Configuration (Azure Portal)</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <!-- Phase 7 content: SNAT, DNAT (frontend/backend mapping, 299-rule SLB limit), Private Source NAT -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 8: LOGGING & MONITORING                               -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="logging-monitoring">Phase 8: Logging &amp; Monitoring</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <!-- Phase 8 content: Azure Log Analytics workspace, link to Cloud NGFW, Strata Logging Service via SCM, verify traffic logs -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 9: VERIFY & VALIDATE                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="verify-validate">Phase 9: Verify &amp; Validate</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <!-- Phase 9 content: Egress/ingress/east-west traffic tests, rule hit verification, SCM dashboard health -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  REFERENCE: SCM LIMITATIONS                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="scm-limitations">SCM Limitations Reference</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <!-- SCM limitations: NAT/DNAT portal-only, no XFF, limited User-ID, no cloud cert/DLP/metrics, 30-char firewall names, device scope -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  APPENDIX: MIGRATE FROM AZURE FIREWALL                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="appendix-migration">Appendix: Migrate from Azure Firewall</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Phase content: see guide-author subagent</span>
+  </div>
+  <div class="collapsible-body">
+    <!-- Appendix content: Export Azure Firewall policy, import to SCM Migration Catalog, analyze/convert, review, push, DNAT Terraform -->
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="download-md-btn" id="downloadMdBtn" onclick="downloadAsMarkdown()">&#8681; Markdown</button>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>
