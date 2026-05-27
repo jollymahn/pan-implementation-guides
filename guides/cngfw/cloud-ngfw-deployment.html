@@ -3551,6 +3551,7 @@ terraform init -upgrade</code></pre>
   <ul>
     <li><strong>Centralized VNet</strong> — <a href="https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules/tree/main/examples/cloudngfw_centralized_vnet"><code>examples/cloudngfw_centralized_vnet</code></a>: hub VNet with delegated subnets, spoke VNets via peering, UDR-based traffic steering.</li>
     <li><strong>Virtual WAN</strong> — <a href="https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules/tree/main/examples/cloudngfw_centralized_single_vwan"><code>examples/cloudngfw_centralized_single_vwan</code></a>: vWAN hub with Cloud NGFW as SaaS NVA, spoke VNets via virtual connections, routing intent–based traffic steering.</li>
+    <li><strong>Distributed</strong> — <a href="https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules/tree/main/examples/cloudngfw_distributed"><code>examples/cloudngfw_distributed</code></a>: independent Cloud NGFW per VNet, no hub or cross-VNet connectivity, per-VNet UDR-based traffic steering.</li>
   </ul>
 </div>
 
@@ -3571,7 +3572,7 @@ cd terraform-azurerm-swfw-modules</code></pre>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The directory <code>terraform-azurerm-swfw-modules/examples/</code> exists and contains both <code>cloudngfw_centralized_vnet/</code> and <code>cloudngfw_centralized_single_vwan/</code> example directories.</p>
+      <p>The directory <code>terraform-azurerm-swfw-modules/examples/</code> exists and contains <code>cloudngfw_centralized_vnet/</code>, <code>cloudngfw_centralized_single_vwan/</code>, and <code>cloudngfw_distributed/</code> example directories.</p>
     </div>
   </div>
 </div>
@@ -3583,13 +3584,20 @@ cd terraform-azurerm-swfw-modules</code></pre>
   <ul>
     <li><strong>Centralized VNet</strong> — traditional hub-and-spoke with VNet peering. Use when the environment does not use Azure Virtual WAN.</li>
     <li><strong>Virtual WAN</strong> — Cloud NGFW deploys into a vWAN hub as a SaaS NVA. Use when the environment already uses or plans to use Azure Virtual WAN.</li>
+    <li><strong>Distributed</strong> — each VNet gets its own dedicated Cloud NGFW instance. Use when VNets operate independently and do not require cross-VNet (east-west) traffic inspection.</li>
   </ul>
+
+  <div class="callout callout-warning">
+    <div class="callout-title">Distributed model limitation</div>
+    <p>The Distributed model does <strong>not</strong> inspect east-west traffic — VNets are isolated and not connected to each other. If cross-VNet visibility or inspection is required, choose the Centralized VNet or Virtual WAN model instead.</p>
+  </div>
 </div>
 
 <div class="mgmt-tabs" data-tab-group="azure-deploy-model">
   <div class="mgmt-tab-bar">
     <button class="mgmt-tab active" data-plane="vnet">4A &middot; Centralized VNet</button>
     <button class="mgmt-tab" data-plane="vwan">4B &middot; Virtual WAN</button>
+    <button class="mgmt-tab" data-plane="distributed">4C &middot; Distributed</button>
   </div>
 
   <div class="mgmt-panel active" data-plane="vnet">
@@ -4068,6 +4076,355 @@ test_infrastructure = {
 </div>
 
   </div><!-- end vWAN panel -->
+
+  <div class="mgmt-panel" data-plane="distributed">
+
+<!-- Step 4C.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4C.2: Navigate to the Distributed Example</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <code>cloudngfw_distributed</code> example deploys independent Cloud NGFW instances — one per VNet. Each VNet contains its own public and private delegated subnets, Cloud NGFW resource, DNAT rules, and test infrastructure. VNets are not connected to each other.</p>
+
+    <div class="code-block">
+      <pre><code>cd examples/cloudngfw_distributed</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Review the key files:</p>
+    <ul>
+      <li><code>main.tf</code> — resource definitions for per-VNet Cloud NGFW instances, public IPs, and test infrastructure</li>
+      <li><code>variables.tf</code> — input variable declarations with descriptions and defaults</li>
+      <li><code>example.tfvars</code> — sample variable values showing a two-VNet deployment</li>
+      <li><code>versions.tf</code> — required provider versions</li>
+    </ul>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The working directory is <code>examples/cloudngfw_distributed</code>. Running <code>ls *.tf</code> lists at least <code>main.tf</code>, <code>variables.tf</code>, and <code>versions.tf</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4C.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4C.3: Review Key Configuration Variables</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Review the key variables that control the distributed deployment. The main difference from the centralized models is that <strong>each VNet defines its own Cloud NGFW</strong> — there is no transit hub VNet or vWAN hub.</p>
+
+    <table>
+      <thead>
+        <tr><th>Variable</th><th>Purpose</th><th>What to Customize</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>subscription_id</code></td><td>Azure Subscription ID</td><td>Set via <code>ARM_SUBSCRIPTION_ID</code> environment variable (recommended) or directly in tfvars</td></tr>
+        <tr><td><code>region</code></td><td>Azure region for deployment</td><td>Must match the region where Cloud NGFW is available</td></tr>
+        <tr><td><code>resource_group_name</code></td><td>Azure resource group for all resources</td><td>Name for the resource group</td></tr>
+        <tr><td><code>name_prefix</code></td><td>Prefix added to all created resource names</td><td>Include trailing delimiter (e.g., <code>example-</code>)</td></tr>
+        <tr><td><code>cloudngfws</code></td><td>Cloud NGFW resource definitions — <strong>one entry per VNet</strong></td><td>Each entry references a VNet from <code>test_infrastructure</code> via <code>virtual_network_key</code>, with its own <code>management_mode</code>, credentials, and DNAT rules</td></tr>
+        <tr><td><code>test_infrastructure</code></td><td>Per-application VNets with Cloud NGFW subnets, test VMs, and Bastion</td><td>VNet CIDRs, Cloud NGFW public/private subnets with <code>enable_cloudngfw_delegation = true</code>, UDR routes pointing to local Cloud NGFW private IP</td></tr>
+        <tr><td><code>vnets</code></td><td>Additional VNets (optional)</td><td>Only needed if peering a Panorama VNet to application VNets</td></tr>
+      </tbody>
+    </table>
+
+    <ol>
+      <li>Open <code>variables.tf</code> and read the description for each variable.</li>
+      <li>Open <code>example.tfvars</code> to see the reference two-VNet deployment.</li>
+      <li>Pay special attention to:
+        <ul>
+          <li><strong>Per-VNet Cloud NGFW</strong> — Each <code>cloudngfws</code> entry references a different <code>virtual_network_key</code> from the <code>test_infrastructure</code> VNets. The example deploys <code>cloudngfw1</code> in <code>app1</code> VNet and <code>cloudngfw2</code> in <code>app2</code> VNet.</li>
+          <li><strong>Subnet layout</strong> — Each application VNet contains four subnets: <code>vms</code> (workloads), <code>bastion</code> (AzureBastionSubnet), <code>public</code> (Cloud NGFW untrusted), and <code>private</code> (Cloud NGFW trusted). Both Cloud NGFW subnets need <code>enable_cloudngfw_delegation = true</code>.</li>
+          <li><strong>UDR per VNet</strong> — Each VNet's <code>vms</code> subnet has its own route table pointing <code>0.0.0.0/0</code> to the local Cloud NGFW's trusted subnet IP as a <code>VirtualAppliance</code> next hop.</li>
+          <li><strong>No hub, no peering</strong> — Application VNets are not peered to each other. Each Cloud NGFW inspects only the traffic within its own VNet.</li>
+        </ul>
+      </li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">No east-west inspection</div>
+      <p>Because application VNets are isolated, traffic between VNets is not inspected by Cloud NGFW. If cross-VNet visibility is required, use the Centralized VNet or Virtual WAN model instead.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each variable in <code>variables.tf</code> has been reviewed. The required values — subscription ID, region, per-VNet Cloud NGFW entries, application VNet CIDRs, and management credentials — are understood and ready to populate in <code>terraform.tfvars</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4C.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4C.4: Create terraform.tfvars</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create a <code>terraform.tfvars</code> file with values specific to the deployment environment. The example below shows a two-VNet distributed deployment based on the SWFW modules <code>cloudngfw_distributed</code> example.</p>
+
+    <ol>
+      <li>Copy the example tfvars as a starting point:
+        <div class="code-block">
+          <pre><code>cp example.tfvars terraform.tfvars</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Edit <code>terraform.tfvars</code> and set values for the environment. Key settings include:
+        <div class="code-block">
+          <pre><code># terraform.tfvars — Cloud NGFW Distributed Deployment
+
+# General
+subscription_id     = null  # Use ARM_SUBSCRIPTION_ID env var (recommended)
+region              = "North Europe"
+resource_group_name = "cloudngfw-vnet-distributed"
+name_prefix         = "example-"
+
+# Cloud NGFW resources — one per application VNet
+cloudngfws = {
+  "cloudngfw1" = {
+    name                 = "cloudngfw1"
+    attachment_type      = "vnet"
+    virtual_network_key  = "app1"       # References VNet in test_infrastructure
+    untrusted_subnet_key = "public"
+    trusted_subnet_key   = "private"
+    management_mode      = "panorama"   # Change to "scm" or "rulestack"
+    cloudngfw_config = {
+      # Panorama: paste base64 connection string from Step 2A.6
+      panorama_base64_config = "PASTE_BASE64_STRING_HERE"
+      # SCM: uncomment and set tenant name instead
+      # strata_cloud_manager_tenant_name = "your-tenant-name"
+      destination_nats = {
+        "app1-tcp80-dnat" = {
+          destination_nat_name     = "app1-tcp80-dnat"
+          destination_nat_protocol = "TCP"
+          frontend_port            = 80
+          backend_port             = 80
+          backend_ip_address       = "10.100.0.4"
+        }
+        "app1-tcp443-dnat" = {
+          destination_nat_name     = "app1-tcp443-dnat"
+          destination_nat_protocol = "TCP"
+          frontend_port            = 443
+          backend_port             = 443
+          backend_ip_address       = "10.100.0.4"
+        }
+      }
+    }
+  }
+  "cloudngfw2" = {
+    name                 = "cloudngfw2"
+    attachment_type      = "vnet"
+    virtual_network_key  = "app2"       # References VNet in test_infrastructure
+    untrusted_subnet_key = "public"
+    trusted_subnet_key   = "private"
+    management_mode      = "panorama"
+    cloudngfw_config = {
+      panorama_base64_config = "PASTE_BASE64_STRING_HERE"
+      destination_nats = {
+        "app2-tcp80-dnat" = {
+          destination_nat_name     = "app2-tcp80-dnat"
+          destination_nat_protocol = "TCP"
+          frontend_port            = 80
+          backend_port             = 80
+          backend_ip_address       = "10.100.1.4"
+        }
+        "app2-tcp443-dnat" = {
+          destination_nat_name     = "app2-tcp443-dnat"
+          destination_nat_protocol = "TCP"
+          frontend_port            = 443
+          backend_port             = 443
+          backend_ip_address       = "10.100.1.4"
+        }
+      }
+    }
+  }
+}
+
+# Application VNets — each self-contained with its own Cloud NGFW subnets
+test_infrastructure = {
+  "app1_testenv" = {
+    vnets = {
+      "app1" = {
+        name          = "app1-vnet"
+        address_space = ["10.100.0.0/24"]
+        network_security_groups = {
+          "cloudngfw1-dnat" = {
+            name = "cloudngfw1-dnat-nsg"
+            rules = {
+              cloudngfw-dnat-ports-allow = {
+                name                         = "cloudngfw-dnat-ports-allow"
+                priority                     = 100
+                direction                    = "Inbound"
+                access                       = "Allow"
+                protocol                     = "Tcp"
+                source_address_prefixes      = ["YOUR_PUBLIC_IP/32"]
+                source_port_range            = "*"
+                destination_address_prefixes = ["0.0.0.0/0"]
+                destination_port_ranges      = ["80", "443"]
+              }
+            }
+          }
+        }
+        route_tables = {
+          nva = {
+            name = "app1-rt"
+            routes = {
+              "toNVA" = {
+                name                = "toNVA-udr"
+                address_prefix      = "0.0.0.0/0"
+                next_hop_type       = "VirtualAppliance"
+                next_hop_ip_address = "10.100.0.196"  # app1 Cloud NGFW private IP
+              }
+            }
+          }
+        }
+        subnets = {
+          "vms" = {
+            name                       = "vms"
+            address_prefixes           = ["10.100.0.0/26"]
+            network_security_group_key = "cloudngfw1-dnat"
+            route_table_key            = "nva"
+          }
+          "bastion" = {
+            name             = "AzureBastionSubnet"
+            address_prefixes = ["10.100.0.64/26"]
+          }
+          "public" = {
+            name                        = "cloudngfw-public"
+            address_prefixes            = ["10.100.0.128/26"]
+            enable_cloudngfw_delegation = true
+          }
+          "private" = {
+            name                        = "cloudngfw-private"
+            address_prefixes            = ["10.100.0.192/26"]
+            enable_cloudngfw_delegation = true
+          }
+        }
+      }
+    }
+    spoke_vms = {
+      "app1_vm" = {
+        name       = "app1-vm"
+        vnet_key   = "app1"
+        subnet_key = "vms"
+      }
+    }
+    bastions = {
+      "app1_bastion" = {
+        name       = "app1-bastion"
+        vnet_key   = "app1"
+        subnet_key = "bastion"
+      }
+    }
+  }
+  "app2_testenv" = {
+    vnets = {
+      "app2" = {
+        name          = "app2-vnet"
+        address_space = ["10.100.1.0/24"]
+        network_security_groups = {
+          "cloudngfw2-dnat" = {
+            name = "cloudngfw2-dnat-nsg"
+            rules = {
+              cloudngfw-dnat-ports-allow = {
+                name                         = "cloudngfw-dnat-ports-allow"
+                priority                     = 100
+                direction                    = "Inbound"
+                access                       = "Allow"
+                protocol                     = "Tcp"
+                source_address_prefixes      = ["YOUR_PUBLIC_IP/32"]
+                source_port_range            = "*"
+                destination_address_prefixes = ["0.0.0.0/0"]
+                destination_port_ranges      = ["80", "443"]
+              }
+            }
+          }
+        }
+        route_tables = {
+          nva = {
+            name = "app2-rt"
+            routes = {
+              "toNVA" = {
+                name                = "toNVA-udr"
+                address_prefix      = "0.0.0.0/0"
+                next_hop_type       = "VirtualAppliance"
+                next_hop_ip_address = "10.100.1.196"  # app2 Cloud NGFW private IP
+              }
+            }
+          }
+        }
+        subnets = {
+          "vms" = {
+            name                       = "vms"
+            address_prefixes           = ["10.100.1.0/26"]
+            network_security_group_key = "cloudngfw2-dnat"
+            route_table_key            = "nva"
+          }
+          "bastion" = {
+            name             = "AzureBastionSubnet"
+            address_prefixes = ["10.100.1.64/26"]
+          }
+          "public" = {
+            name                        = "cloudngfw-public"
+            address_prefixes            = ["10.100.1.128/26"]
+            enable_cloudngfw_delegation = true
+          }
+          "private" = {
+            name                        = "cloudngfw-private"
+            address_prefixes            = ["10.100.1.192/26"]
+            enable_cloudngfw_delegation = true
+          }
+        }
+      }
+    }
+    spoke_vms = {
+      "app2_vm" = {
+        name       = "app2-vm"
+        vnet_key   = "app2"
+        subnet_key = "vms"
+      }
+    }
+    bastions = {
+      "app2_bastion" = {
+        name       = "app2-bastion"
+        vnet_key   = "app2"
+        subnet_key = "bastion"
+      }
+    }
+  }
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Replace placeholder values</div>
+      <p>Replace <code>PASTE_BASE64_STRING_HERE</code> in <strong>each</strong> <code>cloudngfws</code> entry with the base64 connection string generated in Step 2A.6 (Panorama path), or uncomment the <code>strata_cloud_manager_tenant_name</code> line (SCM path). Replace <code>YOUR_PUBLIC_IP/32</code> with the IP address that will access the test infrastructure. Adjust VNet CIDRs to avoid conflicts with existing address spaces.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note: VNets defined in test_infrastructure</div>
+      <p>Unlike the Centralized VNet model, the distributed example defines application VNets inside the <code>test_infrastructure</code> variable rather than the top-level <code>vnets</code> map. Each VNet contains its own Cloud NGFW delegated subnets (<code>public</code> and <code>private</code> with <code>enable_cloudngfw_delegation = true</code>) alongside workload and bastion subnets. The <code>cloudngfws</code> entries reference these VNets by key.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note: Scaling to more VNets</div>
+      <p>To protect additional VNets, add a new <code>test_infrastructure</code> entry with the VNet definition and a corresponding <code>cloudngfws</code> entry referencing it. Each VNet gets its own independent Cloud NGFW instance.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>terraform.tfvars</code> file exists in the working directory with all placeholder values replaced in both <code>cloudngfw1</code> and <code>cloudngfw2</code> entries. Running <code>terraform validate</code> after <code>terraform init</code> (Phase 5) should report no syntax errors.</p>
+    </div>
+  </div>
+</div>
+
+  </div><!-- end distributed panel -->
 </div><!-- end azure-deploy-model tabs -->
 
 
