@@ -2446,13 +2446,14 @@ terraform init -upgrade</code></pre>
 <p><em>Multi-region deployment — Cloud NGFW spans availability zones within each region:</em></p>
 <img src="diagrams/azure/Regions.png" alt="Azure multi-region Cloud NGFW deployment showing East US and West US regions, each with three availability zones and Cloud NGFW resources distributed across zones for high availability" loading="lazy">
 
-<p>Two deployment models exist. The right choice depends on whether the Azure environment uses traditional hub-and-spoke VNets or Azure Virtual WAN.</p>
+<p>Three deployment models exist. The right choice depends on the Azure networking topology and whether cross-VNet (east-west) inspection is required.</p>
 
 <div class="callout callout-note">
   <div class="callout-title">Which deployment model?</div>
   <ul>
-    <li><strong>Centralized VNet Hub-and-Spoke</strong> — traditional hub VNet with VNet peering to spoke VNets. Traffic steering uses User-Defined Routes (UDRs). This is the primary model covered in this guide.</li>
-    <li><strong>Virtual WAN (vWAN)</strong> — Cloud NGFW deploys directly into a Virtual WAN hub. Traffic steering uses routing intent policies. See the overview below for key differences.</li>
+    <li><strong>Centralized VNet Hub-and-Spoke</strong> — traditional hub VNet with VNet peering to spoke VNets. Traffic steering uses User-Defined Routes (UDRs). Inspects all traffic types including east-west.</li>
+    <li><strong>Virtual WAN (vWAN)</strong> — Cloud NGFW deploys directly into a Virtual WAN hub as a SaaS NVA. Traffic steering uses routing intent policies. Inspects all traffic types including east-west.</li>
+    <li><strong>Distributed</strong> — each VNet gets its own dedicated Cloud NGFW instance. No hub, no peering. Simplest to deploy but does <strong>not</strong> inspect east-west traffic between VNets.</li>
   </ul>
 </div>
 
@@ -2514,9 +2515,22 @@ terraform init -upgrade</code></pre>
     <p><em>East-west traffic flow:</em></p>
     <img src="diagrams/azure/vnet - east-west.png" alt="Azure east-west traffic flow showing spoke A through Cloud NGFW private interface to spoke B with no NAT, source and destination IPs preserved" loading="lazy">
 
+    <p><strong>Ingress via Application Gateway:</strong></p>
+    <ol>
+      <li>External client sends traffic to the Azure Application Gateway's frontend public IP.</li>
+      <li>Application Gateway terminates the connection and forwards to its backend pool via the <code>app-gw</code> subnet.</li>
+      <li>A UDR on the Application Gateway subnet routes traffic to the Cloud NGFW private IP for inspection.</li>
+      <li>Cloud NGFW inspects the traffic against security policy.</li>
+      <li>Traffic traverses VNet peering to reach the backend workload in the spoke VNet.</li>
+      <li>Return traffic from the spoke follows the UDR back through Cloud NGFW to the Application Gateway.</li>
+    </ol>
+
+    <p><em>Ingress via Application Gateway traffic flow:</em></p>
+    <img src="diagrams/azure/vnet - inbound-app-gateway.png" alt="Azure ingress via Application Gateway traffic flow showing internet client through App Gateway frontend IP, UDR to Cloud NGFW for inspection, then VNet peering to backend spoke VM, with return traffic routed symmetrically through Cloud NGFW" loading="lazy">
+
     <div class="callout callout-warning">
       <div class="callout-title">Important: SNAT/DNAT behavior</div>
-      <p>Cloud NGFW performs SNAT on all egress traffic and both SNAT + DNAT on ingress traffic. East-west traffic passes through without NAT translation. DNAT rules for inbound access are configured in the Azure portal under the Cloud NGFW resource's <code>Networking &amp; NAT</code> settings — not in Panorama or SCM.</p>
+      <p>Cloud NGFW performs SNAT on all egress traffic and both SNAT + DNAT on ingress traffic. East-west traffic passes through without NAT translation. When using Application Gateway for ingress, DNAT is handled by the Application Gateway — Cloud NGFW inspects traffic in-line without performing NAT. DNAT rules for direct inbound access (without App Gateway) are configured in the Azure portal under the Cloud NGFW resource's <code>Networking &amp; NAT</code> settings — not in Panorama or SCM.</p>
     </div>
 
   </div>
@@ -2570,6 +2584,28 @@ terraform init -upgrade</code></pre>
     <p><em>vWAN east-west traffic flow:</em></p>
     <img src="diagrams/azure/vwan - east-west.png" alt="Azure vWAN east-west traffic flow showing App01 through vWAN hub routing intent to Cloud NGFW for inspection, then back through vWAN hub to App02, with no NAT — source and destination IPs preserved" loading="lazy">
 
+    <p><strong>Ingress via Application Gateway (hub VNet):</strong></p>
+    <ol>
+      <li>External client sends traffic to the Azure Application Gateway's frontend public IP. The Application Gateway resides in a separate VNet connected to the vWAN hub.</li>
+      <li>Application Gateway terminates the connection and forwards to its backend pool.</li>
+      <li>The vWAN hub's routing intent policy directs traffic from the Application Gateway VNet to Cloud NGFW for inspection.</li>
+      <li>Cloud NGFW inspects the traffic and the vWAN hub forwards it to the destination spoke VNet.</li>
+    </ol>
+
+    <p><em>vWAN ingress via Application Gateway traffic flow:</em></p>
+    <img src="diagrams/azure/vwan - inbound-app-gateway.png" alt="Azure vWAN ingress via Application Gateway showing internet client through App Gateway in a connected VNet, routing intent directing to Cloud NGFW in vWAN hub for inspection, then forwarding to backend spoke VNet" loading="lazy">
+
+    <p><strong>East-West: On-premises to cloud:</strong></p>
+    <ol>
+      <li>On-premises client sends traffic via ExpressRoute or S2S VPN to the vWAN hub.</li>
+      <li>The vWAN hub's routing intent policy (Private → Cloud NGFW) directs the traffic to Cloud NGFW for inspection.</li>
+      <li>Cloud NGFW inspects the traffic and returns it to the vWAN hub.</li>
+      <li>The vWAN hub forwards the traffic to the destination spoke VNet via the virtual network connection.</li>
+    </ol>
+
+    <p><em>On-premises to cloud traffic flow:</em></p>
+    <img src="diagrams/azure/vwan - east-west-onprem.png" alt="Azure vWAN on-premises to cloud traffic flow showing remote site through ExpressRoute or S2S VPN to vWAN hub, routing intent directing to Cloud NGFW for inspection, then forwarding to spoke VNet" loading="lazy">
+
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
@@ -2600,6 +2636,7 @@ terraform init -upgrade</code></pre>
           <th>Aspect</th>
           <th>Centralized VNet</th>
           <th>Virtual WAN</th>
+          <th>Distributed</th>
         </tr>
       </thead>
       <tbody>
@@ -2607,38 +2644,92 @@ terraform init -upgrade</code></pre>
           <td>Cloud NGFW placement</td>
           <td>Hub VNet (customer-managed)</td>
           <td>vWAN hub (Azure-managed)</td>
+          <td>Per-application VNet</td>
         </tr>
         <tr>
           <td>Traffic steering</td>
           <td>UDRs on spoke subnets</td>
           <td>Routing intent policies on the vWAN hub</td>
+          <td>UDRs within each VNet</td>
         </tr>
         <tr>
           <td>Spoke connectivity</td>
           <td>VNet peering</td>
           <td>Virtual network connections</td>
+          <td>None — VNets are isolated</td>
+        </tr>
+        <tr>
+          <td>East-west inspection</td>
+          <td>Yes</td>
+          <td>Yes</td>
+          <td><strong>No</strong></td>
         </tr>
         <tr>
           <td>Branch/on-prem connectivity</td>
           <td>Separate VPN gateway in hub VNet</td>
           <td>Native vWAN S2S VPN, P2S VPN, ExpressRoute</td>
+          <td>Per-VNet VPN gateway (if needed)</td>
         </tr>
         <tr>
           <td>Multi-region</td>
           <td>Separate hub VNet per region</td>
           <td>Hub-to-hub mesh with per-hub Cloud NGFW</td>
-        </tr>
-        <tr>
-          <td>East-west NAT</td>
-          <td>No NAT</td>
-          <td>No NAT</td>
+          <td>Separate Cloud NGFW per VNet per region</td>
         </tr>
       </tbody>
     </table>
 
-    <div class="callout callout-note">
-      <div class="callout-title">Note</div>
-      <p>The vWAN model is not covered in the step-by-step phases of this guide. For vWAN-specific deployment procedures, refer to the <a href="https://docs.paloaltonetworks.com/cloud-ngfw/azure">Cloud NGFW for Azure documentation</a> and the companion vWAN deployment guide.</p>
+  </div>
+</div>
+
+<!-- Distributed model -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Distributed Model</span>
+  </div>
+  <div class="collapsible-body">
+
+    <p>In the Distributed model, each application VNet contains its own dedicated Cloud NGFW instance with public and private delegated subnets. VNets are <strong>not connected to each other</strong> — there is no hub, no peering, and no shared firewall. Each Cloud NGFW inspects only the traffic within its own VNet.</p>
+
+    <p><em>Distributed architecture — independent Cloud NGFW per VNet:</em></p>
+    <img src="diagrams/azure/distributed.png" alt="Azure Distributed architecture showing two independent application VNets (App01, App02), each with its own Cloud NGFW instance between public and private delegated subnets, workload VMs with UDRs pointing to the local Cloud NGFW private IP, and no connectivity between VNets" loading="lazy">
+
+    <h4>Per-VNet Requirements</h4>
+    <ul>
+      <li>Each application VNet needs four subnets: <strong>public</strong> and <strong>private</strong> (delegated to Cloud NGFW, minimum <code>/26</code> each), <strong>workload</strong>, and <strong>bastion</strong> (AzureBastionSubnet)</li>
+      <li>Each Cloud NGFW instance gets its own public IP for inbound DNAT and outbound SNAT</li>
+      <li>UDR on the workload subnet routes <code>0.0.0.0/0</code> to the <strong>local</strong> Cloud NGFW private IP</li>
+    </ul>
+
+    <h4>Traffic Flows</h4>
+
+    <p><strong>Egress (workload to internet):</strong></p>
+    <ol>
+      <li>Workload VM sends traffic destined for the internet.</li>
+      <li>The workload subnet's UDR (<code>0.0.0.0/0</code> → local Cloud NGFW private IP) forwards traffic to the Cloud NGFW within the same VNet.</li>
+      <li>Cloud NGFW inspects the traffic against security policy.</li>
+      <li>Cloud NGFW performs <strong>SNAT</strong> — translates the source to this Cloud NGFW instance's public IP.</li>
+      <li>Traffic egresses to the internet.</li>
+    </ol>
+
+    <p><em>Distributed egress traffic flow:</em></p>
+    <img src="diagrams/azure/distributed - outbound.png" alt="Azure Distributed egress traffic flow showing workload VM in an application VNet through UDR to the local Cloud NGFW instance with SNAT translation to the instance's own public IP, then to internet" loading="lazy">
+
+    <p><strong>Ingress (internet to workload):</strong></p>
+    <ol>
+      <li>External client sends traffic to this Cloud NGFW instance's public IP.</li>
+      <li>Cloud NGFW performs <strong>DNAT</strong> — translates the destination to the workload's private IP within the same VNet.</li>
+      <li>Cloud NGFW performs <strong>SNAT</strong> — translates the source to its private subnet IP to ensure return traffic routes back through the firewall.</li>
+      <li>Traffic reaches the workload VM within the same VNet (no peering needed).</li>
+    </ol>
+
+    <p><em>Distributed ingress traffic flow:</em></p>
+    <img src="diagrams/azure/distributed - inbound.png" alt="Azure Distributed ingress traffic flow showing internet client through Cloud NGFW public IP with DNAT and SNAT translation to workload VM within the same VNet, no peering involved" loading="lazy">
+
+    <div class="callout callout-warning">
+      <div class="callout-title">No east-west traffic inspection</div>
+      <p>Because application VNets are isolated, there is no east-west traffic flow to inspect. If workloads in different VNets need to communicate securely, use the Centralized VNet or Virtual WAN model instead.</p>
     </div>
 
   </div>
