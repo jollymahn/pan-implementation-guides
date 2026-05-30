@@ -1,32 +1,29 @@
 # Cloud NGFW Guide — TODO
 
-## Content Refinement
+## Remaining (all blocked on live deployments)
 
-- [ ] **SCM path enrichment** — Phase 2B steps are thinner than Panorama. Research SCM-specific Cloud NGFW workflows (rulestack association, policy push, commit behavior) and flesh out the 2B tabs for both AWS and Azure.
-- [ ] **Terraform variable validation** — Verify variable names in Steps 4.3-4.4 against actual `cloudngfw_combined_design` (AWS) and `cloudngfw_centralized_vnet` (Azure) SWFW module examples. Current names are inferred from module patterns.
-- [ ] **GCP cloud tab** — No source material yet. When available, add a third cloud picker option and corresponding content. Landing page card is already stubbed as `.coming-soon`.
+- [ ] **SCM DAG nav path** — Verify `Objects > Address Groups` vs `Policies > Objects > Address Groups` in SCM UI
+- [ ] **Match criteria format** — Verify `vnet_name` vs `vnet-name` for DAG match expressions in SCM
+- [ ] **KQL table names** — Verify `NGFWTrafficLogs`, `NGFWThreatLogs` in Azure Log Analytics
+- [ ] **Live deployment screenshots** — Capture key verification points on both AWS and Azure (NGFW resource created, rulestack associated, traffic logs flowing)
+- [ ] **Troubleshooting validation** — Verify troubleshooting steps against actual error scenarios
 
-## Diagrams — AWS
+## Completed
 
-- [ ] **AWS traffic flow diagrams** — Add Combined Design traffic flows (inbound, outbound, east-west + return paths) to the AWS architecture overview section, matching Azure's pattern. 12 PNGs available in `diagrams/aws/`.
-- [ ] **AWS detailed route tables** — Add `Combined Complete.png` and `Centralized Complete.png` as nested collapsibles ("See detailed routing") for advanced users.
-- [ ] **AWS TGW attachments** — Add `Combined TGW Attachments.png` and `Centralized TGW Attachments.png` to the TGW configuration steps.
-- [ ] **AWS multi-account concept** — Add `Combined Account Concept.png` to the prerequisites or architecture overview.
-- [ ] **AWS AZ placement** — Add `Availability Zone Concept.png` to architecture overview.
-- [ ] **AWS Panorama management** — Add `PN Mgmt.png` and `PN Mgmt & CDL.png` to the Phase 2A Panorama tab.
+### Content
+- [x] **SCM path enrichment** — Phase 2B tabs fleshed out for both AWS (7 steps) and Azure (7 steps) with full tables, verification blocks, zone callouts, and SCM-specific warnings.
+- [x] **Terraform variable validation** — Variables validated against actual SWFW modules. AzureRM provider fixed to `>= 4.0`, phantom provider removed, NSG corrections applied.
+- [x] **Cross-links** — "Managed alternative: Cloud NGFW" callout added to both AWS and Azure VM-Series guides with decision guidance.
+- [x] **Verification blocks** — 102 of 107 collapsibles have verification. Remaining 5 are nested diagram viewers (supplementary reference, not procedural steps).
 
-## Diagrams — Azure
+### Diagrams — AWS
+- [x] **All 22 AWS PNGs** — traffic flows, route tables, TGW attachments, multi-account concept, AZ placement, Panorama management — all wired into combined guide.
 
-- [ ] **Azure vWAN traffic flows** — Add `vwan - inbound.png`, `vwan - outbound.png`, `vwan - east-west.png` to the vWAN section (matching the VNet traffic flow pattern).
-- [ ] **Azure vWAN detail diagrams** — Add transit and multi-region diagrams as supplementary content in the vWAN section.
-- [ ] **Azure management diagrams** — Add `PN Management.png`, `PN onprem.png`, `PN templates.png` to the Phase 2A Panorama tab.
-- [ ] **Azure DAGs** — Add `DAGs.png` to the policy configuration or post-deployment section.
+### Diagrams — Azure (combined guide)
+- [x] **All 18 Azure PNGs + 6 .drawio** — VNet/vWAN traffic flows, vWAN detail, management, DAGs, distributed model — all wired into combined guide.
 
-## Screenshots
+### Diagrams — Azure Native Guide
+- [x] **All 7 .drawio files exported to .png** — VNet/vWAN overviews, DNS proxy flow, management boundary, traffic flows. draw.io CLI installed, auto-export added to `/guides/verify-guide`.
 
-- [ ] **Live deployment screenshots** — Requires actual Cloud NGFW deployments on AWS and Azure. Capture key verification points (NGFW resource created, rulestack associated, traffic logs flowing).
-
-## Polish
-
-- [ ] **Cross-link from AWS/Azure VM-Series guides** — Add "See also: Cloud NGFW" callouts in the VM-Series guides for users evaluating managed vs. self-managed options.
-- [ ] **Troubleshooting validation** — Verify troubleshooting steps against actual error scenarios.
+### Not Applicable
+- ~~**GCP tab**~~ — Cloud NGFW is not available on GCP.

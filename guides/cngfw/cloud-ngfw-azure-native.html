@@ -319,6 +319,9 @@
 
     <p><strong>Reference:</strong> <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/cloud-ngfw-for-azure-deployment-resources/cloud-ngfw-for-azure-deploy-in-a-vnet">Deploy the Cloud NGFW in a VNet</a></p>
 
+    <p><em>VNet hub-and-spoke architecture — Cloud NGFW in the hub VNet with delegated subnets, spoke VNets peered to hub, UDRs steering all traffic through Cloud NGFW for inspection:</em></p>
+    <img src="diagrams/azure-native/vnet-hub-spoke-overview.png" alt="VNet hub-and-spoke architecture showing Cloud NGFW in hub VNet with public (untrust) and private (trust) delegated subnets, two spoke VNets connected via VNet peering, UDRs on each spoke routing 0.0.0.0/0 to the Cloud NGFW private IP, and egress to internet via the Cloud NGFW public IP" loading="lazy">
+
     <h4>vWAN (Virtual Hub) Requirements</h4>
     <p>Cloud NGFW deploys as a SaaS NVA into the vWAN virtual hub. The hub address space determines the NVA subnet size and maximum throughput.</p>
 
@@ -336,6 +339,9 @@
     </div>
 
     <p><strong>Reference:</strong> <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/cloud-ngfw-for-azure-deployment-resources/deploy-the-cloud-ngfw-for-azure-in-a-vwan">Deploy the Cloud NGFW in a vWAN</a></p>
+
+    <p><em>vWAN architecture — Cloud NGFW as a SaaS NVA in the virtual hub, spoke VNets connected via virtual network connections, routing intent programs routes automatically:</em></p>
+    <img src="diagrams/azure-native/vwan-overview.png" alt="vWAN architecture showing Cloud NGFW deployed as SaaS NVA in Azure Virtual WAN hub with routing intent for internet and private traffic, two spoke VNets connected via virtual network connections with no UDRs required" loading="lazy">
 
     <h4>Planning Checklist</h4>
     <p>Record the following values before proceeding to Phase 2:</p>
@@ -570,9 +576,9 @@
           <tr><th>Resource</th><th>Type</th><th>Purpose</th></tr>
           <tr><td>Cloud NGFW</td><td><code>PaloAltoNetworks.Cloudngfw/firewalls</code></td><td>The firewall resource itself</td></tr>
           <tr><td>Local Rulestack</td><td><code>PaloAltoNetworks.Cloudngfw/localRulestacks</code></td><td>Policy container attached to the firewall</td></tr>
-          <tr><td>Managed Resource Group</td><td>Resource Group</td><td>Azure-managed resource group containing internal Cloud NGFW infrastructure (do not modify)</td></tr>
           <tr><td>Public IP Address</td><td><code>Microsoft.Network/publicIPAddresses</code></td><td>Public-facing IP for SNAT/DNAT</td></tr>
-          <tr><td>VNet Delegation</td><td>Subnet delegation</td><td>Both subnets delegated to <code>PaloAltoNetworks.Cloudngfw/firewalls</code></td></tr>
+          <tr><td>Virtual Network</td><td><code>Microsoft.Network/virtualNetworks</code></td><td>The hub VNet containing the Cloud NGFW delegated subnets (created new or referenced existing)</td></tr>
+          <tr><td>Network Security Group</td><td><code>Microsoft.Network/networkSecurityGroups</code></td><td>NSG associated with the Cloud NGFW private and public subnets</td></tr>
         </table>
 
         <ol>
@@ -596,13 +602,13 @@
           <tr><th>Resource</th><th>Type</th><th>Purpose</th></tr>
           <tr><td>Cloud NGFW</td><td><code>PaloAltoNetworks.Cloudngfw/firewalls</code></td><td>The firewall resource itself</td></tr>
           <tr><td>Local Rulestack</td><td><code>PaloAltoNetworks.Cloudngfw/localRulestacks</code></td><td>Policy container attached to the firewall</td></tr>
-          <tr><td>Managed Resource Group</td><td>Resource Group</td><td>Azure-managed resource group containing internal Cloud NGFW infrastructure (do not modify)</td></tr>
-          <tr><td>Cloud-NVA (SaaS Solution)</td><td>Virtual hub SaaS NVA</td><td>The Cloud NGFW registered as a SaaS solution within the virtual hub</td></tr>
+          <tr><td>Public IP Address</td><td><code>Microsoft.Network/publicIPAddresses</code></td><td>Public-facing IP for SNAT/DNAT</td></tr>
+          <tr><td>Cloud-NVA (SaaS Solution)</td><td>Virtual hub SaaS NVA</td><td>The Cloud NGFW registered as a <a href="https://learn.microsoft.com/en-us/azure/virtual-wan/about-nva-hub">SaaS solution</a> within the virtual hub</td></tr>
         </table>
 
         <ol>
           <li>In the Azure portal, navigate to <strong>Resource groups</strong> and select the resource group used for the deployment.</li>
-          <li>Confirm the Cloud NGFW resource, local rulestack, and managed resource group appear in the resource list.</li>
+          <li>Confirm the Cloud NGFW resource, local rulestack, and public IP address appear in the resource list.</li>
           <li>Click the Cloud NGFW resource. On the <strong>Overview</strong> page, confirm:
             <ul>
               <li><strong>Provisioning state:</strong> <code>Succeeded</code></li>
@@ -930,7 +936,7 @@
 
     <div class="callout callout-danger">
       <div class="callout-title">#1 troubleshooting cause: overly restrictive NSGs</div>
-      <p>If traffic is not flowing after completing Steps 3.1 and 3.2, check NSG rules first. Azure NSGs evaluate <strong>before</strong> UDRs on outbound traffic from a subnet. A deny rule on the NSG blocks the packet even though the UDR would route it to Cloud NGFW.</p>
+      <p>If traffic is not flowing after completing Steps 3.1 and 3.2, check NSG rules first. A restrictive NSG outbound rule blocks traffic even if a UDR exists to route it to Cloud NGFW &mdash; NSG filtering and UDR routing operate independently, and a deny at the NSG layer prevents the packet from ever reaching the UDR next-hop.</p>
     </div>
 
     <p><strong>Reference:</strong> <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/cloud-ngfw-for-azure-deployment-resources/cloud-ngfw-for-azure-sample-vnet-configuration">Sample Configuration for Post VNet Deployment &mdash; Update the Network Security Group</a></p>
@@ -1003,13 +1009,13 @@
     <span>Step 3.4: Enable DNS Proxy</span>
   </div>
   <div class="collapsible-body">
-    <p>DNS Proxy allows Cloud NGFW to intercept and inspect DNS traffic from spoke VNet resources. This is a prerequisite for DNS Security configured later in <a href="#advanced-security">Phase 6</a>. Without DNS Proxy enabled, Cloud NGFW cannot see DNS queries and DNS Security policies have no effect.</p>
+    <p>DNS Proxy allows Cloud NGFW to intercept and inspect DNS traffic from spoke VNet resources. This is a prerequisite for DNS Security. Without DNS Proxy enabled, Cloud NGFW cannot see DNS queries and DNS Security policies have no effect.</p>
 
     <p><strong>Reference:</strong> <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-native-policy-management/cloud-ngfw-for-azure-enable-dns-security">Configure DNS Security</a></p>
 
-    <div class="callout callout-note">
-      <div class="callout-title">Note</div>
-      <p>DNS Proxy is an Azure portal setting on the Cloud NGFW resource. It controls whether DNS traffic is intercepted at the network layer. The DNS Security <strong>policy</strong> (which determines what action to take on malicious DNS queries) is configured separately in Strata Cloud Manager during <a href="#advanced-security">Phase 6</a>.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: DNS Security is configured on the local rulestack, not in SCM</div>
+      <p>DNS Proxy is an Azure portal setting on the Cloud NGFW resource. DNS Security <strong>enforcement</strong> (which determines what action to take on malicious DNS queries) is configured on the <strong>local rulestack</strong> in the Azure portal under <strong>Security Services</strong> &mdash; not in Strata Cloud Manager. Even though security <em>policy</em> is managed through SCM after <a href="#connect-scm">Phase 4</a>, DNS Security remains a local rulestack feature. For advanced DNS Security with custom rules, <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-panorama-integration/configure-advanced-dns-security-in-panorama">Panorama integration</a> is required. See <a href="#advanced-security">Phase 6, Step 6.4</a> for the full configuration.</p>
     </div>
 
     <ol>
@@ -1024,6 +1030,27 @@
       </li>
       <li>Click <strong>Save</strong>.</li>
     </ol>
+
+    <h4>Enable DNS Security on the Local Rulestack</h4>
+
+    <p>After enabling DNS Proxy, activate DNS Security on the local rulestack so the Cloud NGFW inspects DNS queries for malicious domains.</p>
+
+    <ol>
+      <li>In the Azure portal, navigate to the <strong>local rulestack</strong> associated with the Cloud NGFW resource.</li>
+      <li>Click <strong>Security Services</strong> in the left sidebar.</li>
+      <li>Enable <strong>DNS Security</strong>.</li>
+      <li>Enable <strong>Anti-Spyware</strong> if it is not already enabled &mdash; DNS Security requires anti-spyware to be active.</li>
+      <li>Set both DNS Security and Anti-Spyware to <strong>Best Practices</strong>.</li>
+      <li>Click <strong>Save</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>DNS Security and anti-spyware are local rulestack settings that persist even after security policy management is switched to SCM in <a href="#connect-scm">Phase 4</a>. These settings do not migrate to or conflict with SCM-managed security profiles &mdash; they operate at the rulestack level in the Azure portal.</p>
+    </div>
+
+    <p><em>DNS Proxy and DNS Security flow — DNS queries from spoke VMs are intercepted by Cloud NGFW, checked against threat intelligence, and either resolved (safe) or sinkholed (malicious):</em></p>
+    <img src="diagrams/azure-native/dns-proxy-flow.png" alt="DNS Proxy and DNS Security flow showing spoke VM DNS queries intercepted by Cloud NGFW DNS Proxy, checked by DNS Security against C2, malware, phishing, and DGA categories, with safe queries forwarded to Azure DNS and malicious queries sinkholed" loading="lazy">
 
     <div class="callout callout-warning">
       <div class="callout-title">Important: Spoke VNet DNS configuration must point to Cloud NGFW</div>
@@ -1052,6 +1079,8 @@
     <li><strong>Azure portal</strong> &mdash; NAT rules, DNS Proxy, network plumbing, logging destinations, resource health.</li>
     <li><strong>Strata Cloud Manager</strong> &mdash; security policy rules, security profiles, decryption policy, URL filtering categories.</li>
   </ul>
+  <p><em>Management boundary — what is configured where after connecting to SCM:</em></p>
+  <img src="diagrams/azure-native/management-boundary.png" alt="Management boundary diagram showing three swim lanes: Azure Portal (NAT, DNS Proxy, DNS Security, TLS Decryption, Log Settings), Strata Cloud Manager (security policy, address objects, profiles, IP Tag Collection, DAGs), and Panorama (advanced DNS Security, XFF, cloud certificates, device groups)" loading="lazy">
 </div>
 
 <!-- Step 4.1: Switch Policy Management to SCM -->
@@ -1064,8 +1093,21 @@
     <p>Connect the Cloud NGFW resource to Strata Cloud Manager by switching the policy management mode from the local rulestack to SCM. This is the single action that bridges the Azure portal and SCM management surfaces.</p>
 
     <div class="callout callout-danger">
-      <div class="callout-title">This switch is effectively irreversible</div>
-      <p>Once a Cloud NGFW resource is connected to Strata Cloud Manager, local rulestack policy editing is disabled. The local rulestack itself remains as the deployment anchor (it is still referenced by the Cloud NGFW resource in Azure), but all security policy changes must be made in SCM. Reverting to local rulestack management requires opening a Palo Alto Networks support case. Confirm the SCM tenant is correct before proceeding.</p>
+      <div class="callout-title">This switch disables local rulestack policy editing</div>
+      <p>Once a Cloud NGFW resource is connected to Strata Cloud Manager, local rulestack security policy editing is disabled. The local rulestack itself remains as the deployment anchor (it is still referenced by the Cloud NGFW resource in Azure) and continues to host infrastructure-level settings (NAT, DNS Proxy, DNS Security, TLS decryption), but all <strong>security policy</strong> changes must be made in SCM. Confirm the SCM tenant is correct before proceeding.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">SCM limitations for Cloud NGFW</div>
+      <p>Before switching, review the following limitations of SCM-managed Cloud NGFW. These restrictions apply after the switch and cannot be worked around without Panorama integration:</p>
+      <ul>
+        <li>X-Forwarded-For (XFF) is <strong>not supported</strong>.</li>
+        <li>Cloud certificates are <strong>not supported</strong>.</li>
+        <li>Data Loss Prevention (DLP) is <strong>not supported</strong>.</li>
+        <li>Operational visibility and metrics dashboards are <strong>not available</strong>.</li>
+        <li>Security rules must specify <code>ANY</code> for both source and destination zones. From/to zone appears as <code>public</code>/<code>private</code> in Strata Logging Service logs.</li>
+      </ul>
+      <p>See <a href="#scm-limitations">SCM Limitations Reference</a> for the full list. IP Tag Collection and Dynamic Address Groups are available with PAN-OS 11.2+ (see <a href="#advanced-security">Phase 6</a>).</p>
     </div>
 
     <div class="callout callout-note">
@@ -1088,9 +1130,9 @@
       <li>Click <code>Save</code>.</li>
     </ol>
 
-    <div class="callout callout-note">
+    <div class="callout callout-danger">
       <div class="callout-title">What happens to existing local rulestack rules?</div>
-      <p>Any security rules previously configured in the local rulestack are <strong>not</strong> migrated to SCM. The Cloud NGFW resource starts with whatever default policy SCM applies to new devices (an allow-all rule by default). Plan to configure security policy in SCM during <a href="#security-policy">Phase 5</a> immediately after this phase.</p>
+      <p>Any security rules previously configured in the local rulestack are <strong>not</strong> migrated to SCM. The Cloud NGFW resource receives whatever default policy the SCM tenant applies to new devices. <strong>Verify the active policy immediately after switching</strong> &mdash; depending on the SCM tenant configuration, the default may block all traffic or permit all traffic. Plan to configure explicit security policy in SCM during <a href="#security-policy">Phase 5</a> immediately after this phase to avoid either an outage or an unintended permit-all window.</p>
     </div>
 
     <div class="callout callout-success">
@@ -1205,9 +1247,9 @@
       <li>Wait for the push to complete. The initial push takes 2&ndash;5 minutes.</li>
     </ol>
 
-    <div class="callout callout-note">
+    <div class="callout callout-warning">
       <div class="callout-title">What does the initial push deploy?</div>
-      <p>The first push applies SCM's default configuration to the Cloud NGFW resource, which includes a default allow-all security rule. This rule permits all traffic and exists so the firewall does not block traffic while security policy is being configured in <a href="#security-policy">Phase 5</a>. Replace this default rule with explicit security policy as soon as possible.</p>
+      <p>The first push applies the SCM tenant&rsquo;s default configuration to the Cloud NGFW resource. <strong>Verify the active security policy immediately after the push completes.</strong> Navigate to <strong>Security Services &gt; Security Policy</strong> in SCM and confirm which rules are active. If no explicit rules exist, configure security policy in <a href="#security-policy">Phase 5</a> immediately to avoid either an outage (if the default denies all traffic) or a security gap (if the default permits all traffic).</p>
     </div>
 
     <div class="callout callout-success">
@@ -1273,8 +1315,8 @@
         </tr>
         <tr>
           <td>Dynamic address groups (tags)</td>
-          <td>Not supported in SCM-managed Cloud NGFW</td>
-          <td>Tag-based policy is not available. Use prefix lists with explicit CIDRs instead.</td>
+          <td>Supported with PAN-OS 11.2+ via IP Tag Collection</td>
+          <td>Requires onboarding Azure cloud accounts for tag harvesting. See <a href="#advanced-security">Phase 6, Steps 6.1&ndash;6.3</a>. Traditional User-ID tag registration is not available.</td>
         </tr>
         <tr>
           <td>User-ID matching</td>
@@ -1306,8 +1348,11 @@
         <li>Cloud certificates are not supported.</li>
         <li>Data Loss Prevention (DLP) is not supported.</li>
         <li>Operational visibility and metrics dashboards are not available.</li>
+        <li>DNS Security is configured on the <strong>local rulestack</strong> (Azure portal), not in SCM. Advanced DNS Security requires Panorama.</li>
+        <li>TLS Decryption is configured on the <strong>local rulestack</strong> (Azure portal), not in SCM.</li>
         <li>From/to zone appears as <code>public</code>/<code>private</code> in Strata Logging Service logs, even though the rule specifies <code>ANY</code>.</li>
       </ul>
+      <p>See the <a href="#scm-limitations">SCM Limitations Reference</a> for the full list.</p>
     </div>
 
     <div class="callout callout-success">
@@ -1325,13 +1370,13 @@
     <span>Step 5.2: Create Address Matching Objects</span>
   </div>
   <div class="collapsible-body">
-    <p>Prefix lists and FQDN lists replace traditional address objects in Cloud NGFW. Create these objects before building security rules so they are available for source/destination matching.</p>
+    <p>SCM address objects replace traditional PAN-OS address objects and native rulestack prefix lists. In SCM, create address objects of type <code>IP Netmask</code> for CIDR-based matching and type <code>FQDN</code> for domain-based matching. Create these objects before building security rules so they are available for source/destination matching.</p>
 
-    <p><strong>Reference:</strong> <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-native-policy-management/cloud-ngfw-for-azure-create-a-prefix-list">Create a Prefix List</a> | <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-native-policy-management/cloud-ngfw-for-azure-create-a-fqdn-list">Create a FQDN List</a></p>
+    <p><strong>Reference:</strong> <a href="https://docs.paloaltonetworks.com/strata-cloud-manager/getting-started/manage-configuration-ngfw-and-prisma-access/objects/addresses">SCM Address Objects</a> | <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-native-policy-management/cloud-ngfw-for-azure-create-a-prefix-list">Native Rulestack Prefix Lists</a> | <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-native-policy-management/cloud-ngfw-for-azure-create-a-fqdn-list">Native Rulestack FQDN Lists</a></p>
 
-    <h4>Create a Prefix List (IP-Based Matching)</h4>
+    <h4>Create an Address Object for IP-Based Matching</h4>
 
-    <p>Prefix lists group IP addresses and CIDRs that require the same policy treatment. Create one prefix list per logical grouping (e.g., internal server subnets, partner CIDRs).</p>
+    <p>Group IP addresses and CIDRs that require the same policy treatment into a single address object. Create one object per logical grouping (e.g., internal server subnets, partner CIDRs).</p>
 
     <ol>
       <li>Log in to <a href="https://stratacloudmanager.paloaltonetworks.com">Strata Cloud Manager</a>.</li>
@@ -1766,6 +1811,11 @@
           <td><code>best-practice</code> or <code>default</code></td>
           <td>Forwards unknown files for cloud-based sandbox analysis.</td>
         </tr>
+        <tr>
+          <td>File Blocking</td>
+          <td><code>best-practice</code> or <code>default</code></td>
+          <td>Blocks or alerts on specific file types (e.g., executables, encrypted archives). Optional but recommended for outbound rules.</td>
+        </tr>
       </tbody>
     </table>
 
@@ -1842,7 +1892,7 @@
 
 <h2 id="advanced-security">Phase 6: Advanced Security (SCM)</h2>
 
-<p>This phase configures advanced security features in SCM that go beyond the baseline security rules created in Phase 5. IP Tag Collection, Dynamic Address Groups, DNS Security, Advanced URL Filtering, and TLS Decryption are all optional but recommended for production deployments. Each feature builds on the Cloud NGFW resource and SCM folder established in earlier phases.</p>
+<p>This phase configures advanced security features that go beyond the baseline security rules created in Phase 5. These features span <strong>both</strong> management surfaces &mdash; some are configured in SCM (IP Tag Collection, Dynamic Address Groups, URL Filtering), while others remain on the <strong>local rulestack</strong> in the Azure portal (DNS Security, TLS Decryption). Each step indicates which console to use.</p>
 
 <div class="callout callout-note">
   <div class="callout-title">PAN-OS 11.2 Required for IP Tag Collection</div>
@@ -1908,6 +1958,21 @@
           <td>Resource Group</td>
           <td><code>azure.resource_group</code></td>
           <td><code>azure.myResourceGroup</code></td>
+        </tr>
+        <tr>
+          <td>OS Publisher</td>
+          <td><code>azure.os_publisher</code></td>
+          <td><code>azure.Canonical</code></td>
+        </tr>
+        <tr>
+          <td>OS Offer</td>
+          <td><code>azure.os_offer</code></td>
+          <td><code>azure.0001-com-ubuntu-server-jammy</code></td>
+        </tr>
+        <tr>
+          <td>OS SKU</td>
+          <td><code>azure.os_sku</code></td>
+          <td><code>azure.22_04-lts-gen2</code></td>
         </tr>
         <tr>
           <td>User Tags (up to 10)</td>
@@ -2118,25 +2183,34 @@
     <span>Step 6.4: Enable DNS Security</span>
   </div>
   <div class="collapsible-body">
-    <p>DNS Security uses machine learning and predictive analytics to identify and block DNS queries to malicious domains &mdash; including C2 channels, data exfiltration tunnels, and DGA-generated domains. This step configures DNS Security in SCM and attaches it to the security policy.</p>
+    <p>DNS Security uses machine learning and predictive analytics to identify and block DNS queries to malicious domains &mdash; including C2 channels, data exfiltration tunnels, and DGA-generated domains.</p>
 
-    <p><strong>Reference:</strong> <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-native-policy-management/cloud-ngfw-for-azure-enable-dns-security">Configure DNS Security</a> | <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-security-features-and-cdss-capabilities">Cloud NGFW Security Features and CDSS Capabilities</a></p>
+    <p><strong>Reference:</strong> <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-native-policy-management/cloud-ngfw-for-azure-enable-dns-security">Configure DNS Security</a> | <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-panorama-integration/configure-advanced-dns-security-in-panorama">Configure Advanced DNS Security in Panorama</a></p>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">DNS Security is configured on the local rulestack, not in SCM</div>
+      <p>DNS Security for Cloud NGFW is <strong>not</strong> managed through Strata Cloud Manager. It is configured on the <strong>local rulestack</strong> in the Azure portal. Even though security policy is SCM-managed after <a href="#connect-scm">Phase 4</a>, DNS Security operates as a rulestack-level security service alongside DNS Proxy. For advanced DNS Security with custom policy rules, <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-panorama-integration/configure-advanced-dns-security-in-panorama">Panorama integration</a> is required.</p>
+    </div>
 
     <div class="callout callout-warning">
       <div class="callout-title">Important: DNS Proxy Must Be Enabled First</div>
-      <p>DNS Security requires DNS Proxy to be enabled on the Cloud NGFW resource. If DNS Proxy was not enabled during <a href="#network-plumbing">Phase 3</a>, navigate to the Azure portal &gt; Cloud NGFW resource &gt; <strong>Settings &gt; DNS Proxy</strong> and enable it before proceeding. Without DNS Proxy, the Cloud NGFW cannot intercept DNS queries for inspection.</p>
+      <p>DNS Security requires DNS Proxy to be enabled on the Cloud NGFW resource. If DNS Proxy was not enabled during <a href="#network-plumbing">Phase 3, Step 3.4</a>, navigate to the Azure portal &gt; Cloud NGFW resource &gt; <strong>Settings &gt; DNS Proxy</strong> and enable it before proceeding. Without DNS Proxy, the Cloud NGFW cannot intercept DNS queries for inspection.</p>
     </div>
 
-    <h4>Configure DNS Security in SCM</h4>
+    <h4>Enable DNS Security on the Local Rulestack (Azure Portal)</h4>
+
+    <p>If DNS Security was already enabled during <a href="#network-plumbing">Phase 3, Step 3.4</a>, verify the settings below and skip to the DNS Security category table.</p>
 
     <ol>
-      <li>In Strata Cloud Manager, set the <strong>Configuration Scope</strong> to the folder containing the Cloud NGFW resources.</li>
-      <li>Navigate to <strong>Manage &gt; Configuration &gt; NGFW and Prisma Access &gt; Security Services &gt; Anti-Spyware</strong>.</li>
-      <li>Select the anti-spyware profile attached to the security rules (e.g., <code>best-practice</code>) or create a new one.</li>
-      <li>Ensure the profile includes DNS Security settings. DNS Security operates as a component of the anti-spyware profile, not as a standalone profile.</li>
+      <li>In the Azure portal, navigate to the <strong>local rulestack</strong> associated with the Cloud NGFW resource.</li>
+      <li>Click <strong>Security Services</strong> in the left sidebar.</li>
+      <li>Enable <strong>DNS Security</strong>.</li>
+      <li>Enable <strong>Anti-Spyware</strong> if it is not already enabled &mdash; DNS Security requires anti-spyware to be active.</li>
+      <li>Set both DNS Security and Anti-Spyware to <strong>Best Practices</strong>.</li>
+      <li>Click <strong>Save</strong>.</li>
     </ol>
 
-    <p>Cloud NGFW applies the following default actions per DNS Security category:</p>
+    <p>With best-practice settings, Cloud NGFW applies the following default actions per DNS Security category:</p>
 
     <table>
       <thead>
@@ -2195,19 +2269,19 @@
       </tbody>
     </table>
 
-    <ol start="5">
-      <li>Confirm the anti-spyware profile with DNS Security is included in the Security Profile Group attached to allow rules (from <a href="#security-policy">Phase 5, Step 5.4</a>).</li>
-      <li>Click <strong>Push Config</strong> to deploy the updated profile to the Cloud NGFW resource.</li>
-    </ol>
-
     <div class="callout callout-note">
       <div class="callout-title">DNS Sinkhole Behavior</div>
       <p>When DNS Security blocks a malicious domain, the Cloud NGFW returns a sinkhole response directing the client to a non-routable address. This prevents the client from establishing a connection to the malicious server. Blocked DNS queries appear in the Threat logs with the specific DNS Security category that triggered the block.</p>
     </div>
 
+    <div class="callout callout-note">
+      <div class="callout-title">Advanced DNS Security with Panorama</div>
+      <p>The local rulestack provides baseline DNS Security with best-practice category actions (the table above). For advanced DNS Security with custom policy rules &mdash; such as overriding specific categories, adding allowlist exceptions, or creating granular per-domain actions &mdash; <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-panorama-integration/configure-advanced-dns-security-in-panorama">Panorama integration</a> is required. Configure advanced DNS Security rules on Panorama and push them to the Cloud NGFW resource as part of a Cloud Device Group.</p>
+    </div>
+
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>After pushing the configuration, verify DNS Security is active by generating a test DNS query to a known-bad domain from a workload behind the Cloud NGFW. Check the <strong>Threat logs</strong> in SCM &gt; <strong>Incidents &amp; Alerts &gt; Log Viewer</strong> for a DNS Security event with action <code>sinkhole</code>. The log entry displays the matched DNS Security category (e.g., <code>Command and Control</code> or <code>Malware</code>).</p>
+      <p>In the Azure portal, navigate to the local rulestack &gt; <strong>Security Services</strong>. Confirm DNS Security and Anti-Spyware both show <code>Enabled</code> with <code>Best Practices</code>. To verify end-to-end, generate a test DNS query to a known-bad domain from a workload behind the Cloud NGFW. Check the <strong>Threat logs</strong> (in Azure Log Analytics or SCM &gt; <strong>Incidents &amp; Alerts &gt; Log Viewer</strong>) for a DNS Security event with action <code>sinkhole</code>. The log entry displays the matched DNS Security category (e.g., <code>Command and Control</code> or <code>Malware</code>).</p>
     </div>
   </div>
 </div>
@@ -2809,9 +2883,26 @@
     <span>Step 8.2: Link Cloud NGFW to Log Analytics</span>
   </div>
   <div class="collapsible-body">
-    <p>Azure Diagnostic Settings control which log categories a resource exports and where those logs are sent. This step configures the Cloud NGFW resource to stream traffic, threat, and URL filtering logs to the Log Analytics workspace created in Step 8.1.</p>
+    <p>Configure the Cloud NGFW resource to stream traffic, threat, and URL filtering logs to the Log Analytics workspace created in Step 8.1. Cloud NGFW provides a built-in <strong>Log Settings</strong> blade for quick configuration. Alternatively, Azure Diagnostic Settings offers more granular control over log categories and multiple destinations.</p>
 
-    <p><strong>Reference:</strong> <a href="https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/diagnostic-settings">Create diagnostic settings in Azure Monitor</a></p>
+    <p><strong>Reference:</strong> <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/cloud-ngfw-for-azure-deployment-resources/cloud-ngfw-for-azure-sample-vnet-configuration">Sample Configuration for Post VNet Deployment &mdash; Configure Logging</a> | <a href="https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/diagnostic-settings">Azure Diagnostic Settings</a></p>
+
+    <h4>Option A: Cloud NGFW Log Settings (Quick Setup)</h4>
+
+    <ol>
+      <li>Navigate to the Cloud NGFW resource in the Azure portal.</li>
+      <li>In the left menu under <code>Settings</code>, select <code>Log Settings</code>.</li>
+      <li>Click <code>Edit</code>.</li>
+      <li>Select the Log Analytics workspace created in Step 8.1 from the dropdown.</li>
+      <li>Click <code>Save</code>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>The built-in Log Settings blade sends all log categories (traffic, threat, URL filtering) to a single Log Analytics workspace. For more granular control &mdash; such as sending different log categories to different destinations, or adding Azure Storage or Event Hub destinations &mdash; use Option B below.</p>
+    </div>
+
+    <h4>Option B: Azure Diagnostic Settings (Advanced)</h4>
 
     <ol>
       <li>Navigate to the Cloud NGFW resource in the Azure portal.</li>
@@ -2991,6 +3082,9 @@ NGFWTrafficLogs
   <div class="collapsible-body">
     <p>Confirm that outbound internet traffic from a spoke VM flows through Cloud NGFW, matches the egress security rule configured in <a href="#security-policy">Phase 5</a>, and exits with the expected public source IP (if Source NAT was configured in <a href="#nat-config">Step 7.2</a>).</p>
 
+    <p><em>Outbound (egress) traffic flow — spoke VM traffic routed via UDR to Cloud NGFW, inspected, SNAT applied, exits via public IP:</em></p>
+    <img src="diagrams/azure-native/vnet-outbound-flow.png" alt="Outbound traffic flow showing spoke VM request routed by UDR to Cloud NGFW private IP, inspected on trust interface, source NAT applied translating source to public IP, then exiting via untrust subnet to internet" loading="lazy">
+
     <ol>
       <li>Connect to a spoke VM via Azure Bastion, serial console, or SSH through a jump host.</li>
       <li>Run a basic HTTP connectivity test. This confirms outbound internet access is working through Cloud NGFW:
@@ -3061,6 +3155,9 @@ try { (Invoke-WebRequest -Uri https://blocked-site.example.com -UseBasicParsing)
   <div class="collapsible-body">
     <p>Confirm that inbound traffic from external clients reaches internal services through the DNAT rules configured in <a href="#nat-config">Step 7.3</a>. Skip this step if no DNAT rules were configured.</p>
 
+    <p><em>Inbound (ingress) traffic flow — external client hits Cloud NGFW public IP, DNAT+SNAT translates to backend workload, symmetric return via Cloud NGFW:</em></p>
+    <img src="diagrams/azure-native/vnet-inbound-flow.png" alt="Inbound traffic flow showing external client HTTPS request to Cloud NGFW public IP, DNAT translating destination to backend VM, SNAT translating source to Cloud NGFW private IP for symmetric return, traffic forwarded via trust subnet to spoke workload" loading="lazy">
+
     <div class="callout callout-note">
       <div class="callout-title">No DNAT Configured?</div>
       <p>If no Destination NAT rules were created in <a href="#nat-config">Phase 7</a>, skip this step. Ingress testing requires at least one DNAT rule mapping a frontend public IP and port to a backend private IP and port.</p>
@@ -3119,6 +3216,9 @@ Get-NetTCPConnection -LocalPort &lt;BACKEND_PORT&gt; -State Established</code></
   </div>
   <div class="collapsible-body">
     <p>Confirm that traffic between spoke VNets is inspected by Cloud NGFW. East-west inspection validates that the UDR configuration from <a href="#network-plumbing">Phase 3</a> is correctly routing inter-spoke traffic through the firewall rather than allowing it to flow directly between peered VNets.</p>
+
+    <p><em>East-west traffic flow — spoke-to-spoke traffic routed through Cloud NGFW via UDRs, inspected without NAT, forwarded with original source and destination:</em></p>
+    <img src="diagrams/azure-native/vnet-east-west-flow.png" alt="East-west traffic flow showing Spoke 1 VM request to Spoke 2 VM, routed by UDR to Cloud NGFW private IP via VNet peering, inspected without NAT, forwarded via trust interface and VNet peering to Spoke 2 workload with original source and destination preserved" loading="lazy">
 
     <div class="callout callout-warning">
       <div class="callout-title">Important: VNet Model Only</div>
@@ -3253,7 +3353,7 @@ Test-NetConnection -ComputerName &lt;SPOKE_B_PRIVATE_IP&gt; -Port 8080</code></p
 
     <div class="callout callout-note">
       <div class="callout-title">Strata Logging Service Alternative</div>
-      <p>If Strata Logging Service was configured in <a href="#logging-monitoring">Step 8.3</a>, the same traffic logs are available in the SCM console under <code>Incidents and Alerts</code> &gt; <code>Log Viewer</code>. Select the <code>Firewall/Traffic</code> log type and filter by the Cloud NGFW resource name to view matching entries. Reference: <a href="https://docs.paloaltonetworks.com/strata-logging-service/administration/view-logs/retrieve-logs">View Strata Logging Service Logs</a>.</p>
+      <p>If Strata Logging Service was configured in <a href="#logging-monitoring">Step 8.3</a>, the same traffic logs are available in the SCM console under <code>Incidents and Alerts</code> &gt; <code>Log Viewer</code>. Select the <code>Firewall/Threat</code> log type and filter by the Cloud NGFW resource name to view matching entries. Reference: <a href="https://docs.paloaltonetworks.com/strata-logging-service/administration/view-logs/retrieve-logs">View Strata Logging Service Logs</a>.</p>
     </div>
 
     <div class="callout callout-success">
@@ -3356,6 +3456,16 @@ Test-NetConnection -ComputerName &lt;SPOKE_B_PRIVATE_IP&gt; -Port 8080</code></p
         <th>Workaround / Notes</th>
       </tr>
       <tr>
+        <td>DNS Security</td>
+        <td>Not managed through SCM</td>
+        <td>DNS Security is configured on the <strong>local rulestack</strong> in the Azure portal under <strong>Security Services</strong>. For advanced DNS Security with custom policy rules, <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-panorama-integration/configure-advanced-dns-security-in-panorama">Panorama integration</a> is required. See <a href="#advanced-security">Phase 6, Step 6.4</a>.</td>
+      </tr>
+      <tr>
+        <td>TLS Decryption</td>
+        <td>Not managed through SCM</td>
+        <td>Inbound and outbound TLS decryption rules are configured on the <strong>local rulestack</strong> in the Azure portal. Certificates are stored in Azure Key Vault and referenced from the rulestack. See <a href="#advanced-security">Phase 6, Step 6.6</a>.</td>
+      </tr>
+      <tr>
         <td>NAT / DNAT Rules</td>
         <td>Not supported in SCM</td>
         <td>Configure DNAT rules in the Azure portal under the Cloud NGFW resource &rarr; <code>DNAT</code> tab. See <a href="#nat-config">Phase 7: NAT Configuration</a> for step-by-step instructions.</td>
@@ -3400,6 +3510,11 @@ Test-NetConnection -ComputerName &lt;SPOKE_B_PRIVATE_IP&gt; -Port 8080</code></p
         <td>Set to <code>ANY</code></td>
         <td>All security rules must specify <code>ANY</code> for source and destination zones. Logs display zones as <code>public</code>/<code>private</code> in Strata Logging Service regardless of zone configuration.</td>
       </tr>
+      <tr>
+        <td>SCM vs. Panorama Behavioral Differences</td>
+        <td>Traffic handling may differ</td>
+        <td>Some pass-through traffic that is allowed in a Panorama-managed Cloud NGFW environment may be dropped in an SCM-managed deployment. If migrating from Panorama to SCM, test the security policy in a staging environment before cutover to identify any behavioral differences.</td>
+      </tr>
     </table>
 
     <div class="callout callout-warning">
@@ -3424,7 +3539,7 @@ Test-NetConnection -ComputerName &lt;SPOKE_B_PRIVATE_IP&gt; -Port 8080</code></p
 
 <div class="callout callout-note">
   <div class="callout-title">Reference</div>
-  <p>Full documentation: <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-strata-cloud-manager-policy-management/migrate-azure-firewall-policy-to-cloud-ngfw-azure">Migrate an Azure Firewall Policy to Cloud NGFW for Azure</a>. The migration service is available in these SCM regions: Canada, India, United Kingdom, Singapore, and United States.</p>
+  <p>Full documentation: <a href="https://docs.paloaltonetworks.com/cloud-ngfw-azure/administration/protect-traffic-with-cloud-ngfw-for-azure/cloud-ngfw-for-azure-strata-cloud-manager-policy-management/migrate-azure-firewall-policy-to-cloud-ngfw-azure">Migrate an Azure Firewall Policy to Cloud NGFW for Azure</a>. The migration service is available in these SCM regions: Canada, India, United Kingdom, Singapore, and United States. The user performing the migration must hold the <strong>Security Administrator</strong> or <strong>Superuser</strong> role in SCM.</p>
 </div>
 
 <div class="callout callout-warning">
@@ -3591,7 +3706,19 @@ az account show</code></pre>
 
     <div class="callout callout-warning">
       <div class="callout-title">Important: Apply DNAT rules separately</div>
-      <p>DNAT rules are not included in the SCM push. If the migration summary page generated a Terraform template, download it now (<code>Download Terraform Templates for NGFW</code>), then apply DNAT rules through the Azure portal as described in <a href="#nat-config">Phase 7: NAT Configuration</a>. Alternatively, use the Terraform template with <code>terraform apply</code> to configure DNAT on the Cloud NGFW resource directly.</p>
+      <p>DNAT rules are not included in the SCM push. If the migration summary page generated a Terraform template, download it now (<code>Download Terraform Templates for NGFW</code>), then apply DNAT rules through the Azure portal as described in <a href="#nat-config">Phase 7: NAT Configuration</a>. Alternatively, use the Terraform template to configure DNAT on the Cloud NGFW resource directly:</p>
+      <div class="code-block">
+        <pre><code># Initialize and import the existing Cloud NGFW resource before applying
+terraform init
+terraform import azurerm_palo_alto_next_generation_firewall_virtual_network_strata_cloud_manager.firewall &lt;cngfw_resource_id&gt;
+terraform plan
+terraform apply</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <div class="callout callout-warning">
+        <div class="callout-title">Important: Import before apply</div>
+        <p>The <code>terraform import</code> step is required for existing Cloud NGFW resources. Without it, Terraform attempts to create a new resource instead of updating the existing one, which will fail. Replace <code>&lt;cngfw_resource_id&gt;</code> with the full Azure resource ID of the Cloud NGFW resource (found on the resource&rsquo;s <strong>Properties</strong> page in the Azure portal).</p>
+      </div>
     </div>
 
     <div class="callout callout-note">

@@ -129,6 +129,11 @@
   <p><strong>Deployment method:</strong> All Azure infrastructure (Phases 4–6) should be deployed with <strong>Terraform</strong> using the official <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/azurerm/latest">Palo Alto Networks SWFW Modules for Azure</a>. These modules encode Palo Alto's reference architecture and handle VNet, GWLB, route tables, and VM-Series provisioning with tested, production-ready code.</p>
 </div>
 
+<div class="callout callout-note">
+  <div class="callout-title">Managed alternative: Cloud NGFW for Azure</div>
+  <p>If you prefer a fully managed NGFW service (no VM lifecycle, patching, or scaling to manage), see the <a href="../cngfw/cloud-ngfw-deployment.html">Cloud NGFW deployment guide</a> or the <a href="../cngfw/cloud-ngfw-azure-native.html">Azure-native deep dive</a>. Cloud NGFW deploys as a SaaS NVA in your VNet or vWAN hub — Azure manages the infrastructure while you manage policy through Panorama, SCM, or Azure-native local rulestacks. Choose <strong>VM-Series</strong> when you need full PAN-OS control, custom routing, or advanced features like GlobalProtect; choose <strong>Cloud NGFW</strong> when you want operational simplicity with managed scaling and HA.</p>
+</div>
+
 <!-- ════════════════════════════════════════════════════════════ -->
 <!--  ARCHITECTURE OVERVIEW                                        -->
 <!-- ════════════════════════════════════════════════════════════ -->
@@ -965,7 +970,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
         <p>Navigate to <strong>Panorama &gt; Templates</strong> and create:</p>
         <table>
           <tr><th>#</th><th>Template Name</th><th>Purpose</th></tr>
-          <tr><td>4</td><td><code>4-TPL-AZURE-COMMON-NETWORK</code></td><td>Network config: 3 NICs (mgmt + untrust + trust), <strong>2 virtual routers</strong> (AZ-UNTRUST-VR and AZ-TRUST-VR), zone-based static routes</td></tr>
+          <tr><td>4</td><td><code>4-TPL-AZURE-COMMON-NETWORK-LRE</code></td><td>Network config: 3 NICs (mgmt + untrust + trust), <strong>2 virtual routers</strong> (AZ-UNTRUST-VR and AZ-TRUST-VR), zone-based static routes</td></tr>
         </table>
 
         <h4>Template Stack</h4>
@@ -974,7 +979,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
           <tr><th>Stack Name</th><th>Templates (in stack order, top&rarr;bottom)</th><th>Assigned Device Group</th></tr>
           <tr>
             <td><code>STK-AZ-COMMON-MODEL</code></td>
-            <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>4-TPL-AZURE-COMMON-NETWORK</code></td>
+            <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>4-TPL-AZURE-COMMON-NETWORK-LRE</code></td>
             <td><code>DG-AZ-COMMON-MODEL</code></td>
           </tr>
         </table>
@@ -1007,8 +1012,8 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
         <p>Navigate to <strong>Panorama &gt; Templates</strong> and create the network templates for each tier and routing engine variant:</p>
         <table>
           <tr><th>#</th><th>Template Name</th><th>Purpose</th></tr>
-          <tr><td>4</td><td><code>4-TPL-AZURE-INBOUND-NETWORK</code></td><td>TVNet Inbound (Logical Router Engine): 3 NICs, <strong>1 virtual router</strong> (AZ-VR), routes for inbound flows</td></tr>
-          <tr><td>4</td><td><code>4-TPL-AZURE-OBEW-NETWORK</code></td><td>TVNet OBEW (Logical Router Engine): 3 NICs, 1 VR, routes for outbound + east-west + backhaul flows</td></tr>
+          <tr><td>4</td><td><code>4-TPL-AZURE-INBOUND-NETWORK-LRE</code></td><td>TVNet Inbound (Logical Router Engine): 3 NICs, <strong>1 virtual router</strong> (AZ-VR), routes for inbound flows</td></tr>
+          <tr><td>4</td><td><code>4-TPL-AZURE-OBEW-NETWORK-LRE</code></td><td>TVNet OBEW (Logical Router Engine): 3 NICs, 1 VR, routes for outbound + east-west + backhaul flows</td></tr>
           <tr><td>4</td><td><code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code></td><td>Same as INBOUND-NETWORK but using <strong>Advanced Routing Engine</strong></td></tr>
           <tr><td>4</td><td><code>4-TPL-AZURE-OBEW-NETWORK-ARE</code></td><td>Same as OBEW-NETWORK but using <strong>Advanced Routing Engine</strong></td></tr>
         </table>
@@ -1017,7 +1022,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
           <div class="callout-title">Pick one network template per stack</div>
           <p>The network templates are alternatives, not additive &mdash; pick the one that matches the tier and routing engine:</p>
           <ul>
-            <li><code>4-TPL-AZURE-INBOUND-NETWORK</code> + <code>4-TPL-AZURE-OBEW-NETWORK</code> for the legacy Logical Router Engine</li>
+            <li><code>4-TPL-AZURE-INBOUND-NETWORK-LRE</code> + <code>4-TPL-AZURE-OBEW-NETWORK-LRE</code> for the legacy Logical Router Engine</li>
             <li><code>4-TPL-AZURE-INBOUND-NETWORK-ARE</code> + <code>4-TPL-AZURE-OBEW-NETWORK-ARE</code> for Advanced Routing Engine</li>
           </ul>
         </div>
@@ -1028,12 +1033,12 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
           <tr><th>Stack Name</th><th>Templates (in stack order, top&rarr;bottom)</th><th>Assigned Device Group</th></tr>
           <tr>
             <td><code>STK-AZ-TVNET-INBOUND-USE</code></td>
-            <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-INBOUND-NETWORK</code></td>
+            <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-INBOUND-NETWORK-LRE</code></td>
             <td><code>DG-AZ-TVNET-INBOUND-USE</code></td>
           </tr>
           <tr>
             <td><code>STK-AZ-TVNET-OBEW-USE</code></td>
-            <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-OBEW-NETWORK</code></td>
+            <td><code>1-TPL-AZURE-REGIONAL-EAST-US</code><br><code>2-TPL-AZURE-GLOBAL</code><br><code>3-TPL-AZURE-INSTRUMENTATION</code><br><code>4-TPL-AZURE-OBEW-NETWORK-LRE</code></td>
             <td><code>DG-AZ-TVNET-OBEW-USE</code></td>
           </tr>
           <tr>
@@ -1119,7 +1124,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 
       <div class="mgmt-panel active" data-plane="common-model">
 
-        <h4>Interfaces &mdash; <code>4-TPL-AZURE-COMMON-NETWORK</code></h4>
+        <h4>Interfaces &mdash; <code>4-TPL-AZURE-COMMON-NETWORK-LRE</code></h4>
 
         <p>Configure under <strong>Network &gt; Interfaces &gt; Ethernet</strong>:</p>
         <table>
@@ -1163,7 +1168,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 
         <h4>Security Zones</h4>
 
-        <p>Configure under <strong>Network &gt; Zones</strong> in <code>4-TPL-AZURE-COMMON-NETWORK</code>:</p>
+        <p>Configure under <strong>Network &gt; Zones</strong> in <code>4-TPL-AZURE-COMMON-NETWORK-LRE</code>:</p>
         <table>
           <tr><th>Zone</th><th>Type</th><th>Interfaces</th></tr>
           <tr><td><code>UNTRUST</code></td><td>Layer3</td><td><code>ethernet1/1</code></td></tr>
@@ -1175,7 +1180,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 
       <div class="mgmt-panel" data-plane="transit-vnet">
 
-        <h4>TVNet INBOUND &mdash; <code>4-TPL-AZURE-INBOUND-NETWORK</code> (Logical Router Engine)</h4>
+        <h4>TVNet INBOUND &mdash; <code>4-TPL-AZURE-INBOUND-NETWORK-LRE</code> (Logical Router Engine)</h4>
 
         <p><strong>Interfaces</strong> (Network &gt; Interfaces &gt; Ethernet):</p>
         <table>
@@ -1192,7 +1197,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
           <tr><td><code>RFC-1918-10</code></td><td><code>10.0.0.0/8</code></td><td><code>$TRUST-GW</code></td></tr>
         </table>
 
-        <h4>TVNet OBEW &mdash; <code>4-TPL-AZURE-OBEW-NETWORK</code> (Logical Router Engine)</h4>
+        <h4>TVNet OBEW &mdash; <code>4-TPL-AZURE-OBEW-NETWORK-LRE</code> (Logical Router Engine)</h4>
 
         <p><strong>Interfaces:</strong> same as TVNet INBOUND &mdash; <code>ethernet1/1</code> on INTERNET zone, <code>ethernet1/2</code> on TRUST zone, both DHCP.</p>
 
@@ -1215,7 +1220,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 
         <h4>Security Zones (all TVNet templates)</h4>
 
-        <p>Configure under <strong>Network &gt; Zones</strong> in each TVNet network template (<code>4-TPL-AZURE-INBOUND-NETWORK</code>, <code>4-TPL-AZURE-OBEW-NETWORK</code>, and their <code>-ARE</code> variants):</p>
+        <p>Configure under <strong>Network &gt; Zones</strong> in each TVNet network template (<code>4-TPL-AZURE-INBOUND-NETWORK-LRE</code>, <code>4-TPL-AZURE-OBEW-NETWORK-LRE</code>, and their <code>-ARE</code> variants):</p>
         <table>
           <tr><th>Zone</th><th>Type</th><th>Interfaces</th></tr>
           <tr><td><code>INTERNET</code></td><td>Layer3</td><td><code>ethernet1/1</code></td></tr>

@@ -156,6 +156,11 @@
   <p><strong>Deployment method:</strong> All AWS infrastructure (Phases 5–7) should be deployed with <strong>Terraform</strong> using the official <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/aws/latest">Palo Alto Networks SWFW Modules</a>. These modules encode Palo Alto's reference architecture and handle VPC, GWLB, TGW, and VM-Series provisioning with tested, production-ready code.</p>
 </div>
 
+<div class="callout callout-note">
+  <div class="callout-title">Managed alternative: Cloud NGFW for AWS</div>
+  <p>If you prefer a fully managed NGFW service (no VM lifecycle, patching, or scaling to manage), see the <a href="../cngfw/cloud-ngfw-deployment.html">Cloud NGFW deployment guide</a>. Cloud NGFW delivers the same Palo Alto Networks security stack as a cloud-native service — AWS manages the infrastructure while you manage policy through Panorama or SCM. Choose <strong>VM-Series</strong> when you need full PAN-OS control, custom routing, or overlay networking; choose <strong>Cloud NGFW</strong> when you want operational simplicity with managed scaling and HA.</p>
+</div>
+
 <!-- ════════════════════════════════════════════════════════════ -->
 <!--  ARCHITECTURE OVERVIEW                                        -->
 <!-- ════════════════════════════════════════════════════════════ -->
@@ -899,9 +904,15 @@ icacls key.pem /grant:r "%USERNAME%:(R)"</code></pre>
   <div class="collapsible-body">
     <p>A remote state backend is critical for team collaboration, maintaining a single source of truth, and preventing concurrent modifications. Create the S3 bucket and DynamoDB table <strong>before</strong> running <code>terraform init</code>.</p>
 
+    <div class="callout callout-warning">
+      <div class="callout-title">Replace the region in every command below</div>
+      <p>The examples use <code>us-east-2</code> as a placeholder. Replace it with <strong>your actual deployment region</strong> (e.g. <code>us-west-2</code>) in the <code>--region</code> and <code>LocationConstraint</code> flags. The S3 bucket must be in the same region as your Terraform deployment.</p>
+    </div>
+
     <h4>Create the Backend Resources</h4>
     <div class="code-block">
       <pre><code># Create S3 bucket for state storage (enable versioning)
+# Replace us-east-2 with your deployment region
 aws s3api create-bucket \
   --bucket your-pan-tf-state-bucket \
   --region us-east-2 \
@@ -1129,6 +1140,19 @@ pwd
       The Device Group must exist on Panorama <em>before</em> the firewall attempts to bootstrap. If the firewall cannot find its assigned Device Group, registration will fail.
     </div>
 
+    <h4>Add Reference Templates to Device Groups</h4>
+    <p>After creating the Device Groups, add your template stack(s) as <strong>Reference Templates</strong> so that zone names defined in the templates appear in the security rule editor.</p>
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Device Groups</strong>.</li>
+      <li>Click on <code>DG-AWS-COMBINED</code> to open it.</li>
+      <li>In the <strong>Reference Templates</strong> section, click <strong>Add</strong> and select the template stack you created (e.g., <code>STK-AWS-COMBINED-AZ-A</code>).</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">Without reference templates, zone dropdowns are empty</div>
+      <p>If you skip this step, security rules in <code>DG-AWS-COMBINED</code> will not be able to reference zones like <code>INBOUND</code>, <code>OUTBOUND</code>, or <code>GWLB</code>. The zone dropdown in the rule editor pulls from the templates associated with the device group &mdash; no reference template means no zones to select. You will not be able to commit policy that references zones until this is set.</p>
+    </div>
+
     <h4>Create Templates</h4>
     <p>Templates are layered by function and stacked in priority order. This makes it easy to reuse common config across regions and designs. Navigate to <strong>Panorama &gt; Templates</strong> and create the following templates:</p>
     <table>
@@ -1174,10 +1198,46 @@ pwd
     </ol>
     <p>Repeat for <code>STK-AWS-COMBINED-AZ-B</code>, <code>STK-AWS-COMBINED-AZ-C</code>, etc., adjusting the gateway IPs to match each AZ's subnet.</p>
 
+    <div class="callout callout-danger">
+      <div class="callout-title">Each template and stack must have <code>settings default-vsys vsys1</code></div>
+      <p>Panorama will reject a commit if any template stack is missing the <code>settings</code> block. In the UI, this is set automatically when you create a stack. Via CLI, you must explicitly set it on <strong>both</strong> the templates and the stacks:</p>
+      <div class="code-block">
+        <pre><code># On each template:
+set template &lt;name&gt; config vsys vsys1
+set template &lt;name&gt; settings default-vsys vsys1
+
+# On each stack:
+set template-stack &lt;name&gt; settings default-vsys vsys1</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>If you skip this, the commit will fail with: <em>"template-stack is missing 'settings'"</em>.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Commit DGs before setting Parent Device Group</div>
+      <p>After creating the child Device Group (<code>DG-AWS-COMBINED</code>), you must <strong>commit</strong> before you can set its parent to <code>DG-AWS</code> in the UI. The parent DG dropdown will not show <code>DG-AWS</code> until it has been committed to Panorama&rsquo;s running config. Commit the DGs first, then open the child DG and set the parent.</p>
+    </div>
+
     <div class="callout callout-warning">
       <div class="callout-title">Important: Gateway Variables (Overlay Routing Model only)</div>
       <p>The <code>$INTERNAL-GW</code> and <code>$EXTERNAL-GW</code> template variables are used by the static routes inside <code>4-TPL-AWS-GWLB-OVRLY-COMBINED</code> (configured in step 2A.6). Each AZ has different subnet gateways &mdash; this is why you need a separate template stack per AZ. Get the correct gateway IP from the first usable address in each AZ's private and public subnet.</p>
       <p><strong>Non-overlay routing model:</strong> if your stack uses <code>4-TPL-AWS-GWLB-NON-OVRLY-COMBINED</code> instead, the firewall does not own these routes &mdash; AWS route tables steer all traffic. You can leave <code>$INTERNAL-GW</code> and <code>$EXTERNAL-GW</code> unset on those stacks (or omit them entirely from the variables list).</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Creation order matters</div>
+      <p>Panorama objects have dependencies. Create them in this order:</p>
+      <ol>
+        <li><strong>Device Groups</strong> (parent first, then child) &mdash; include <code>settings default-vsys vsys1</code> on templates</li>
+        <li><strong>Templates</strong> (all four layers)</li>
+        <li><strong>Template Stacks</strong> (per-AZ, referencing the templates) &mdash; include <code>settings default-vsys vsys1</code></li>
+        <li><strong>First Commit</strong> &mdash; DGs and stacks must be committed before the parent DG is visible in the child&rsquo;s dropdown and before the License Manager can reference them</li>
+        <li><strong>Set Parent Device Group</strong> on the child DG (only visible in UI after commit)</li>
+        <li><strong>Reference Templates</strong> on the child DG (so zone dropdowns work in policy)</li>
+        <li><strong>Second Commit</strong> &mdash; commits the parent DG and reference template associations</li>
+        <li><strong>License Manager</strong> (references committed DG + stack)</li>
+      </ol>
+      <p>Two commits are required: one after creating the skeleton objects (so the parent DG appears in the dropdown), and one after setting parent + reference templates. If you skip the first commit, you cannot set the parent Device Group.</p>
     </div>
   </div>
 </div>
@@ -1750,27 +1810,53 @@ pwd
     <span>2A.7 TPL- Configure Security Zones</span>
   </div>
   <div class="collapsible-body">
-    <p>Navigate to <strong>Network &gt; Zones</strong> in your network template (<code>4-TPL-AWS-GWLB-OVRLY-COMBINED</code>) and create:</p>
+    <p>Navigate to <strong>Network &gt; Zones</strong> in your network template (<code>4-TPL-AWS-GWLB-*-COMBINED</code>) and create the zones below. Every zone must have its <strong>Type</strong> set to <strong>Layer 3</strong> &mdash; if you skip this, the zone will not bind to its interface and traffic will not match policy.</p>
+
+    <h4>Core Zones (both routing models)</h4>
     <table>
       <tr><th>Zone Name</th><th>Type</th><th>Interface(s)</th><th>Purpose</th></tr>
       <tr><td><code>GWLB</code></td><td>Layer 3</td><td>ethernet1/1</td><td>GWLB health checks (parent interface)</td></tr>
-      <tr><td><code>INBOUND</code></td><td>Layer 3</td><td>ethernet1/1.10</td><td>Centralized inbound traffic through security VPC</td></tr>
+      <tr><td><code>INBOUND</code></td><td>Layer 3</td><td>ethernet1/1.10</td><td>Centralized (dedicated) inbound traffic through security VPC</td></tr>
       <tr><td><code>OUTBOUND</code></td><td>Layer 3</td><td>ethernet1/1.20</td><td>Outbound traffic from spoke VPCs to internet</td></tr>
       <tr><td><code>EASTWEST</code></td><td>Layer 3</td><td>ethernet1/1.30</td><td>East-west traffic between spoke VPCs and on-prem</td></tr>
-      <tr><td><code>UNTRUST</code></td><td>Layer 3</td><td>ethernet1/2</td><td>Internet-facing egress</td></tr>
+    </table>
+
+    <h4>UNTRUST Zone (Overlay routing model only)</h4>
+    <table>
+      <tr><th>Zone Name</th><th>Type</th><th>Interface(s)</th><th>Purpose</th></tr>
+      <tr><td><code>UNTRUST</code></td><td>Layer 3</td><td>ethernet1/2</td><td>Internet-facing egress &mdash; firewall source-NATs spoke egress on this interface</td></tr>
+    </table>
+    <div class="callout callout-danger">
+      <div class="callout-title">Non-Overlay: do not create the UNTRUST zone</div>
+      <p>If you are deploying the <strong>Non-Overlay</strong> routing model, <code>ethernet1/2</code> is not configured and the <code>UNTRUST</code> zone must not exist in the template. AWS NAT Gateways handle spoke egress &mdash; no firewall-side egress interface is used. Creating this zone on a Non-Overlay deployment will cause a config mismatch.</p>
+    </div>
+
+    <h4>Distributed Inbound Zones (per-app)</h4>
+    <table>
+      <tr><th>Zone Name</th><th>Type</th><th>Interface(s)</th><th>Purpose</th></tr>
       <tr><td><code>APP1-DISTRIBUTED-INBOUND</code></td><td>Layer 3</td><td>ethernet1/1.101</td><td>App1 VPC distributed inbound</td></tr>
       <tr><td><code>APP2-DISTRIBUTED-INBOUND</code></td><td>Layer 3</td><td>ethernet1/1.102</td><td>App2 VPC distributed inbound</td></tr>
       <tr><td><code>APP3-DISTRIBUTED-INBOUND</code></td><td>Layer 3</td><td>ethernet1/1.103</td><td>App3 VPC distributed inbound</td></tr>
     </table>
 
     <div class="callout callout-note">
-      <div class="callout-title">Per-App Zones vs. Shared Zone</div>
-      <p>Each app VPC gets its own dedicated inbound zone (<code>APP1-DISTRIBUTED-INBOUND</code>, etc.) rather than sharing a single zone. This enables per-application security policy &mdash; you can write rules that only apply to App1's inbound traffic without affecting App2. When onboarding a new spoke VPC, add a new subinterface, zone, and corresponding policy rules.</p>
+      <div class="callout-title">Dedicated vs. Distributed Inbound &mdash; two models, both active</div>
+      <p>The combined design uses <strong>both</strong> inbound models simultaneously:</p>
+      <ul>
+        <li><strong>Dedicated (centralized) inbound</strong> &mdash; the <code>INBOUND</code> zone on <code>ethernet1/1.10</code>. All inbound traffic entering through the security VPC's GWLB endpoints lands here. Use this for centralized services (shared ALBs, VPN concentrators, etc.).</li>
+        <li><strong>Distributed inbound</strong> &mdash; the per-app <code>APP*-DISTRIBUTED-INBOUND</code> zones on <code>ethernet1/1.101+</code>. Inbound traffic entering through GWLB endpoints <em>inside each spoke VPC</em> lands in the app-specific zone. Use this for per-application inbound inspection with granular policy.</li>
+      </ul>
+      <p>Each app VPC gets its own zone so you can write per-application security policy without affecting sibling VPCs. When onboarding a new spoke VPC, add a new subinterface, zone, and corresponding policy rules.</p>
     </div>
 
     <div class="callout callout-warning">
-      <div class="callout-title">Important</div>
-      <p>The <code>GWLB</code> zone on the parent ethernet1/1 interface catches traffic from <strong>unmapped</strong> GWLB endpoints and health checks. Keep its security policy restrictive &mdash; allow only GWLB health probes.</p>
+      <div class="callout-title">GWLB zone policy must be restrictive</div>
+      <p>The <code>GWLB</code> zone on the parent <code>ethernet1/1</code> interface catches traffic from <strong>unmapped</strong> GWLB endpoints and health checks. Keep its security policy restrictive &mdash; allow only GWLB health probes.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Every zone must be Layer 3</div>
+      <p>When creating zones in the Panorama UI, you must explicitly select <strong>Layer 3</strong> as the zone type and assign the correct interface. If a zone is created without selecting Layer 3, it will not bind to its interface &mdash; the zone will exist in config but traffic on that interface will not match any zone-based policy rules.</p>
     </div>
   </div>
 </div>
@@ -1854,7 +1940,15 @@ pwd
       <tr><td><code>N-10.105.0.0-22</code></td><td>IP Netmask</td><td><code>10.105.0.0/22</code></td><td><code>aws</code>, <code>aws-us-west-2</code>, <code>prod</code>, <code>app-api</code></td><td>App2 VPC CIDR</td></tr>
       <tr><td><code>N-10.106.0.0-22</code></td><td>IP Netmask</td><td><code>10.106.0.0/22</code></td><td><code>aws</code>, <code>aws-us-west-2</code>, <code>prod</code>, <code>app-db</code></td><td>App3 VPC CIDR</td></tr>
       <tr><td><code>N-10.0.0.0-8</code></td><td>IP Netmask</td><td><code>10.0.0.0/8</code></td><td><code>internal</code></td><td>All RFC-1918 10.x (on-prem + AWS)</td></tr>
+      <tr><td><code>N-&lt;gwlb-subnet-a&gt;</code></td><td>IP Netmask</td><td><em>GWLB subnet AZ-A</em></td><td><code>AWS-HEALTH-GWLB</code></td><td>GWLB subnet AZ-A &mdash; health probe source</td></tr>
+      <tr><td><code>N-&lt;gwlb-subnet-b&gt;</code></td><td>IP Netmask</td><td><em>GWLB subnet AZ-B</em></td><td><code>AWS-HEALTH-GWLB</code></td><td>GWLB subnet AZ-B &mdash; health probe source</td></tr>
+      <tr><td><code>N-&lt;private-subnet-a&gt;</code></td><td>IP Netmask</td><td><em>FW private subnet AZ-A</em></td><td><code>AWS-FW-DATA-PRIVATE</code></td><td>FW private interface subnet AZ-A &mdash; health probe dest</td></tr>
+      <tr><td><code>N-&lt;private-subnet-b&gt;</code></td><td>IP Netmask</td><td><em>FW private subnet AZ-B</em></td><td><code>AWS-FW-DATA-PRIVATE</code></td><td>FW private interface subnet AZ-B &mdash; health probe dest</td></tr>
     </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Use your actual CIDRs from the IP schema</div>
+      <p>Replace the <code>&lt;gwlb-subnet-*&gt;</code> and <code>&lt;private-subnet-*&gt;</code> placeholders with the CIDRs from the <code>gwlb</code> and <code>private</code> columns in the <a href="#security-vpc">Security VPC IP schema table</a>. For the reference schema, AZ-A GWLB is <code>10.51.0.48/28</code>, AZ-A private is <code>10.51.0.64/28</code>, etc. The tags on these objects populate the <code>GRP-AWS-GWLB-HEALTH-PROBE-SUBNETS</code> and <code>GRP-FIREWALL-PRIVATE-SUBNETS</code> dynamic address groups used by the <code>AWS-HEALTH-PROBE</code> security rule.</p>
+    </div>
 
     <h4>Dynamic Address Groups</h4>
     <p>Dynamic address groups (DAGs) auto-populate based on tag-match expressions. Members are address objects (or registered IPs from User-ID / VM-Series plugin / external feeds) whose tags satisfy the group's filter. DAGs are commit-free at the data plane &mdash; once a DAG exists in a security rule, adding/removing tags on member addresses takes effect without a policy commit.</p>
@@ -1933,6 +2027,19 @@ pwd
       <tr><td>Log</td><td>Disabled (high-frequency probes, no value in logging)</td></tr>
       <tr><td>Group Tag</td><td><code>AWS-HEALTH-GWLB</code></td></tr>
     </table>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Health probe rule requires correct GWLB and private subnet address objects</div>
+      <p>The <code>AWS-HEALTH-PROBE</code> rule uses two dynamic address groups that auto-populate from tagged address objects. <strong>You must create address objects for your deployment's actual GWLB and private subnet CIDRs</strong> with the correct tags, or the health probes will be denied and the GWLB will mark your firewalls as unhealthy.</p>
+      <table>
+        <tr><th>Address Object</th><th>Value (from your IP schema)</th><th>Tag</th><th>Populates Group</th></tr>
+        <tr><td><code>N-&lt;gwlb-subnet-a&gt;</code></td><td>GWLB subnet CIDR in AZ-A</td><td><code>AWS-HEALTH-GWLB</code></td><td><code>GRP-AWS-GWLB-HEALTH-PROBE-SUBNETS</code></td></tr>
+        <tr><td><code>N-&lt;gwlb-subnet-b&gt;</code></td><td>GWLB subnet CIDR in AZ-B</td><td><code>AWS-HEALTH-GWLB</code></td><td><code>GRP-AWS-GWLB-HEALTH-PROBE-SUBNETS</code></td></tr>
+        <tr><td><code>N-&lt;private-subnet-a&gt;</code></td><td>FW private subnet CIDR in AZ-A</td><td><code>AWS-FW-DATA-PRIVATE</code></td><td><code>GRP-FIREWALL-PRIVATE-SUBNETS</code></td></tr>
+        <tr><td><code>N-&lt;private-subnet-b&gt;</code></td><td>FW private subnet CIDR in AZ-B</td><td><code>AWS-FW-DATA-PRIVATE</code></td><td><code>GRP-FIREWALL-PRIVATE-SUBNETS</code></td></tr>
+      </table>
+      <p>Use the CIDRs from the <code>gwlb</code> and <code>private</code> columns in the <a href="#security-vpc">Security VPC IP schema</a>. If you skip the private subnet objects, the destination address group will be empty and the firewall will deny the health probes.</p>
+    </div>
 
     <h4>Rule 2: APP1-ALB-WEB (per-app inbound)</h4>
     <table>
@@ -3604,6 +3711,33 @@ global_tags = {
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
+    <div class="callout callout-danger">
+      <div class="callout-title">Overlay Routing: Split into per-AZ groups for different <code>tplname</code></div>
+      <p>The <code>bootstrap_options</code> block applies to <strong>all instances in a group</strong> &mdash; including <code>tplname</code>. In the <strong>overlay</strong> routing model, each AZ firewall needs a different template stack (with per-AZ gateway IPs). Since the Terraform module does not support per-instance bootstrap overrides, you must <strong>split the single <code>vmseries</code> group into one group per AZ</strong>:</p>
+      <div class="code-block">
+        <pre><code>vmseries = {
+  vmseries-az-a = {
+    instances = { "01" = { az = "us-east-2a" } }
+    bootstrap_options = {
+      # ... same options ...
+      tplname = "STK-AWS-COMBINED-AZ-A"
+    }
+    # ... interfaces, subinterfaces (identical in both groups) ...
+  }
+  vmseries-az-b = {
+    instances = { "02" = { az = "us-east-2b" } }
+    bootstrap_options = {
+      # ... same options ...
+      tplname = "STK-AWS-COMBINED-AZ-B"
+    }
+    # ... interfaces, subinterfaces (identical in both groups) ...
+  }
+}</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p><strong>Non-overlay</strong> does not need this split &mdash; all firewalls can share one template stack (no per-AZ gateway variables), so a single group with both instances works fine.</p>
+    </div>
+
     <h4>Bootstrap Options</h4>
     <p>Fill in the values collected in <a href="#review-checkpoint">Phase 3</a>. The parameters differ between Panorama and SCM.</p>
 
@@ -3623,6 +3757,21 @@ global_tags = {
       dhcp-accept-server-domain   = "yes"
     }</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Bootstrap must match your Panorama template&rsquo;s routing engine</div>
+      <p>The <code>advance-routing:enable</code> flag in <code>plugin-op-commands</code> tells PAN-OS to boot with the <strong>Advanced Routing Engine (ARE)</strong>. If your Panorama template uses <code>network logical-router</code> (legacy routing), the firewall will boot in ARE mode but receive legacy routing config &mdash; the config push will fail silently and routing will not work.</p>
+      <table>
+        <tr><th>Your Panorama template uses&hellip;</th><th>Set in <code>plugin-op-commands</code></th></tr>
+        <tr><td><code>network advanced-routing</code> (ARE)</td><td><code>advance-routing:enable</code></td></tr>
+        <tr><td><code>network logical-router</code> (legacy)</td><td>Omit <code>advance-routing:enable</code> entirely</td></tr>
+      </table>
+      <p>Similarly, <code>aws-gwlb-overlay-routing</code> must match your routing model:</p>
+      <table>
+        <tr><th>Routing model</th><th>Set in <code>plugin-op-commands</code></th></tr>
+        <tr><td>Overlay (firewall owns egress NAT)</td><td><code>aws-gwlb-overlay-routing:enable</code></td></tr>
+        <tr><td>Non-Overlay (AWS NAT Gateway)</td><td><code>aws-gwlb-overlay-routing:disable</code></td></tr>
+      </table>
     </div>
     </div>
 
@@ -3918,11 +4067,23 @@ terraform plan -var-file=terraform.tfvars</code></pre>
       <ul>
         <li>SSH key pair exists in the target region</li>
         <li>AWS Marketplace subscription is accepted (Phase 1.7)</li>
-        <li>Panorama is reachable from the security VPC management subnet CIDR (Panorama path) or outbound internet access is available from the mgmt subnet (SCM path)</li>
+        <li>Panorama is reachable from the security VPC management subnet CIDR (Panorama path) or outbound internet access is available from the mgmt subnet (SCM path) &mdash; <strong>see the critical callout below</strong></li>
         <li>Bootstrap parameters (auth-key, dgname, tplname) are correct</li>
         <li><strong>AWS service quotas</strong> are sufficient &mdash; this deployment creates multiple VPCs, EIPs, and TGW attachments that may exceed default limits. See <a href="#troubleshooting">Troubleshooting: AWS Service Quota Limits</a></li>
         <li><strong>VPC CIDRs</strong> do not overlap with existing VPCs in the region. See <a href="#troubleshooting">Troubleshooting: VPC CIDR Conflicts</a></li>
       </ul>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Panorama must be reachable BEFORE you apply</div>
+      <p>The firewalls will attempt to register with Panorama on port <strong>3978</strong> as soon as they boot. If Panorama is unreachable, the firewalls will boot into a default empty config &mdash; no interface management profile, no zones, no policy. GWLB health checks will fail indefinitely because the firewall never receives the template config that enables HTTP health probes on <code>ethernet1/1</code>.</p>
+      <p><strong>If Panorama is on a separate VPC or on-prem network</strong>, verify that routing exists between the security VPC&rsquo;s management subnet and Panorama <em>before</em> running <code>terraform apply</code>. Common connectivity options:</p>
+      <ul>
+        <li><strong>TGW attachment</strong> &mdash; attach the Panorama VPC to the same Transit Gateway, or peer two TGWs</li>
+        <li><strong>VPC peering</strong> &mdash; direct peering between the security VPC and the Panorama VPC</li>
+        <li><strong>VPN / Direct Connect</strong> &mdash; if Panorama is on-prem, a VPN or DX attachment on the TGW</li>
+      </ul>
+      <p><strong>Verify connectivity:</strong> launch a test instance in the security VPC&rsquo;s management subnet and confirm <code>ping &lt;panorama-ip&gt;</code> succeeds. Also confirm the Panorama security group allows inbound TCP/3978 from the security VPC CIDR.</p>
+      <p><strong>Note on <code>mgmt-interface-swap</code>:</strong> with <code>mgmt-interface-swap = enable</code> in the bootstrap options, the management plane uses the ENI at device index 0 (the <strong>private</strong> subnet, not the mgmt subnet). Ensure the route to Panorama exists in the <strong>private</strong> subnet&rsquo;s route table, not just the mgmt subnet.</p>
     </div>
   </div>
 </div>
