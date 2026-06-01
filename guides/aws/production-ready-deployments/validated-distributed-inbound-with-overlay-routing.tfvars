@@ -51,8 +51,8 @@
 #   Placeholder       Example replacement   Scope
 #   ─────────────     ───────────────────    ─────────────────────────────
 #   <SEC_NET>         10.51                  Security VPC (/22, /28 subnets)
-#   <APP1_NET>        10.104                 App1 spoke VPC (/22, /28 subnets)
-#   <APP2_NET>        10.105                 App2 spoke VPC (/22, /28 subnets)
+#   <APP1_NET>        10.104                 App1 spoke VPC (/23, /28 subnets)
+#   <APP2_NET>        10.105                 App2 spoke VPC (/23, /28 subnets)
 #   <PANORAMA_NET>    10.251                 Panorama subnet (for SG rules)
 #
 # Quick-start example:
@@ -264,17 +264,17 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP
+            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/23", "<APP2_NET>.0.0/23"]  # CHANGE: admin IP
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP
+            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/23", "<APP2_NET>.0.0/23"]  # CHANGE: admin IP
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP
+            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/23", "<APP2_NET>.0.0/23"]  # CHANGE: admin IP
           }
         }
       }
@@ -368,7 +368,7 @@ vpcs = {
   # ── Spoke VPC 1 ──────────────────────────────────────────────────────────
   app1_vpc = {
     name  = "app1-spoke-vpc"
-    cidr  = "<APP1_NET>.0.0/22"        # CHANGE: spoke 1 VPC CIDR
+    cidr  = "<APP1_NET>.0.0/23"        # CHANGE: spoke 1 VPC CIDR
     nacls = {}
     security_groups = {
       app1_vm = {
@@ -382,22 +382,22 @@ vpcs = {
           ssh = {
             description = "Permit SSH from admin and spoke VPCs"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP
+            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/23", "<APP2_NET>.0.0/23"]  # CHANGE: admin IP
           }
           https = {
             description = "Permit HTTPS from admin and spoke VPCs"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP
+            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/23", "<APP2_NET>.0.0/23"]  # CHANGE: admin IP
           }
           http = {
             description = "Permit HTTP from admin and spoke VPCs"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP
+            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/23", "<APP2_NET>.0.0/23"]  # CHANGE: admin IP
           }
           icmp = {
             description = "Permit ICMP from spoke VPCs"
             type        = "ingress", from_port = "-1", to_port = "-1", protocol = "icmp"
-            cidr_blocks = ["<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]
+            cidr_blocks = ["<APP1_NET>.0.0/23", "<APP2_NET>.0.0/23"]
           }
         }
       }
@@ -423,7 +423,7 @@ vpcs = {
       }
     }
     subnets = {
-      # Spoke VPC uses /28 subnets within a /22 CIDR (matches security VPC pattern).
+      # Spoke VPC uses /28 subnets within a /23 CIDR.
       # AZ-A subnets in .0.x, AZ-B subnets in .1.x
       "<APP1_NET>.0.0/28"   = { az = "us-west-2a", subnet_group = "app1_vm" }      # CHANGE: AZ
       "<APP1_NET>.1.0/28"   = { az = "us-west-2b", subnet_group = "app1_vm" }      # CHANGE: AZ
@@ -451,7 +451,7 @@ vpcs = {
   # ── Spoke VPC 2 ──────────────────────────────────────────────────────────
   app2_vpc = {
     name  = "app2-spoke-vpc"
-    cidr  = "<APP2_NET>.0.0/22"        # CHANGE: spoke 2 VPC CIDR
+    cidr  = "<APP2_NET>.0.0/23"        # CHANGE: spoke 2 VPC CIDR
     nacls = {}
     security_groups = {
       app2_vm = {
@@ -465,22 +465,22 @@ vpcs = {
           ssh = {
             description = "Permit SSH from admin and spoke VPCs"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP
+            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/23", "<APP2_NET>.0.0/23"]  # CHANGE: admin IP
           }
           https = {
             description = "Permit HTTPS from admin and spoke VPCs"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP
+            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/23", "<APP2_NET>.0.0/23"]  # CHANGE: admin IP
           }
           http = {
             description = "Permit HTTP from admin and spoke VPCs"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP
+            cidr_blocks = ["<ADMIN_IP>/32", "<APP1_NET>.0.0/23", "<APP2_NET>.0.0/23"]  # CHANGE: admin IP
           }
           icmp = {
             description = "Permit ICMP from spoke VPCs"
             type        = "ingress", from_port = "-1", to_port = "-1", protocol = "icmp"
-            cidr_blocks = ["<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]
+            cidr_blocks = ["<APP1_NET>.0.0/23", "<APP2_NET>.0.0/23"]
           }
         }
       }
@@ -506,7 +506,7 @@ vpcs = {
       }
     }
     subnets = {
-      # Spoke VPC uses /28 subnets within a /22 CIDR (matches security VPC pattern).
+      # Spoke VPC uses /28 subnets within a /23 CIDR.
       # AZ-A subnets in .0.x, AZ-B subnets in .1.x
       "<APP2_NET>.0.0/28"   = { az = "us-west-2a", subnet_group = "app2_vm" }      # CHANGE: AZ
       "<APP2_NET>.1.0/28"   = { az = "us-west-2b", subnet_group = "app2_vm" }      # CHANGE: AZ
