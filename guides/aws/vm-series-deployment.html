@@ -2066,7 +2066,7 @@ set template-stack &lt;name&gt; settings default-vsys vsys1</code></pre>
       <tr><td>Source Address</td><td>App VPC CIDRs (<code>N-10.104.0.0-22</code>, <code>N-10.105.0.0-22</code>, etc.)</td></tr>
       <tr><td>Destination Zone</td><td><code>UNTRUST</code></td></tr>
       <tr><td>Destination Address</td><td><code>any</code></td></tr>
-      <tr><td>Application</td><td><code>apt-get</code>, <code>dns</code>, <code>icmp</code>, <code>ms-update</code>, <code>ping</code>, <code>ssl</code>, <code>traceroute</code>, <code>web-browsing</code></td></tr>
+      <tr><td>Application</td><td><code>apt-get</code>, <code>dns</code>, <code>icmp</code>, <code>ms-update</code>, <code>ping</code>, <code>ssl</code>, <code>traceroute</code>, <code>web-browsing</code>, <code>yum</code></td></tr>
       <tr><td>Service</td><td><code>any</code></td></tr>
       <tr><td>Action</td><td>Allow</td></tr>
       <tr><td>Profile Group</td><td><code>default</code> (same as Outbound)</td></tr>
@@ -3075,7 +3075,29 @@ set template-stack &lt;name&gt; settings default-vsys vsys1</code></pre>
       <tr><td>GWLB</td><td>1</td><td>Single load balancer fronting all firewalls</td></tr>
     </table>
 
-    <p><strong>Download:</strong> <a href="production-ready-deployments/combined_design.tfvars"><code>combined_design.tfvars</code></a></p>
+    <h4>Download</h4>
+    <p>Two routing models are available for this design. Both have been validated end-to-end (Panorama bootstrap, GWLB health, inbound/outbound/east-west traffic):</p>
+
+    <table>
+      <tr><th>Routing Model</th><th>Terraform tfvars</th><th>Panorama Config</th><th>Key Difference</th></tr>
+      <tr>
+        <td><strong>Non-Overlay</strong></td>
+        <td><a href="production-ready-deployments/combined_design.tfvars"><code>combined_design.tfvars</code></a></td>
+        <td><a href="production-ready-deployments/panorama-config-non-overlay.set"><code>panorama-config-non-overlay.set</code></a></td>
+        <td>AWS NAT Gateway handles egress source NAT. No EIP on firewall public interface. Single VM-Series group (all AZs share one template stack).</td>
+      </tr>
+      <tr>
+        <td><strong>Overlay</strong> (validated)</td>
+        <td><a href="production-ready-deployments/validated-distributed-inbound-with-overlay-routing.tfvars"><code>validated-distributed-inbound-with-overlay-routing.tfvars</code></a></td>
+        <td><a href="production-ready-deployments/validated-overlay-panorama-config.set"><code>validated-overlay-panorama-config.set</code></a></td>
+        <td>Firewall performs source NAT to its public interface (EIP required). Per-AZ VM-Series groups (each AZ gets its own template stack with unique gateway IPs). No NAT Gateway route on outbound GWLB endpoint subnet.</td>
+      </tr>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Which routing model?</div>
+      <p>Choose <strong>overlay</strong> when you need the firewall to see original source IPs on egress traffic and control source NAT at the firewall level. Choose <strong>non-overlay</strong> for simpler operations &mdash; AWS NAT Gateways handle egress NAT, fewer EIPs to manage, and a single template stack covers all AZs. Both models provide identical inbound and east-west inspection.</p>
+    </div>
 
   </div>
 </div>
@@ -4161,14 +4183,18 @@ terraform output
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>5.4 Verify Transit Gateway</span>
+    <span>5.4 Verify TGW &amp; Attachments</span>
   </div>
   <div class="collapsible-body">
-    <p>Navigate to <strong>VPC &gt; Transit Gateways</strong>.</p>
+    <p>Navigate to <strong>VPC &gt; Transit Gateways</strong>. Select your TGW and confirm:</p>
     <ol>
-      <li>Confirm TGW exists with ASN 64512 (or your custom ASN).</li>
-      <li>Click <strong>Transit Gateway Route Tables</strong> tab &mdash; verify two route tables: <code>from_security</code> and <code>from_spokes</code>.</li>
+      <li>ASN is 64512 (or your custom ASN).</li>
+      <li>State is <strong>available</strong>.</li>
+      <li>Note the <strong>Default association route table</strong> and <strong>Default propagation route table</strong> settings &mdash; these control automatic spoke onboarding (see the <a href="#tgw-default-association">scaling callout</a> in section 5.6).</li>
     </ol>
+
+    <p><em>Your TGW summary should look like this:</em></p>
+    <img src="screenshots/aws-console-tgw-summary.png" alt="AWS Console Transit Gateway detail showing TGW ID, ASN 64512, available state, and default association and propagation route table settings" loading="lazy">
 
     <p>Navigate to <strong>VPC &gt; Transit Gateway Attachments</strong>. Verify three attachments:</p>
     <table>
@@ -4178,17 +4204,14 @@ terraform output
       <tr><td>app2-spoke-vpc</td><td>app2-spoke-vpc</td><td>State: available</td></tr>
     </table>
 
-    <p>Navigate to <strong>VPC &gt; Transit Gateway Route Tables</strong>. Select each table and check:</p>
-    <ul>
-      <li><strong>from_spokes</strong> &gt; <strong>Routes</strong> tab: static <code>0.0.0.0/0</code> → security VPC attachment</li>
-      <li><strong>from_security</strong> &gt; <strong>Routes</strong> tab: propagated routes from each spoke VPC CIDR</li>
-      <li><strong>from_spokes</strong> &gt; <strong>Associations</strong> tab: both spoke attachments associated</li>
-      <li><strong>from_security</strong> &gt; <strong>Associations</strong> tab: security VPC attachment associated</li>
-    </ul>
+    <p><em>Your attachments list should show all three VPCs with the security VPC in appliance mode:</em></p>
+    <img src="screenshots/aws-console-tgw-attachments.png" alt="AWS Console Transit Gateway Attachments showing vmseries (security-vpc, appliance mode enabled), app1-spoke-vpc, and app2-spoke-vpc all in available state" loading="lazy">
 
     <div class="callout callout-danger">
       <div class="callout-title">Critical Check: Appliance Mode</div>
-      <p>Select the security VPC attachment and verify <strong>Appliance mode support</strong> shows <code>enable</code>. Without this, east-west and outbound traffic will fail with asymmetric routing.</p>
+      <p>Select the security VPC attachment and verify <strong>Appliance mode support</strong> shows <code>enable</code>. Without this, east-west and outbound traffic will fail with asymmetric routing &mdash; TGW may route request and reply traffic through different AZs, bypassing the stateful firewall that saw the original session.</p>
+      <p><em>The attachment detail should confirm appliance mode is enabled:</em></p>
+      <img src="screenshots/aws-console-tgw-attachment-appliance-mode.png" alt="AWS Console Transit Gateway Attachment detail for security VPC showing Appliance mode support set to enable" loading="lazy">
     </div>
   </div>
 </div>
@@ -4196,7 +4219,68 @@ terraform output
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>5.5 Verify Gateway Load Balancer</span>
+    <span>5.5 Verify TGW Route Table &mdash; from_spokes</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Navigate to <strong>VPC &gt; Transit Gateway Route Tables</strong>. Select the <code>from_spokes</code> route table.</p>
+
+    <h4>Routes Tab</h4>
+    <p>Click the <strong>Routes</strong> tab. Confirm a static route for <code>0.0.0.0/0</code> pointing to the security VPC attachment. This is the rule that forces <strong>all</strong> spoke traffic &mdash; outbound, east-west, and on-prem-bound &mdash; through the security VPC for inspection.</p>
+
+    <p><em>The from_spokes routes tab should show the default route pointing to the security VPC:</em></p>
+    <img src="screenshots/aws-console-tgw-from-spokes-routes.png" alt="AWS Console Transit Gateway Route Table from_spokes Routes tab showing static 0.0.0.0/0 route targeting the security VPC attachment" loading="lazy">
+
+    <h4>Associations Tab</h4>
+    <p>Click the <strong>Associations</strong> tab. Confirm both spoke VPC attachments are associated with this route table. Any attachment associated here has its traffic evaluated against the <code>from_spokes</code> routes above.</p>
+
+    <p><em>Both spoke VPC attachments should be associated:</em></p>
+    <img src="screenshots/aws-console-tgw-from-spokes-associations.png" alt="AWS Console Transit Gateway Route Table from_spokes Associations tab showing app1-spoke-vpc and app2-spoke-vpc attachments both associated" loading="lazy">
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Missing Association = Uninspected Traffic</div>
+      <p>If a spoke VPC attachment is <strong>not</strong> associated with <code>from_spokes</code>, its traffic will be evaluated against whichever route table it <em>is</em> associated with &mdash; potentially bypassing the security VPC entirely. Every spoke attachment must be associated with <code>from_spokes</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.6 Verify TGW Route Table &mdash; from_security</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Navigate to <strong>VPC &gt; Transit Gateway Route Tables</strong>. Select the <code>from_security</code> route table.</p>
+
+    <h4>Routes Tab</h4>
+    <p>Click the <strong>Routes</strong> tab. Confirm propagated routes for each spoke VPC CIDR. These are the return paths &mdash; after the firewall inspects traffic and sends it back through the TGW, these routes tell the TGW which attachment to forward to based on the destination CIDR.</p>
+
+    <p><em>The from_security routes tab should show propagated routes for each spoke VPC CIDR:</em></p>
+    <img src="screenshots/aws-console-tgw-from-security-routes.png" alt="AWS Console Transit Gateway Route Table from_security Routes tab showing propagated routes for app1-spoke-vpc and app2-spoke-vpc CIDRs" loading="lazy">
+
+    <h4>Associations Tab</h4>
+    <p>Click the <strong>Associations</strong> tab. Confirm the security VPC attachment is associated with this route table. This ensures that traffic <em>from</em> the security VPC (post-inspection) is evaluated against the <code>from_security</code> routes.</p>
+
+    <p><em>The security VPC attachment should be associated:</em></p>
+    <img src="screenshots/aws-console-tgw-from-security-associations.png" alt="AWS Console Transit Gateway Route Table from_security Associations tab showing security VPC attachment associated" loading="lazy">
+
+    <h4>Propagations Tab</h4>
+    <p>Click the <strong>Propagations</strong> tab. Confirm both spoke VPC attachments are propagating into this route table. Propagation is the mechanism that automatically populates the routes above &mdash; each spoke VPC attachment advertises its CIDR into <code>from_security</code> so the TGW learns the return path without static route entries.</p>
+
+    <p><em>Both spoke VPC attachments should be propagating:</em></p>
+    <img src="screenshots/aws-console-tgw-from-security-propagations.png" alt="AWS Console Transit Gateway Route Table from_security Propagations tab showing app1-spoke-vpc and app2-spoke-vpc attachments both propagating" loading="lazy">
+
+    <div class="callout callout-note" id="tgw-default-association">
+      <div class="callout-title">Scaling with Default Association &amp; Propagation</div>
+      <p>If you set <code>from_spokes</code> as the TGW&rsquo;s <strong>default association route table</strong> and <code>from_security</code> as the <strong>default propagation route table</strong>, every new VPC attachment is automatically associated with <code>from_spokes</code> (sending its traffic to the security VPC for inspection) and its CIDR is automatically propagated into <code>from_security</code> (giving the firewall a return path). No manual route table changes needed &mdash; attach a new spoke VPC and it is immediately inspected.</p>
+      <p>This is the recommended pattern for environments that add spoke VPCs frequently. The Terraform modules handle this automatically via the <code>transit_gateway_route_table</code> settings, but understanding the underlying TGW behavior helps when troubleshooting or onboarding VPCs outside of Terraform. See <a href="#spoke-onboarding">section 6.3: Onboarding Additional Spoke VPCs</a> for the full onboarding workflow.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.7 Verify Gateway Load Balancer</span>
   </div>
   <div class="collapsible-body">
     <p>Navigate to <strong>EC2 &gt; Load Balancers</strong>. Select the GWLB (type: Gateway).</p>
@@ -4230,7 +4314,7 @@ terraform output
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>5.6 Verify VM-Series Instances</span>
+    <span>5.8 Verify VM-Series Instances</span>
   </div>
   <div class="collapsible-body">
     <p>Navigate to <strong>EC2 &gt; Instances</strong>. Filter by name prefix to find your VM-Series instances.</p>
@@ -4333,10 +4417,10 @@ https://&lt;management-eip&gt;</code></pre>
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>6.3 Onboarding Additional Spoke VPCs</span>
+    <span id="spoke-onboarding">6.3 Onboarding Additional Spoke VPCs</span>
   </div>
   <div class="collapsible-body">
-    <p>To add new spoke VPCs to the inspected architecture, add entries to the Terraform configuration:</p>
+    <p>To add new spoke VPCs to the inspected architecture, add entries to the Terraform configuration. If you configured <a href="#tgw-default-association">default association and propagation</a> on the TGW, the route table wiring happens automatically &mdash; the steps below cover what Terraform needs.</p>
     <ol>
       <li><strong>Add a VPC block</strong> in the <code>vpcs</code> variable with subnets, security groups, and routes matching the app1/app2 pattern.</li>
       <li><strong>Add a TGW attachment</strong> in <code>tgw_attachments</code> associated with <code>from_spoke_vpc</code> and propagating to <code>from_security_vpc</code>.</li>
@@ -4400,6 +4484,151 @@ debug logview component bts_details</code></pre>
     <li>GWLB target group shows all firewalls as healthy</li>
     <li>Test outbound traffic from a spoke VPC instance &mdash; traffic logs appear on the firewall</li>
   </ul>
+</div>
+
+<!-- ── End-to-End Traffic Validation ────────────────────────── -->
+
+<h3>End-to-End Traffic Validation</h3>
+
+<p>With the firewalls registered and the GWLB healthy, validate that traffic actually flows through the inspection path. These three tests cover <strong>inbound</strong>, <strong>outbound</strong>, and <strong>east-west</strong> &mdash; the three traffic directions the architecture handles.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.1 Inbound Traffic Test (HTTP via ALB)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Install a web server on a spoke VM so the ALB health checks pass, then hit the ALB from your browser or CLI to prove inbound traffic is inspected by the firewalls.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">ALB security group must allow your source IP</div>
+      <p>The <code>app1_lb</code> security group restricts HTTP/HTTPS to the admin CIDRs defined in <code>terraform.tfvars</code>. If you can't reach the ALB, add your current public IP to the security group's inbound rules.</p>
+    </div>
+
+    <h4>Step 1: SSH to a spoke VM via the NLB</h4>
+    <div class="code-block">
+      <pre><code># SSH through the NLB (port 22 is forwarded to spoke VMs)
+ssh -i ~/.ssh/your-key.pem ec2-user@&lt;app1-nlb-dns&gt;
+
+# Example:
+# ssh -i ~/.ssh/SJOLLY-SME-ACCT.pem ec2-user@sj-cld-app1-nlb-4b5a1bc461a1f439.elb.us-west-2.amazonaws.com</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Step 2: Install and start Apache</h4>
+    <div class="code-block">
+      <pre><code># Install Apache (Amazon Linux 2)
+sudo yum install -y httpd
+sudo systemctl start httpd
+sudo systemctl enable httpd
+
+# Create a test page
+echo "App1 OK - $(hostname)" | sudo tee /var/www/html/index.html</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Step 3: Test from your local machine</h4>
+    <div class="code-block">
+      <pre><code># Hit the ALB (replace with your ALB DNS from terraform output)
+curl http://&lt;app1-alb-dns&gt;/
+
+# Expected output: "App1 OK - ip-10-104-0-7.us-west-2.compute.internal"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <ul>
+        <li><code>curl</code> returns <em>"App1 OK"</em> with the spoke VM hostname</li>
+        <li><strong>Panorama &gt; Monitor &gt; Logs &gt; Traffic</strong> &mdash; look for the <code>APP1-ALB-WEB</code> rule hit with destination in the <code>10.104.x.x</code> subnet. The source will be the ALB's private IP (in the <code>app1_lb</code> subnet), not your public IP &mdash; the ALB terminates the connection.</li>
+      </ul>
+    </div>
+
+    <p>Repeat on app2 if desired: SSH via the app2 NLB, install Apache, test via the app2 ALB.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.2 Outbound Traffic Test</span>
+  </div>
+  <div class="collapsible-body">
+    <p>From the spoke VM SSH session, generate outbound internet traffic and confirm the firewall inspects it.</p>
+
+    <div class="code-block">
+      <pre><code># From the spoke VM (still SSH'd in from step 8.1):
+
+# Test outbound internet access — returns your NAT Gateway's public IP
+curl -s https://checkip.amazonaws.com
+
+# Test DNS resolution + HTTPS
+curl -s -o /dev/null -w "%{http_code}" https://www.paloaltonetworks.com</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <ul>
+        <li><code>checkip.amazonaws.com</code> returns a public IP address (this is the NAT Gateway's EIP)</li>
+        <li><code>paloaltonetworks.com</code> returns HTTP <code>200</code></li>
+        <li><strong>Panorama &gt; Monitor &gt; Logs &gt; Traffic</strong> &mdash; look for the <code>AWS-OUTBOUND</code> rule hit with source in <code>10.104.x.x</code> (app1 subnet) and destination outside RFC 1918</li>
+      </ul>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Traffic path</div>
+      <p>Outbound: Spoke VM &rarr; TGW (<code>from_spoke_vpc</code> route table, <code>0.0.0.0/0</code> &rarr; security VPC) &rarr; TGW attachment subnet &rarr; outbound GWLB endpoint &rarr; VM-Series (inspection, <code>AWS-OUTBOUND</code> rule) &rarr; GWLB endpoint return &rarr; NAT Gateway &rarr; Internet. The firewall sees the spoke's private IP as source and the internet destination as destination.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.3 East-West Traffic Test (Spoke-to-Spoke)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Test traffic between spoke VPCs. This proves the TGW east-west path routes through the firewall for inspection.</p>
+
+    <h4>Option A: Ping</h4>
+    <div class="code-block">
+      <pre><code># From the app1 VM (still SSH'd in), ping an app2 VM private IP:
+ping -c 3 &lt;app2-vm-private-ip&gt;
+
+# Example (get the IP from terraform output or AWS console):
+# ping -c 3 10.105.0.122</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Option B: SSH (requires key forwarding)</h4>
+    <div class="code-block">
+      <pre><code># SSH from your machine with agent forwarding enabled:
+ssh -A -i ~/.ssh/your-key.pem ec2-user@&lt;app1-nlb-dns&gt;
+
+# Then from the app1 VM, SSH to app2:
+ssh ec2-user@&lt;app2-vm-private-ip&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <ul>
+        <li>Ping succeeds or SSH connects to the app2 VM</li>
+        <li><strong>Panorama &gt; Monitor &gt; Logs &gt; Traffic</strong> &mdash; look for the <code>AWS-EAST-WEST</code> rule hit with source in <code>10.104.x.x</code> and destination in <code>10.105.x.x</code></li>
+      </ul>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Traffic path</div>
+      <p>East-west: App1 VM &rarr; TGW (<code>from_spoke_vpc</code>, <code>0.0.0.0/0</code> &rarr; security VPC) &rarr; TGW attachment subnet &rarr; east-west GWLB endpoint &rarr; VM-Series (inspection, <code>AWS-EAST-WEST</code> rule) &rarr; GWLB endpoint return &rarr; TGW (<code>from_security_vpc</code>, <code>10.105.0.0/16</code> propagated from app2) &rarr; App2 VM.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Security groups must allow cross-spoke traffic</div>
+      <p>Both <code>app1_vm</code> and <code>app2_vm</code> security groups must allow SSH/ICMP from the other spoke's CIDR. The reference <code>terraform.tfvars</code> includes <code>10.104.0.0/16</code> and <code>10.105.0.0/16</code> in both security groups &mdash; verify these are present if you customized the SGs.</p>
+    </div>
+  </div>
 </div>
 
 <!-- ── Troubleshooting ───────────────────────────────────────── -->
