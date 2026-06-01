@@ -44,12 +44,45 @@
 #   Placeholder       Example replacement   Scope
 #   ─────────────     ───────────────────    ─────────────────────────────
 #   <SEC_NET>         10.51                  Security VPC (/22, /28 subnets)
-#   <APP1_NET>        10.104                 App1 spoke VPC (/20, /24 subnets)
-#   <APP2_NET>        10.105                 App2 spoke VPC (/20, /24 subnets)
+#   <APP1_NET>        10.104                 App1 spoke VPC (/22, /28 subnets)
+#   <APP2_NET>        10.105                 App2 spoke VPC (/22, /28 subnets)
 #   <PANORAMA_NET>    10.255                 Panorama VPC route target
 #
-# Quick replace (sed example):
-#   sed -i 's/<SEC_NET>/10.51/g; s/<APP1_NET>/10.104/g; s/<APP2_NET>/10.105/g; s/<PANORAMA_NET>/10.255/g' combined_design.tfvars
+# Quick-start example:
+#
+#   # 1. Copy the template into your Terraform working directory
+#   cp combined_design.tfvars terraform.tfvars
+#
+#   # 2. Replace network placeholders with your actual IP plan
+#   sed -i '' \
+#     's/<SEC_NET>/10.51/g;
+#      s/<APP1_NET>/10.104/g;
+#      s/<APP2_NET>/10.105/g;
+#      s/<PANORAMA_NET>/10.255/g;
+#      s/<PANORAMA_SUBNET>/10.255.2.0/g;
+#      s/<ADMIN_SOURCE_IP>/203.0.113.10/g' terraform.tfvars
+#
+#   # 3. Replace general settings
+#   sed -i '' \
+#     's/us-west-2/us-east-1/g;
+#      s/my-ssh-key/your-key-pair/g;
+#      s/prod-combined-/acme-fw-/g;
+#      s/network-team/your-team/g' terraform.tfvars
+#
+#   # 4. Replace bootstrap parameters (Panorama example)
+#   sed -i '' \
+#     's/<PANORAMA_IP>/10.255.2.51/g;
+#      s/<DEVICE_GROUP>/DG-AWS-COMBINED/g;
+#      s/<TEMPLATE_STACK>/STK-AWS-COMBINED/g;
+#      s/<AUTH_KEY>/YOUR_AUTH_KEY_HERE/g' terraform.tfvars
+#
+#   # 5. Update AZ names if not us-west-2
+#   #    us-east-1a/b/c instead of us-west-2a/b/c
+#
+#   # 6. Review, init, plan, apply
+#   terraform init
+#   terraform plan -out=plan.tfplan
+#   terraform apply "plan.tfplan"
 #
 # -----------------------------------------------------------------------------
 # DEPLOYMENT CHECKLIST — Update these before running terraform plan
@@ -70,7 +103,7 @@
 #    [ ] NAT Gateway AZ names — Must match the AZs used in natgw subnets
 #
 # 3. NETWORKING — Spoke VPCs
-#    [ ] Spoke VPC CIDRs     — Size per workload needs (/20 = 4096 IPs per spoke)
+#    [ ] Spoke VPC CIDRs     — Size per workload needs (/22 = 1024 IPs per spoke)
 #    [ ] Spoke subnet CIDRs  — Must fall within their VPC CIDR
 #    [ ] Spoke AZs           — Must match the target region
 #
@@ -234,17 +267,17 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP + spoke CIDRs
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP + spoke CIDRs
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP + spoke CIDRs
           }
         }
       }
@@ -369,7 +402,7 @@ vpcs = {
   }
   app1_vpc = {
     name  = "app1-spoke-vpc"
-    cidr  = "<APP1_NET>.0.0/20"  # CHANGE: spoke 1 VPC CIDR
+    cidr  = "<APP1_NET>.0.0/22"  # CHANGE: spoke 1 VPC CIDR
     nacls = {}
     security_groups = {
       app1_vm = {
@@ -383,17 +416,17 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP + spoke CIDRs
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP + spoke CIDRs
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP + spoke CIDRs
           }
         }
       }
@@ -419,13 +452,15 @@ vpcs = {
       }
     }
     subnets = {
+      # Spoke VPC uses /28 subnets within a /22 CIDR (matches security VPC pattern).
+      # AZ-A subnets in .0.x, AZ-B subnets in .1.x
       # CHANGE: CIDRs and AZs to match your region and IP plan
-      "<APP1_NET>.0.0/24" = { az = "us-west-2a", subnet_group = "app1_vm" }
-      "<APP1_NET>.1.0/24" = { az = "us-west-2b", subnet_group = "app1_vm" }
-      "<APP1_NET>.2.0/24" = { az = "us-west-2a", subnet_group = "app1_lb" }
-      "<APP1_NET>.3.0/24" = { az = "us-west-2b", subnet_group = "app1_lb" }
-      "<APP1_NET>.4.0/24" = { az = "us-west-2a", subnet_group = "app1_gwlbe" }
-      "<APP1_NET>.5.0/24" = { az = "us-west-2b", subnet_group = "app1_gwlbe" }
+      "<APP1_NET>.0.0/28"   = { az = "us-west-2a", subnet_group = "app1_vm" }
+      "<APP1_NET>.1.0/28"   = { az = "us-west-2b", subnet_group = "app1_vm" }
+      "<APP1_NET>.0.16/28"  = { az = "us-west-2a", subnet_group = "app1_lb" }
+      "<APP1_NET>.1.16/28"  = { az = "us-west-2b", subnet_group = "app1_lb" }
+      "<APP1_NET>.0.32/28"  = { az = "us-west-2a", subnet_group = "app1_gwlbe" }
+      "<APP1_NET>.1.32/28"  = { az = "us-west-2b", subnet_group = "app1_gwlbe" }
     }
     routes = {
       vm_default = {
@@ -453,7 +488,7 @@ vpcs = {
   }
   app2_vpc = {
     name  = "app2-spoke-vpc"
-    cidr  = "<APP2_NET>.0.0/20"  # CHANGE: spoke 2 VPC CIDR
+    cidr  = "<APP2_NET>.0.0/22"  # CHANGE: spoke 2 VPC CIDR
     nacls = {}
     security_groups = {
       app2_vm = {
@@ -467,17 +502,17 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP + spoke CIDRs
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP + spoke CIDRs
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/22", "<APP2_NET>.0.0/22"]  # CHANGE: admin IP + spoke CIDRs
           }
         }
       }
@@ -503,13 +538,15 @@ vpcs = {
       }
     }
     subnets = {
+      # Spoke VPC uses /28 subnets within a /22 CIDR (matches security VPC pattern).
+      # AZ-A subnets in .0.x, AZ-B subnets in .1.x
       # CHANGE: CIDRs and AZs to match your region and IP plan
-      "<APP2_NET>.0.0/24" = { az = "us-west-2a", subnet_group = "app2_vm" }
-      "<APP2_NET>.1.0/24" = { az = "us-west-2b", subnet_group = "app2_vm" }
-      "<APP2_NET>.2.0/24" = { az = "us-west-2a", subnet_group = "app2_lb" }
-      "<APP2_NET>.3.0/24" = { az = "us-west-2b", subnet_group = "app2_lb" }
-      "<APP2_NET>.4.0/24" = { az = "us-west-2a", subnet_group = "app2_gwlbe" }
-      "<APP2_NET>.5.0/24" = { az = "us-west-2b", subnet_group = "app2_gwlbe" }
+      "<APP2_NET>.0.0/28"   = { az = "us-west-2a", subnet_group = "app2_vm" }
+      "<APP2_NET>.1.0/28"   = { az = "us-west-2b", subnet_group = "app2_vm" }
+      "<APP2_NET>.0.16/28"  = { az = "us-west-2a", subnet_group = "app2_lb" }
+      "<APP2_NET>.1.16/28"  = { az = "us-west-2b", subnet_group = "app2_lb" }
+      "<APP2_NET>.0.32/28"  = { az = "us-west-2a", subnet_group = "app2_gwlbe" }
+      "<APP2_NET>.1.32/28"  = { az = "us-west-2b", subnet_group = "app2_gwlbe" }
     }
     routes = {
       vm_default = {
