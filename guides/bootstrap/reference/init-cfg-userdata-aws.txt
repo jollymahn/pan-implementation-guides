@@ -1,0 +1,82 @@
+# ──────────────────────────────────────────────────────────────────────
+# AWS VM-Series Init-Cfg User Data Examples
+# ──────────────────────────────────────────────────────────────────────
+# Passed as EC2 user data (or Terraform bootstrap_options map).
+# Format: semicolon-delimited key=value pairs on a single line.
+# No spaces between key and value. No trailing semicolon.
+#
+# AWS-specific notes:
+#   - mgmt-interface-swap=enable is REQUIRED for GWLB deployments
+#     (swaps MGT ↔ ethernet1/1 so dataplane gets the first ENI)
+#   - aws-gwlb-inspect:enable and aws-gwlb-overlay-routing:enable
+#     are required when using AWS Gateway Load Balancer
+#   - Management IP is always DHCP-assigned by the VPC subnet;
+#     static ip-address/netmask values are ignored
+# ──────────────────────────────────────────────────────────────────────
+
+
+# ======================================================================
+# METHOD 1 — Panorama Licensing Plugin (Preferred for production)
+# ======================================================================
+# Uses auth-key from the Panorama licensing plugin (not vm-auth-key).
+# Firewalls are licensed automatically via Panorama; supports auto-scale
+# with license reclamation.
+#
+# Prerequisites:
+#   - Panorama licensing plugin configured with a deployment profile
+#   - auth-key generated from the licensing plugin
+#   - Device group and template stack pre-created on Panorama
+#   - Auto-registration PIN generated on the CSP
+
+type=dhcp-client;panorama-server=10.255.0.10;panorama-server-2=10.255.0.11;dgname=DG-AWS-PROD;tplname=STK-AWS-PROD;auth-key=_AQ__xxxxxxxxxxxxxxxxxxxxxxxxxxx;hostname=aws-fw;dns-primary=169.254.169.253;dns-secondary=1.1.1.1;vm-series-auto-registration-pin-id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;vm-series-auto-registration-pin-value=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;mgmt-interface-swap=enable;plugin-op-commands=panorama-licensing-mode-on,aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable;dhcp-send-hostname=yes;dhcp-send-client-id=yes;dhcp-accept-server-hostname=yes;dhcp-accept-server-domain=yes
+
+
+# ======================================================================
+# METHOD 2 — Simple Bootstrap (Quick deployments / lab / PoC)
+# ======================================================================
+# Uses vm-auth-key (generated on Panorama CLI) + authcodes for licensing.
+# Firewalls license directly to updates.paloaltonetworks.com.
+# Does NOT support automatic license reclamation for auto-scale.
+#
+# Prerequisites:
+#   - vm-auth-key generated on Panorama: `request bootstrap vm-auth-key generate lifetime 8760`
+#   - Auth code from your BYOL order (e.g., D1234567)
+#   - Device group and template stack pre-created on Panorama
+
+type=dhcp-client;panorama-server=10.255.0.10;panorama-server-2=10.255.0.11;dgname=DG-AWS-LAB;tplname=STK-AWS-LAB;vm-auth-key=xxxxxxxxxxxxxxxxxxxxxxxxxxx;authcodes=D1234567;hostname=aws-fw;dns-primary=169.254.169.253;dns-secondary=1.1.1.1;vm-series-auto-registration-pin-id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;vm-series-auto-registration-pin-value=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;mgmt-interface-swap=enable;plugin-op-commands=aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable;dhcp-send-hostname=yes;dhcp-send-client-id=yes;dhcp-accept-server-hostname=yes;dhcp-accept-server-domain=yes
+
+
+# ======================================================================
+# METHOD 3 — SCM Bootstrap (PAN-OS 11.0+)
+# ======================================================================
+# Connects to Strata Cloud Manager instead of on-prem Panorama.
+# panorama-server=cloud initiates TLS to the cloud management edge.
+# panorama-server-2 is ignored when panorama-server=cloud.
+
+type=dhcp-client;panorama-server=cloud;dgname=My_SCM_Folder;authcodes=D1234567;hostname=aws-fw;dns-primary=169.254.169.253;dns-secondary=1.1.1.1;vm-series-auto-registration-pin-id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;vm-series-auto-registration-pin-value=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;mgmt-interface-swap=enable;plugin-op-commands=aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable;dhcp-send-hostname=yes;dhcp-send-client-id=yes;dhcp-accept-server-hostname=yes;dhcp-accept-server-domain=yes
+
+
+# ======================================================================
+# Terraform bootstrap_options map equivalent (Method 1)
+# ======================================================================
+# When using the PAN SWFW Terraform modules, pass these as a map:
+#
+#   bootstrap_options = {
+#     type                                  = "dhcp-client"
+#     panorama-server                       = "10.255.0.10"
+#     panorama-server-2                     = "10.255.0.11"
+#     dgname                                = "DG-AWS-PROD"
+#     tplname                               = "STK-AWS-PROD"
+#     auth-key                              = "_AQ__xxxxxxxxxxxxxxxxxxxxxxxxxxx"
+#     hostname                              = "aws-fw"
+#     dns-primary                           = "169.254.169.253"
+#     dns-secondary                         = "1.1.1.1"
+#     vm-series-auto-registration-pin-id    = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+#     vm-series-auto-registration-pin-value = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+#     mgmt-interface-swap                   = "enable"
+#     plugin-op-commands                    = "panorama-licensing-mode-on,aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable"
+#     dhcp-send-hostname                    = "yes"
+#     dhcp-send-client-id                   = "yes"
+#     dhcp-accept-server-hostname           = "yes"
+#     dhcp-accept-server-domain             = "yes"
+#   }

@@ -1,0 +1,84 @@
+# ──────────────────────────────────────────────────────────────────────
+# Azure VM-Series Init-Cfg Custom Data Examples
+# ──────────────────────────────────────────────────────────────────────
+# Passed as VM custom data (base64-encoded by Azure automatically).
+# Format: semicolon-delimited key=value pairs.
+# No spaces between key and value.
+#
+# Azure-specific notes:
+#   - mgmt-interface-swap is NOT used on Azure (MGT is always the
+#     first interface; there is no interface swap)
+#   - No GWLB plugin commands (Azure uses Azure Gateway Load Balancer
+#     natively — no firewall-side plugin configuration needed)
+#   - Management IP is DHCP-assigned by the Azure subnet;
+#     static ip-address/netmask values are ignored
+#   - Custom data can be provided via ARM template, Azure CLI,
+#     Terraform, or the Azure Portal (Advanced tab)
+# ──────────────────────────────────────────────────────────────────────
+
+
+# ======================================================================
+# METHOD 1 — Panorama Licensing Plugin (Preferred for production)
+# ======================================================================
+# Uses auth-key from the Panorama licensing plugin.
+# Firewalls are licensed automatically via Panorama.
+#
+# Prerequisites:
+#   - Panorama licensing plugin configured with a deployment profile
+#   - auth-key generated from the licensing plugin
+#   - Device group and template stack pre-created on Panorama
+#   - Auto-registration PIN generated on the CSP
+#   - NSG on the management subnet allows outbound to Panorama
+
+type=dhcp-client;panorama-server=10.255.0.10;panorama-server-2=10.255.0.11;dgname=DG-AZURE-PROD;tplname=STK-AZURE-PROD;auth-key=_AQ__xxxxxxxxxxxxxxxxxxxxxxxxxxx;hostname=azure-fw;dns-primary=168.63.129.16;dns-secondary=1.1.1.1;vm-series-auto-registration-pin-id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;vm-series-auto-registration-pin-value=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;plugin-op-commands=panorama-licensing-mode-on;dhcp-send-hostname=yes;dhcp-send-client-id=yes;dhcp-accept-server-hostname=yes;dhcp-accept-server-domain=yes
+
+
+# ======================================================================
+# METHOD 2 — Simple Bootstrap (Quick deployments / lab / PoC)
+# ======================================================================
+# Uses vm-auth-key (generated on Panorama CLI) + authcodes for licensing.
+# Firewalls license directly to updates.paloaltonetworks.com.
+#
+# Prerequisites:
+#   - vm-auth-key generated on Panorama: `request bootstrap vm-auth-key generate lifetime 8760`
+#   - Auth code from your BYOL order (e.g., D1234567)
+#   - Device group and template stack pre-created on Panorama
+
+type=dhcp-client;panorama-server=10.255.0.10;panorama-server-2=10.255.0.11;dgname=DG-AZURE-LAB;tplname=STK-AZURE-LAB;vm-auth-key=xxxxxxxxxxxxxxxxxxxxxxxxxxx;authcodes=D1234567;hostname=azure-fw;dns-primary=168.63.129.16;dns-secondary=1.1.1.1;vm-series-auto-registration-pin-id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;vm-series-auto-registration-pin-value=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;dhcp-send-hostname=yes;dhcp-send-client-id=yes;dhcp-accept-server-hostname=yes;dhcp-accept-server-domain=yes
+
+
+# ======================================================================
+# METHOD 3 — SCM Bootstrap (PAN-OS 11.0+)
+# ======================================================================
+# Connects to Strata Cloud Manager instead of on-prem Panorama.
+# panorama-server=cloud initiates TLS to the cloud management edge.
+
+type=dhcp-client;panorama-server=cloud;dgname=My_SCM_Folder;authcodes=D1234567;hostname=azure-fw;dns-primary=168.63.129.16;dns-secondary=1.1.1.1;vm-series-auto-registration-pin-id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;vm-series-auto-registration-pin-value=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;plugin-op-commands=advance-routing:enable;dhcp-send-hostname=yes;dhcp-send-client-id=yes;dhcp-accept-server-hostname=yes;dhcp-accept-server-domain=yes
+
+
+# ======================================================================
+# Terraform custom_data equivalent (Method 1)
+# ======================================================================
+# When using the PAN SWFW Terraform modules for Azure, pass as a map:
+#
+#   bootstrap_options = {
+#     type                                  = "dhcp-client"
+#     panorama-server                       = "10.255.0.10"
+#     panorama-server-2                     = "10.255.0.11"
+#     dgname                                = "DG-AZURE-PROD"
+#     tplname                               = "STK-AZURE-PROD"
+#     auth-key                              = "_AQ__xxxxxxxxxxxxxxxxxxxxxxxxxxx"
+#     hostname                              = "azure-fw"
+#     dns-primary                           = "168.63.129.16"
+#     dns-secondary                         = "1.1.1.1"
+#     vm-series-auto-registration-pin-id    = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+#     vm-series-auto-registration-pin-value = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+#     plugin-op-commands                    = "panorama-licensing-mode-on"
+#     dhcp-send-hostname                    = "yes"
+#     dhcp-send-client-id                   = "yes"
+#     dhcp-accept-server-hostname           = "yes"
+#     dhcp-accept-server-domain             = "yes"
+#   }
+#
+# Azure CLI equivalent:
+#   az vm create ... --custom-data "type=dhcp-client;panorama-server=10.255.0.10;..."

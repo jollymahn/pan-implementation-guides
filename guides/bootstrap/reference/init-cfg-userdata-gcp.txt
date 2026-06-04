@@ -1,0 +1,111 @@
+# ──────────────────────────────────────────────────────────────────────
+# GCP VM-Series Init-Cfg Metadata Examples
+# ──────────────────────────────────────────────────────────────────────
+# Passed as instance metadata key-value pairs.
+# Format: semicolon-delimited key=value pairs in a single metadata
+#         value (key: "bootstrap-options" or individual keys).
+# No spaces between key and value.
+#
+# GCP-specific notes:
+#   - mgmt-interface-swap=enable is supported on GCP (swaps MGT ↔
+#     ethernet1/1 for use with internal load balancing)
+#   - No GWLB plugin commands (GWLB is AWS-only); GCP uses internal
+#     and external load balancers natively
+#   - Management IP is DHCP-assigned by the GCP subnet
+#   - Metadata can be set via gcloud CLI, Console, or Terraform
+#   - Service account needs roles/storage.objectViewer if using
+#     GCS bucket bootstrap
+# ──────────────────────────────────────────────────────────────────────
+
+
+# ======================================================================
+# METHOD 1 — Panorama Licensing Plugin (Preferred for production)
+# ======================================================================
+# Uses auth-key from the Panorama licensing plugin.
+# Firewalls are licensed automatically via Panorama.
+#
+# Prerequisites:
+#   - Panorama licensing plugin configured with a deployment profile
+#   - auth-key generated from the licensing plugin
+#   - Device group and template stack pre-created on Panorama
+#   - Auto-registration PIN generated on the CSP
+#   - VPC firewall rule allows egress to Panorama on TCP/3978, TCP/28443
+
+type=dhcp-client;panorama-server=10.255.0.10;panorama-server-2=10.255.0.11;dgname=DG-GCP-PROD;tplname=STK-GCP-PROD;auth-key=_AQ__xxxxxxxxxxxxxxxxxxxxxxxxxxx;hostname=gcp-fw;dns-primary=169.254.169.254;dns-secondary=8.8.8.8;vm-series-auto-registration-pin-id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;vm-series-auto-registration-pin-value=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;mgmt-interface-swap=enable;plugin-op-commands=panorama-licensing-mode-on;dhcp-send-hostname=yes;dhcp-send-client-id=yes;dhcp-accept-server-hostname=yes;dhcp-accept-server-domain=yes
+
+
+# ======================================================================
+# METHOD 2 — Simple Bootstrap (Quick deployments / lab / PoC)
+# ======================================================================
+# Uses vm-auth-key (generated on Panorama CLI) + authcodes for licensing.
+# Firewalls license directly to updates.paloaltonetworks.com.
+#
+# Prerequisites:
+#   - vm-auth-key generated on Panorama: `request bootstrap vm-auth-key generate lifetime 8760`
+#   - Auth code from your BYOL order (e.g., D1234567)
+#   - Device group and template stack pre-created on Panorama
+
+type=dhcp-client;panorama-server=10.255.0.10;panorama-server-2=10.255.0.11;dgname=DG-GCP-LAB;tplname=STK-GCP-LAB;vm-auth-key=xxxxxxxxxxxxxxxxxxxxxxxxxxx;authcodes=D1234567;hostname=gcp-fw;dns-primary=169.254.169.254;dns-secondary=8.8.8.8;vm-series-auto-registration-pin-id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;vm-series-auto-registration-pin-value=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;mgmt-interface-swap=enable;dhcp-send-hostname=yes;dhcp-send-client-id=yes;dhcp-accept-server-hostname=yes;dhcp-accept-server-domain=yes
+
+
+# ======================================================================
+# METHOD 3 — SCM Bootstrap (PAN-OS 11.0+)
+# ======================================================================
+# Connects to Strata Cloud Manager instead of on-prem Panorama.
+# panorama-server=cloud initiates TLS to the cloud management edge.
+
+type=dhcp-client;panorama-server=cloud;dgname=My_SCM_Folder;authcodes=D1234567;hostname=gcp-fw;dns-primary=169.254.169.254;dns-secondary=8.8.8.8;vm-series-auto-registration-pin-id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;vm-series-auto-registration-pin-value=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;mgmt-interface-swap=enable;plugin-op-commands=advance-routing:enable;dhcp-send-hostname=yes;dhcp-send-client-id=yes;dhcp-accept-server-hostname=yes;dhcp-accept-server-domain=yes
+
+
+# ======================================================================
+# gcloud CLI equivalent (Method 1)
+# ======================================================================
+# gcloud compute instances create vm-series-fw \
+#   --zone=us-central1-a \
+#   --machine-type=n2-standard-4 \
+#   --image-project=paloaltonetworksgcp-public \
+#   --image-family=vmseries-flex-byol-1121 \
+#   --metadata=serial-port-enable=TRUE,\
+# mgmt-interface-swap=enable,\
+# type=dhcp-client,\
+# panorama-server=10.255.0.10,\
+# panorama-server-2=10.255.0.11,\
+# dgname=DG-GCP-PROD,\
+# tplname=STK-GCP-PROD,\
+# auth-key=_AQ__xxxxxxxxxxxxxxxxxxxxxxxxxxx,\
+# hostname=gcp-fw,\
+# dns-primary=169.254.169.254,\
+# dns-secondary=8.8.8.8,\
+# vm-series-auto-registration-pin-id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx,\
+# vm-series-auto-registration-pin-value=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,\
+# plugin-op-commands=panorama-licensing-mode-on,\
+# dhcp-send-hostname=yes,\
+# dhcp-send-client-id=yes,\
+# dhcp-accept-server-hostname=yes,\
+# dhcp-accept-server-domain=yes
+
+
+# ======================================================================
+# Terraform metadata equivalent (Method 1)
+# ======================================================================
+# When using the PAN SWFW Terraform modules for GCP, pass as a map:
+#
+#   bootstrap_options = {
+#     type                                  = "dhcp-client"
+#     panorama-server                       = "10.255.0.10"
+#     panorama-server-2                     = "10.255.0.11"
+#     dgname                                = "DG-GCP-PROD"
+#     tplname                               = "STK-GCP-PROD"
+#     auth-key                              = "_AQ__xxxxxxxxxxxxxxxxxxxxxxxxxxx"
+#     hostname                              = "gcp-fw"
+#     dns-primary                           = "169.254.169.254"
+#     dns-secondary                         = "8.8.8.8"
+#     vm-series-auto-registration-pin-id    = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+#     vm-series-auto-registration-pin-value = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+#     mgmt-interface-swap                   = "enable"
+#     plugin-op-commands                    = "panorama-licensing-mode-on"
+#     dhcp-send-hostname                    = "yes"
+#     dhcp-send-client-id                   = "yes"
+#     dhcp-accept-server-hostname           = "yes"
+#     dhcp-accept-server-domain             = "yes"
+#   }
