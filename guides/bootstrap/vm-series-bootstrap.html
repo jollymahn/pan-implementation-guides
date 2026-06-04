@@ -833,7 +833,25 @@ gcloud compute firewall-rules create allow-mgmt-access \
     <span>Step 1.5: Launch Instance with Bootstrap Parameters</span>
   </div>
   <div class="collapsible-body">
-    <p>Pass the bootstrap parameters to the VM-Series instance at launch time. The delivery mechanism differs per cloud.</p>
+    <p>Pass the bootstrap parameters to the VM-Series instance at launch time. The delivery mechanism differs per cloud. Choose the management path that matches your environment.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Which path should I pick?</div>
+      <ul>
+        <li><strong>Panorama Path</strong> — On-premises or cloud-hosted Panorama appliance. Uses the licensing plugin <code>auth-key</code> from Step 1.4.</li>
+        <li><strong>SCM Path</strong> — Strata Cloud Manager (PAN-OS 11.0+). Sets <code>panorama-server=cloud</code> to connect via TLS.</li>
+      </ul>
+    </div>
+
+    <div class="mgmt-tabs" data-tab-group="method1-mgmt">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="m1-panorama">1A &middot; Panorama Path</button>
+        <button class="mgmt-tab" data-plane="m1-scm">1B &middot; SCM Path</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="m1-panorama">
+        <h4>Licensing Plugin</h4>
+        <p>Uses the <code>auth-key</code> from the Panorama licensing plugin (Step 1.4). Include <code>panorama-licensing-mode-on</code> in <code>plugin-op-commands</code>. Firewalls do not need direct internet access for licensing.</p>
 
     <!-- AWS -->
     <div class="collapsible">
@@ -967,7 +985,7 @@ gcloud compute firewall-rules create allow-mgmt-access \
 
         <div class="callout callout-note">
           <div class="callout-title">GCP-Specific Notes</div>
-          <p>GCP does not use <code>mgmt-interface-swap</code> or GWLB parameters. The <code>vmseries-bootstrap-gce-storagebucket</code> metadata key is only needed for Methods 3 and 4 (GCS-based bootstrap), not for Method 1.</p>
+          <p>GCP does not use GWLB parameters. The <code>vmseries-bootstrap-gce-storagebucket</code> metadata key is only needed for Methods 3 and 4 (GCS-based bootstrap), not for Method 1.</p>
         </div>
 
         <div class="callout callout-success">
@@ -976,6 +994,137 @@ gcloud compute firewall-rules create allow-mgmt-access \
         </div>
       </div>
     </div>
+
+      </div><!-- /mgmt-panel: Panorama Path -->
+
+      <div class="mgmt-panel" data-plane="m1-scm">
+        <h4>Strata Cloud Manager</h4>
+        <p>Uses <code>panorama-server=cloud</code> to connect to SCM via TLS. Set <code>dgname</code> to the SCM folder name. Requires PAN-OS 11.0+. No <code>tplname</code> or <code>auth-key</code> needed — use <code>authcodes</code> for licensing.</p>
+
+    <!-- AWS — SCM -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>AWS — User Data / Terraform bootstrap_options</span>
+      </div>
+      <div class="collapsible-body">
+        <h4>Terraform</h4>
+        <div class="code-block">
+          <pre><code>bootstrap_options = {
+  panorama-server                       = "cloud"
+  dgname                                = "YOUR-SCM-FOLDER"
+  authcodes                             = "YOUR-AUTHCODE"
+  hostname                              = "aws-fw"
+  dns-primary                           = "169.254.169.253"
+  dns-secondary                         = "1.1.1.1"
+  vm-series-auto-registration-pin-id    = "YOUR-PIN-ID"
+  vm-series-auto-registration-pin-value = "YOUR-PIN-VALUE"
+  mgmt-interface-swap                   = "enable"
+  plugin-op-commands                    = "aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable"
+  dhcp-send-hostname                    = "yes"
+  dhcp-send-client-id                   = "yes"
+  dhcp-accept-server-hostname           = "yes"
+  dhcp-accept-server-domain             = "yes"
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <h4>User Data One-Liner</h4>
+        <div class="code-block">
+          <pre><code>panorama-server=cloud;dgname=YOUR-SCM-FOLDER;authcodes=YOUR-AUTHCODE;hostname=aws-fw;dns-primary=169.254.169.253;dns-secondary=1.1.1.1;vm-series-auto-registration-pin-id=YOUR-PIN-ID;vm-series-auto-registration-pin-value=YOUR-PIN-VALUE;mgmt-interface-swap=enable;plugin-op-commands=aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable;dhcp-send-hostname=yes;dhcp-send-client-id=yes;dhcp-accept-server-hostname=yes;dhcp-accept-server-domain=yes</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The EC2 instance launches. After 5-10 minutes, the firewall appears in Strata Cloud Manager under the configured folder.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Azure — SCM -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Azure — Custom Data / Terraform</span>
+      </div>
+      <div class="collapsible-body">
+        <h4>Terraform</h4>
+        <div class="code-block">
+          <pre><code>custom_data = base64encode(join(";", [
+  "panorama-server=cloud",
+  "dgname=YOUR-SCM-FOLDER",
+  "authcodes=YOUR-AUTHCODE",
+  "hostname=azure-fw",
+  "dns-primary=168.63.129.16",
+  "dns-secondary=1.1.1.1",
+  "vm-series-auto-registration-pin-id=YOUR-PIN-ID",
+  "vm-series-auto-registration-pin-value=YOUR-PIN-VALUE",
+  "plugin-op-commands=advance-routing:enable",
+  "dhcp-send-hostname=yes",
+  "dhcp-send-client-id=yes",
+  "dhcp-accept-server-hostname=yes",
+  "dhcp-accept-server-domain=yes",
+]))</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <h4>Custom Data One-Liner</h4>
+        <div class="code-block">
+          <pre><code>panorama-server=cloud;dgname=YOUR-SCM-FOLDER;authcodes=YOUR-AUTHCODE;hostname=azure-fw;dns-primary=168.63.129.16;dns-secondary=1.1.1.1;vm-series-auto-registration-pin-id=YOUR-PIN-ID;vm-series-auto-registration-pin-value=YOUR-PIN-VALUE;plugin-op-commands=advance-routing:enable;dhcp-send-hostname=yes;dhcp-send-client-id=yes;dhcp-accept-server-hostname=yes;dhcp-accept-server-domain=yes</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Azure-Specific Notes</div>
+          <p>Azure does <strong>not</strong> use <code>mgmt-interface-swap</code>. The management interface is always the first interface.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The Azure VM reaches <code>Running</code> state. After 5-10 minutes, the firewall appears in Strata Cloud Manager under the configured folder.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- GCP — SCM -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>GCP — Instance Metadata / Terraform</span>
+      </div>
+      <div class="collapsible-body">
+        <h4>Terraform</h4>
+        <div class="code-block">
+          <pre><code>metadata = {
+  panorama-server                       = "cloud"
+  dgname                                = "YOUR-SCM-FOLDER"
+  authcodes                             = "YOUR-AUTHCODE"
+  hostname                              = "gcp-fw"
+  dns-primary                           = "169.254.169.254"
+  dns-secondary                         = "8.8.8.8"
+  vm-series-auto-registration-pin-id    = "YOUR-PIN-ID"
+  vm-series-auto-registration-pin-value = "YOUR-PIN-VALUE"
+  mgmt-interface-swap                   = "enable"
+  plugin-op-commands                    = "advance-routing:enable"
+  dhcp-send-hostname                    = "yes"
+  dhcp-send-client-id                   = "yes"
+  dhcp-accept-server-hostname           = "yes"
+  dhcp-accept-server-domain             = "yes"
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The GCP instance reaches <code>RUNNING</code> state. After 5-10 minutes, the firewall appears in Strata Cloud Manager under the configured folder.</p>
+        </div>
+      </div>
+    </div>
+
+      </div><!-- /mgmt-panel: SCM Path -->
+
+    </div><!-- /mgmt-tabs: method1-mgmt -->
 
   </div>
 </div>
@@ -1031,6 +1180,24 @@ gcloud compute firewall-rules create allow-mgmt-access \
   </div>
   <div class="collapsible-body">
     <p>Pass the <code>vm-auth-key</code> and <code>authcodes</code> directly to the instance. Key differences from Method 1: use <code>vm-auth-key</code> instead of <code>auth-key</code>, include <code>authcodes</code>, and do <strong>not</strong> include <code>panorama-licensing-mode-on</code> in <code>plugin-op-commands</code>.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Which path should I pick?</div>
+      <ul>
+        <li><strong>Panorama Path</strong> — On-premises or cloud-hosted Panorama appliance. Uses a manually generated <code>vm-auth-key</code> from Step 2.1.</li>
+        <li><strong>SCM Path</strong> — Strata Cloud Manager (PAN-OS 11.0+). Sets <code>panorama-server=cloud</code> to connect via TLS.</li>
+      </ul>
+    </div>
+
+    <div class="mgmt-tabs" data-tab-group="method2-mgmt">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="m2-panorama">2A &middot; Panorama Path</button>
+        <button class="mgmt-tab" data-plane="m2-scm">2B &middot; SCM Path</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="m2-panorama">
+        <h4>Simple Bootstrap</h4>
+        <p>Uses <code>vm-auth-key</code> from Step 2.1 and <code>authcodes</code> from the deployment profile. Firewalls license directly against <code>updates.paloaltonetworks.com</code> — outbound internet access is required.</p>
 
     <!-- AWS -->
     <div class="collapsible">
@@ -1135,6 +1302,126 @@ gcloud compute firewall-rules create allow-mgmt-access \
         </div>
       </div>
     </div>
+
+      </div><!-- /mgmt-panel: Panorama Path -->
+
+      <div class="mgmt-panel" data-plane="m2-scm">
+        <h4>Strata Cloud Manager</h4>
+        <p>Uses <code>panorama-server=cloud</code> to connect to SCM via TLS. Set <code>dgname</code> to the SCM folder name. Requires PAN-OS 11.0+. No <code>tplname</code> or <code>vm-auth-key</code> needed.</p>
+
+    <!-- AWS — SCM -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>AWS — User Data / Terraform</span>
+      </div>
+      <div class="collapsible-body">
+        <h4>Terraform</h4>
+        <div class="code-block">
+          <pre><code>bootstrap_options = {
+  panorama-server                       = "cloud"
+  dgname                                = "YOUR-SCM-FOLDER"
+  authcodes                             = "YOUR-AUTHCODE"
+  hostname                              = "aws-fw"
+  dns-primary                           = "169.254.169.253"
+  dns-secondary                         = "1.1.1.1"
+  vm-series-auto-registration-pin-id    = "YOUR-PIN-ID"
+  vm-series-auto-registration-pin-value = "YOUR-PIN-VALUE"
+  mgmt-interface-swap                   = "enable"
+  plugin-op-commands                    = "aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable"
+  dhcp-send-hostname                    = "yes"
+  dhcp-send-client-id                   = "yes"
+  dhcp-accept-server-hostname           = "yes"
+  dhcp-accept-server-domain             = "yes"
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <h4>User Data One-Liner</h4>
+        <div class="code-block">
+          <pre><code>panorama-server=cloud;dgname=YOUR-SCM-FOLDER;authcodes=YOUR-AUTHCODE;hostname=aws-fw;dns-primary=169.254.169.253;dns-secondary=1.1.1.1;vm-series-auto-registration-pin-id=YOUR-PIN-ID;vm-series-auto-registration-pin-value=YOUR-PIN-VALUE;mgmt-interface-swap=enable;plugin-op-commands=aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable;dhcp-send-hostname=yes;dhcp-send-client-id=yes;dhcp-accept-server-hostname=yes;dhcp-accept-server-domain=yes</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The EC2 instance launches. After 5-10 minutes, the firewall appears in Strata Cloud Manager.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Azure — SCM -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Azure — Custom Data / Terraform</span>
+      </div>
+      <div class="collapsible-body">
+        <h4>Terraform</h4>
+        <div class="code-block">
+          <pre><code>custom_data = base64encode(join(";", [
+  "panorama-server=cloud",
+  "dgname=YOUR-SCM-FOLDER",
+  "authcodes=YOUR-AUTHCODE",
+  "hostname=azure-fw",
+  "dns-primary=168.63.129.16",
+  "dns-secondary=1.1.1.1",
+  "vm-series-auto-registration-pin-id=YOUR-PIN-ID",
+  "vm-series-auto-registration-pin-value=YOUR-PIN-VALUE",
+  "plugin-op-commands=advance-routing:enable",
+  "dhcp-send-hostname=yes",
+  "dhcp-send-client-id=yes",
+  "dhcp-accept-server-hostname=yes",
+  "dhcp-accept-server-domain=yes",
+]))</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The Azure VM reaches <code>Running</code> state. After 5-10 minutes, the firewall appears in Strata Cloud Manager.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- GCP — SCM -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>GCP — Instance Metadata / Terraform</span>
+      </div>
+      <div class="collapsible-body">
+        <h4>Terraform</h4>
+        <div class="code-block">
+          <pre><code>metadata = {
+  panorama-server                       = "cloud"
+  dgname                                = "YOUR-SCM-FOLDER"
+  authcodes                             = "YOUR-AUTHCODE"
+  hostname                              = "gcp-fw"
+  dns-primary                           = "169.254.169.254"
+  dns-secondary                         = "8.8.8.8"
+  vm-series-auto-registration-pin-id    = "YOUR-PIN-ID"
+  vm-series-auto-registration-pin-value = "YOUR-PIN-VALUE"
+  mgmt-interface-swap                   = "enable"
+  plugin-op-commands                    = "advance-routing:enable"
+  dhcp-send-hostname                    = "yes"
+  dhcp-send-client-id                   = "yes"
+  dhcp-accept-server-hostname           = "yes"
+  dhcp-accept-server-domain             = "yes"
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The GCP instance reaches <code>RUNNING</code> state. After 5-10 minutes, the firewall appears in Strata Cloud Manager.</p>
+        </div>
+      </div>
+    </div>
+
+      </div><!-- /mgmt-panel: SCM Path -->
+
+    </div><!-- /mgmt-tabs: method2-mgmt -->
 
   </div>
 </div>
