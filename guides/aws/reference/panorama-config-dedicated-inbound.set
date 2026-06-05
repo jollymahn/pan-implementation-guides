@@ -1,0 +1,578 @@
+# Dedicated Inbound Design — Overlay Routing
+# Adapted from panorama-config-cld-overlay.set (combined design)
+#
+# Differences from combined:
+#   - No ethernet1/1.10 (generic INBOUND) — dedicated uses per-app subinterfaces only
+#   - No ethernet1/1.103 / APP3 — only 2 spoke apps
+#   - Spoke VPC CIDRs are /20 (10.104.0.0/20, 10.105.0.0/20)
+#   - Dedicated inbound VPC handles all internet-facing traffic
+#
+# Reuses existing templates:
+#   - CLD-1-TPL-AWS-REGIONAL-USW2
+#   - CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE
+#
+# Edit-before-paste checklist:
+#   - Gateway IPs: $INTERNAL-GW / $EXTERNAL-GW per AZ (template stack overrides)
+#   - Panorama IP: CLD-2-TPL panorama-server line (currently YOUR-PANORAMA-IP)
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 1: STRUCTURAL OBJECTS (create before template content)
+# ═══════════════════════════════════════════════════════════════
+
+# --- Device Group ---
+set device-group CLD-DG-AWS-DEDICATED description "AWS Dedicated Inbound Design Device Group"
+
+# --- Template Stacks (per-AZ, one template-add per line) ---
+set template-stack CLD-STK-AWS-DEDICATED-AZ-A templates CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED
+set template-stack CLD-STK-AWS-DEDICATED-AZ-A templates CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE
+set template-stack CLD-STK-AWS-DEDICATED-AZ-A templates CLD-1-TPL-AWS-REGIONAL-USW2
+set template-stack CLD-STK-AWS-DEDICATED-AZ-A settings default-vsys vsys1
+set template-stack CLD-STK-AWS-DEDICATED-AZ-B templates CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED
+set template-stack CLD-STK-AWS-DEDICATED-AZ-B templates CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE
+set template-stack CLD-STK-AWS-DEDICATED-AZ-B templates CLD-1-TPL-AWS-REGIONAL-USW2
+set template-stack CLD-STK-AWS-DEDICATED-AZ-B settings default-vsys vsys1
+
+# --- Per-AZ gateway variable overrides ---
+# Security VPC subnets are identical to combined design
+# AZ-A: private=10.51.0.64/28 → gw=10.51.0.65, public=10.51.0.96/28 → gw=10.51.0.97
+set template-stack CLD-STK-AWS-DEDICATED-AZ-A variable $INTERNAL-GW type ip-netmask 10.51.0.65
+set template-stack CLD-STK-AWS-DEDICATED-AZ-A variable $EXTERNAL-GW type ip-netmask 10.51.0.97
+# AZ-B: private=10.51.1.64/28 → gw=10.51.1.65, public=10.51.1.96/28 → gw=10.51.1.97
+set template-stack CLD-STK-AWS-DEDICATED-AZ-B variable $INTERNAL-GW type ip-netmask 10.51.1.65
+set template-stack CLD-STK-AWS-DEDICATED-AZ-B variable $EXTERNAL-GW type ip-netmask 10.51.1.97
+
+# --- Reference templates on DG (enables zone dropdowns in security rules) ---
+set device-group CLD-DG-AWS-DEDICATED reference-templates CLD-STK-AWS-DEDICATED-AZ-A
+set device-group CLD-DG-AWS-DEDICATED reference-templates CLD-STK-AWS-DEDICATED-AZ-B
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 2: SHARED OBJECTS (tags, addresses, profile groups)
+# Set commands are idempotent — safe to re-run if objects exist
+# ═══════════════════════════════════════════════════════════════
+
+set shared tag INBOUND color color1
+set shared tag INBOUND comments "INBOUND FLOW"
+set shared tag OUTBOUND color color13
+set shared tag OUTBOUND comments "OUTBOUND FLOW"
+set shared tag EASTWEST color color13
+set shared tag EASTWEST comments "EAST/WEST POLICY"
+set shared tag AWS-HEALTH-GWLB color color24
+set shared tag AWS-HEALTH-GWLB comments "HEALTH PROBES"
+set shared tag AWS-FW-DATA-PRIVATE color color24
+set shared tag AWS-FW-DATA-PRIVATE comments FW-Data-plane-interface
+set shared tag BASELINE color color15
+set shared tag BASELINE comments "BASELINE CONFIG ELEMENTS"
+set shared tag EXAMPLE color color6
+set shared tag EXAMPLE comments "EXAMPLE ELEMENT OR POLICY"
+set shared tag APP1 color color2
+set shared tag APP1 comments APP1-ELEMENTS
+set shared tag APP2 color color17
+set shared tag APP2 comments APP2-ELEMENTS
+set shared tag ALB color color9
+set shared tag ALB comments NLB-ELEMENTS
+set shared tag OVERLAY-NAT color color6
+set shared tag AWS-WEB-FARM-APP1 color color22
+set shared tag AWS-WEB-FARM-APP1 comments INTERNAL
+set shared tag PALO-GP-GATEWAY color color1
+set shared tag PALO-GP-GATEWAY comments PALO-GP-GATEWAY
+
+# --- Address objects ---
+set shared address H-YOUR-PUBLIC-IP description PALO-ALTO-CALIFORNIA-GP-GATEWAY
+set shared address H-YOUR-PUBLIC-IP ip-netmask YOUR-PUBLIC-IP
+set shared address H-YOUR-PUBLIC-IP tag [ INBOUND BASELINE PALO-GP-GATEWAY ]
+set shared address N-10.0.0.0-8 description RFC-1918-10
+set shared address N-10.0.0.0-8 ip-netmask 10.0.0.0/8
+set shared address N-10.0.0.0-8 tag BASELINE
+set shared address N-10.51.0.48-28 description GWLB-SUBNET-A
+set shared address N-10.51.0.48-28 ip-netmask 10.51.0.48/28
+set shared address N-10.51.0.48-28 tag AWS-HEALTH-GWLB
+set shared address N-10.51.0.64-28 description FIREWALL-PRIVATE-SUBNET-A
+set shared address N-10.51.0.64-28 ip-netmask 10.51.0.64/28
+set shared address N-10.51.0.64-28 tag AWS-FW-DATA-PRIVATE
+set shared address N-10.51.1.48-28 description GWLB-SUBNET-B
+set shared address N-10.51.1.48-28 ip-netmask 10.51.1.48/28
+set shared address N-10.51.1.48-28 tag AWS-HEALTH-GWLB
+set shared address N-10.51.1.64-28 description FIREWALL-PRIVATE-SUBNET-B
+set shared address N-10.51.1.64-28 ip-netmask 10.51.1.64/28
+set shared address N-10.51.1.64-28 tag AWS-FW-DATA-PRIVATE
+set shared address N-10.51.2.48-28 description GWLB-SUBNET-C
+set shared address N-10.51.2.48-28 ip-netmask 10.51.2.48/28
+set shared address N-10.51.2.48-28 tag AWS-HEALTH-GWLB
+# Spoke VPC addresses — /20 CIDRs for dedicated inbound design
+set shared address N-10.104.0.0-20 description APP1-VPC
+set shared address N-10.104.0.0-20 ip-netmask 10.104.0.0/20
+set shared address N-10.104.0.0-20 tag [ AWS-WEB-FARM-APP1 BASELINE ]
+set shared address N-10.105.0.0-20 description APP2-VPC
+set shared address N-10.105.0.0-20 ip-netmask 10.105.0.0/20
+set shared address N-10.105.0.0-20 tag [ APP2 BASELINE ]
+
+# Inbound VPC addresses — per-app LB subnets (dedicated inbound design)
+set shared address N-10.50.0.0-28 ip-netmask 10.50.0.0/28
+set shared address N-10.50.0.0-28 description "INBOUND VPC - APP1 LB SUBNET AZ-A"
+set shared address N-10.50.0.0-28 tag [ INBOUND APP1 BASELINE ]
+set shared address N-10.50.1.0-28 ip-netmask 10.50.1.0/28
+set shared address N-10.50.1.0-28 description "INBOUND VPC - APP1 LB SUBNET AZ-B"
+set shared address N-10.50.1.0-28 tag [ INBOUND APP1 BASELINE ]
+set shared address N-10.50.0.48-28 ip-netmask 10.50.0.48/28
+set shared address N-10.50.0.48-28 description "INBOUND VPC - APP2 LB SUBNET AZ-A"
+set shared address N-10.50.0.48-28 tag [ INBOUND APP2 BASELINE ]
+set shared address N-10.50.1.48-28 ip-netmask 10.50.1.48/28
+set shared address N-10.50.1.48-28 description "INBOUND VPC - APP2 LB SUBNET AZ-B"
+set shared address N-10.50.1.48-28 tag [ INBOUND APP2 BASELINE ]
+
+# --- Dynamic address groups ---
+set shared address-group GRP-AWS-GWLB-HEALTH-PROBE-SUBNETS dynamic filter "'AWS-HEALTH-GWLB'"
+set shared address-group GRP-AWS-GWLB-HEALTH-PROBE-SUBNETS tag AWS-HEALTH-GWLB
+set shared address-group GRP-FIREWALL-PRIVATE-SUBNETS dynamic filter "'AWS-FW-DATA-PRIVATE'"
+set shared address-group GRP-FIREWALL-PRIVATE-SUBNETS tag AWS-FW-DATA-PRIVATE
+
+# --- Security profile groups ---
+set shared profile-group Outbound spyware Outbound-AS
+set shared profile-group Outbound vulnerability Outbound-VP
+set shared profile-group Outbound url-filtering Outbound-URL
+set shared profile-group Outbound file-blocking Outbound-FB
+set shared profile-group Outbound wildfire-analysis Outbound-WF
+set shared profile-group Outbound virus Outbound-AV
+set shared profile-group Inbound spyware Inbound-AS
+set shared profile-group Inbound vulnerability Inbound-VP
+set shared profile-group Inbound file-blocking Inbound-FB
+set shared profile-group Inbound wildfire-analysis Inbound-WF
+set shared profile-group Inbound virus Inbound-AV
+set shared profile-group Internal spyware Internal-AS
+set shared profile-group Internal vulnerability Internal-VP
+set shared profile-group Internal file-blocking Internal-FB
+set shared profile-group Internal wildfire-analysis Internal-WF
+set shared profile-group Internal virus Internal-AV
+set shared profile-group Alert-Only spyware Alert-Only-AS
+set shared profile-group Alert-Only vulnerability Alert-Only-VP
+set shared profile-group Alert-Only url-filtering Alert-Only-URL
+set shared profile-group Alert-Only file-blocking Alert-Only-FB
+set shared profile-group Alert-Only wildfire-analysis Alert-Only-WF
+set shared profile-group Alert-Only virus Alert-Only-AV
+set shared profile-group default spyware Outbound-AS
+set shared profile-group default vulnerability Outbound-VP
+set shared profile-group default url-filtering Outbound-URL
+set shared profile-group default file-blocking Outbound-FB
+set shared profile-group default wildfire-analysis Outbound-WF
+set shared profile-group default virus Outbound-AV
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 3: REUSABLE TEMPLATES (only if not already on Panorama)
+# CLD-1 and CLD-2 are unchanged from combined — skip if present
+# ═══════════════════════════════════════════════════════════════
+
+set template CLD-1-TPL-AWS-REGIONAL-USW2 description US-WEST-REGIONAL-TEMPLATE-FOR-REGIONAL-TACACS-AND-LOG-COLLECTORS
+set template CLD-1-TPL-AWS-REGIONAL-USW2 settings default-vsys vsys1
+set template CLD-1-TPL-AWS-REGIONAL-USW2 config  vsys vsys1
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE description "COMMON SETTINGS DNS, NTP, BANNERS"
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  vsys vsys1
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system update-server updates.paloaltonetworks.com
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system dns-setting servers primary 169.254.169.253
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system dns-setting servers secondary 8.8.8.8
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system ntp-servers primary-ntp-server ntp-server-address 169.254.169.123
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system ntp-servers secondary-ntp-server ntp-server-address time.aws.com
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system type dhcp-client send-client-id no
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system type dhcp-client send-hostname yes
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system type dhcp-client accept-dhcp-hostname no
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system type dhcp-client accept-dhcp-domain no
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner motd-enable yes
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner message "!!!! DO NOT MAKE CHANGES ON THE LOCAL FIREWALL. MAKE ALL CHANGES ON PANORAMA. MAKE SURE YOU HAVE CAB APPROVAL PRIOR TO MAKING ANY CHANGES. !!!"
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner motd-color color1
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner severity warning
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner banner-header "!!! THIS IS A FIREWALL. !!!"
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner banner-header-color color1
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner banner-header-text-color color18
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system panorama local-panorama panorama-server YOUR-PANORAMA-IP
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system domain variable.com
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system timezone UTC
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system login-banner "!!!! GET OUT !!!!!"
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig setting ctd x-forwarded-for 2
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig setting wildfire report-benign-file yes
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig setting wildfire report-grayware-file yes
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings system match-list system filter "All Logs"
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings system match-list system send-to-panorama yes
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings config match-list config filter "All Logs"
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings config match-list config send-to-panorama yes
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings userid match-list user-id filter "All Logs"
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings userid match-list user-id send-to-panorama yes
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings iptag match-list ip-tag filter "All Logs"
+set template CLD-2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings iptag match-list ip-tag send-to-panorama yes
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 4: DEDICATED INBOUND TEMPLATE (network, zones, routing)
+# Uses single INBOUND subinterface (ethernet1/1.10) for all inbound apps
+# ═══════════════════════════════════════════════════════════════
+
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED description "Dedicated Inbound — interfaces, zones, routing (overlay)"
+
+# --- Interface management profiles ---
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network profiles interface-management-profile AWS-HEALTH-CHECKS https yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network profiles interface-management-profile AWS-HEALTH-CHECKS http yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network profiles interface-management-profile AWS-HEALTH-CHECKS ssh no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network profiles interface-management-profile AWS-HEALTH-CHECKS permitted-ip 10.0.0.0/8
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network profiles interface-management-profile PUBLIC-PING permitted-ip YOUR-PUBLIC-IP
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network profiles interface-management-profile PUBLIC-PING ping yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network profiles interface-management-profile INTERNAL-PING permitted-ip 10.0.0.0/8
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network profiles interface-management-profile INTERNAL-PING permitted-ip 172.16.0.0/12
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network profiles interface-management-profile INTERNAL-PING permitted-ip 192.168.0.0/16
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network profiles interface-management-profile INTERNAL-PING ping yes
+
+# --- ethernet1/1 (GWLB parent interface) ---
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 ndp-proxy enabled no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 sdwan-link-settings upstream-nat enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 sdwan-link-settings upstream-nat static-ip
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 sdwan-link-settings enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 sdwan-link-settings ipv6-enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 interface-management-profile AWS-HEALTH-CHECKS
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 lldp enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 dhcp-client create-default-route no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 dhcp-client send-hostname enable yes
+
+# --- ethernet1/1.20 (OUTBOUND subinterface) ---
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 tag 20
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 comment OUTBOUND
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 dhcp-client create-default-route no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 sdwan-link-settings enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 sdwan-link-settings upstream-nat enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 sdwan-link-settings ipv6-enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 ndp-proxy enabled no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 adjust-tcp-mss enable no
+
+# --- ethernet1/1.30 (EASTWEST subinterface) ---
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 tag 30
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 comment EASTWEST
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 dhcp-client create-default-route no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 ndp-proxy enabled no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 sdwan-link-settings enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 sdwan-link-settings upstream-nat enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 sdwan-link-settings ipv6-enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 adjust-tcp-mss enable no
+
+# --- ethernet1/1.10 (INBOUND subinterface — all inbound apps) ---
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 tag 10
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 comment INBOUND
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 dhcp-client create-default-route no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 sdwan-link-settings enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 sdwan-link-settings upstream-nat enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 sdwan-link-settings ipv6-enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 ndp-proxy enabled no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 adjust-tcp-mss enable no
+
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/1 comment GWLB
+
+# --- ethernet1/2 (UNTRUST / overlay public interface) ---
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/2 layer3 ndp-proxy enabled no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/2 layer3 sdwan-link-settings upstream-nat enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/2 layer3 sdwan-link-settings upstream-nat static-ip
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/2 layer3 sdwan-link-settings enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/2 layer3 sdwan-link-settings ipv6-enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/2 layer3 lldp enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/2 layer3 dhcp-client create-default-route no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network interface ethernet ethernet1/2 comment UNTRUST-OVERLAY
+
+# --- Logical Router (AWS-LR) ---
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default multicast pim ssm-address-space group-list None
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default multicast pim rpf-lookup-mode mrib-then-urib
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default multicast pim route-ageout-time 210
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default multicast pim enable yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default multicast igmp enable yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default multicast msdp enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default multicast enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ecmp symmetric-return no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ecmp strict-source-path no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ecmp enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ecmp max-path 2
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp med always-compare-med no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp med deterministic-med-comparison yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp graceful-restart stale-route-time 120
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp graceful-restart max-peer-restart-time 120
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp graceful-restart enable yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp graceful-restart local-restart-time 120
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp global-bfd profile None
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp install-route no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp ecmp-multi-as no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp enforce-first-as yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp fast-external-failover yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp default-local-preference 100
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp graceful-shutdown no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default bgp always-advertise-network-route yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 bfd profile None
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 nexthop ip-address $INTERNAL-GW
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 interface ethernet1/1
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 destination 10.0.0.0/8
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 metric 10
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 bfd profile None
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 nexthop ip-address $INTERNAL-GW
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 interface ethernet1/1
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 destination 172.16.0.0/12
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 metric 10
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 bfd profile None
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 nexthop ip-address $INTERNAL-GW
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 interface ethernet1/1
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 destination 192.168.0.0/16
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 metric 10
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT bfd profile None
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT nexthop ip-address $EXTERNAL-GW
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT interface ethernet1/2
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT destination 0.0.0.0/0
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT metric 10
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospfv3 global-bfd profile None
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospfv3 graceful-restart enable yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospfv3 graceful-restart grace-period 120
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospfv3 graceful-restart helper-enable yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospfv3 graceful-restart strict-LSA-checking yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospfv3 graceful-restart max-neighbor-restart-time 140
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospfv3 enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospfv3 disable-transit-traffic no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default rip global-bfd profile None
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default rip default-information-originate no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default rip enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospf global-bfd profile None
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospf graceful-restart enable yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospf graceful-restart grace-period 120
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospf graceful-restart helper-enable yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospf graceful-restart strict-LSA-checking yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospf graceful-restart max-neighbor-restart-time 140
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospf enable no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default ospf rfc1583 no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default admin-dists ospf-intra 110
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default admin-dists ospf-inter 110
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default admin-dists ospf-ext 110
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default admin-dists ospfv3-intra 110
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default admin-dists ospfv3-inter 110
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default admin-dists ospfv3-ext 110
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default admin-dists bgp-internal 200
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default admin-dists bgp-external 20
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default admin-dists bgp-local 20
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default admin-dists rip 120
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default admin-dists static 10
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default admin-dists static-ipv6 10
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  network logical-router AWS-LR vrf default interface [ ethernet1/1 ethernet1/1.10 ethernet1/1.20 ethernet1/1.30 ethernet1/2 ]
+
+# --- Device config ---
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig system type dhcp-client accept-dhcp-hostname yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig system type dhcp-client accept-dhcp-domain yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig system type dhcp-client send-hostname yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig system type dhcp-client send-client-id yes
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig system device-telemetry threat-prevention no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig system device-telemetry device-health-performance no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig system device-telemetry product-usage no
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig system permitted-ip 10.0.0.0/8
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig system permitted-ip 172.16.0.0/12
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig system permitted-ip 192.168.0.0/16
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig system permitted-ip YOUR-PUBLIC-IP
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig system permitted-ip YOUR-PUBLIC-IP-2
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig setting ctd x-forwarded-for 2
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  deviceconfig setting ctd strip-x-fwd-for yes
+
+# --- Zones ---
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  vsys vsys1 zone TRUST network layer3
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  vsys vsys1 zone INBOUND network layer3 ethernet1/1.10
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  vsys vsys1 zone OUTBOUND network layer3 ethernet1/1.20
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  vsys vsys1 zone EASTWEST network layer3 ethernet1/1.30
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  vsys vsys1 zone UNTRUST network layer3 ethernet1/2
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  vsys vsys1 zone GWLB network layer3 ethernet1/1
+
+# --- Interface imports ---
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED config  vsys vsys1 import network interface [ ethernet1/1 ethernet1/1.10 ethernet1/1.20 ethernet1/1.30 ethernet1/2 ]
+
+# --- Template variables (defaults, overridden in template stacks) ---
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED variable $EXTERNAL-GW type ip-netmask 1.1.1.1
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED variable $EXTERNAL-GW description PUBLIC-INTERFACE
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED variable $INTERNAL-GW type ip-netmask 2.2.2.2
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED variable $INTERNAL-GW description PRIVATE-INTERFACE
+set template CLD-4-TPL-AWS-GWLB-OVRLY-DEDICATED settings default-vsys vsys1
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 5: DEVICE GROUP POLICY (security + NAT rules)
+# Uses /20 address objects and dedicated inbound zones
+# ═══════════════════════════════════════════════════════════════
+
+# --- GWLB Health Probe rule ---
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE target negate no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE to GWLB
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE from GWLB
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE source-user any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE category any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE application [ ssl web-browsing ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE service [ service-http service-https ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE source-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE destination-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE action allow
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE disabled no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE tag [ AWS-HEALTH-GWLB BASELINE EXAMPLE ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE group-tag AWS-HEALTH-GWLB
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE source GRP-AWS-GWLB-HEALTH-PROBE-SUBNETS
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE destination GRP-FIREWALL-PRIVATE-SUBNETS
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE log-end no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE log-setting default
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE log-start no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-HEALTH-PROBE description "POLICY FOR GWLB HEALTH PROBES FROM GATEWAY LOAD BALANCER TO FIREWALL PRIVATE DATA PLANE INTERFACES"
+
+# --- Inbound SSH rule ---
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND target negate no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND to INBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND from INBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND source-user any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND category any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND application [ scps ssh ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND service application-default
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND source-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND destination-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND action allow
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND log-setting default
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND group-tag INBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND tag [ INBOUND APP1 APP2 BASELINE EXAMPLE ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND source H-YOUR-PUBLIC-IP
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND destination [ N-10.50.0.0-28 N-10.50.1.0-28 N-10.50.0.48-28 N-10.50.1.48-28 ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND disabled no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND log-start no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND log-end yes
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND description "INBOUND SSH POLICY TO SPOKE VMS FOR TESTING AND INSTALLATION OF NGINX"
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND profile-setting group Inbound
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND saas-user-list any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules SSH-INBOUND saas-tenant-list any
+
+# --- Outbound rule ---
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND target negate no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND to UNTRUST
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND from OUTBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND destination any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND source-user any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND application [ apt-get dns icmp ms-update ping ssl traceroute web-browsing yum ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND service any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND source-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND destination-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND tag [ OUTBOUND APP1 APP2 OVERLAY-NAT BASELINE EXAMPLE ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND action allow
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND group-tag OUTBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND log-setting default
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND disabled no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND source [ N-10.104.0.0-20 N-10.105.0.0-20 ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND category any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND log-start no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND log-end yes
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND description "OUTBOUND POLICY FOR UPDATES, SOFTWARE AND INTERNET ACCESS FROM AWS"
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-OUTBOUND profile-setting group default
+
+# --- APP1 inbound web rule ---
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB target negate no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB to INBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB from INBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB source-user any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB category any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB application [ ssl web-browsing ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB service application-default
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB source-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB destination-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB action allow
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB log-setting default
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB group-tag INBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB tag [ INBOUND APP1 ALB BASELINE EXAMPLE ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB source any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB destination [ N-10.50.0.0-28 N-10.50.1.0-28 ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB disabled no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB log-start no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB log-end yes
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB profile-setting group Inbound
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB description "INBOUND WEB TRAFFIC TO APP1 VIA DEDICATED NLB"
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB saas-user-list any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP1-NLB-WEB saas-tenant-list any
+
+# --- APP2 inbound web rule ---
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB target negate no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB to INBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB from INBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB source-user any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB category any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB application [ ssl web-browsing ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB service application-default
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB source-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB destination-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB action allow
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB log-setting default
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB group-tag INBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB tag [ INBOUND APP2 ALB BASELINE EXAMPLE ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB source any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB destination [ N-10.50.0.48-28 N-10.50.1.48-28 ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB disabled no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB log-start no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB log-end yes
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB profile-setting group Inbound
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB description "INBOUND WEB TRAFFIC TO APP2 VIA DEDICATED NLB"
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB saas-user-list any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules APP2-NLB-WEB saas-tenant-list any
+
+# --- On-prem ICMP to AWS ---
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS target negate no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS to EASTWEST
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS from EASTWEST
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS destination [ N-10.104.0.0-20 N-10.105.0.0-20 ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS source-user any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS category any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS application [ dns icmp ping traceroute ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS service application-default
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS source-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS destination-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS action allow
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS log-setting default
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS disabled no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS tag [ BASELINE EXAMPLE ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS group-tag INBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS source N-10.0.0.0-8
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS log-start no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS log-end yes
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS profile-setting group Internal
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules ONPREM-ICMP-TO-AWS description "PING FROM ONPREM TO AWS"
+
+# --- East-West rule ---
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST target negate no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST to EASTWEST
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST from EASTWEST
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST source-user any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST category any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST application [ icmp ping scps ssh ssl traceroute web-browsing ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST service any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST source-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST destination-hip any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST tag [ EASTWEST APP1 APP2 BASELINE ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST action allow
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST group-tag EASTWEST
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST disabled no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST source [ N-10.104.0.0-20 N-10.105.0.0-20 ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST destination [ N-10.104.0.0-20 N-10.105.0.0-20 ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST log-start no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST log-end yes
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST profile-setting group Internal
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST description "POLICY FOR EAST-WEST WEB AND SSH TRAFFIC"
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase security rules AWS-EAST-WEST log-setting default
+
+# --- NAT: Outbound source translation ---
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase nat rules AWS-OUTBOUND source-translation dynamic-ip-and-port interface-address interface ethernet1/2
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase nat rules AWS-OUTBOUND target negate no
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase nat rules AWS-OUTBOUND to UNTRUST
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase nat rules AWS-OUTBOUND from OUTBOUND
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase nat rules AWS-OUTBOUND source [ N-10.104.0.0-20 N-10.105.0.0-20 ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase nat rules AWS-OUTBOUND destination any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase nat rules AWS-OUTBOUND tag [ OUTBOUND OVERLAY-NAT ]
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase nat rules AWS-OUTBOUND service any
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase nat rules AWS-OUTBOUND to-interface ethernet1/2
+set device-group CLD-DG-AWS-DEDICATED pre-rulebase nat rules AWS-OUTBOUND group-tag OUTBOUND
+
+# --- Default security rules ---
+set device-group CLD-DG-AWS-DEDICATED post-rulebase default-security-rules rules intrazone-default action deny
+set device-group CLD-DG-AWS-DEDICATED post-rulebase default-security-rules rules intrazone-default log-end yes
+set device-group CLD-DG-AWS-DEDICATED post-rulebase default-security-rules rules intrazone-default log-setting default
+set device-group CLD-DG-AWS-DEDICATED post-rulebase default-security-rules rules interzone-default log-end yes
+set device-group CLD-DG-AWS-DEDICATED post-rulebase default-security-rules rules interzone-default log-setting default
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 6: SW FIREWALL LICENSE PLUGIN (license-manager)
+# Bootstrap definition BD-SJ-VM-SERIES must exist (created via GUI)
+# ═══════════════════════════════════════════════════════════════
+
+set plugins sw_fw_license license-manager CLD-LM-AWS-DEDICATED device-group CLD-DG-AWS-DEDICATED
+set plugins sw_fw_license license-manager CLD-LM-AWS-DEDICATED template-stack CLD-STK-AWS-DEDICATED-AZ-A
+set plugins sw_fw_license license-manager CLD-LM-AWS-DEDICATED bootstrap-definition BD-SJ-VM-SERIES
+set plugins sw_fw_license license-manager CLD-LM-AWS-DEDICATED auto-deactivate Never
