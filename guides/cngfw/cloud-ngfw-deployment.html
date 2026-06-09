@@ -113,7 +113,8 @@
     </div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">Prerequisites</div>
-      <a href="#azure-prerequisites" data-section="azure-prerequisites">Azure Setup</a>
+      <a href="#azure-prerequisites" data-section="azure-prerequisites">Azure Setup &amp; RBAC</a>
+      <a href="#azure-prerequisites" data-section="azure-prerequisites">Terraform Environment</a>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">Management Platform</div>
@@ -2819,6 +2820,58 @@ terraform init -upgrade</code></pre>
       <div class="callout-title">Verification</div>
       <p>Navigate to <code>Home &gt; Subscriptions &gt; [your subscription] &gt; Access Control (IAM) &gt; Role assignments</code>. Confirm <code>CloudNGFW-ServicePrincipal</code> appears with the <code>CloudNGFW-PluginRole</code> role assigned.</p>
     </div>
+
+    <h4>Service Principal for Terraform Deployment</h4>
+    <p>The service principal above grants <strong>read-only</strong> permissions for the Panorama Azure plugin. Deploying Cloud NGFW infrastructure with Terraform requires a <strong>separate</strong> identity with write permissions to create resource groups, VNets, route tables, and Cloud NGFW resources.</p>
+
+    <h4>Option A: Logged-in user (development / Cloud Shell)</h4>
+    <p>The simplest path for development is to authenticate Terraform with your own user account via <code>az login</code>. The user must have <strong>Contributor</strong> on the target subscription (or scoped to a resource group).</p>
+    <div class="code-block">
+      <pre><code>az login
+az account set --subscription "&lt;your-subscription-id&gt;"
+az account show --query '{subscription:name, id:id, tenantId:tenantId}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Option B: Service Principal (Preferred for CI/CD)</h4>
+    <p>Create a Service Principal scoped to the target subscription. This provides a non-interactive identity for automation pipelines.</p>
+    <div class="code-block">
+      <pre><code># Capture your subscription ID first
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+# Create the SP with Contributor on the subscription
+az ad sp create-for-rbac \
+  --name "terraform-cloudngfw" \
+  --role "Contributor" \
+  --scopes "/subscriptions/${SUBSCRIPTION_ID}"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The command outputs <code>appId</code>, <code>password</code>, and <code>tenant</code>. Export them as environment variables for the AzureRM provider:</p>
+    <div class="code-block">
+      <pre><code>export ARM_CLIENT_ID="&lt;appId&gt;"
+export ARM_CLIENT_SECRET="&lt;password&gt;"
+export ARM_TENANT_ID="&lt;tenant&gt;"
+export ARM_SUBSCRIPTION_ID="&lt;subscriptionId&gt;"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Two Service Principals, Two Purposes</div>
+      <p>You now have two service principals: <code>CloudNGFW-ServicePrincipal</code> (read-only, for Panorama plugin monitoring) and <code>terraform-cloudngfw</code> (Contributor, for Terraform infrastructure provisioning). Do not use the read-only plugin SP for Terraform &mdash; it will fail on resource creation.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm the Terraform SP can authenticate:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>az login --service-principal \
+  --username "$ARM_CLIENT_ID" \
+  --password "$ARM_CLIENT_SECRET" \
+  --tenant "$ARM_TENANT_ID"
+az account show --query '{subscription:name, id:id}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
   </div>
 </div>
 
@@ -2903,10 +2956,10 @@ terraform init -upgrade</code></pre>
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 1.4: Install Required Terraform Providers</span>
+    <span>Step 1.4: Deployment Environment &amp; Tooling</span>
   </div>
   <div class="collapsible-body">
-    <p>The infrastructure deployment in Phases 4-6 uses Terraform with the official Palo Alto Networks SWFW modules for Azure. Confirm the required tooling is installed and at the correct version.</p>
+    <p>This guide deploys all Azure infrastructure with <strong>Terraform</strong> using the official Palo Alto Networks Azure modules. Set up one of the following environments before starting Phase 4.</p>
 
     <table>
       <thead>
@@ -2927,33 +2980,150 @@ terraform init -upgrade</code></pre>
       </tbody>
     </table>
 
+    <h4>Option A: Azure Cloud Shell (Quickest)</h4>
+    <p>Cloud Shell ships with Terraform and the Azure CLI pre-installed. It automatically authenticates as the logged-in portal user &mdash; no credentials to configure.</p>
     <ol>
-      <li>Verify the Terraform version:</li>
+      <li>Open <strong>Cloud Shell</strong> from the Azure Portal (top-right toolbar, terminal icon). Choose <strong>Bash</strong> on first launch.</li>
+      <li>Confirm the bundled tools:</li>
     </ol>
-
     <div class="code-block">
-      <pre><code>terraform version</code></pre>
+      <pre><code>terraform -v
+az --version
+git --version
+az account show</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
-    <ol start="2">
-      <li>Confirm the output shows version <code>1.5.0</code> or later.</li>
-      <li>Verify Azure CLI is authenticated:</li>
-    </ol>
-
-    <div class="code-block">
-      <pre><code>az account show --query "{subscription:name, tenantId:tenantId}" -o table</code></pre>
-      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-    </div>
-
-    <ol start="4">
-      <li>Confirm the output shows the correct subscription and tenant ID.</li>
-    </ol>
+    <h4>Option B: Local Workstation or Bastion Host</h4>
+    <p>Install the following tools on your deployment machine (macOS, Linux, or Windows):</p>
+    <table>
+      <tr><th>Tool</th><th>Purpose</th><th>Install</th></tr>
+      <tr><td><strong>Terraform CLI</strong></td><td>Infrastructure provisioning</td><td><a href="https://developer.hashicorp.com/terraform/downloads">developer.hashicorp.com/terraform/downloads</a></td></tr>
+      <tr><td><strong>Azure CLI</strong></td><td>Azure authentication and resource management</td><td><a href="https://learn.microsoft.com/cli/azure/install-azure-cli">learn.microsoft.com/cli/azure/install-azure-cli</a></td></tr>
+      <tr><td><strong>Git</strong></td><td>Version control for Terraform code</td><td><a href="https://git-scm.com/downloads">git-scm.com/downloads</a></td></tr>
+      <tr><td><strong>VS Code</strong> (recommended)</td><td>HCL syntax highlighting, Terraform extension</td><td><a href="https://code.visualstudio.com">code.visualstudio.com</a></td></tr>
+    </table>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p><code>terraform version</code> reports <code>v1.5.x</code> or later. <code>az account show</code> reports the correct subscription name and tenant ID.</p>
+      <p>Confirm all tools are installed and your Azure identity is correct:</p>
     </div>
+    <div class="code-block">
+      <pre><code>terraform -v
+az --version
+git --version
+az account show</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Windows Users</div>
+      <p>All shell commands in this guide use Bash syntax (Linux/macOS). If you are deploying from a Windows workstation, use one of the following approaches:</p>
+      <ul>
+        <li><strong>Windows Subsystem for Linux (WSL) &mdash; Recommended:</strong> Install <a href="https://learn.microsoft.com/en-us/windows/wsl/install" target="_blank" rel="noopener">WSL 2</a> with Ubuntu, then install Terraform, Azure CLI, and Git inside the WSL environment. All commands in this guide work as-is.</li>
+        <li><strong>Git Bash:</strong> Installed alongside <a href="https://git-scm.com/downloads" target="_blank" rel="noopener">Git for Windows</a>. Provides a Bash-compatible shell where most commands work without modification.</li>
+        <li><strong>PowerShell:</strong> Terraform and Azure CLI work natively, but shell syntax differs &mdash; environment variables use <code>$env:VAR</code> instead of <code>$VAR</code>, line continuations use backtick (<code>`</code>) instead of backslash (<code>\</code>), and <code>curl</code> is aliased to <code>Invoke-WebRequest</code>. Use <code>curl.exe</code> or <code>Invoke-WebRequest</code> explicitly.</li>
+      </ul>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Windows Shell Syntax Reference</span>
+      </div>
+      <div class="collapsible-body">
+        <p>If you choose to use PowerShell instead of WSL or Git Bash, translate shell commands as follows:</p>
+        <table>
+          <tr><th>Bash (this guide)</th><th>PowerShell equivalent</th></tr>
+          <tr><td><code>export VAR="value"</code></td><td><code>$env:VAR = "value"</code></td></tr>
+          <tr><td><code>echo $VAR</code></td><td><code>$env:VAR</code></td></tr>
+          <tr><td><code>curl -Lo file URL</code></td><td><code>Invoke-WebRequest -Uri URL -OutFile file</code></td></tr>
+          <tr><td><code>unzip file.zip</code></td><td><code>Expand-Archive -Path file.zip -DestinationPath .</code></td></tr>
+          <tr><td><code>cat &lt;&lt; 'EOF' &gt; file</code></td><td>Use <code>notepad file</code> or VS Code instead</td></tr>
+          <tr><td><code>chmod 400 key.pem</code></td><td><code>icacls key.pem /inheritance:r /grant:r "$($env:USERNAME):(R)"</code></td></tr>
+          <tr><td><code>ssh -i key.pem user@host</code></td><td>Same syntax (OpenSSH is built into Windows 10+)</td></tr>
+          <tr><td>Line continuation: <code>\</code></td><td>Line continuation: <code>`</code> (backtick)</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 1.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.5: Terraform Remote State Backend</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A remote state backend is critical for team collaboration, maintaining a single source of truth, and preventing concurrent modifications. Azure's <code>azurerm</code> backend uses a Storage Account container &mdash; state locking is provided by the native blob lease, so no separate locking table is required.</p>
+
+    <h4>Create the Backend Resources</h4>
+    <p>Create a small bootstrap resource group with a Storage Account and a container for Terraform state. The Storage Account name must be globally unique and 3&ndash;24 lowercase alphanumeric characters.</p>
+    <div class="code-block">
+      <pre><code>RG=tfstate-rg
+LOCATION=eastus
+SA=&lt;your-unique-storage-account-name&gt;
+CONTAINER=tfstate
+
+# Resource group
+az group create --name $RG --location $LOCATION
+
+# Storage account (versioned, TLS 1.2 only)
+az storage account create \
+  --name $SA \
+  --resource-group $RG \
+  --location $LOCATION \
+  --sku Standard_LRS \
+  --kind StorageV2 \
+  --min-tls-version TLS1_2 \
+  --allow-blob-public-access false
+
+# Enable blob versioning for state history
+az storage account blob-service-properties update \
+  --account-name $SA \
+  --resource-group $RG \
+  --enable-versioning true
+
+# Container for state
+az storage container create --name $CONTAINER --account-name $SA</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Configure the Backend (backend.tf)</h4>
+    <div class="code-block">
+      <pre><code>terraform {
+  backend "azurerm" {
+    resource_group_name  = "tfstate-rg"
+    storage_account_name = "&lt;your-unique-storage-account-name&gt;"
+    container_name       = "tfstate"
+    key                  = "cloud-ngfw/azure/terraform.tfstate"
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>Place the state Storage Account in the <strong>same region</strong> as your deployment to minimize latency. Blob versioning provides state history; the native blob lease handles concurrent-modification locking automatically &mdash; no DynamoDB-equivalent is needed.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 1.6 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.6: Git Repository for Terraform Code</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Store your Terraform configuration in a remote Git repository (GitHub, GitLab, Bitbucket, Azure Repos, etc.) for version control and collaboration.</p>
+    <ol>
+      <li>Create a new repository for your Cloud NGFW deployment code.</li>
+      <li>Clone it to your deployment machine or Cloud Shell session.</li>
+      <li>Bootstrap your repo from the official Palo Alto Networks reference modules: <a href="https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules" target="_blank" rel="noopener"><code>PaloAltoNetworks/terraform-azurerm-swfw-modules</code></a> (covers VM-Series and Cloud NGFW, plus reference example architectures under <code>examples/</code> &mdash; see <code>cloudngfw_transit_vnet</code> for the closest match to this guide).</li>
+      <li>For advanced deployments, configure a CI/CD pipeline (GitHub Actions, Azure DevOps Pipelines, GitLab CI, Terraform Cloud) that can authenticate to Azure (via the Service Principal from <a href="#azure-prerequisites">1.1</a>) and run <code>terraform plan</code> / <code>apply</code>.</li>
+    </ol>
   </div>
 </div>
 
