@@ -4787,6 +4787,52 @@ vm-series-auto-registration-pin-value=&lt;NEW-PIN-HEX&gt;</code></pre>
 
     <p>The health check is an HTTPS request to port 443 on the firewall's <strong>private (data) interface</strong> (ethernet1/1). The firewall must receive this request, recognize it as a health check, and respond. If anything in that chain is broken, the target shows up as <code>unhealthy</code> in the AWS Console.</p>
 
+    <h4>How to check target health status</h4>
+
+    <p>Before diagnosing the cause, confirm the current health status. You can check in the <strong>AWS Console</strong> or from the <strong>CLI</strong>.</p>
+
+    <p><strong>AWS Console:</strong></p>
+    <ol>
+      <li>Open the <strong>EC2 Console</strong> and click <strong>Load Balancers</strong> in the left sidebar (under Load Balancing).</li>
+      <li>Find your Gateway Load Balancer &mdash; it will have type <strong>gateway</strong>. Click its name.</li>
+      <li>Click the <strong>Listeners</strong> tab. You will see a single listener forwarding to a target group. Click the <strong>target group name</strong> link.</li>
+      <li>On the target group page, click the <strong>Targets</strong> tab. This shows every registered firewall instance and its health status:
+        <ul>
+          <li><strong><code>initial</code></strong> &mdash; the GWLB just registered this target and is waiting for the first health check response.</li>
+          <li><strong><code>healthy</code></strong> &mdash; the firewall is responding to health checks. Everything is working.</li>
+          <li><strong><code>unhealthy</code></strong> &mdash; the firewall is not responding. The <strong>Health status details</strong> column tells you why (e.g., <code>Target.Timeout</code>, <code>Target.FailedHealthChecks</code>).</li>
+          <li><strong><code>draining</code></strong> &mdash; the target is being deregistered; in-flight connections are completing.</li>
+        </ul>
+      </li>
+      <li>While on the target group page, click the <strong>Health checks</strong> tab to verify the health check settings &mdash; confirm the protocol is <strong>HTTPS</strong>, port is <strong>443</strong>, and the path is <strong><code>/unauth/php/health.php</code></strong>.</li>
+    </ol>
+
+    <p><strong>AWS CLI:</strong></p>
+    <div class="code-block">
+      <pre><code># Step 1: Find the GWLB target group ARN
+aws elbv2 describe-target-groups \
+  --query 'TargetGroups[?Protocol==`GENEVE`].{Name:TargetGroupName,ARN:TargetGroupArn}' \
+  --output table
+
+# Step 2: Check health of each target in the group
+aws elbv2 describe-target-health \
+  --target-group-arn &lt;TG-ARN&gt; \
+  --query 'TargetHealthDescriptions[].{InstanceID:Target.Id,Port:Target.Port,Status:TargetHealth.State,Reason:TargetHealth.Reason,Details:TargetHealth.Description}' \
+  --output table
+
+# Step 3: Verify the health check configuration
+aws elbv2 describe-target-groups \
+  --target-group-arns &lt;TG-ARN&gt; \
+  --query 'TargetGroups[].{Protocol:HealthCheckProtocol,Port:HealthCheckPort,Path:HealthCheckPath,Interval:HealthCheckIntervalSeconds,Threshold:UnhealthyThresholdCount}' \
+  --output table</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">The Reason column is your best clue</div>
+      <p><code>Target.Timeout</code> means the firewall never responded &mdash; check security groups and GENEVE (Layer 0 and Layer 1 below). <code>Target.FailedHealthChecks</code> means the firewall responded but with an error &mdash; check the management profile and health check path (Layer 2). <code>Elb.InternalError</code> is rare and usually transient &mdash; wait a few minutes and recheck.</p>
+    </div>
+
     <h4>Symptom: Targets stuck in <code>initial</code></h4>
 
     <p><strong>What this means:</strong> The GWLB just registered the firewall as a target and has not received a single successful health check yet. The status stays at <code>initial</code> until either (a) the firewall responds and goes <code>healthy</code>, or (b) enough checks fail and it goes <code>unhealthy</code>.</p>
@@ -4810,12 +4856,55 @@ vm-series-auto-registration-pin-value=&lt;NEW-PIN-HEX&gt;</code></pre>
 
     <h4>Symptom: Targets show <code>unhealthy</code></h4>
 
-    <p><strong>What this means:</strong> The GWLB has been sending health checks and the firewall is not responding. This is the most common post-deployment issue and it usually comes down to one of three things: the security group is blocking the check, the firewall is not configured to respond, or the firewall cannot route the response back.</p>
+    <p><strong>What this means:</strong> The GWLB has been sending health checks and the firewall is not responding. This is the most common post-deployment issue and it usually comes down to one of four things: the security group is blocking GENEVE traffic, the security group is blocking the health check itself, the firewall is not configured to respond, or the firewall cannot route the response back.</p>
 
     <p><strong>Diagnose it layer by layer:</strong></p>
 
+    <p><strong>Layer 0: Is the security group allowing GENEVE traffic on UDP 6081?</strong></p>
+    <p>This is the first thing to check and the easiest to miss. The GWLB communicates with the firewall using <strong>GENEVE tunnels on UDP port 6081</strong>. All inspected traffic &mdash; and the health checks themselves &mdash; travels inside these tunnels. If the security group on the firewall's private ENI does not allow <strong>UDP 6081 inbound</strong> from the GWLB subnets, nothing works. No traffic reaches the firewall, no health checks get through, and every target shows <code>unhealthy</code>. Think of GENEVE as the delivery truck &mdash; if you block the truck at the gate, it does not matter what is inside.</p>
+
+    <div class="code-block">
+      <pre><code># Check the security group on the firewall's private ENI
+aws ec2 describe-instances \
+  --instance-ids &lt;FW-INSTANCE-ID&gt; \
+  --query 'Reservations[].Instances[].NetworkInterfaces[?Description==`private`].Groups' \
+  --output table
+
+# Look at the inbound rules — you need UDP 6081 from the GWLB subnets
+aws ec2 describe-security-groups \
+  --group-ids &lt;SG-PRIVATE-ID&gt; \
+  --query 'SecurityGroups[].IpPermissions[?IpProtocol==`udp`]' --output json</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>You need a rule that allows <strong>UDP port 6081 inbound</strong> from the GWLB subnet CIDRs (e.g., <code>10.51.0.48/28</code> and <code>10.51.1.48/28</code>). Some deployments use a broader rule that allows all traffic from the Security VPC CIDR &mdash; that works too, but at minimum UDP 6081 must be open.</p>
+
+    <p><strong>How to fix it:</strong> Add the missing inbound rule to the security group. In Terraform, this is in the <code>security_group_rules</code> block for the private/dataplane security group. Example:</p>
+    <div class="code-block">
+      <pre><code># In your security group rules (Terraform)
+ingress {
+  from_port   = 6081
+  to_port     = 6081
+  protocol    = "udp"
+  cidr_blocks = ["10.51.0.48/28", "10.51.1.48/28"]  # GWLB subnets
+  description = "GENEVE from GWLB"
+}
+
+# Or via AWS CLI for a quick manual fix
+aws ec2 authorize-security-group-ingress \
+  --group-id &lt;SG-PRIVATE-ID&gt; \
+  --protocol udp --port 6081 \
+  --cidr &lt;GWLB-SUBNET-CIDR&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">No GENEVE = no traffic at all</div>
+      <p>Unlike a missing health check rule (which only affects health status), a missing GENEVE rule blocks <strong>everything</strong> &mdash; health checks, user traffic, all of it. If your targets are unhealthy and you also see zero sessions on the firewall (<code>show session all</code> returns nothing), a blocked UDP 6081 is almost certainly the cause.</p>
+    </div>
+
     <p><strong>Layer 1: Is the security group letting the health check through?</strong></p>
-    <p>The GWLB sends health checks from the GWLB subnets to the firewall's private interface on port 443. The security group on the firewall's private ENI must allow this.</p>
+    <p>Once GENEVE is open, the GWLB also sends HTTPS health checks from the GWLB subnets to the firewall's private interface on port 443. The security group on the firewall's private ENI must allow this too.</p>
     <div class="code-block">
       <pre><code># Find the security group on the firewall's private ENI
 aws ec2 describe-instances \
