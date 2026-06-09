@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Azure Load Balancer Health Check Troubleshooting — VM-Series</title>
+<style>
+:root {
+  --pan-gold: #FFB81C;
+  --pan-gold-dark: #E5A300;
+  --pan-navy: #00294D;
+  --pan-link: #006DCC;
+  --fg: #333333;
+  --fg-light: #666666;
+  --border: #dee2e6;
+  --border-light: #eef0f2;
+  --code-bg: #f8f9fa;
+  --code-fg: #1a1a2e;
+  --code-border: #e1e4e8;
+  --note-bg: #e7f3ff;
+  --note-border: #3b82f6;
+  --warn-bg: #fffbeb;
+  --warn-border: #f59e0b;
+  --danger-bg: #fef2f2;
+  --danger-border: #ef4444;
+  --success-bg: #f0fdf4;
+  --success-border: #22c55e;
+  --font-sans: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Source Code Pro', 'SF Mono', Menlo, Consolas, monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-sans);
+  color: var(--fg);
+  background: #fff;
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.pdf-header {
+  background: var(--pan-gold);
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pdf-header .logo {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--pan-navy);
+  text-decoration: none;
+}
+.pdf-header .logo .accent { color: var(--pan-navy); }
+.pdf-header .doc-date { font-size: 0.85rem; color: var(--pan-navy); }
+
+.container {
+  max-width: 850px;
+  margin: 0 auto;
+  padding: 2rem 2.5rem;
+}
+
+h1 {
+  color: var(--pan-navy);
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  line-height: 1.3;
+}
+.subtitle {
+  color: var(--fg-light);
+  font-size: 1rem;
+  border-bottom: 3px solid var(--pan-gold);
+  padding-bottom: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+h2 {
+  color: var(--pan-navy);
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 2rem 0 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid var(--border);
+}
+
+h3 {
+  color: var(--pan-navy);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 1.5rem 0 0.5rem;
+}
+
+h4 {
+  color: var(--fg);
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 1rem 0 0.4rem;
+}
+
+p { margin-bottom: 0.75rem; }
+
+ol, ul {
+  margin: 0.5rem 0 1rem 1.5rem;
+}
+li { margin-bottom: 0.4rem; }
+li > ul, li > ol { margin-top: 0.3rem; margin-bottom: 0.3rem; }
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 3px;
+  padding: 0.15em 0.4em;
+}
+
+.code-block {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin: 0.75rem 0 1rem;
+  overflow-x: auto;
+}
+.code-block pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--code-fg);
+  white-space: pre;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0 1.25rem;
+  font-size: 0.92rem;
+}
+th {
+  background: var(--pan-navy);
+  color: #fff;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+}
+td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+tr:nth-child(even) td { background: #f9fafb; }
+
+.callout {
+  border-left: 4px solid;
+  border-radius: 0 6px 6px 0;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+.callout-title {
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+  font-size: 0.92rem;
+}
+.callout-note { background: var(--note-bg); border-color: var(--note-border); }
+.callout-warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout-danger { background: var(--danger-bg); border-color: var(--danger-border); }
+.callout-success { background: var(--success-bg); border-color: var(--success-border); }
+
+.checklist {
+  background: #f7f8fa;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+}
+.checklist h4 { margin-top: 0; }
+.checklist ul {
+  list-style: none;
+  margin-left: 0;
+}
+.checklist li {
+  padding: 0.3rem 0;
+  padding-left: 1.6rem;
+  position: relative;
+}
+.checklist li::before {
+  content: "\2610";
+  position: absolute;
+  left: 0;
+  font-size: 1.1em;
+}
+
+.toc {
+  background: #f7f8fa;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem 1.5rem;
+  margin: 1rem 0 2rem;
+}
+.toc h4 { margin-top: 0; color: var(--pan-navy); }
+.toc ol { margin-bottom: 0; }
+.toc a { color: var(--pan-link); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+
+.flow-diagram {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 1rem;
+  margin: 0.75rem 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  text-align: center;
+  line-height: 1.8;
+}
+
+strong { font-weight: 600; }
+
+.footer {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--pan-gold);
+  font-size: 0.85rem;
+  color: var(--fg-light);
+}
+
+@media print {
+  .pdf-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .callout { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .checklist { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  h2 { page-break-after: avoid; }
+  .code-block { page-break-inside: avoid; }
+  table { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<div class="pdf-header">
+  <span class="logo"><span class="accent">IMPLEMENTATION</span> GUIDES</span>
+  <span class="doc-date">Azure VM-Series &mdash; LB Health Check Troubleshooting</span>
+</div>
+
+<div class="container">
+
+<h1>Azure Load Balancer Health Check Troubleshooting</h1>
+<p class="subtitle">VM-Series Firewall &mdash; Internal and External Load Balancer Health Probe Resolution</p>
+
+<p>This guide walks through every layer that must be correctly configured for Azure Load Balancer health probes to reach VM-Series firewalls and receive a healthy response. Azure uses the special IP address <code>168.63.129.16</code> for all health probes &mdash; if any layer blocks or fails to respond to traffic from this IP, the backend pool member will be marked <strong>unhealthy</strong> and stop receiving traffic.</p>
+
+<div class="toc">
+  <h4>Contents</h4>
+  <ol>
+    <li><a href="#how-probes-work">How Azure Health Probes Work</a></li>
+    <li><a href="#quick-checklist">Quick Diagnostic Checklist</a></li>
+    <li><a href="#firewall-config">Section 1: Firewall Configuration</a></li>
+    <li><a href="#lb-config">Section 2: Load Balancer Configuration</a></li>
+    <li><a href="#azure-networking">Section 3: Azure Networking (NSGs, NICs, Routes)</a></li>
+    <li><a href="#cli-commands">Section 4: Diagnostic CLI Commands</a></li>
+  </ol>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="how-probes-work">How Azure Health Probes Work</h2>
+
+<p>Azure Load Balancer sends health probes from the virtual IP <code>168.63.129.16</code> to each backend pool member. This is not a routable internet IP &mdash; it is an Azure platform IP that exists inside every VNet. The probe arrives on the NIC associated with the backend pool (trust NIC for internal LB, untrust NIC for external LB).</p>
+
+<div class="flow-diagram">
+Azure Fabric (168.63.129.16)<br>
+&darr; health probe (TCP/HTTP/HTTPS)<br>
+NSG on subnet / NIC<br>
+&darr;<br>
+VM-Series NIC (trust or untrust)<br>
+&darr;<br>
+PAN-OS interface &rarr; zone &rarr; security policy &rarr; management profile<br>
+&darr;<br>
+Response back to 168.63.129.16
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Both LBs probe independently</div>
+  <p>The <strong>internal (trust) LB</strong> probes the trust NIC and the <strong>external (untrust) LB</strong> probes the untrust NIC. Each requires its own management profile, security policy, routes, and NSG rules. Fixing one does not fix the other.</p>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="quick-checklist">Quick Diagnostic Checklist</h2>
+
+<div class="checklist">
+  <h4>Run through this list first &mdash; most failures are in the top 5</h4>
+  <ul>
+    <li><strong>Management profile</strong> on trust/untrust interface allows the probe protocol (HTTP or HTTPS)?</li>
+    <li><strong>Security policy</strong> allows <code>168.63.129.16</code> to the trust/untrust <strong>subnet</strong> on the probe port?</li>
+    <li><strong>Virtual router has a route</strong> to <code>168.63.129.16/32</code> pointing to the correct interface gateway?</li>
+    <li><strong>NSG</strong> on the trust/untrust subnet allows inbound from <code>168.63.129.16</code>?</li>
+    <li><strong>HA Ports</strong> enabled on the LB rule (required for NVA deployments)?</li>
+    <li><strong>Floating IP</strong> (Direct Server Return) enabled on the LB rule?</li>
+    <li><strong>IP forwarding</strong> enabled on the NIC in Azure?</li>
+    <li><strong>Gateway IP</strong> template variables are set correctly for each AZ/stack?</li>
+    <li><strong>Backend pool</strong> members reference the correct NIC (trust for internal, untrust for external)?</li>
+    <li><strong>Firewall has finished bootstrapping</strong> (wait 10&ndash;15 min after VM creation)?</li>
+  </ul>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="firewall-config">Section 1: Firewall Configuration</h2>
+
+<h3>1.1 Interface Management Profile</h3>
+
+<p>The health probe hits the firewall's data-plane interface (not the management interface). PAN-OS will only respond if the interface has a <strong>management profile</strong> that permits traffic from <code>168.63.129.16</code> on the probe protocol and port. The management profile must match the LB probe protocol.</p>
+
+<table>
+  <tr><th>LB Type</th><th>Interface</th><th>Required Management Profile Setting</th></tr>
+  <tr><td>Internal LB (trust)</td><td>ethernet1/2 (trust)</td><td>Enable <strong>HTTP</strong> (port 80) or <strong>HTTPS</strong> (port 443) &mdash; must match LB probe protocol and permit traffic from <code>168.63.129.16</code></td></tr>
+  <tr><td>External LB (untrust)</td><td>ethernet1/1 (untrust)</td><td>Enable <strong>HTTP</strong> (port 80) or <strong>HTTPS</strong> (port 443) &mdash; must match LB probe protocol and permit traffic from <code>168.63.129.16</code></td></tr>
+</table>
+
+<h4>How to verify</h4>
+<div class="code-block">
+<pre># Check which management profile is attached to the interface
+show interface ethernet1/1  # untrust
+show interface ethernet1/2  # trust
+
+# View management profile settings
+show network interface-management-profile</pre>
+</div>
+
+<h4>How to configure (Panorama)</h4>
+<ol>
+  <li>Navigate to <strong>Network &gt; Network Profiles &gt; Interface Mgmt</strong></li>
+  <li>Create or edit a profile (e.g., <code>AZURE-PROBE-HTTP</code>)</li>
+  <li>Enable <strong>HTTP</strong> (or HTTPS if your probe uses 443)</li>
+  <li>Attach the profile to the correct interface under <strong>Network &gt; Interfaces &gt; ethernet1/x &gt; Advanced &gt; Management Profile</strong></li>
+  <li>Commit and push</li>
+</ol>
+
+<div class="callout callout-warning">
+  <div class="callout-title">HTTPS probes and the health check path</div>
+  <p>If using HTTPS probes, the probe path must be <code>/unauth/php/health.php</code> (the PAN-OS unauthenticated health endpoint). An HTTP probe on port 80 does not require a path &mdash; PAN-OS responds to any HTTP request on port 80 if the management profile allows it. Most deployments use <strong>HTTP on port 80</strong> for simplicity.</p>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h3>1.2 Security Policy</h3>
+
+<p>Even with the management profile set, PAN-OS will drop the probe if no security policy permits it. You need an explicit <strong>allow</strong> rule for the Azure health probe IP.</p>
+
+<table>
+  <tr><th>Field</th><th>Internal LB Rule</th><th>External LB Rule</th></tr>
+  <tr><td>Name</td><td><code>AZURE-PROBE-TRUST</code></td><td><code>AZURE-PROBE-UNTRUST</code></td></tr>
+  <tr><td>Source Zone</td><td>TRUST</td><td>UNTRUST</td></tr>
+  <tr><td>Source Address</td><td><code>168.63.129.16</code> (use address object <code>H-168.63.129.16</code>)</td><td><code>168.63.129.16</code></td></tr>
+  <tr><td>Destination Zone</td><td>TRUST</td><td>UNTRUST</td></tr>
+  <tr><td>Destination Address</td><td>Trust <strong>subnet</strong> (e.g., <code>10.51.1.0/24</code>) &mdash; firewalls may be assigned any IP in the subnet</td><td>Untrust <strong>subnet</strong> (e.g., <code>10.51.0.0/24</code>) &mdash; firewalls may be assigned any IP in the subnet</td></tr>
+  <tr><td>Application</td><td><code>any</code></td><td><code>any</code></td></tr>
+  <tr><td>Service</td><td><code>service-http</code> (or custom port)</td><td><code>service-http</code></td></tr>
+  <tr><td>Action</td><td><strong>Allow</strong></td><td><strong>Allow</strong></td></tr>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Intrazone rule</div>
+  <p>The health probe enters and exits the same zone (trust&rarr;trust or untrust&rarr;untrust). This is an <strong>intrazone</strong> flow. If your default intrazone action is set to deny, you must have an explicit allow rule. Most deployments have intrazone allow by default, but verify: <code>show running security-policy</code> and check the intrazone-default action.</p>
+</div>
+
+<h4>How to verify</h4>
+<div class="code-block">
+<pre># Check if the probe traffic matches a policy
+test security-policy-match source 168.63.129.16 destination &lt;TRUST-IP&gt; protocol 6 destination-port 80
+
+# Check running policy
+show running security-policy | match AZURE-PROBE</pre>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h3>1.3 Virtual Router Routes to 168.63.129.16</h3>
+
+<p>The firewall must know how to route response traffic back to <code>168.63.129.16</code>. This IP is reachable via the <strong>subnet gateway</strong> of the interface that receives the probe. If the route is missing, the firewall drops the response.</p>
+
+<h4>Single VR deployments</h4>
+<p>If trust and untrust are in the same virtual router, a single default route (<code>0.0.0.0/0</code>) typically covers it. But verify that the route's next hop sends traffic out the correct interface.</p>
+
+<h4>Common Model (dual VR) deployments</h4>
+<p>In the Common Model, trust and untrust are in <strong>separate virtual routers</strong>. Each VR needs its own route to <code>168.63.129.16</code>:</p>
+
+<table>
+  <tr><th>Virtual Router</th><th>Destination</th><th>Next Hop</th><th>Interface</th></tr>
+  <tr><td>UNTRUST-VR (or CM-VR)</td><td><code>168.63.129.16/32</code></td><td>Untrust subnet gateway IP</td><td>ethernet1/1</td></tr>
+  <tr><td>TRUST-VR (or CM-VR)</td><td><code>168.63.129.16/32</code></td><td>Trust subnet gateway IP</td><td>ethernet1/2</td></tr>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Most common failure: wrong gateway IP</div>
+  <p>The gateway IP is the <strong>first usable address</strong> in the subnet. For example, if the trust subnet is <code>10.51.1.0/24</code>, the gateway is <code>10.51.1.1</code>. These are often set via <strong>template variables</strong> (e.g., <code>$TRUST-CM-VR-GW</code>, <code>$UNTRUST-CM-VR-GW</code>) on the template stack. If the variable is empty or wrong, the route has no valid next hop and the probe response is dropped.</p>
+</div>
+
+<h4>How to verify</h4>
+<div class="code-block">
+<pre># Check routing table for 168.63.129.16
+show routing route destination 168.63.129.16
+
+# If using dual VRs, check each one
+show routing route virtual-router UNTRUST-VR destination 168.63.129.16
+show routing route virtual-router TRUST-VR destination 168.63.129.16
+
+# Verify template variable values (on Panorama)
+show template-variable name TRUST-CM-VR-GW
+show template-variable name UNTRUST-CM-VR-GW</pre>
+</div>
+
+<h4>How to check template variables (Panorama GUI)</h4>
+<ol>
+  <li>Navigate to <strong>Panorama &gt; Templates</strong></li>
+  <li>Click the <strong>template stack</strong> assigned to the firewall</li>
+  <li>Review the <strong>Variables</strong> tab &mdash; verify gateway IPs match the actual Azure subnet gateways</li>
+  <li>Compare against Azure Portal: <strong>Virtual Network &gt; Subnets</strong> &mdash; the gateway is always the first IP in the range (x.x.x.1)</li>
+</ol>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h3>1.4 Interface and Zone Configuration</h3>
+
+<table>
+  <tr><th>Check</th><th>What to look for</th></tr>
+  <tr><td>Interface is up</td><td><code>show interface ethernet1/1</code> and <code>ethernet1/2</code> &mdash; state should be <code>up</code></td></tr>
+  <tr><td>Correct IP assigned</td><td>Interface IP must match the Azure NIC private IP. If DHCP, verify it pulled the expected address</td></tr>
+  <tr><td>Correct zone assigned</td><td>Trust interface in TRUST zone, untrust in UNTRUST zone</td></tr>
+  <tr><td>Correct VR assigned</td><td>Each interface assigned to the correct virtual router</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2 id="lb-config">Section 2: Load Balancer Configuration</h2>
+
+<h3>2.1 Health Probe Settings</h3>
+
+<table>
+  <tr><th>Setting</th><th>Recommended Value</th><th>Notes</th></tr>
+  <tr><td>Protocol</td><td><strong>TCP</strong> or <strong>HTTP</strong></td><td>HTTP on port 80 is simplest. If HTTPS, set path to <code>/unauth/php/health.php</code></td></tr>
+  <tr><td>Port</td><td><strong>80</strong></td><td>Must match the management profile protocol/port on the firewall</td></tr>
+  <tr><td>Path (HTTP/HTTPS only)</td><td><code>/</code> (HTTP) or <code>/unauth/php/health.php</code> (HTTPS)</td><td>For HTTP probes, any path works. For HTTPS, use the PAN-OS health endpoint</td></tr>
+  <tr><td>Interval</td><td><strong>5</strong> seconds</td><td>How often Azure sends a probe</td></tr>
+  <tr><td>Unhealthy threshold</td><td><strong>2</strong></td><td>Number of consecutive failures before marking unhealthy</td></tr>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Probe port must match management profile</div>
+  <p>If the LB probe is set to port 80 (HTTP), the interface management profile must enable <strong>HTTP</strong>. If the probe is on port 443, enable <strong>HTTPS</strong>. A mismatch means the firewall gets the probe but does not respond.</p>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h3>2.2 Load Balancing Rules</h3>
+
+<p>For VM-Series (network virtual appliance) deployments, the LB rules have two critical settings that are frequently misconfigured:</p>
+
+<table>
+  <tr><th>Setting</th><th>Required Value</th><th>Why</th></tr>
+  <tr><td><strong>HA Ports</strong></td><td><strong>Enabled</strong></td><td>Forwards ALL protocols and ports to the firewall, not just specific ones. Without this, only traffic matching the rule's port/protocol reaches the firewall. Required for NVA deployments.</td></tr>
+  <tr><td><strong>Floating IP (Direct Server Return)</strong></td><td><strong>Enabled</strong></td><td>Preserves the original destination IP through the load balancer. Without this, the destination is rewritten to the backend NIC IP, breaking firewall routing and NAT logic.</td></tr>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">HA Ports is the #1 LB misconfiguration</div>
+  <p>If HA Ports is <strong>disabled</strong>, the LB rule only forwards traffic on the specific port/protocol configured in the rule. Health probes may still work (they use a dedicated probe mechanism), but actual data traffic will not reach the firewall for inspection. Always enable HA Ports for VM-Series deployments.</p>
+</div>
+
+<h4>How to verify in Azure Portal</h4>
+<ol>
+  <li>Navigate to <strong>Load Balancer &gt; Load balancing rules</strong></li>
+  <li>Click each rule and verify:
+    <ul>
+      <li><strong>HA Ports</strong>: Yes</li>
+      <li><strong>Floating IP</strong>: Enabled</li>
+      <li><strong>Health probe</strong>: Points to the correct probe (port 80 to the correct NIC)</li>
+    </ul>
+  </li>
+</ol>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h3>2.3 Backend Pool Configuration</h3>
+
+<table>
+  <tr><th>LB Type</th><th>Backend Pool Should Reference</th><th>Common Mistake</th></tr>
+  <tr><td>Internal LB</td><td><strong>Trust NIC</strong> (ethernet1/2) of each VM-Series</td><td>Using the management NIC or untrust NIC</td></tr>
+  <tr><td>External LB</td><td><strong>Untrust NIC</strong> (ethernet1/1) of each VM-Series</td><td>Using the management NIC or trust NIC</td></tr>
+</table>
+
+<p>If the backend pool references the wrong NIC, the probe arrives at the wrong interface and either hits no management profile or the wrong zone's security policy.</p>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h3>2.4 Frontend IP Configuration</h3>
+
+<table>
+  <tr><th>LB Type</th><th>Frontend IP</th><th>Notes</th></tr>
+  <tr><td>Internal LB</td><td>Private IP in the <strong>trust subnet</strong> (e.g., <code>10.51.1.100</code>)</td><td>This IP is the next hop in spoke UDRs. Must be in the same subnet as the FW trust NICs.</td></tr>
+  <tr><td>External LB</td><td>Public IP address</td><td>DNAT targets on the firewall must reference this public IP as the destination.</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2 id="azure-networking">Section 3: Azure Networking</h2>
+
+<h3>3.1 Network Security Groups (NSGs)</h3>
+
+<p>NSGs must allow the health probe traffic from <code>168.63.129.16</code>. Azure has a built-in <code>AzureLoadBalancer</code> service tag for this, but if you have custom deny rules, they may override it.</p>
+
+<table>
+  <tr><th>NSG Location</th><th>Required Rule</th></tr>
+  <tr><td>Trust subnet NSG</td><td>Allow inbound TCP 80 (or 443) from <code>168.63.129.16/32</code> (or service tag <code>AzureLoadBalancer</code>)</td></tr>
+  <tr><td>Untrust subnet NSG</td><td>Allow inbound TCP 80 (or 443) from <code>168.63.129.16/32</code> (or service tag <code>AzureLoadBalancer</code>)</td></tr>
+</table>
+
+<h4>How to verify</h4>
+<ol>
+  <li>In Azure Portal, navigate to the trust/untrust <strong>NIC &gt; Effective security rules</strong></li>
+  <li>Look for a rule that matches source <code>168.63.129.16</code>, destination port 80 (or 443), action <code>Allow</code></li>
+  <li>If you see <code>Deny</code>, check for custom NSG rules with lower priority numbers that override the default <code>AllowAzureLoadBalancerInBound</code> rule</li>
+</ol>
+
+<div class="callout callout-note">
+  <div class="callout-title">Default NSG behavior</div>
+  <p>Azure's default NSG rules include <code>AllowAzureLoadBalancerInBound</code> at priority 65001, which allows all traffic from the <code>AzureLoadBalancer</code> service tag. This rule is only overridden if you create a custom deny rule at a lower priority number. If you are using custom NSGs, verify this rule is not being shadowed.</p>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h3>3.2 IP Forwarding on NICs</h3>
+
+<p>Azure drops all forwarded traffic (traffic where the destination IP doesn't match the NIC's IP) unless <strong>IP forwarding</strong> is enabled on the NIC. This must be enabled on <strong>both</strong> the trust and untrust NICs.</p>
+
+<h4>How to verify</h4>
+<ol>
+  <li>Azure Portal &gt; VM &gt; <strong>Networking</strong> &gt; select the NIC</li>
+  <li>Check <strong>IP forwarding</strong>: must be <code>Enabled</code></li>
+  <li>Repeat for both trust and untrust NICs</li>
+</ol>
+
+<div class="callout callout-note">
+  <div class="callout-title">IP forwarding vs health probes</div>
+  <p>IP forwarding does not directly affect health probes (probes target the NIC's own IP). However, if IP forwarding is disabled, data traffic won't flow even when probes pass. Always verify it's enabled as part of the troubleshooting process.</p>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<h3>3.3 Terraform Variables to Double-Check</h3>
+
+<p>If the deployment was done via Terraform (SWFW modules), these are the variables that directly impact health probe success:</p>
+
+<table>
+  <tr><th>Variable / Setting</th><th>Where</th><th>What to Check</th></tr>
+  <tr><td><code>enable_ip_forwarding = true</code></td><td>VM-Series NIC config</td><td>Must be <code>true</code> on trust and untrust NICs</td></tr>
+  <tr><td><code>health_check_port</code></td><td>LB module config</td><td>Must match the management profile protocol (usually 80)</td></tr>
+  <tr><td><code>ha_ports_rule</code></td><td>LB rule config</td><td>Must be <code>true</code> for NVA deployments</td></tr>
+  <tr><td><code>floating_ip</code></td><td>LB rule config</td><td>Must be <code>true</code></td></tr>
+  <tr><td>NSG ingress rules</td><td>Security group config</td><td>Must include allow for <code>168.63.129.16</code> or <code>AzureLoadBalancer</code> tag</td></tr>
+  <tr><td>Trust/untrust gateway variables</td><td>Panorama template stack variables</td><td><code>$TRUST-CM-VR-GW</code>, <code>$UNTRUST-CM-VR-GW</code> must match Azure subnet gateway (x.x.x.1)</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2 id="cli-commands">Section 4: Diagnostic CLI Commands</h2>
+
+<p>Run these on the VM-Series firewall to diagnose health probe issues:</p>
+
+<h3>4.1 Verify probe traffic is arriving</h3>
+<div class="code-block">
+<pre># Packet capture on the trust interface for health probe traffic
+debug dataplane packet-diag set filter match source 168.63.129.16
+debug dataplane packet-diag set filter on
+# Wait a few seconds for probes to arrive
+debug dataplane packet-diag show setting
+
+# Check session table for probe sessions
+show session all filter source 168.63.129.16
+
+# Check traffic log for probe entries
+show log traffic source eq 168.63.129.16</pre>
+</div>
+
+<h3>4.2 Verify interface and routing</h3>
+<div class="code-block">
+<pre># Interface status
+show interface all
+
+# Check management profiles
+show network interface-management-profile
+
+# Routing lookup for probe response
+show routing fib virtual-router &lt;VR-NAME&gt; | match 168.63.129.16
+test routing fib-lookup virtual-router &lt;VR-NAME&gt; ip 168.63.129.16
+
+# Show all static routes
+show routing route type static</pre>
+</div>
+
+<h3>4.3 Verify security policy match</h3>
+<div class="code-block">
+<pre># Test policy match for trust-side probe (use the firewall's actual trust IP)
+test security-policy-match source 168.63.129.16 destination &lt;FW-TRUST-IP&gt; \
+  protocol 6 destination-port 80 from TRUST to TRUST
+
+# Test policy match for untrust-side probe (use the firewall's actual untrust IP)
+test security-policy-match source 168.63.129.16 destination &lt;FW-UNTRUST-IP&gt; \
+  protocol 6 destination-port 80 from UNTRUST to UNTRUST
+
+# NOTE: The security policy destination should use the trust/untrust SUBNET
+# (not a single IP), since firewalls may be assigned any IP in the subnet.
+
+# Show the running security policy
+show running security-policy</pre>
+</div>
+
+<h3>4.4 Verify counter for drops</h3>
+<div class="code-block">
+<pre># Check global counters for drops
+show counter global filter severity drop
+
+# Check flow drops specifically
+show counter global filter category flow | match drop
+
+# Look for "no-route" or "policy-deny" drops
+show counter global filter delta yes | match "no-route\|policy-deny\|icmp-unreachable"</pre>
+</div>
+
+<!-- ================================================================ -->
+<h2>Troubleshooting Decision Tree</h2>
+
+<h3>Step 1: Is the firewall fully booted?</h3>
+<p>Check <code>show system info</code> &mdash; if uptime is less than 10 minutes and the firewall just deployed, wait for bootstrap to complete. During bootstrap, the dataplane is not ready and cannot respond to probes.</p>
+
+<h3>Step 2: Are probes reaching the firewall?</h3>
+<p>Check <code>show session all filter source 168.63.129.16</code>. If <strong>no sessions</strong>, the probe is blocked before reaching PAN-OS &mdash; check NSGs and backend pool NIC assignment. If sessions exist but show <code>DISCARD</code>, check security policy.</p>
+
+<h3>Step 3: Is the management profile correct?</h3>
+<p>If sessions show but the LB still reports unhealthy, the firewall is receiving the probe but not responding. Verify the management profile on the probed interface enables the correct protocol (HTTP/HTTPS) and port (80/443).</p>
+
+<h3>Step 4: Can the firewall route the response?</h3>
+<p>Run <code>test routing fib-lookup virtual-router &lt;VR&gt; ip 168.63.129.16</code>. If this returns <code>no route</code> or routes via the wrong interface, add a static route for <code>168.63.129.16/32</code> via the correct subnet gateway.</p>
+
+<h3>Step 5: Are the LB rule settings correct?</h3>
+<p>Even if health probes pass, traffic won't flow without HA Ports and Floating IP. Verify both are enabled on every LB rule.</p>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="footer">
+  <p><strong>Palo Alto Networks</strong> &mdash; Implementation Guides &mdash; Azure VM-Series LB Health Check Troubleshooting</p>
+  <p>For the full deployment guide, see: <a href="../vm-series-deployment.html">VM-Series Deployment on Azure</a></p>
+</div>
+
+</div><!-- .container -->
+</body>
+</html>
