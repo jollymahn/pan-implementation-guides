@@ -1,48 +1,50 @@
-# Dedicated Inbound Design — Lab Validation (2026-06-01)
-# Account: YOUR-ACCOUNT-ID | Region: us-west-2
-# Panorama: YOUR-PANORAMA-IP (account YOUR-PANORAMA-ACCOUNT-ID)
+# #############################################################################
 #
-# Architecture:
-#   - Inbound VPC: IGW + per-app GWLBE + per-app NLBs (internet-facing)
-#   - Security VPC: GWLB + VM-Series (centralized inspection)
-#   - Spoke VPCs: internal NLBs + VMs (no IGW, no GWLBE)
-#   - Two-tier NLB: inbound NLBs → spoke NLB IPs (cross-VPC via TGW)
+#   DEDICATED INBOUND DESIGN — Single Security VPC + Dedicated Inbound VPC
 #
-# Inbound traffic flow:
-#   Client → IGW → (edge route) → GWLBE → GWLB → VM-Series → GWLB →
-#   GWLBE → inbound NLB → TGW → spoke NLB → spoke VM
+#   A dedicated inbound VPC serves as the internet entry point for all inbound
+#   traffic. The security VPC handles outbound, east-west, AND inbound
+#   inspection through a single GWLB and VM-Series pool. Spoke VPCs have no
+#   IGW — all internet connectivity is centralized.
 #
-# Bootstrap: Panorama with overlay routing (per-AZ template stacks)
-# Panorama objects NOT YET CREATED — auth-key and DG/stack names are placeholders
-
-### LAB PEERING (validation only — connects FW mgmt to Panorama VPC)
-enable_lab_peering     = false
-panorama_vpc_id        = "YOUR-PANORAMA-VPC-ID"  # TODO: update here
-panorama_vpc_cidr      = "YOUR-PANORAMA-VPC-CIDR"  # TODO: update here
-panorama_vpc_owner_id  = "YOUR-PANORAMA-ACCOUNT-ID"  # TODO: update here
-panorama_route_table_ids = []
+#   Traffic flows:
+#
+#   - INBOUND:   Internet -> Inbound VPC IGW -> GWLBE -> GWLB -> VM-Series
+#                (security_vpc) -> GWLBE -> Inbound NLB -> TGW -> Spoke NLB
+#                -> Spoke VM
+#
+#   - OUTBOUND:  Spoke VM -> TGW -> security_vpc -> outbound GWLBE -> GWLB ->
+#                VM-Series -> NAT GW -> Internet
+#
+#   - EAST-WEST: Spoke A -> TGW -> security_vpc -> eastwest GWLBE -> GWLB ->
+#                VM-Series -> TGW -> Spoke B
+#
+#   VPCs: 4 (security + inbound + 2 spokes)
+#   GWLBs: 1 | VM-Series groups: 1 | TGW route tables: 3
+#
+# #############################################################################
 
 ### GENERAL
 region      = "us-west-2"
-name_prefix = "example-"  # TODO: update here
+name_prefix = "cld-ded-"
 
 global_tags = {
   ManagedBy   = "terraform"
-  Application = "dedicated-inbound-validation"
-  Owner       = "Your Name"  # TODO: update here
+  Application = "Palo Alto Networks VM-Series NGFW"
+  Owner       = "PS Team"
 }
 
-ssh_key_name = "example-ssh-key"  # TODO: update here
+ssh_key_name = "example-ssh-key"
 
 ### VPC
 vpcs = {
 
   # ===========================================================================
-  # SECURITY VPC — Centralized inspection (unchanged from combined design)
+  # SECURITY VPC — Centralized inspection (GWLB + VM-Series)
   # ===========================================================================
   security_vpc = {
     name = "security-vpc"
-    cidr = "10.51.0.0/22"
+    cidr = "10.51.0.0/21"
     nacls = {
       trusted_path_monitoring = {
         name = "trusted-path-monitoring"
@@ -60,6 +62,20 @@ vpcs = {
             protocol    = "icmp"
             rule_action = "deny"
             cidr_block  = "10.51.1.64/28"
+          }
+          block_outbound_icmp_3 = {
+            rule_number = 130
+            egress      = true
+            protocol    = "icmp"
+            rule_action = "deny"
+            cidr_block  = "10.51.2.64/28"
+          }
+          block_outbound_icmp_4 = {
+            rule_number = 140
+            egress      = true
+            protocol    = "icmp"
+            rule_action = "deny"
+            cidr_block  = "10.51.3.64/28"
           }
           allow_other_outbound = {
             rule_number = 200
@@ -91,14 +107,14 @@ vpcs = {
             description = "Permit GENEVE to GWLB subnets"
             type        = "ingress", from_port = "6081", to_port = "6081", protocol = "udp"
             cidr_blocks = [
-              "10.51.0.48/28", "10.51.1.48/28", "10.51.2.48/28"
+              "10.51.0.48/28", "10.51.1.48/28", "10.51.2.48/28", "10.51.3.48/28"
             ]
           }
           health_probe = {
             description = "Permit Port 80 Health Probe to GWLB subnets"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
             cidr_blocks = [
-              "10.51.0.48/28", "10.51.1.48/28", "10.51.2.48/28"
+              "10.51.0.48/28", "10.51.1.48/28", "10.51.2.48/28", "10.51.3.48/28"
             ]
           }
         }
@@ -111,30 +127,22 @@ vpcs = {
             type        = "egress", from_port = "0", to_port = "0", protocol = "-1"
             cidr_blocks = ["0.0.0.0/0"]
           }
+          /* Uncomment the following section in case of direct firewall mgmt access required
+          https = {
+            description = "Permit HTTPS"
+            type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
+            cidr_blocks = ["1.1.1.1/32"]
+          }
+          ssh = {
+            description = "Permit SSH"
+            type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
+            cidr_blocks = ["1.1.1.1/32"]
+          }
+          */
           panorama_ssh = {
             description = "Permit Panorama SSH (Optional)"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
             cidr_blocks = ["10.0.0.0/8"]
-          }
-          panorama_https = {
-            description = "Permit HTTPS (direct firewall GUI mgmt from internal nets)"
-            type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["10.0.0.0/8"]
-          }
-          panorama_ping = {
-            description = "Permit ICMP (reachability checks from internal nets)"
-            type        = "ingress", from_port = "-1", to_port = "-1", protocol = "icmp"
-            cidr_blocks = ["10.0.0.0/8"]
-          }
-          panorama_mgmt = {
-            description = "Permit Panorama-to-FW management channel"
-            type        = "ingress", from_port = "3978", to_port = "3978", protocol = "tcp"
-            cidr_blocks = ["10.251.2.0/24"]
-          }
-          panorama_device_cert = {
-            description = "Permit Panorama device certificate channel (PAN-OS 10+)"
-            type        = "ingress", from_port = "28443", to_port = "28443", protocol = "tcp"
-            cidr_blocks = ["10.251.2.0/24"]
           }
         }
       }
@@ -149,46 +157,71 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["YOUR-PUBLIC-IP/32", "10.104.0.0/20", "10.105.0.0/20"]
+            cidr_blocks = ["1.1.1.1/32", "10.48.0.0/21", "10.49.0.0/21"]
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["YOUR-PUBLIC-IP/32", "10.104.0.0/20", "10.105.0.0/20"]
+            cidr_blocks = ["1.1.1.1/32", "10.48.0.0/21", "10.49.0.0/21"]
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["YOUR-PUBLIC-IP/32", "10.104.0.0/20", "10.105.0.0/20"]
+            cidr_blocks = ["1.1.1.1/32", "10.48.0.0/21", "10.49.0.0/21"]
           }
         }
       }
     }
     subnets = {
+      # TGW Attach Subnets
       "10.51.0.0/28"   = { az = "us-west-2a", subnet_group = "tgw_attach" }
       "10.51.1.0/28"   = { az = "us-west-2b", subnet_group = "tgw_attach" }
+      "10.51.2.0/28"   = { az = "us-west-2c", subnet_group = "tgw_attach" }
+      "10.51.3.0/28"   = { az = "us-west-2d", subnet_group = "tgw_attach" }
+      # GWLBe Outbound Subnets
       "10.51.0.16/28"  = { az = "us-west-2a", subnet_group = "gwlbe_outbound" }
       "10.51.1.16/28"  = { az = "us-west-2b", subnet_group = "gwlbe_outbound" }
+      "10.51.2.16/28"  = { az = "us-west-2c", subnet_group = "gwlbe_outbound" }
+      "10.51.3.16/28"  = { az = "us-west-2d", subnet_group = "gwlbe_outbound" }
+      # GWLBe East-West Subnets
       "10.51.0.32/28"  = { az = "us-west-2a", subnet_group = "gwlbe_eastwest" }
       "10.51.1.32/28"  = { az = "us-west-2b", subnet_group = "gwlbe_eastwest" }
+      "10.51.2.32/28"  = { az = "us-west-2c", subnet_group = "gwlbe_eastwest" }
+      "10.51.3.32/28"  = { az = "us-west-2d", subnet_group = "gwlbe_eastwest" }
+      # GWLB Subnets
       "10.51.0.48/28"  = { az = "us-west-2a", subnet_group = "gwlb" }
       "10.51.1.48/28"  = { az = "us-west-2b", subnet_group = "gwlb" }
       "10.51.2.48/28"  = { az = "us-west-2c", subnet_group = "gwlb" }
+      "10.51.3.48/28"  = { az = "us-west-2d", subnet_group = "gwlb" }
+      # Private Subnets
       "10.51.0.64/28"  = { az = "us-west-2a", subnet_group = "private", nacl = "trusted_path_monitoring" }
       "10.51.1.64/28"  = { az = "us-west-2b", subnet_group = "private", nacl = "trusted_path_monitoring" }
+      "10.51.2.64/28"  = { az = "us-west-2c", subnet_group = "private", nacl = "trusted_path_monitoring" }
+      "10.51.3.64/28"  = { az = "us-west-2d", subnet_group = "private", nacl = "trusted_path_monitoring" }
+      # Management Subnets
       "10.51.0.80/28"  = { az = "us-west-2a", subnet_group = "mgmt" }
       "10.51.1.80/28"  = { az = "us-west-2b", subnet_group = "mgmt" }
+      "10.51.2.80/28"  = { az = "us-west-2c", subnet_group = "mgmt" }
+      "10.51.3.80/28"  = { az = "us-west-2d", subnet_group = "mgmt" }
+      # Public Subnets
       "10.51.0.96/28"  = { az = "us-west-2a", subnet_group = "public" }
       "10.51.1.96/28"  = { az = "us-west-2b", subnet_group = "public" }
-      "10.51.0.112/28" = { az = "us-west-2a", subnet_group = "natgw" }
-      "10.51.1.112/28" = { az = "us-west-2b", subnet_group = "natgw" }
+      "10.51.2.96/28"  = { az = "us-west-2c", subnet_group = "public" }
+      "10.51.3.96/28"  = { az = "us-west-2d", subnet_group = "public" }
+      # NAT Gateway Subnets
+      "10.51.0.112/28" = { az = "us-west-2a", subnet_group = "nat_gateway" }
+      "10.51.1.112/28" = { az = "us-west-2b", subnet_group = "nat_gateway" }
+      "10.51.2.112/28" = { az = "us-west-2c", subnet_group = "nat_gateway" }
+      "10.51.3.112/28" = { az = "us-west-2d", subnet_group = "nat_gateway" }
     }
     routes = {
+      # Value of `next_hop_key` must match keys use to create TGW attachment, IGW, GWLB endpoint or other resources
+      # Value of `next_hop_type` is internet_gateway, nat_gateway, transit_gateway_attachment or gwlbe_endpoint
       mgmt_default = {
         vpc           = "security_vpc"
         subnet_group  = "mgmt"
         to_cidr       = "0.0.0.0/0"
-        next_hop_key  = "security_natgw"
+        next_hop_key  = "security_nat_gw"
         next_hop_type = "nat_gateway"
       }
       mgmt_panorama = {
@@ -226,6 +259,20 @@ vpcs = {
         next_hop_key  = "security_vpc"
         next_hop_type = "internet_gateway"
       }
+      natgw_default = {
+        vpc           = "security_vpc"
+        subnet_group  = "nat_gateway"
+        to_cidr       = "0.0.0.0/0"
+        next_hop_key  = "security_vpc"
+        next_hop_type = "internet_gateway"
+      }
+      natgw_rfc1918 = {
+        vpc           = "security_vpc"
+        subnet_group  = "nat_gateway"
+        to_cidr       = "10.0.0.0/8"
+        next_hop_key  = "security_gwlb_outbound"
+        next_hop_type = "gwlbe_endpoint"
+      }
       gwlbe_outbound_rfc1918 = {
         vpc           = "security_vpc"
         subnet_group  = "gwlbe_outbound"
@@ -240,20 +287,6 @@ vpcs = {
         next_hop_key  = "security"
         next_hop_type = "transit_gateway_attachment"
       }
-      natgw_default = {
-        vpc           = "security_vpc"
-        subnet_group  = "natgw"
-        to_cidr       = "0.0.0.0/0"
-        next_hop_key  = "security_vpc"
-        next_hop_type = "internet_gateway"
-      }
-      natgw_rfc1918 = {
-        vpc           = "security_vpc"
-        subnet_group  = "natgw"
-        to_cidr       = "10.0.0.0/8"
-        next_hop_key  = "security_gwlb_outbound"
-        next_hop_type = "gwlbe_endpoint"
-      }
     }
   }
 
@@ -262,8 +295,8 @@ vpcs = {
   # Per-app LB subnets avoid IGW route table conflicts between GWLBE endpoints.
   # ===========================================================================
   inbound_vpc = {
-    name = "inbound-vpc"
-    cidr = "10.50.0.0/23"
+    name  = "inbound-vpc"
+    cidr  = "10.50.0.0/23"
     nacls = {}
     security_groups = {
       inbound_lb = {
@@ -315,7 +348,7 @@ vpcs = {
       app1_lb_to_app1 = {
         vpc           = "inbound_vpc"
         subnet_group  = "app1_lb"
-        to_cidr       = "10.104.0.0/20"
+        to_cidr       = "10.48.0.0/21"
         next_hop_key  = "inbound"
         next_hop_type = "transit_gateway_attachment"
       }
@@ -332,7 +365,7 @@ vpcs = {
       app2_lb_to_app2 = {
         vpc           = "inbound_vpc"
         subnet_group  = "app2_lb"
-        to_cidr       = "10.105.0.0/20"
+        to_cidr       = "10.49.0.0/21"
         next_hop_key  = "inbound"
         next_hop_type = "transit_gateway_attachment"
       }
@@ -345,7 +378,6 @@ vpcs = {
         next_hop_key  = "inbound_vpc"
         next_hop_type = "internet_gateway"
       }
-
     }
   }
 
@@ -354,7 +386,7 @@ vpcs = {
   # ===========================================================================
   app1_vpc = {
     name                    = "app1-spoke-vpc"
-    cidr                    = "10.104.0.0/20"
+    cidr                    = "10.48.0.0/21"
     create_internet_gateway = false
     nacls                   = {}
     security_groups = {
@@ -369,35 +401,32 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["YOUR-PUBLIC-IP/32", "10.50.0.0/23", "10.104.0.0/20", "10.105.0.0/20"]
+            cidr_blocks = ["1.1.1.1/32", "10.50.0.0/23", "10.48.0.0/21", "10.49.0.0/21"]
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["YOUR-PUBLIC-IP/32", "10.50.0.0/23", "10.104.0.0/20", "10.105.0.0/20"]
+            cidr_blocks = ["1.1.1.1/32", "10.50.0.0/23", "10.48.0.0/21", "10.49.0.0/21"]
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["YOUR-PUBLIC-IP/32", "10.50.0.0/23", "10.104.0.0/20", "10.105.0.0/20"]
-          }
-          icmp = {
-            description = "Permit ICMP"
-            type        = "ingress", from_port = "-1", to_port = "-1", protocol = "icmp"
-            cidr_blocks = ["10.104.0.0/20", "10.105.0.0/20"]
+            cidr_blocks = ["1.1.1.1/32", "10.50.0.0/23", "10.48.0.0/21", "10.49.0.0/21"]
           }
         }
       }
     }
     subnets = {
-      "10.104.0.0/24" = { az = "us-west-2a", subnet_group = "app1_vm" }
-      "10.104.1.0/24" = { az = "us-west-2b", subnet_group = "app1_vm" }
-      "10.104.2.0/24" = { az = "us-west-2a", subnet_group = "app1_lb" }
-      "10.104.3.0/24" = { az = "us-west-2b", subnet_group = "app1_lb" }
-      "10.104.4.0/24" = { az = "us-west-2a", subnet_group = "app1_gwlbe" }
-      "10.104.5.0/24" = { az = "us-west-2b", subnet_group = "app1_gwlbe" }
+      # App1 VM Subnets
+      "10.48.0.0/24" = { az = "us-west-2a", subnet_group = "app1_vm" }
+      "10.48.1.0/24" = { az = "us-west-2b", subnet_group = "app1_vm" }
+      # App1 LB Subnets (internal spoke NLBs)
+      "10.48.2.0/24" = { az = "us-west-2a", subnet_group = "app1_lb" }
+      "10.48.3.0/24" = { az = "us-west-2b", subnet_group = "app1_lb" }
     }
     routes = {
+      # Value of `next_hop_key` must match keys use to create TGW attachment, IGW, GWLB endpoint or other resources
+      # Value of `next_hop_type` is internet_gateway, nat_gateway, transit_gateway_attachment or gwlbe_endpoint
       vm_default = {
         vpc           = "app1_vpc"
         subnet_group  = "app1_vm"
@@ -420,7 +449,7 @@ vpcs = {
   # ===========================================================================
   app2_vpc = {
     name                    = "app2-spoke-vpc"
-    cidr                    = "10.105.0.0/20"
+    cidr                    = "10.49.0.0/21"
     create_internet_gateway = false
     nacls                   = {}
     security_groups = {
@@ -435,35 +464,32 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["YOUR-PUBLIC-IP/32", "10.50.0.0/23", "10.104.0.0/20", "10.105.0.0/20"]
+            cidr_blocks = ["1.1.1.1/32", "10.50.0.0/23", "10.48.0.0/21", "10.49.0.0/21"]
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["YOUR-PUBLIC-IP/32", "10.50.0.0/23", "10.104.0.0/20", "10.105.0.0/20"]
+            cidr_blocks = ["1.1.1.1/32", "10.50.0.0/23", "10.48.0.0/21", "10.49.0.0/21"]
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["YOUR-PUBLIC-IP/32", "10.50.0.0/23", "10.104.0.0/20", "10.105.0.0/20"]
-          }
-          icmp = {
-            description = "Permit ICMP"
-            type        = "ingress", from_port = "-1", to_port = "-1", protocol = "icmp"
-            cidr_blocks = ["10.104.0.0/20", "10.105.0.0/20"]
+            cidr_blocks = ["1.1.1.1/32", "10.50.0.0/23", "10.48.0.0/21", "10.49.0.0/21"]
           }
         }
       }
     }
     subnets = {
-      "10.105.0.0/24" = { az = "us-west-2a", subnet_group = "app2_vm" }
-      "10.105.1.0/24" = { az = "us-west-2b", subnet_group = "app2_vm" }
-      "10.105.2.0/24" = { az = "us-west-2a", subnet_group = "app2_lb" }
-      "10.105.3.0/24" = { az = "us-west-2b", subnet_group = "app2_lb" }
-      "10.105.4.0/24" = { az = "us-west-2a", subnet_group = "app2_gwlbe" }
-      "10.105.5.0/24" = { az = "us-west-2b", subnet_group = "app2_gwlbe" }
+      # App2 VM Subnets
+      "10.49.0.0/24" = { az = "us-west-2a", subnet_group = "app2_vm" }
+      "10.49.1.0/24" = { az = "us-west-2b", subnet_group = "app2_vm" }
+      # App2 LB Subnets (internal spoke NLBs)
+      "10.49.2.0/24" = { az = "us-west-2a", subnet_group = "app2_lb" }
+      "10.49.3.0/24" = { az = "us-west-2b", subnet_group = "app2_lb" }
     }
     routes = {
+      # Value of `next_hop_key` must match keys use to create TGW attachment, IGW, GWLB endpoint or other resources
+      # Value of `next_hop_type` is internet_gateway, nat_gateway, transit_gateway_attachment or gwlbe_endpoint
       vm_default = {
         vpc           = "app2_vpc"
         subnet_group  = "app2_vm"
@@ -484,12 +510,15 @@ vpcs = {
 
 ### NAT GATEWAYS
 natgws = {
-  security_natgw = {
+  security_nat_gw = {
+    name         = "natgw"
     vpc          = "security_vpc"
-    subnet_group = "natgw"
-    nat_gateway_names = {
+    subnet_group = "nat_gateway"
+    nat_gateways = {
       "us-west-2a" = "natgw-2a"
       "us-west-2b" = "natgw-2b"
+      "us-west-2c" = "natgw-2c"
+      "us-west-2d" = "natgw-2d"
     }
   }
 }
@@ -500,6 +529,7 @@ tgws = {
     name = "tgw"
     asn  = "64512"
     route_tables = {
+      # Do not change keys `from_security_vpc` and `from_spoke_vpc` as they are used in `main.tf` and attachments
       "from_security_vpc" = {
         create = true
         name   = "from_security"
@@ -517,6 +547,7 @@ tgws = {
 }
 
 tgw_attachments = {
+  # Value of `route_table` and `propagate_routes_to` must match `route_tables` stores under `tgw`
   security = {
     tgw_key                 = "tgw"
     security_vpc_attachment = true
@@ -562,6 +593,9 @@ gwlbs = {
 }
 
 gwlb_endpoints = {
+  # Value of `gwlb` must match key of objects stored in `gwlbs`
+  # Value of `vpc` must match key of objects stored in `vpcs`
+
   # Outbound + east-west in security VPC (unchanged)
   security_gwlb_eastwest = {
     name            = "eastwest-gwlb-endpoint"
@@ -577,6 +611,7 @@ gwlb_endpoints = {
     subnet_group    = "gwlbe_outbound"
     act_as_next_hop = false
   }
+
   # Per-app inbound endpoints in DEDICATED INBOUND VPC
   # Each points to its own LB subnet group — avoids IGW route conflicts
   app1_inbound = {
@@ -601,30 +636,51 @@ gwlb_endpoints = {
 
 ### VM-SERIES
 # Per-AZ groups for overlay routing (different template stack per AZ)
-# Bootstrap params are PLACEHOLDERS — update after creating Panorama config
 vmseries = {
   vmseries-az-a = {
     instances = {
       "01" = { az = "us-west-2a" }
     }
 
+    # Value of `panorama-server`, `auth-key`, `dgname`, `tplname` can be taken from plugin `sw_fw_license`. Delete map if SCM bootstrap required.
+    bootstrap_options = {
+      mgmt-interface-swap         = "enable"
+      plugin-op-commands          = "panorama-licensing-mode-on,aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable"
+      panorama-server             = ""
+      auth-key                    = ""
+      dgname                      = ""
+      tplname                     = ""
+      dhcp-send-hostname          = "yes"
+      dhcp-send-client-id         = "yes"
+      dhcp-accept-server-hostname = "yes"
+      dhcp-accept-server-domain   = "yes"
+    }
+
+    /* Uncomment this section if SCM bootstrap required (PAN-OS version 11.0 or higher)
+
     bootstrap_options = {
       mgmt-interface-swap                   = "enable"
-      plugin-op-commands                    = "panorama-licensing-mode-on,aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable"
-      panorama-server                       = "YOUR-PANORAMA-IP"  # TODO: update here
-      dgname                                = "CLD-DG-AWS-DEDICATED"
-      tplname                               = "CLD-STK-AWS-DEDICATED-AZ-A"
-      auth-key                              = "YOUR-AUTH-KEY"  # TODO: update here
+      panorama-server                       = "cloud"
+      dgname                                = "scm_folder_name"
       dhcp-send-hostname                    = "yes"
       dhcp-send-client-id                   = "yes"
       dhcp-accept-server-hostname           = "yes"
       dhcp-accept-server-domain             = "yes"
+      plugin-op-commands                    = "aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable"
+      vm-series-auto-registration-pin-id    = "1234ab56-1234-12a3-a1bc-a1bc23456de7"
+      vm-series-auto-registration-pin-value = "12ab3c456d78901e2f3abc456d78ef9a"
+      authcodes                             = "D1234567"
     }
+    */
 
+    # airs_deployment = true # Uncomment this line for AIRS deployment (PAN-OS version 11.2.4-h1 or higher)
     panos_version = "11.1.4-h7"
     ebs_kms_id    = "alias/aws/ebs"
 
-    vpc  = "security_vpc"
+    # Value of `vpc` must match key of objects stored in `vpcs`
+    vpc = "security_vpc"
+
+    # Value of `gwlb` must match key of objects stored in `gwlbs`
     gwlb = "security_gwlb"
 
     interfaces = {
@@ -641,7 +697,7 @@ vmseries = {
         security_group    = "vmseries_mgmt"
         vpc               = "security_vpc"
         subnet_group      = "mgmt"
-        create_public_ip  = false
+        create_public_ip  = true
         source_dest_check = true
       }
       public = {
@@ -654,15 +710,16 @@ vmseries = {
       }
     }
 
+    # Value of `gwlb_endpoint` must match key of objects stored in `gwlb_endpoints`
     subinterfaces = {
       inbound = {
         app1 = {
           gwlb_endpoint = "app1_inbound"
-          subinterface  = "ethernet1/1.10"
+          subinterface  = "ethernet1/1.11"
         }
         app2 = {
           gwlb_endpoint = "app2_inbound"
-          subinterface  = "ethernet1/1.10"
+          subinterface  = "ethernet1/1.12"
         }
       }
       outbound = {
@@ -690,23 +747,45 @@ vmseries = {
       "02" = { az = "us-west-2b" }
     }
 
+    # Value of `panorama-server`, `auth-key`, `dgname`, `tplname` can be taken from plugin `sw_fw_license`. Delete map if SCM bootstrap required.
+    bootstrap_options = {
+      mgmt-interface-swap         = "enable"
+      plugin-op-commands          = "panorama-licensing-mode-on,aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable"
+      panorama-server             = ""
+      auth-key                    = ""
+      dgname                      = ""
+      tplname                     = ""
+      dhcp-send-hostname          = "yes"
+      dhcp-send-client-id         = "yes"
+      dhcp-accept-server-hostname = "yes"
+      dhcp-accept-server-domain   = "yes"
+    }
+
+    /* Uncomment this section if SCM bootstrap required (PAN-OS version 11.0 or higher)
+
     bootstrap_options = {
       mgmt-interface-swap                   = "enable"
-      plugin-op-commands                    = "panorama-licensing-mode-on,aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable"
-      panorama-server                       = "YOUR-PANORAMA-IP"  # TODO: update here
-      dgname                                = "CLD-DG-AWS-DEDICATED"
-      tplname                               = "CLD-STK-AWS-DEDICATED-AZ-B"
-      auth-key                              = "YOUR-AUTH-KEY"  # TODO: update here
+      panorama-server                       = "cloud"
+      dgname                                = "scm_folder_name"
       dhcp-send-hostname                    = "yes"
       dhcp-send-client-id                   = "yes"
       dhcp-accept-server-hostname           = "yes"
       dhcp-accept-server-domain             = "yes"
+      plugin-op-commands                    = "aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable"
+      vm-series-auto-registration-pin-id    = "1234ab56-1234-12a3-a1bc-a1bc23456de7"
+      vm-series-auto-registration-pin-value = "12ab3c456d78901e2f3abc456d78ef9a"
+      authcodes                             = "D1234567"
     }
+    */
 
+    # airs_deployment = true # Uncomment this line for AIRS deployment (PAN-OS version 11.2.4-h1 or higher)
     panos_version = "11.1.4-h7"
     ebs_kms_id    = "alias/aws/ebs"
 
-    vpc  = "security_vpc"
+    # Value of `vpc` must match key of objects stored in `vpcs`
+    vpc = "security_vpc"
+
+    # Value of `gwlb` must match key of objects stored in `gwlbs`
     gwlb = "security_gwlb"
 
     interfaces = {
@@ -723,7 +802,7 @@ vmseries = {
         security_group    = "vmseries_mgmt"
         vpc               = "security_vpc"
         subnet_group      = "mgmt"
-        create_public_ip  = false
+        create_public_ip  = true
         source_dest_check = true
       }
       public = {
@@ -736,15 +815,16 @@ vmseries = {
       }
     }
 
+    # Value of `gwlb_endpoint` must match key of objects stored in `gwlb_endpoints`
     subinterfaces = {
       inbound = {
         app1 = {
           gwlb_endpoint = "app1_inbound"
-          subinterface  = "ethernet1/1.10"
+          subinterface  = "ethernet1/1.11"
         }
         app2 = {
           gwlb_endpoint = "app2_inbound"
-          subinterface  = "ethernet1/1.10"
+          subinterface  = "ethernet1/1.12"
         }
       }
       outbound = {
@@ -767,6 +847,17 @@ vmseries = {
     }
   }
 }
+
+
+### PANORAMA
+# Uncomment the following section to add a route to Panorama TGW attachment on Security VPC attachment
+/*
+panorama_attachment = {
+  tgw_key = "tgw"
+  transit_gateway_attachment_id = "tgw-attach-123"
+  vpc_cidr                      = "10.255.0.0/24"
+}
+*/
 
 ### SPOKE VMS
 spoke_vms = {

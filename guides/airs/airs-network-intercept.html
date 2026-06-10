@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
-<title>AIRS Network Intercept Deployment | Implementation Guides</title>
+<title>Prisma AIRS Firewall: NGFW Network Intercept Deployment | Implementation Guides</title>
 <link rel="stylesheet" href="../../shared/css/pan-guides.css">
 <style>
   .arch-diagram {
@@ -58,14 +58,14 @@
   <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
   <a href="../../index.html" class="logo">
     <span class="accent">IMPLEMENTATION</span> GUIDES
-    <span class="header-section-title">AIRS Network Intercept</span>
+    <span class="header-section-title">Prisma AIRS Firewall: NGFW Network Intercept</span>
   </a>
   <nav class="header-nav">
     <a href="../../index.html">Home</a>
     <a href="../aws/index.html">AWS</a>
     <a href="../azure/index.html">Azure</a>
     <a href="../gcp/index.html">GCP</a>
-    <a href="../bootstrap/index.html">Bootstrap</a>
+    <a href="../bootstrap/vm-series-bootstrap.html">Bootstrap</a>
     <a href="../../globalprotect/index.html">GlobalProtect</a>
     <a href="../../scm-onboarding/index.html">SCM</a>
     <a href="../cloud-identity-engine/cie-implementation.html">CIE</a>
@@ -117,12 +117,12 @@
 <div class="breadcrumb">
   <a href="../../index.html">Home</a>
   <span class="sep">|</span>
-  AIRS Network Intercept
+  Prisma AIRS Firewall: NGFW Network Intercept
 </div>
 
 <div class="article">
 
-<h1>Prisma AIRS: Network Intercept Deployment</h1>
+<h1>Prisma AIRS Firewall: NGFW Network Intercept Deployment</h1>
 <p class="subtitle">End-to-end guide: license activation through validated inline AI security with network-level threat detection</p>
 
 <!-- Phase Progress -->
@@ -493,7 +493,7 @@
       <tbody>
         <tr>
           <td><strong>License type</strong></td>
-          <td>BYOL (bring-your-own-license) using a Flex auth code from the Customer Support Portal</td>
+          <td>BYOL (bring-your-own-license) using an auth code from the Customer Support Portal</td>
         </tr>
         <tr>
           <td><strong>Credit model</strong></td>
@@ -515,7 +515,7 @@
     </table>
     <div class="callout callout-note">
       <div class="callout-title">Deployment Profiles Are Now A La Carte</div>
-      <p>Prisma AIRS deployment profiles are available as individual options. Legacy <code>AI Runtime Security (Instance)</code> bundled profiles are deprecated. Select the specific services you need when creating a new deployment profile.</p>
+      <p>Prisma AIRS deployment profiles are now available as a la carte options (you choose the profile type: VM-Series vs. Prisma AIRS). Legacy <code>AI Runtime Security (Instance)</code> bundled profiles are deprecated. The security services within a Prisma AIRS profile are bundled and pre-configured &mdash; they cannot be individually customized.</p>
     </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
@@ -671,45 +671,324 @@
       </div>
 
       <div class="mgmt-panel active" data-plane="aws-prereq">
+        <h4>Account &amp; Infrastructure</h4>
         <ul>
           <li>AWS account with administrative access to create IAM roles, policies, VPCs, and EC2 instances</li>
           <li>Subscribe to the Prisma AIRS image in AWS Marketplace (same listing as VM-Series due to Universal Image)</li>
           <li>IAM permissions to create CloudFormation stacks or Terraform resources</li>
-          <li>IAM permissions to list and describe Lambda functions (for serverless discovery)</li>
           <li>VPC with management, data, and HA subnets planned</li>
-          <li>Terraform &gt; 1.3 and &lt; 2.0 (if using SCM Terraform Download or Panorama-Managed)</li>
+          <li>Terraform &gt; 1.3 and &lt; 2.0</li>
         </ul>
+
+        <h4>S3 Bucket for Discovery Logs</h4>
+        <ol>
+          <li>Navigate to <strong>S3</strong> in the AWS Management Console.</li>
+          <li>Click <strong>Create bucket</strong>. The bucket region <strong>must match</strong> the region where your AI models run.</li>
+          <li>Enter a unique bucket name and click <strong>Create bucket</strong>.</li>
+        </ol>
+
+        <h4>VPC Flow Logs</h4>
+        <ol>
+          <li>Navigate to <strong>VPC Dashboard</strong> &rarr; <strong>Subnets</strong>.</li>
+          <li>Select the subnet for your application VPC and open the <strong>Flow logs</strong> tab.</li>
+          <li>Create or edit a flow log:
+            <ul>
+              <li><strong>Destination:</strong> Send to the S3 bucket created above (enter the bucket ARN)</li>
+              <li><strong>Log record format:</strong> Custom Format &mdash; select <strong>all Standard attributes</strong></li>
+              <li><strong>Partition logs by time:</strong> Every 1 hour (60 mins)</li>
+            </ul>
+          </li>
+        </ol>
+
+        <h4>Amazon Bedrock Model Invocation Logging</h4>
+        <ol>
+          <li>In the <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html">AWS Bedrock Console</a>, navigate to <strong>Settings</strong> under <strong>Bedrock Configurations</strong>.</li>
+          <li>Toggle <strong>Model invocation logging</strong> to enable.</li>
+          <li>Choose <strong>S3 only</strong> as the logging destination.</li>
+          <li>Select the S3 bucket created above and click <strong>Save settings</strong>.</li>
+        </ol>
+
+        <h4>EKS Authentication (if using EKS)</h4>
+        <ol>
+          <li>In the EKS Console, click your cluster &rarr; <strong>Access</strong> tab &rarr; <strong>Manage access</strong>.</li>
+          <li>Under <strong>Cluster authentication mode</strong>, select <strong>EKS API and ConfigMap</strong>.</li>
+          <li>If <strong>Public</strong> endpoint access is enabled, add these IP addresses under <strong>Advanced settings</strong>:</li>
+        </ol>
+        <div class="code-block">
+<pre><code># Default SCM discovery IPs
+34.71.64.3/32
+34.28.60.186/32
+
+# Germany / Netherlands region
+34.32.8.22/32
+
+# Australia region
+34.116.76.243/32</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <h4>IAM Role for VM Model Invocation</h4>
+        <ol>
+          <li>In IAM, create a role with a trust policy allowing <code>ec2.amazonaws.com</code> to assume the role.</li>
+          <li>Attach the <code>bedrock:InvokeModel</code> permission to the role:</li>
+        </ol>
+        <div class="code-block">
+<pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "bedrock:InvokeModel",
+    "Resource": "*"
+  }]
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <h4>Pod Identity Associations (if using EKS)</h4>
+        <ol>
+          <li>In the EKS Console, select your cluster &rarr; <strong>Access</strong> &rarr; <strong>Pod Identity associations</strong>.</li>
+          <li>Assign IAM roles to Kubernetes service accounts so pods can access AI model endpoints.</li>
+        </ol>
       </div>
 
       <div class="mgmt-panel" data-plane="azure-prereq">
+        <h4>Account &amp; Infrastructure</h4>
         <ul>
           <li>Azure subscription with administrative access</li>
           <li>Subscribe to the Prisma AIRS image in Azure Marketplace</li>
-          <li><strong>Reader role</strong> at minimum for the cloud account (required for serverless discovery of Azure Functions)</li>
-          <li>Azure region in programmatic name format (e.g., <code>canadacentral</code>, <code>northcentralus</code>)</li>
+          <li>Azure CLI installed (<a href="https://learn.microsoft.com/en-us/cli/azure/install-azure-cli">install guide</a>)</li>
           <li>Resource Group and VNet with management, data, and HA subnets planned</li>
-          <li>Terraform &gt; 1.3 and &lt; 2.0 (if using SCM Terraform Download)</li>
+          <li>Terraform &gt; 1.3 and &lt; 2.0</li>
         </ul>
+
+        <h4>Azure Storage Account</h4>
+        <ol>
+          <li>In the Azure Portal, click <strong>Create a resource</strong> &rarr; search <strong>Storage account</strong>.</li>
+          <li>Select your Subscription, Resource Group, and Region.</li>
+          <li>Enter a unique Storage account name.</li>
+          <li>Under the <strong>Networking</strong> tab, select <strong>Enable public access from selected virtual networks and IP addresses</strong>.</li>
+          <li>Add the following IP addresses:</li>
+        </ol>
+        <div class="code-block">
+<pre><code># Default SCM discovery IPs
+34.71.64.3
+34.28.60.186
+
+# Germany / Netherlands region
+34.32.8.22
+
+# Australia region
+34.116.76.243</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <ol start="6">
+          <li>Click <strong>Review + create</strong> &rarr; <strong>Create</strong>.</li>
+        </ol>
+
+        <h4>Enable Network Watcher</h4>
+        <ol>
+          <li>In the Azure Portal, search for <strong>Network Watcher</strong>.</li>
+          <li>Select your region and click <strong>Enable</strong>.</li>
+        </ol>
+
+        <h4>Virtual Network Flow Logs</h4>
+        <ol>
+          <li>In Network Watcher, select <strong>Flow Logs</strong> &rarr; <strong>+ Add flow log</strong>.</li>
+          <li>Select your Subscription. Under <strong>Flow log type</strong>, choose <strong>Virtual network</strong>.</li>
+          <li>Select the Storage Account created above.</li>
+          <li>Set <strong>Retention (days)</strong> to <strong>30</strong>.</li>
+          <li>Click <strong>Review + Create</strong> &rarr; <strong>Create</strong>.</li>
+        </ol>
+
+        <h4>Azure OpenAI Diagnostic Settings</h4>
+        <ol>
+          <li>In the Azure Portal, open your OpenAI resource.</li>
+          <li>Navigate to <strong>Diagnostic settings</strong> &rarr; <strong>Add diagnostic setting</strong>.</li>
+          <li>In log categories, select <strong>Request and Response Logs</strong>.</li>
+          <li>Enable <strong>Archive to a storage account</strong> and select the Storage Account.</li>
+          <li>Click <strong>Save</strong>.</li>
+        </ol>
+        <div class="callout callout-warning">
+          <div class="callout-title">3-Hour Log Delay</div>
+          <p>Flow logs and audit logs must be older than 3 hours to be scanned. Azure continuously overwrites the log file in the Storage Account, so discovery only scans files three hours after creation to prevent data loss.</p>
+        </div>
+
+        <h4>Azure Roles (for multi-subscription onboarding)</h4>
+        <p>If onboarding more than one Azure subscription on the same tenant, assign these roles on the onboarding application:</p>
+        <ul>
+          <li><strong>Azure Kubernetes Service Cluster User Role</strong></li>
+          <li><strong>Storage Blob Data Reader</strong></li>
+          <li><strong>Reader</strong></li>
+        </ul>
+
         <div class="callout callout-warning">
           <div class="callout-title">Azure Route Table Association</div>
-          <p>Azure requires manual route table association to steer traffic through the firewall. This is a common miss &mdash; plan your UDR (User-Defined Route) configuration before deployment.</p>
+          <p>Azure requires manual route table association to steer traffic through the firewall. Plan your UDR (User-Defined Route) configuration before deployment.</p>
         </div>
       </div>
 
       <div class="mgmt-panel" data-plane="gcp-prereq">
+        <h4>Account &amp; Infrastructure</h4>
         <ul>
           <li>GCP project with administrative access</li>
-          <li>Service account with appropriate permissions for resource creation</li>
-          <li><code>gcloud</code> CLI installed for image lookups</li>
+          <li><code>gcloud</code> CLI installed</li>
           <li>VPC with management, data, and HA subnetworks planned</li>
-          <li>Terraform &gt; 1.3 and &lt; 2.0 (if using SCM Terraform Download)</li>
+          <li>Terraform &gt; 1.3 and &lt; 2.0</li>
         </ul>
+
+        <h4>VPC Flow Logs</h4>
+        <ol>
+          <li>In the <a href="https://console.cloud.google.com/networking/networks">GCP Console &rarr; VPC Networks</a>, select the VPC with workloads to protect.</li>
+          <li>Click the <strong>SUBNETS</strong> tab and select all subnets where workloads are present.</li>
+          <li>Click <strong>FLOW LOGS</strong> &rarr; <strong>Configure</strong>.</li>
+          <li>Set:
+            <ul>
+              <li><strong>Aggregation Interval:</strong> 5 Sec</li>
+              <li><strong>Metadata annotations:</strong> Enabled</li>
+              <li><strong>Sample rate:</strong> 100%</li>
+            </ul>
+          </li>
+          <li>Click <strong>SAVE</strong>.</li>
+        </ol>
+
+        <h4>Data Access Audit Logs for Vertex AI</h4>
+        <ol>
+          <li>In the GCP Console, search for <strong>Audit Logs</strong>.</li>
+          <li>Search for and select <strong>Vertex AI API</strong>.</li>
+          <li>Enable the <strong>Data Read</strong> permission type.</li>
+          <li>Click <strong>SAVE</strong>.</li>
+        </ol>
+
+        <h4>Cloud Storage Bucket</h4>
+        <ol>
+          <li>In <a href="https://console.cloud.google.com/storage">Cloud Storage</a>, click <strong>CREATE</strong>.</li>
+          <li>Enter a globally unique bucket name.</li>
+          <li>Choose <strong>Multi-region</strong> for location type.</li>
+          <li>Choose <strong>Standard</strong> for storage class.</li>
+          <li>Select <strong>Uniform</strong> access control.</li>
+          <li>Click <strong>CREATE</strong>.</li>
+        </ol>
+
+        <h4>Log Router Sink</h4>
+        <ol>
+          <li>In the GCP Console, search for <strong>Log Router</strong> &rarr; <strong>Create sink</strong>.</li>
+          <li>Enter a sink name. For <strong>Sink destination</strong>, choose <strong>Cloud Storage Bucket</strong> and enter the bucket name.</li>
+          <li>Add this inclusion filter (replace placeholders):</li>
+        </ol>
+        <div class="code-block">
+<pre><code>(logName =~ "logs/cloudaudit.googleapis.com%2Fdata_access" AND protoPayload.methodName:("google.cloud.aiplatform.")) OR ((logName="projects/&lt;GCP_PROJECT_ID&gt;/logs/compute.googleapis.com%2Fvpc_flows") AND (resource.labels.subnetwork_name="&lt;SUBNET_1&gt;" OR resource.labels.subnetwork_name="&lt;SUBNET_2&gt;"))</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <ol start="4">
+          <li>Click <strong>Preview logs</strong> to verify, then <strong>Create sink</strong>.</li>
+        </ol>
+        <div class="callout callout-note">
+          <div class="callout-title">Cross-Project AI Models</div>
+          <p>If your AI models are in a different GCP project, create an additional Log Router sink in that project using the same bucket. Copy the sink&rsquo;s Writer identity email and grant it <strong>Storage Object Creator</strong> role on the bucket.</p>
+        </div>
+
+        <h4>IAM Permissions</h4>
+        <p>Assign the following permissions to the user deploying Terraform:</p>
+        <div class="code-block">
+<pre><code>cloudasset.assets.listResource
+cloudasset.assets.listAccessPolicy
+cloudasset.feeds.get
+cloudasset.feeds.list
+compute.machineTypes.list
+compute.networks.list
+compute.subnetworks.list
+container.clusters.list
+pubsub.subscriptions.consume
+pubsub.topics.attachSubscription
+storage.buckets.list
+aiplatform.models.list</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <h4>GCP Service Identity</h4>
+        <p>Create the Cloud Asset service identity required for Terraform deployment:</p>
+        <div class="code-block">
+<pre><code>gcloud beta services identity create \
+  --service=cloudasset.googleapis.com \
+  --project=&lt;your_gcp_project_id&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
       </div>
     </div>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Confirm cloud account access, marketplace subscription, and VPC/VNet planning is complete for your target cloud.</p>
+      <p><strong>AWS:</strong> S3 bucket exists in the same region as AI models, VPC Flow Logs are active, Bedrock invocation logging is enabled, EKS access is configured.<br>
+      <strong>Azure:</strong> Storage Account created with IP allowlisting, Network Watcher enabled, VNet Flow Logs active (30-day retention), OpenAI Diagnostic Settings configured.<br>
+      <strong>GCP:</strong> VPC Flow Logs active (5-sec aggregation, 100% sample), Vertex AI audit logs enabled, Cloud Storage bucket created, Log Router sink active, service identity created.</p>
+    </div>
+  </div>
+</div>
+
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.6 &mdash; Panorama Prerequisites (if using Panorama management)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If you plan to manage AIRS firewalls through Panorama, complete these additional prerequisites. Skip this step if using SCM-only management.</p>
+
+    <table>
+      <thead>
+        <tr><th>Component</th><th>Requirement</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Panorama Software</strong></td><td>Version 11.2.5 or above</td></tr>
+        <tr><td><strong>Prisma AIRS Firewall</strong></td><td>Version 11.2.5 or above</td></tr>
+        <tr><td><strong>CloudConnector Plugin</strong></td><td>Version 2.1.0</td></tr>
+        <tr><td><strong>Enterprise DLP Plugin</strong></td><td>Version 5.0.5 or above</td></tr>
+        <tr><td><strong>Deployment Mode</strong></td><td>Standalone or High Availability (HA)</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Preparation Steps</h4>
+    <ol>
+      <li>Deploy Panorama in standalone or HA mode. Copy and save the active/passive Panorama IP address.</li>
+      <li>Generate the VM Auth Key on Panorama.</li>
+      <li>(Optional) For public-cloud firewalls, add the firewall&rsquo;s public IP under <code>Panorama</code> &rarr; <code>Setup</code> &rarr; <code>Interfaces</code> &rarr; <code>Management</code>.</li>
+      <li>Install <strong>CloudConnector Plugin 2.1.0</strong> and install the Panorama Device Certificate.</li>
+      <li>Enable and verify the cloud connector plugin:</li>
+    </ol>
+    <div class="code-block">
+<pre><code># Enable the cloud connector
+admin@Panorama&gt; request plugins cloudconnector enable basic
+
+# Verify connection status
+admin@Panorama&gt; show plugins cloudconnector status
+
+# Expected output:
+# pass
+# CloudConnector plugin is enabled.
+# Connectivity to region ... is a success.</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="6">
+      <li>Install <strong>Enterprise DLP Plugin 5.0.5</strong> or above on Panorama.</li>
+      <li>Set Telemetry region to <strong>Americas</strong> (recommended).</li>
+      <li>(Optional) Onboard Panorama to Strata Logging Service for log forwarding.</li>
+      <li>Enable automatic configuration push to managed firewalls on the template stack.</li>
+      <li><strong>Commit</strong> &rarr; <strong>Commit to Panorama</strong>.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Known Limitation: PAN-288025</div>
+      <p>Panorama cannot centrally manage AIRS image upgrades. Workaround: download the image and manually deploy via the firewall web interface or CLI.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">CloudConnector Connection Time</div>
+      <p>It may take more than 30 minutes for Panorama to connect to Strata Logging Service after enabling the CloudConnector plugin.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>show plugins cloudconnector status</code> command returns <code>pass</code>. The CloudConnector plugin shows as enabled with successful connectivity.</p>
     </div>
   </div>
 </div>
@@ -760,7 +1039,7 @@
     <p>Strata Logging Service stores AI security logs, threat logs, and provides data for the discovery dashboard and SLR reports.</p>
     <ol>
       <li>Click the SLS activation link in your confirmation email (or navigate from the Hub).</li>
-      <li>Select your <strong>Strata Logging Service subscription</strong> and click <code>Activate</code>.</li>
+      <li>Select your <strong>Strata Logging Service subscription</strong> and click <code>Activate Subscription</code>.</li>
       <li>Log in with your Palo Alto Networks Customer Support credentials.</li>
       <li>Select the <strong>Customer Support account</strong> to associate.</li>
       <li>Configure your Tenant Service Group (TSG):
@@ -772,7 +1051,7 @@
       <li>Select the <strong>region</strong> for your SLS instance.</li>
       <li>Click <code>Add Instance</code> to deploy SLS to the TSG.</li>
       <li>Verify storage space and region settings.</li>
-      <li>Accept the Terms and Conditions and click <code>Activate</code>.</li>
+      <li>Accept the Terms and Conditions and click <code>Activate Now</code>.</li>
     </ol>
     <div class="callout callout-warning">
       <div class="callout-title">SLS Expiration Grace Period</div>
@@ -832,7 +1111,7 @@
     <ol>
       <li>In the Customer Support Portal, navigate to <code>Products</code> &rarr; <code>Software/Cloud NGFW Credits</code>.</li>
       <li>Locate your credit pool and click <code>Create Deployment Profile</code>.</li>
-      <li>Select product type: <strong>Prisma AIRS AI Runtime Firewall</strong>.</li>
+      <li>Select product type: <strong>Prisma AIRS: AI Runtime Security (Firewalls)</strong>.</li>
       <li>Select PAN-OS version: <strong>PAN-OS 11.2.2 and above</strong>.</li>
       <li>Configure the profile:
         <ul>
@@ -851,7 +1130,7 @@
       <li>Select your <strong>Customer Support Account</strong>.</li>
       <li>Select the <strong>Tenant</strong> (same TSG as your SLS instance &mdash; verify SLS is enabled).</li>
       <li>Select the <strong>Region</strong>.</li>
-      <li>Select your deployment profile.</li>
+      <li>Select your deployment profile and click <code>Done</code>.</li>
       <li>Enable <strong>Cloud Identity Engine</strong> (recommended).</li>
       <li>Accept the Terms and Conditions.</li>
       <li>Click <code>Activate</code>.</li>
@@ -919,18 +1198,64 @@
       <div class="mgmt-panel active" data-plane="aws-onboard">
         <h4>AWS Cloud Account Onboarding</h4>
         <ol>
-          <li>Select <strong>AWS</strong> as your cloud provider.</li>
-          <li>Enter your <strong>AWS Account ID</strong>.</li>
-          <li>Configure the <strong>IAM role</strong> for SCM access:
+          <li>Select <strong>AWS</strong> as the Cloud Service Provider and click <strong>Next</strong>.</li>
+          <li>Enter a unique <strong>Name</strong> for the cloud account (max 32 characters) and click <strong>Next</strong>.</li>
+          <li>Select the <strong>permissions</strong> to apply. See <a href="https://docs.paloaltonetworks.com/ai-runtime-security/activation-and-onboarding/onboard-and-activate-cloud-account-in-scm/aws-onboarding-prereqs-and-steps/aws-required-permissions">AWS Required Permissions</a> for full details:
             <ul>
-              <li>SCM provides a CloudFormation template or Terraform template to create the required IAM role</li>
-              <li>The role grants read permissions for discovery and optional write permissions for auto-execute deployment</li>
+              <li><strong>Discovery</strong> &mdash; pre-selected, cannot be disabled</li>
+              <li><strong>Fully orchestrated security VPC</strong> &mdash; read/write permissions in your security VPC</li>
+              <li><strong>Fully automated traffic redirection</strong> &mdash; read/write in application VPCs (requires security VPC enabled)</li>
+              <li><strong>IP-Tag Harvesting</strong> &mdash; collects IP-to-tag mappings for tag-based security policy</li>
             </ul>
           </li>
-          <li>Configure <strong>Application Definition</strong> criteria (how SCM identifies applications in your environment).</li>
-          <li>Download and apply the generated <strong>Terraform template</strong> in your AWS account.</li>
-          <li>Return to SCM and click <code>Validate</code> to confirm the connection.</li>
+          <li>Configure <strong>Application Definition</strong> to define how assets are grouped:
+            <ul>
+              <li><strong>Container workloads:</strong> By namespace (default), cluster name, or tag</li>
+              <li><strong>Virtual machines:</strong> By subnet name, VPC (default), or tag</li>
+              <li><strong>Serverless:</strong> By subnet name, VPC (default), or tag</li>
+            </ul>
+          </li>
+          <li>Enter the <strong>S3 Bucket name</strong> created in the prerequisites.</li>
+          <li>Enter a <strong>Role Name</strong> (alphanumeric + hyphens only, max 19 characters).</li>
+          <li>Click <strong>Download Terraform</strong>.</li>
         </ol>
+
+        <h4>Execute Terraform</h4>
+        <div class="code-block">
+<pre><code># Unzip and navigate to the onboarding folder
+unzip aws-onboard-terraform.zip
+cd panw-discovery-&lt;tsg-id&gt;-onboarding/aws
+
+# Deploy
+terraform init
+terraform plan
+terraform apply</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Capture the <code>cross_account_role_arn</code> from the Terraform output:</p>
+        <div class="code-block">
+<pre><code>Outputs:
+cross_account_role_arn = "arn:aws:iam::10xxxx684868:role/airs-prod-role-2"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <h4>Complete Onboarding</h4>
+        <ol>
+          <li>Copy the <strong>Role ARN</strong> from the Terraform output and paste it into SCM.</li>
+          <li>Click <strong>Done</strong>.</li>
+          <li>In the EKS Console, add <strong>AmazonEKSAdminViewPolicy</strong> to IAM access entries:
+            <ul>
+              <li>Navigate to your EKS cluster &rarr; <strong>Access</strong> tab &rarr; <strong>IAM access entries</strong></li>
+              <li>Click <strong>Create access entry</strong>, find the IAM principal ARN created by the onboarding Terraform</li>
+              <li>Add <strong>AmazonEKSAdminViewPolicy</strong> under Policy name</li>
+            </ul>
+          </li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">AWS Discovery Timing</div>
+          <p>Initial data populates in SCM in approximately <strong>30 minutes</strong>. Flow logs may take up to 1 hour to appear on the dashboard.</p>
+        </div>
 
         <p>For existing VM-Series or AIRS firewalls to be discovered, tag your EC2 instances:</p>
         <div class="code-block">
@@ -943,18 +1268,61 @@ serialNumber: &lt;serial-number-or-comma-separated-list&gt;</code></pre>
       <div class="mgmt-panel" data-plane="azure-onboard">
         <h4>Azure Cloud Account Onboarding</h4>
         <ol>
-          <li>Select <strong>Azure</strong> as your cloud provider.</li>
-          <li>Enter your <strong>Azure Subscription ID</strong>.</li>
-          <li>Configure the <strong>service principal</strong> or <strong>managed identity</strong> for SCM access:
+          <li>Select <strong>Azure</strong> as the Cloud Service Provider and click <strong>Next</strong>.</li>
+          <li>Enter the following:
             <ul>
-              <li>Requires <strong>Reader role</strong> at minimum for discovery</li>
-              <li>Additional permissions needed for serverless discovery (Azure Functions)</li>
+              <li>A unique <strong>Name</strong> for the cloud account (max 32 characters)</li>
+              <li>Azure <strong>Tenant ID</strong></li>
+              <li>Azure <strong>Subscription ID</strong></li>
             </ul>
           </li>
-          <li>Configure <strong>Application Definition</strong> criteria.</li>
-          <li>Apply the provided ARM template or Terraform template in your Azure subscription.</li>
-          <li>Return to SCM and click <code>Validate</code>.</li>
+          <li>(Optional) To discover Kubernetes clusters by Cluster Name, enable <strong>Bring your own Azure virtual network</strong>:
+            <ul>
+              <li>In Azure Portal: Kubernetes services &rarr; [Your Cluster] &rarr; Settings &rarr; Networking</li>
+              <li>Select <strong>Azure CNI Overlay</strong> as the Network plugin</li>
+              <li>Enable <strong>Bring your own Azure virtual network</strong></li>
+            </ul>
+          </li>
+          <li>Click <strong>Next</strong> and select <strong>permissions</strong>. See <a href="https://docs.paloaltonetworks.com/ai-runtime-security/activation-and-onboarding/onboard-and-activate-cloud-account-in-scm/azure-onboarding-prereqs-and-steps/azure-required-permissions">Azure Required Permissions</a>:
+            <ul>
+              <li><strong>Discovery</strong> &mdash; pre-selected, cannot be disabled</li>
+              <li><strong>Fully orchestrated security VNet</strong> &mdash; read/write in security VNet</li>
+              <li><strong>Fully automated traffic redirection</strong> &mdash; read/write in application VNets (requires security VNet)</li>
+              <li><strong>IP-Tag Harvesting</strong> &mdash; IP-to-tag collection for tag-based policy</li>
+            </ul>
+          </li>
+          <li>Configure <strong>Application Definition</strong> (same workload options as AWS).</li>
+          <li>Enter the <strong>Storage Account Name</strong> (lowercase letters and numbers only, 3&ndash;24 characters).</li>
+          <li>Click <strong>Download Terraform</strong>.</li>
         </ol>
+
+        <h4>Execute Terraform</h4>
+        <div class="code-block">
+<pre><code># Unzip and navigate to the onboarding folder
+unzip azure-onboard-terraform.zip
+cd panw-discovery-&lt;tsg-id&gt;-onboarding/azr
+
+# Login to Azure tenant
+az login -t &lt;Tenant_Id&gt;
+az account set -s &lt;Subscription_Id&gt;
+
+# Deploy
+terraform init
+terraform plan
+terraform apply</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <h4>Complete Onboarding</h4>
+        <ol>
+          <li>In the Azure Portal, verify logs are appearing in <strong>Storage Account</strong> &rarr; <strong>Data Storage</strong> &rarr; <strong>Containers</strong> &rarr; <strong>Insight flow logs</strong>.</li>
+          <li>Return to SCM and click <strong>Done</strong>.</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Azure Discovery Timing</div>
+          <p>Initial data populates in SCM in approximately <strong>15 minutes</strong>. Flow logs may take up to <strong>3 hours</strong> to appear (Azure only scans logs older than 3 hours to prevent data loss from overwrites).</p>
+        </div>
 
         <p>For existing firewalls to be discovered, tag your Virtual Machines:</p>
         <div class="code-block">
@@ -967,13 +1335,42 @@ serialNumber: &lt;serial-number-or-comma-separated-list&gt;</code></pre>
       <div class="mgmt-panel" data-plane="gcp-onboard">
         <h4>GCP Cloud Account Onboarding</h4>
         <ol>
-          <li>Select <strong>GCP</strong> as your cloud provider.</li>
-          <li>Enter your <strong>GCP Project ID</strong>.</li>
-          <li>Configure the <strong>service account</strong> for SCM access.</li>
-          <li>Configure <strong>Application Definition</strong> criteria.</li>
-          <li>Apply the provided Terraform template in your GCP project.</li>
-          <li>Return to SCM and click <code>Validate</code>.</li>
+          <li>Select <strong>GCP</strong> as the Cloud Service Provider and click <strong>Next</strong>.</li>
+          <li>Enter the following:
+            <ul>
+              <li>A unique <strong>Name</strong> for the cloud account (max 32 characters)</li>
+              <li>GCP <strong>Project ID</strong></li>
+              <li><strong>Storage Bucket</strong> name (created in the prerequisites)</li>
+            </ul>
+          </li>
+          <li>Configure <strong>Application Definition</strong> (same workload options as AWS/Azure).</li>
+          <li>Enter a <strong>Service Account Name</strong> (lowercase letters and numbers only, 3&ndash;24 characters, one per project).</li>
+          <li>Click <strong>Download Terraform</strong>.</li>
         </ol>
+
+        <h4>Execute Terraform</h4>
+        <div class="code-block">
+<pre><code># Unzip and navigate to the onboarding folder
+unzip gcp-onboard-terraform.zip
+cd panw-discovery-&lt;tsg-id&gt;-onboarding/gcp
+
+# Deploy
+terraform init
+terraform plan
+terraform apply</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Capture the <code>service_account_email</code> from the Terraform output.</p>
+
+        <h4>Complete Onboarding</h4>
+        <ol>
+          <li>Return to SCM and click <strong>Done</strong> (there is a ~10-second delay before the button enables).</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">GCP Discovery Timing</div>
+          <p>Initial data populates in SCM in approximately <strong>15 minutes</strong>.</p>
+        </div>
 
         <p>For existing firewalls, tag your Compute Engine instances:</p>
         <div class="code-block">
@@ -989,9 +1386,14 @@ serialnumber: &lt;serial-number-or-comma-separated-list&gt;</code></pre>
       </div>
     </div>
 
+    <div class="callout callout-note">
+      <div class="callout-title">Container Pod Annotation</div>
+      <p>For container workloads across all clouds, annotate pods with the Palo Alto Networks label <code>"paloaltonetworks.com/firewall": "pan-fw"</code> to enable protection. This annotation is required in addition to the application definition configuration.</p>
+    </div>
+
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>In the Cloud Account Manager, your onboarded account shows as <strong>Active</strong>. The sync icon indicates configuration is syncing from SCM to the cloud account.</p>
+      <p>In the Cloud Account Manager, your onboarded account shows as <strong>Active</strong>. The sync icon indicates configuration is syncing from SCM to the cloud account. Wait for the cloud-specific discovery timing before expecting data to populate.</p>
     </div>
   </div>
 </div>
@@ -1366,7 +1768,7 @@ serialnumber: &lt;serial-number-or-comma-separated-list&gt;</code></pre>
           </td>
           <td>
             <strong>DLP Data Rule:</strong> Select predefined or custom DLP rule<br>
-            <strong>Database Security:</strong> Allow/Alert/Block per operation (Create, Read, Update, Delete)
+            <strong>Database Security:</strong> Regulates database queries generated by genAI models to prevent unauthorized operations. Set actions (Allow/Alert/Block) per operation type: <strong>Create</strong>, <strong>Read</strong>, <strong>Update</strong>, <strong>Delete</strong>
           </td>
         </tr>
       </tbody>
@@ -1379,7 +1781,12 @@ serialnumber: &lt;serial-number-or-comma-separated-list&gt;</code></pre>
 
     <div class="callout callout-note">
       <div class="callout-title">Supported Languages for Detection</div>
-      <p>Prompt injection and toxic content detection support: English, Spanish, Russian, German, French, Japanese, Portuguese, Italian, and Simplified Chinese. Hindi and Traditional Chinese are available as previews (Panorama only).</p>
+      <p>Prompt injection and toxic content detection support: English, Spanish, Russian, German, French, Japanese, Portuguese, Italian, and Simplified Chinese. Hindi and Traditional Chinese are available as previews.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Malicious Code Detection: 100KB Content Limit</div>
+      <p>AI Runtime inspects content for malicious code up to <strong>100KB</strong>. If the content in traffic exceeds 100KB, inspection continues but is limited to the <strong>last 100KB</strong> of the payload.</p>
     </div>
 
     <div class="callout callout-note">
@@ -1430,9 +1837,21 @@ serialnumber: &lt;serial-number-or-comma-separated-list&gt;</code></pre>
       <p>When Custom Model Support is enabled, <strong>all traffic</strong> matching this security profile is forwarded to the Palo Alto Networks AI security cloud service for threat inspection &mdash; not just traffic to known model endpoints. If using Panorama, ensure the security policy destination is configured for your specific custom AI model endpoints.</p>
     </div>
 
+    <h4>Custom Error Response (Panorama Only)</h4>
+    <p>By default, when the firewall blocks a request, it drops packets and sends a <strong>TCP reset</strong>. On Panorama (PAN-OS 11.2.11+), you can configure a <strong>Custom Error Response</strong> to send an HTTP error instead, providing a more user-friendly experience for blocked requests.</p>
+    <ol>
+      <li>In Panorama, open the AI Security Profile and select the <strong>Advanced</strong> tab.</li>
+      <li>In the <strong>Custom Error Code</strong> section, check <strong>Send Back HTTP Error on Firewall Block Action</strong>.</li>
+      <li>Click <code>OK</code>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Custom Error Response Availability</div>
+      <p>This feature is supported on <strong>PAN-OS 11.2.11+</strong> and will be supported in <strong>12.1.8</strong>. Disabling this feature reverts the firewall to the default behavior of dropping packets and sending a TCP reset. This feature applies to both standard and custom LLM endpoints.</p>
+    </div>
+
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Advanced settings display the configured max inline latency, timeout action, and custom model support toggle.</p>
+      <p>Advanced settings display the configured max inline latency, timeout action, and custom model support toggle. If using Panorama, the Custom Error Response checkbox reflects your preference.</p>
     </div>
   </div>
 </div>
@@ -1548,7 +1967,7 @@ serialnumber: &lt;serial-number-or-comma-separated-list&gt;</code></pre>
 
     <div class="callout callout-note">
       <div class="callout-title">Dynamic Address Groups for Source Applications</div>
-      <p>Instead of static source addresses, use Dynamic Address Groups (DAGs) to dynamically match source AI applications based on tags. This enables security policy to automatically adapt as new AI applications are deployed. See <a href="https://docs.paloaltonetworks.com/pan-os/9-1/pan-os-admin/policy/monitor-changes-in-the-virtual-environment/use-dynamic-address-groups-in-policy">Dynamic Address Groups in Policy</a>.</p>
+      <p>Instead of static source addresses, use Dynamic Address Groups (DAGs) to dynamically match source AI applications based on tags. This enables security policy to automatically adapt as new AI applications are deployed. See <a href="https://docs.paloaltonetworks.com/pan-os/11-2/pan-os-admin/policy/monitor-changes-in-the-virtual-environment/use-dynamic-address-groups-in-policy">Dynamic Address Groups in Policy</a>.</p>
     </div>
 
     <div class="callout callout-warning">
@@ -1836,7 +2255,7 @@ serialnumber: &lt;serial-number-or-comma-separated-list&gt;</code></pre>
     <ul>
       <li><strong>AI Security logs</strong> &mdash; Review in SCM under <code>Incidents and Alerts</code> &rarr; <code>Log Viewer</code> &rarr; <code>Firewall/AI Security</code>. Filter by time range, incident type, and severity.</li>
       <li><strong>Threat logs</strong> &mdash; For Panorama-managed deployments, view under <code>Monitor</code> &rarr; <code>Logs</code> &rarr; <code>Threat</code> with subtype <code>ai-security</code>.</li>
-      <li><strong>SIEM forwarding</strong> &mdash; Configure log forwarding profiles to forward AI security logs to your SIEM. The logs include a <code>session_URL</code> field with a direct link to the full conversation context in SCM.</li>
+      <li><strong>SIEM forwarding</strong> &mdash; Configure log forwarding profiles to forward AI security logs to your SIEM for centralized monitoring and alerting.</li>
       <li><strong>SLR reports</strong> &mdash; Review periodically for security posture trends and threat category distribution.</li>
       <li><strong>Transaction monitoring</strong> &mdash; Track daily AI transactions against the 10K/day/vCPU limit in the Customer Support Portal.</li>
     </ul>
@@ -1892,17 +2311,111 @@ serialnumber: &lt;serial-number-or-comma-separated-list&gt;</code></pre>
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Scaling</span>
+    <span>Scaling &amp; Autoscale</span>
   </div>
   <div class="collapsible-body">
+    <p>Two scaling models are available during deployment:</p>
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Static</strong></td>
+          <td>Maintains a fixed number of firewall instances regardless of traffic fluctuations. Deploy additional instances manually and update route tables to distribute traffic.</td>
+        </tr>
+        <tr>
+          <td><strong>Dynamic</strong></td>
+          <td>Automatically adjusts instance count based on performance metrics. The firewall publishes metrics to your cloud provider (e.g., Amazon CloudWatch), which triggers scale-out/scale-in events.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p><strong>Available autoscaling metrics:</strong></p>
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Dataplane CPU Utilization (%)</td><td>Traffic load on the firewall</td></tr>
+        <tr><td>Dataplane Packet Buffer Utilization (%)</td><td>Buffer usage &mdash; prevents dropped packets from traffic bursts</td></tr>
+        <tr><td>GlobalProtect Gateway Active Tunnels</td><td>Active GlobalProtect sessions on a gateway &mdash; use if the firewall serves as a VPN gateway</td></tr>
+        <tr><td>GlobalProtect Gateway Tunnel Utilization (%)</td><td>Active tunnel utilization on a GlobalProtect gateway</td></tr>
+        <tr><td>Sessions Active</td><td>Total active sessions in the flow lookup table</td></tr>
+        <tr><td>Session Utilization (%)</td><td>TCP, UDP, ICMP, and SSL sessions plus packet rate, new connection establish rate, and throughput</td></tr>
+        <tr><td>SSLProxyUtilization (%)</td><td>SSL forward proxy session percentage for decryption</td></tr>
+        <tr><td>panSessionConnectionsPerSecond</td><td>New connection establish rate per second</td></tr>
+        <tr><td>panSessionThroughputKbps</td><td>Throughput in Kbps</td></tr>
+        <tr><td>panSessionThroughputPps</td><td>Packets per second</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Scaling behavior:</strong></p>
     <ul>
-      <li><strong>Static scaling</strong> &mdash; Deploy additional firewall instances and add them to your device group. Update route tables to distribute traffic across instances.</li>
-      <li><strong>Dynamic autoscaling</strong> &mdash; Available for Auto-Execute deployments. SCM orchestrates scaling based on traffic load.</li>
-      <li><strong>vCPU adjustment</strong> &mdash; If transaction limits are reached (10K/day/vCPU), increase vCPUs in your deployment profile. This requires a profile update in the Customer Support Portal.</li>
+      <li><strong>Scale-out:</strong> When thresholds are met, new firewall instances are provisioned automatically.</li>
+      <li><strong>Scale-in:</strong> When traffic decreases, deactivated firewalls are removed from inventory and licenses are reclaimed to the global pool.</li>
+      <li><strong>vCPU adjustment:</strong> If transaction limits are reached (10K/day/vCPU), increase vCPUs in your deployment profile via the Customer Support Portal.</li>
     </ul>
+
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Additional firewall instances appear in SCM/Panorama with status Connected. Traffic is distributed across instances.</p>
+      <p>Additional firewall instances appear in SCM/Panorama with status Connected. For dynamic scaling, verify metrics are publishing to your cloud provider&rsquo;s monitoring service.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>AIRS Image Upgrades</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Upgrade the Prisma AIRS AI Runtime firewall image using one of three methods:</p>
+
+    <h4>Method 1: PAN-OS Web Interface</h4>
+    <ol>
+      <li>Log in to the firewall web interface.</li>
+      <li>Navigate to <code>Device</code> &rarr; <code>Software</code> and click <strong>Check Now</strong>.</li>
+      <li>Search for the target version (files with <code>.aingfw</code> extension).</li>
+      <li>Click <strong>Download</strong>, then <strong>Install</strong>.</li>
+      <li>Choose to reboot immediately or install and reboot later.</li>
+      <li>Verify the installed version at the Dashboard.</li>
+    </ol>
+
+    <h4>Method 2: PAN-OS CLI</h4>
+    <div class="code-block">
+<pre><code>&gt; request system software check
+&gt; request system software download version &lt;version&gt;
+&gt; request system software install version &lt;version&gt;
+&gt; request restart system</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Method 3: Panorama</h4>
+    <p>Push image upgrades through Panorama for centralized management.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Known Limitation: PAN-288025</div>
+      <p>Panorama cannot centrally manage AIRS image upgrades at this time. Workaround: download the image from the Customer Support Portal and manually deploy via the firewall web interface or CLI.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Universal Image Filename Change</div>
+      <p>Starting with PAN-OS 11.2.11 and 12.1.5, the image filename changed from <code>PanOSAINgfw_vm-X.X.X.aingfw</code> to <code>PanOS_vm-X.X.X</code>. The single universal image operates as either VM-Series or Prisma AIRS based on the license applied at runtime.</p>
+    </div>
+
+    <h4>Download from Customer Support Portal</h4>
+    <ol>
+      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
+      <li>Navigate to <code>Updates</code> &rarr; <code>Software Updates</code>.</li>
+      <li>Set <strong>Content type</strong> to <strong>PAN-OS for AI Runtime Security</strong>.</li>
+      <li>Set <strong>Release type</strong> to <strong>Other</strong>.</li>
+      <li>Download the image with the <code>.aingfw</code> extension.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After upgrade and reboot, run <code>show system info</code> and confirm the <code>sw-version</code> matches the target version.</p>
     </div>
   </div>
 </div>
@@ -2326,7 +2839,7 @@ serialnumber: &lt;serial-number-or-comma-separated-list&gt;</code></pre>
       <tbody>
         <tr>
           <td>Prompt Injection</td>
-          <td>English, Spanish, Russian, German, French, Japanese, Portuguese, Italian, Simplified Chinese. <em>Preview:</em> Hindi, Traditional Chinese (Panorama only).</td>
+          <td>English, Spanish, Russian, German, French, Japanese, Portuguese, Italian, Simplified Chinese. <em>Preview:</em> Hindi, Traditional Chinese.</td>
         </tr>
         <tr>
           <td>Toxic Content</td>
@@ -2365,7 +2878,8 @@ serialnumber: &lt;serial-number-or-comma-separated-list&gt;</code></pre>
     <li>Panorama + CloudConnector Plugin 2.1.0 confirmed (if applicable)</li>
     <li>Network connectivity to PAN endpoints verified</li>
     <li>PAN-OS 11.2.2+ target confirmed</li>
-    <li>Cloud-specific prerequisites met (marketplace subscription, IAM, VPC/VNet)</li>
+    <li>Cloud-specific prerequisites met (S3/Storage Account/Cloud Storage bucket, flow logs, AI service logging, IP allowlisting)</li>
+    <li>Panorama prerequisites met (if applicable): CloudConnector Plugin 2.1.0, Enterprise DLP Plugin 5.0.5+</li>
   </ul>
 </div>
 

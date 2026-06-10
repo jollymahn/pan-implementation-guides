@@ -1,25 +1,12 @@
 # #############################################################################
 #
-#   COMBINED DESIGN — Dual Security VPCs with Distributed Inbound
+#   COMBINED DESIGN — VM-Series with Distributed Inbound Spoke VPCs
 #
-#   Extends the single-security-VPC combined design by splitting firewall
-#   functions across two dedicated security VPCs:
-#
-#   - security_obew_vpc: Handles OUTBOUND and EAST-WEST traffic inspection.
-#     Outbound internet traffic from spokes traverses TGW into this VPC,
-#     hits GWLB endpoints, is inspected by VM-Series, then exits via NAT
-#     Gateway. East-west (spoke-to-spoke) traffic follows the same path
-#     through a separate set of GWLB endpoints.
-#
-#   - security_inbound_vpc: Handles INBOUND traffic inspection only.
-#     Inbound traffic enters each spoke VPC's own IGW and is redirected
-#     through distributed GWLB endpoints (deployed in the spoke VPCs)
-#     to VM-Series firewalls hosted in this VPC for inspection before
-#     reaching application load balancers.
-#
-#   This separation allows independent scaling, policy isolation, and
-#   failure-domain separation between inbound and outbound/east-west
-#   firewall workloads.
+#   Centralized outbound and east-west traffic inspection through a security
+#   VPC, with distributed inbound inspection for public-facing applications
+#   hosted in spoke VPCs. Inbound traffic enters each spoke VPC's own IGW
+#   and is redirected through GWLB endpoints to centralized VM-Series
+#   firewalls for inspection before reaching application load balancers.
 #
 #   Key design decisions:
 #
@@ -31,7 +18,7 @@
 #     be disabled by removing the flag from plugin-op-commands if static
 #     routing is sufficient for your environment.
 #
-#   - NAT Gateways are deployed in BOTH security VPCs to provide internet
+#   - NAT Gateways are deployed in the security VPC to provide internet
 #     egress for firewall management traffic — required for content updates,
 #     AutoFocus, WildFire, and threat intelligence feeds. Firewall mgmt
 #     interfaces do not have public IPs; all outbound mgmt traffic flows
@@ -39,7 +26,7 @@
 #
 # #############################################################################
 #
-# Traffic inspection: VM-Series via Gateway Load Balancer (2 GWLBs)
+# Traffic inspection: VM-Series via Gateway Load Balancer
 # Bootstrap method:   Strata Cloud Manager (SCM) or Traditional Panorama
 # Mgmt egress:        NAT Gateway (no public IP on firewall mgmt interface)
 #
@@ -54,16 +41,48 @@
 # network prefix. Replace each with your actual IP plan before deploying.
 # Subnet structure (3rd and 4th octets) is preserved — only change the prefix.
 #
-#   Placeholder           Example replacement   Scope
-#   ─────────────         ───────────────────    ─────────────────────────────────────────
-#   <SEC_OBEW_NET>        10.50                  Outbound/East-West Security VPC (/22, /28 subnets)
-#   <SEC_INBOUND_NET>     10.51                  Inbound Security VPC (/22, /28 subnets)
-#   <APP1_NET>            10.104                 App1 spoke VPC (/20, /24 subnets)
-#   <APP2_NET>            10.105                 App2 spoke VPC (/20, /24 subnets)
-#   <PANORAMA_NET>        10.255                 Panorama VPC route target
+#   Placeholder       Example replacement   Scope
+#   ─────────────     ───────────────────    ─────────────────────────────
+#   <SEC_NET>         10.51                  Security VPC (/21, /28 subnets)
+#   <APP1_NET>        10.104                 App1 spoke VPC (/21, /28 subnets)
+#   <APP2_NET>        10.105                 App2 spoke VPC (/21, /28 subnets)
+#   <PANORAMA_NET>    10.255                 Panorama VPC route target
 #
-# Quick replace (sed example):
-#   sed -i 's/<SEC_OBEW_NET>/10.50/g; s/<SEC_INBOUND_NET>/10.51/g; s/<APP1_NET>/10.104/g; s/<APP2_NET>/10.105/g; s/<PANORAMA_NET>/10.255/g' combined_design_dual_security.tfvars
+# Quick-start example:
+#
+#   # 1. Copy the template into your Terraform working directory
+#   cp combined_design.tfvars terraform.tfvars
+#
+#   # 2. Replace network placeholders with your actual IP plan
+#   sed -i '' \
+#     's/<SEC_NET>/10.51/g;
+#      s/<APP1_NET>/10.104/g;
+#      s/<APP2_NET>/10.105/g;
+#      s/<PANORAMA_NET>/10.255/g;
+#      s/<PANORAMA_SUBNET>/10.255.2.0/g;
+#      s/<ADMIN_SOURCE_IP>/203.0.113.10/g' terraform.tfvars
+#
+#   # 3. Replace general settings
+#   sed -i '' \
+#     's/us-west-2/us-east-1/g;
+#      s/my-ssh-key/your-key-pair/g;
+#      s/prod-combined-/acme-fw-/g;
+#      s/network-team/your-team/g' terraform.tfvars
+#
+#   # 4. Replace bootstrap parameters (Panorama example)
+#   sed -i '' \
+#     's/<PANORAMA_IP>/10.255.2.51/g;
+#      s/<DEVICE_GROUP>/DG-AWS-COMBINED/g;
+#      s/<TEMPLATE_STACK>/STK-AWS-COMBINED/g;
+#      s/<AUTH_KEY>/YOUR_AUTH_KEY_HERE/g' terraform.tfvars
+#
+#   # 5. Update AZ names if not us-west-2
+#   #    us-east-1a/b/c instead of us-west-2a/b/c
+#
+#   # 6. Review, init, plan, apply
+#   terraform init
+#   terraform plan -out=plan.tfplan
+#   terraform apply "plan.tfplan"
 #
 # -----------------------------------------------------------------------------
 # DEPLOYMENT CHECKLIST — Update these before running terraform plan
@@ -75,32 +94,25 @@
 #    [ ] global_tags         — Owner, Application, cost-center, environment tags
 #    [ ] ssh_key_name        — EC2 key pair name (must exist in the target region)
 #
-# 2. NETWORKING — Outbound/East-West Security VPC
-#    [ ] security_obew_vpc cidr — VPC CIDR sized for your deployment (/22 gives 1024 IPs)
+# 2. NETWORKING — Security VPC
+#    [ ] security_vpc cidr   — VPC CIDR sized for your deployment (/21 gives 2048 IPs)
 #    [ ] subnet CIDRs        — All /28 subnets must fall within the VPC CIDR
 #    [ ] Availability Zones   — Match AZs to your target region (e.g., us-east-1a/b/c)
 #    [ ] NACL cidr_blocks     — Must match the private (fw data) subnet CIDRs
 #    [ ] GWLB subnet CIDRs   — Referenced in vmseries_private SG for GENEVE + health probes
 #    [ ] NAT Gateway AZ names — Must match the AZs used in natgw subnets
 #
-# 3. NETWORKING — Inbound Security VPC
-#    [ ] security_inbound_vpc cidr — VPC CIDR sized for your deployment (/22 gives 1024 IPs)
-#    [ ] subnet CIDRs        — All /28 subnets must fall within the VPC CIDR
-#    [ ] Availability Zones   — Match AZs to your target region
-#    [ ] GWLB subnet CIDRs   — Referenced in vmseries_private SG for GENEVE + health probes
-#    [ ] NAT Gateway AZ names — Must match the AZs used in natgw subnets
-#
-# 4. NETWORKING — Spoke VPCs
-#    [ ] Spoke VPC CIDRs     — Size per workload needs (/20 = 4096 IPs per spoke)
+# 3. NETWORKING — Spoke VPCs
+#    [ ] Spoke VPC CIDRs     — Size per workload needs (/23 = 512 IPs per spoke)
 #    [ ] Spoke subnet CIDRs  — Must fall within their VPC CIDR
 #    [ ] Spoke AZs           — Must match the target region
 #
-# 5. SECURITY GROUPS — Access Control
+# 4. SECURITY GROUPS — Access Control
 #    [ ] Admin source IP     — Replace <ADMIN_SOURCE_IP>/32 with your public IP or CIDR
 #    [ ] Panorama mgmt CIDR  — Replace <PANORAMA_SUBNET>/24 with Panorama's subnet
 #    [ ] Spoke VPC CIDRs     — Referenced in SG rules; must match spoke VPC CIDRs above
 #
-# 6. VM-SERIES — Bootstrap & Licensing (choose ONE option per VM-Series block)
+# 5. VM-SERIES — Bootstrap & Licensing (choose ONE option)
 #
 #    Option A — Traditional Panorama:
 #    [ ] panorama-server          — Panorama IP address (must be reachable from mgmt subnet)
@@ -122,41 +134,33 @@
 #    [ ] panos_version            — Desired PAN-OS version (check AWS Marketplace AMI)
 #    [ ] ebs_kms_id               — KMS key alias or ARN for EBS encryption
 #
-# 7. VM-SERIES — System Services
+# 6. VM-SERIES — System Services
 #    [ ] dns_primary         — Internal or external DNS server
 #    [ ] ntp_primary         — NTP server
 #
-# 8. PANORAMA CONNECTIVITY (optional)
+# 7. PANORAMA CONNECTIVITY (optional)
 #    [ ] panorama_attachment — Uncomment and set TGW attachment ID + Panorama VPC CIDR
 #                              if Panorama is in a separate VPC connected via TGW
 #
 # =============================================================================
 
 ### GENERAL
-region      = "us-west-2"                 # CHANGE: target AWS region
-name_prefix = "prod-combined-dual-sec-"   # CHANGE: unique resource name prefix
+region      = "us-west-2"       # CHANGE: target AWS region
+name_prefix = "prod-combined-"  # CHANGE: unique resource name prefix
 
 global_tags = {
   ManagedBy   = "terraform"
-  Application = "vm-series-combined-dual-security"  # CHANGE: application name
-  Owner       = "network-team"                      # CHANGE: team or owner
+  Application = "vm-series-combined"  # CHANGE: application name
+  Owner       = "network-team"       # CHANGE: team or owner
 }
 
 ssh_key_name = "my-ssh-key"  # CHANGE: existing EC2 key pair name in this region
 
-# =============================================================================
-#   VPCs
-# =============================================================================
-
 ### VPC
 vpcs = {
-
-  # ===========================================================================
-  #   Outbound / East-West Security VPC
-  # ===========================================================================
-  security_obew_vpc = {
-    name = "security-obew-vpc"
-    cidr = "<SEC_OBEW_NET>.0.0/22"  # CHANGE: outbound/east-west security VPC CIDR
+  security_vpc = {
+    name = "security-vpc"
+    cidr = "<SEC_NET>.0.0/21"  # CHANGE: security VPC CIDR
     nacls = {
       trusted_path_monitoring = {
         name = "trusted-path-monitoring"
@@ -166,14 +170,14 @@ vpcs = {
             egress      = true
             protocol    = "icmp"
             rule_action = "deny"
-            cidr_block  = "<SEC_OBEW_NET>.0.64/28"  # CHANGE: must match private subnet AZ-a
+            cidr_block  = "<SEC_NET>.0.64/28"  # CHANGE: must match private subnet AZ-a
           }
           block_outbound_icmp_2 = {
             rule_number = 120
             egress      = true
             protocol    = "icmp"
             rule_action = "deny"
-            cidr_block  = "<SEC_OBEW_NET>.1.64/28"  # CHANGE: must match private subnet AZ-b
+            cidr_block  = "<SEC_NET>.1.64/28"  # CHANGE: must match private subnet AZ-b
           }
           allow_other_outbound = {
             rule_number = 200
@@ -205,14 +209,14 @@ vpcs = {
             description = "Permit GENEVE to GWLB subnets"
             type        = "ingress", from_port = "6081", to_port = "6081", protocol = "udp"
             cidr_blocks = [
-              "<SEC_OBEW_NET>.0.48/28", "<SEC_OBEW_NET>.1.48/28", "<SEC_OBEW_NET>.2.48/28"  # CHANGE: must match gwlb subnet CIDRs
+              "<SEC_NET>.0.48/28", "<SEC_NET>.1.48/28", "<SEC_NET>.2.48/28"  # CHANGE: must match gwlb subnet CIDRs
             ]
           }
           health_probe = {
             description = "Permit Port 80 Health Probe to GWLB subnets"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
             cidr_blocks = [
-              "<SEC_OBEW_NET>.0.48/28", "<SEC_OBEW_NET>.1.48/28", "<SEC_OBEW_NET>.2.48/28"  # CHANGE: must match gwlb subnet CIDRs
+              "<SEC_NET>.0.48/28", "<SEC_NET>.1.48/28", "<SEC_NET>.2.48/28"  # CHANGE: must match gwlb subnet CIDRs
             ]
           }
         }
@@ -263,132 +267,132 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/21", "<APP2_NET>.0.0/21"]  # CHANGE: admin IP + spoke CIDRs
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/21", "<APP2_NET>.0.0/21"]  # CHANGE: admin IP + spoke CIDRs
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/21", "<APP2_NET>.0.0/21"]  # CHANGE: admin IP + spoke CIDRs
           }
         }
       }
     }
     subnets = {
-      # Outbound/East-West Security VPC uses /28 subnets within a /22 CIDR.
+      # Security VPC uses /28 subnets within a /21 CIDR.
       # 2 AZs for most groups; GWLB spans 3 AZs for cross-zone availability.
       # CHANGE: all CIDRs and AZs to match your region and IP plan.
 
       # TGW Attach
-      "<SEC_OBEW_NET>.0.0/28" = { az = "us-west-2a", subnet_group = "tgw_attach" }
-      "<SEC_OBEW_NET>.1.0/28" = { az = "us-west-2b", subnet_group = "tgw_attach" }
+      "<SEC_NET>.0.0/28" = { az = "us-west-2a", subnet_group = "tgw_attach" }
+      "<SEC_NET>.1.0/28" = { az = "us-west-2b", subnet_group = "tgw_attach" }
 
       # GWLBE Outbound
-      "<SEC_OBEW_NET>.0.16/28" = { az = "us-west-2a", subnet_group = "gwlbe_outbound" }
-      "<SEC_OBEW_NET>.1.16/28" = { az = "us-west-2b", subnet_group = "gwlbe_outbound" }
+      "<SEC_NET>.0.16/28" = { az = "us-west-2a", subnet_group = "gwlbe_outbound" }
+      "<SEC_NET>.1.16/28" = { az = "us-west-2b", subnet_group = "gwlbe_outbound" }
 
       # GWLBE East-West
-      "<SEC_OBEW_NET>.0.32/28" = { az = "us-west-2a", subnet_group = "gwlbe_eastwest" }
-      "<SEC_OBEW_NET>.1.32/28" = { az = "us-west-2b", subnet_group = "gwlbe_eastwest" }
+      "<SEC_NET>.0.32/28" = { az = "us-west-2a", subnet_group = "gwlbe_eastwest" }
+      "<SEC_NET>.1.32/28" = { az = "us-west-2b", subnet_group = "gwlbe_eastwest" }
 
       # GWLB (3 AZs)
-      "<SEC_OBEW_NET>.0.48/28" = { az = "us-west-2a", subnet_group = "gwlb" }
-      "<SEC_OBEW_NET>.1.48/28" = { az = "us-west-2b", subnet_group = "gwlb" }
-      "<SEC_OBEW_NET>.2.48/28" = { az = "us-west-2c", subnet_group = "gwlb" }
+      "<SEC_NET>.0.48/28" = { az = "us-west-2a", subnet_group = "gwlb" }
+      "<SEC_NET>.1.48/28" = { az = "us-west-2b", subnet_group = "gwlb" }
+      "<SEC_NET>.2.48/28" = { az = "us-west-2c", subnet_group = "gwlb" }
 
       # Firewall Private (data plane)
-      "<SEC_OBEW_NET>.0.64/28" = { az = "us-west-2a", subnet_group = "private", nacl = "trusted_path_monitoring" }
-      "<SEC_OBEW_NET>.1.64/28" = { az = "us-west-2b", subnet_group = "private", nacl = "trusted_path_monitoring" }
+      "<SEC_NET>.0.64/28" = { az = "us-west-2a", subnet_group = "private", nacl = "trusted_path_monitoring" }
+      "<SEC_NET>.1.64/28" = { az = "us-west-2b", subnet_group = "private", nacl = "trusted_path_monitoring" }
 
       # Firewall Mgmt
-      "<SEC_OBEW_NET>.0.80/28" = { az = "us-west-2a", subnet_group = "mgmt" }
-      "<SEC_OBEW_NET>.1.80/28" = { az = "us-west-2b", subnet_group = "mgmt" }
+      "<SEC_NET>.0.80/28" = { az = "us-west-2a", subnet_group = "mgmt" }
+      "<SEC_NET>.1.80/28" = { az = "us-west-2b", subnet_group = "mgmt" }
 
       # Firewall Public
-      "<SEC_OBEW_NET>.0.96/28" = { az = "us-west-2a", subnet_group = "public" }
-      "<SEC_OBEW_NET>.1.96/28" = { az = "us-west-2b", subnet_group = "public" }
+      "<SEC_NET>.0.96/28" = { az = "us-west-2a", subnet_group = "public" }
+      "<SEC_NET>.1.96/28" = { az = "us-west-2b", subnet_group = "public" }
 
       # NAT Gateway
-      "<SEC_OBEW_NET>.0.112/28" = { az = "us-west-2a", subnet_group = "natgw" }
-      "<SEC_OBEW_NET>.1.112/28" = { az = "us-west-2b", subnet_group = "natgw" }
+      "<SEC_NET>.0.112/28" = { az = "us-west-2a", subnet_group = "natgw" }
+      "<SEC_NET>.1.112/28" = { az = "us-west-2b", subnet_group = "natgw" }
     }
     routes = {
       mgmt_default = {
-        vpc           = "security_obew_vpc"
+        vpc           = "security_vpc"
         subnet_group  = "mgmt"
         to_cidr       = "0.0.0.0/0"
-        next_hop_key  = "security_obew_natgw"
+        next_hop_key  = "security_natgw"
         next_hop_type = "nat_gateway"
       }
       mgmt_panorama = {
-        vpc           = "security_obew_vpc"
+        vpc           = "security_vpc"
         subnet_group  = "mgmt"
         to_cidr       = "<PANORAMA_NET>.0.0/16"  # CHANGE: Panorama VPC CIDR if different
-        next_hop_key  = "security_obew"
+        next_hop_key  = "security"
         next_hop_type = "transit_gateway_attachment"
       }
       mgmt_rfc1918 = {
-        vpc           = "security_obew_vpc"
+        vpc           = "security_vpc"
         subnet_group  = "mgmt"
         to_cidr       = "10.0.0.0/8"
-        next_hop_key  = "security_obew"
+        next_hop_key  = "security"
         next_hop_type = "transit_gateway_attachment"
       }
       tgw_rfc1918 = {
-        vpc           = "security_obew_vpc"
+        vpc           = "security_vpc"
         subnet_group  = "tgw_attach"
         to_cidr       = "10.0.0.0/8"
         next_hop_key  = "security_gwlb_eastwest"
         next_hop_type = "gwlbe_endpoint"
       }
       tgw_default = {
-        vpc           = "security_obew_vpc"
+        vpc           = "security_vpc"
         subnet_group  = "tgw_attach"
         to_cidr       = "0.0.0.0/0"
         next_hop_key  = "security_gwlb_outbound"
         next_hop_type = "gwlbe_endpoint"
       }
       public_default = {
-        vpc           = "security_obew_vpc"
+        vpc           = "security_vpc"
         subnet_group  = "public"
         to_cidr       = "0.0.0.0/0"
-        next_hop_key  = "security_obew_vpc"
+        next_hop_key  = "security_vpc"
         next_hop_type = "internet_gateway"
       }
       gwlbe_outbound_rfc1918 = {
-        vpc           = "security_obew_vpc"
+        vpc           = "security_vpc"
         subnet_group  = "gwlbe_outbound"
         to_cidr       = "10.0.0.0/8"
-        next_hop_key  = "security_obew"
+        next_hop_key  = "security"
         next_hop_type = "transit_gateway_attachment"
       }
       gwlbe_outbound_default = {
-        vpc           = "security_obew_vpc"
+        vpc           = "security_vpc"
         subnet_group  = "gwlbe_outbound"
         to_cidr       = "0.0.0.0/0"
-        next_hop_key  = "security_obew_natgw"
+        next_hop_key  = "security_natgw"
         next_hop_type = "nat_gateway"
       }
       gwlbe_eastwest_rfc1918 = {
-        vpc           = "security_obew_vpc"
+        vpc           = "security_vpc"
         subnet_group  = "gwlbe_eastwest"
         to_cidr       = "10.0.0.0/8"
-        next_hop_key  = "security_obew"
+        next_hop_key  = "security"
         next_hop_type = "transit_gateway_attachment"
       }
       natgw_default = {
-        vpc           = "security_obew_vpc"
+        vpc           = "security_vpc"
         subnet_group  = "natgw"
         to_cidr       = "0.0.0.0/0"
-        next_hop_key  = "security_obew_vpc"
+        next_hop_key  = "security_vpc"
         next_hop_type = "internet_gateway"
       }
       natgw_rfc1918 = {
-        vpc           = "security_obew_vpc"
+        vpc           = "security_vpc"
         subnet_group  = "natgw"
         to_cidr       = "10.0.0.0/8"
         next_hop_key  = "security_gwlb_outbound"
@@ -396,169 +400,9 @@ vpcs = {
       }
     }
   }
-
-  # ===========================================================================
-  #   Inbound Security VPC
-  # ===========================================================================
-  security_inbound_vpc = {
-    name = "security-inbound-vpc"
-    cidr = "<SEC_INBOUND_NET>.0.0/22"  # CHANGE: inbound security VPC CIDR
-    nacls = {}
-    security_groups = {
-      vmseries_private = {
-        name = "vmseries_private"
-        rules = {
-          all_outbound = {
-            description = "Permit All traffic outbound"
-            type        = "egress", from_port = "0", to_port = "0", protocol = "-1"
-            cidr_blocks = ["0.0.0.0/0"]
-          }
-          geneve = {
-            description = "Permit GENEVE to GWLB subnets"
-            type        = "ingress", from_port = "6081", to_port = "6081", protocol = "udp"
-            cidr_blocks = [
-              "<SEC_INBOUND_NET>.0.48/28", "<SEC_INBOUND_NET>.1.48/28", "<SEC_INBOUND_NET>.2.48/28"  # CHANGE: must match gwlb subnet CIDRs
-            ]
-          }
-          health_probe = {
-            description = "Permit Port 80 Health Probe to GWLB subnets"
-            type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = [
-              "<SEC_INBOUND_NET>.0.48/28", "<SEC_INBOUND_NET>.1.48/28", "<SEC_INBOUND_NET>.2.48/28"  # CHANGE: must match gwlb subnet CIDRs
-            ]
-          }
-        }
-      }
-      vmseries_mgmt = {
-        name = "vmseries_mgmt"
-        rules = {
-          all_outbound = {
-            description = "Permit All traffic outbound"
-            type        = "egress", from_port = "0", to_port = "0", protocol = "-1"
-            cidr_blocks = ["0.0.0.0/0"]
-          }
-          panorama_ssh = {
-            description = "Permit Panorama SSH (Optional)"
-            type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["10.0.0.0/8"]
-          }
-          panorama_https = {
-            description = "Permit HTTPS (direct firewall GUI mgmt from internal nets)"
-            type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["10.0.0.0/8"]
-          }
-          panorama_ping = {
-            description = "Permit ICMP (reachability checks from internal nets)"
-            type        = "ingress", from_port = "-1", to_port = "-1", protocol = "icmp"
-            cidr_blocks = ["10.0.0.0/8"]
-          }
-          panorama_mgmt = {
-            description = "Permit Panorama-to-FW management channel (config, log fwd, sw upgrade)"
-            type        = "ingress", from_port = "3978", to_port = "3978", protocol = "tcp"
-            cidr_blocks = ["<PANORAMA_SUBNET>/24"]  # CHANGE: Panorama subnet CIDR
-          }
-          panorama_device_cert = {
-            description = "Permit Panorama device certificate / context-switch channel (PAN-OS 10+)"
-            type        = "ingress", from_port = "28443", to_port = "28443", protocol = "tcp"
-            cidr_blocks = ["<PANORAMA_SUBNET>/24"]  # CHANGE: Panorama subnet CIDR
-          }
-        }
-      }
-      vmseries_public = {
-        name = "vmseries_public"
-        rules = {
-          all_outbound = {
-            description = "Permit All traffic outbound"
-            type        = "egress", from_port = "0", to_port = "0", protocol = "-1"
-            cidr_blocks = ["0.0.0.0/0"]
-          }
-          ssh = {
-            description = "Permit SSH"
-            type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
-          }
-          https = {
-            description = "Permit HTTPS"
-            type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
-          }
-          http = {
-            description = "Permit HTTP"
-            type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
-          }
-        }
-      }
-    }
-    subnets = {
-      # Inbound Security VPC uses /28 subnets within a /22 CIDR.
-      # 2 AZs for most groups; GWLB spans 3 AZs for cross-zone availability.
-      # No gwlbe_outbound or gwlbe_eastwest subnets — those are only in the OBEW VPC.
-      # CHANGE: all CIDRs and AZs to match your region and IP plan.
-
-      # TGW Attach
-      "<SEC_INBOUND_NET>.0.0/28" = { az = "us-west-2a", subnet_group = "tgw_attach" }
-      "<SEC_INBOUND_NET>.1.0/28" = { az = "us-west-2b", subnet_group = "tgw_attach" }
-
-      # GWLB (3 AZs)
-      "<SEC_INBOUND_NET>.0.48/28" = { az = "us-west-2a", subnet_group = "gwlb" }
-      "<SEC_INBOUND_NET>.1.48/28" = { az = "us-west-2b", subnet_group = "gwlb" }
-      "<SEC_INBOUND_NET>.2.48/28" = { az = "us-west-2c", subnet_group = "gwlb" }
-
-      # Firewall Private (data plane)
-      "<SEC_INBOUND_NET>.0.64/28" = { az = "us-west-2a", subnet_group = "private" }
-      "<SEC_INBOUND_NET>.1.64/28" = { az = "us-west-2b", subnet_group = "private" }
-
-      # Firewall Mgmt
-      "<SEC_INBOUND_NET>.0.80/28" = { az = "us-west-2a", subnet_group = "mgmt" }
-      "<SEC_INBOUND_NET>.1.80/28" = { az = "us-west-2b", subnet_group = "mgmt" }
-
-      # Firewall Public
-      "<SEC_INBOUND_NET>.0.96/28" = { az = "us-west-2a", subnet_group = "public" }
-      "<SEC_INBOUND_NET>.1.96/28" = { az = "us-west-2b", subnet_group = "public" }
-
-      # NAT Gateway
-      "<SEC_INBOUND_NET>.0.112/28" = { az = "us-west-2a", subnet_group = "natgw" }
-      "<SEC_INBOUND_NET>.1.112/28" = { az = "us-west-2b", subnet_group = "natgw" }
-    }
-    routes = {
-      mgmt_default = {
-        vpc           = "security_inbound_vpc"
-        subnet_group  = "mgmt"
-        to_cidr       = "0.0.0.0/0"
-        next_hop_key  = "security_inbound_natgw"
-        next_hop_type = "nat_gateway"
-      }
-      mgmt_panorama = {
-        vpc           = "security_inbound_vpc"
-        subnet_group  = "mgmt"
-        to_cidr       = "<PANORAMA_NET>.0.0/16"  # CHANGE: Panorama VPC CIDR if different
-        next_hop_key  = "security_inbound"
-        next_hop_type = "transit_gateway_attachment"
-      }
-      mgmt_rfc1918 = {
-        vpc           = "security_inbound_vpc"
-        subnet_group  = "mgmt"
-        to_cidr       = "10.0.0.0/8"
-        next_hop_key  = "security_inbound"
-        next_hop_type = "transit_gateway_attachment"
-      }
-      natgw_default = {
-        vpc           = "security_inbound_vpc"
-        subnet_group  = "natgw"
-        to_cidr       = "0.0.0.0/0"
-        next_hop_key  = "security_inbound_vpc"
-        next_hop_type = "internet_gateway"
-      }
-    }
-  }
-
-  # ===========================================================================
-  #   App1 Spoke VPC — Distributed Inbound
-  # ===========================================================================
   app1_vpc = {
     name  = "app1-spoke-vpc"
-    cidr  = "<APP1_NET>.0.0/20"  # CHANGE: spoke 1 VPC CIDR
+    cidr  = "<APP1_NET>.0.0/21"  # CHANGE: spoke 1 VPC CIDR
     nacls = {}
     security_groups = {
       app1_vm = {
@@ -572,17 +416,17 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/21", "<APP2_NET>.0.0/21"]  # CHANGE: admin IP + spoke CIDRs
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/21", "<APP2_NET>.0.0/21"]  # CHANGE: admin IP + spoke CIDRs
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/21", "<APP2_NET>.0.0/21"]  # CHANGE: admin IP + spoke CIDRs
           }
         }
       }
@@ -608,13 +452,15 @@ vpcs = {
       }
     }
     subnets = {
+      # Spoke VPC uses /28 subnets within a /23 CIDR.
+      # AZ-A subnets in .0.x, AZ-B subnets in .1.x
       # CHANGE: CIDRs and AZs to match your region and IP plan
-      "<APP1_NET>.0.0/24" = { az = "us-west-2a", subnet_group = "app1_vm" }
-      "<APP1_NET>.1.0/24" = { az = "us-west-2b", subnet_group = "app1_vm" }
-      "<APP1_NET>.2.0/24" = { az = "us-west-2a", subnet_group = "app1_lb" }
-      "<APP1_NET>.3.0/24" = { az = "us-west-2b", subnet_group = "app1_lb" }
-      "<APP1_NET>.4.0/24" = { az = "us-west-2a", subnet_group = "app1_gwlbe" }
-      "<APP1_NET>.5.0/24" = { az = "us-west-2b", subnet_group = "app1_gwlbe" }
+      "<APP1_NET>.0.0/28"   = { az = "us-west-2a", subnet_group = "app1_vm" }
+      "<APP1_NET>.1.0/28"   = { az = "us-west-2b", subnet_group = "app1_vm" }
+      "<APP1_NET>.0.16/28"  = { az = "us-west-2a", subnet_group = "app1_lb" }
+      "<APP1_NET>.1.16/28"  = { az = "us-west-2b", subnet_group = "app1_lb" }
+      "<APP1_NET>.0.32/28"  = { az = "us-west-2a", subnet_group = "app1_gwlbe" }
+      "<APP1_NET>.1.32/28"  = { az = "us-west-2b", subnet_group = "app1_gwlbe" }
     }
     routes = {
       vm_default = {
@@ -640,13 +486,9 @@ vpcs = {
       }
     }
   }
-
-  # ===========================================================================
-  #   App2 Spoke VPC — Distributed Inbound
-  # ===========================================================================
   app2_vpc = {
     name  = "app2-spoke-vpc"
-    cidr  = "<APP2_NET>.0.0/20"  # CHANGE: spoke 2 VPC CIDR
+    cidr  = "<APP2_NET>.0.0/21"  # CHANGE: spoke 2 VPC CIDR
     nacls = {}
     security_groups = {
       app2_vm = {
@@ -660,17 +502,17 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/21", "<APP2_NET>.0.0/21"]  # CHANGE: admin IP + spoke CIDRs
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/21", "<APP2_NET>.0.0/21"]  # CHANGE: admin IP + spoke CIDRs
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/20", "<APP2_NET>.0.0/20"]  # CHANGE: admin IP + spoke CIDRs
+            cidr_blocks = ["<ADMIN_SOURCE_IP>/32", "<APP1_NET>.0.0/21", "<APP2_NET>.0.0/21"]  # CHANGE: admin IP + spoke CIDRs
           }
         }
       }
@@ -696,13 +538,15 @@ vpcs = {
       }
     }
     subnets = {
+      # Spoke VPC uses /28 subnets within a /23 CIDR.
+      # AZ-A subnets in .0.x, AZ-B subnets in .1.x
       # CHANGE: CIDRs and AZs to match your region and IP plan
-      "<APP2_NET>.0.0/24" = { az = "us-west-2a", subnet_group = "app2_vm" }
-      "<APP2_NET>.1.0/24" = { az = "us-west-2b", subnet_group = "app2_vm" }
-      "<APP2_NET>.2.0/24" = { az = "us-west-2a", subnet_group = "app2_lb" }
-      "<APP2_NET>.3.0/24" = { az = "us-west-2b", subnet_group = "app2_lb" }
-      "<APP2_NET>.4.0/24" = { az = "us-west-2a", subnet_group = "app2_gwlbe" }
-      "<APP2_NET>.5.0/24" = { az = "us-west-2b", subnet_group = "app2_gwlbe" }
+      "<APP2_NET>.0.0/28"   = { az = "us-west-2a", subnet_group = "app2_vm" }
+      "<APP2_NET>.1.0/28"   = { az = "us-west-2b", subnet_group = "app2_vm" }
+      "<APP2_NET>.0.16/28"  = { az = "us-west-2a", subnet_group = "app2_lb" }
+      "<APP2_NET>.1.16/28"  = { az = "us-west-2b", subnet_group = "app2_lb" }
+      "<APP2_NET>.0.32/28"  = { az = "us-west-2a", subnet_group = "app2_gwlbe" }
+      "<APP2_NET>.1.32/28"  = { az = "us-west-2b", subnet_group = "app2_gwlbe" }
     }
     routes = {
       vm_default = {
@@ -730,33 +574,17 @@ vpcs = {
   }
 }
 
-# =============================================================================
-#   NAT GATEWAYS
-# =============================================================================
-
 ### NAT GATEWAYS
 natgws = {
-  security_obew_natgw = {
-    vpc          = "security_obew_vpc"
+  security_natgw = {
+    vpc          = "security_vpc"
     subnet_group = "natgw"
     nat_gateway_names = {
-      "us-west-2a" = "obew-natgw-2a"  # CHANGE: AZs to match your region
-      "us-west-2b" = "obew-natgw-2b"  # CHANGE: AZs to match your region
-    }
-  }
-  security_inbound_natgw = {
-    vpc          = "security_inbound_vpc"
-    subnet_group = "natgw"
-    nat_gateway_names = {
-      "us-west-2a" = "inbound-natgw-2a"  # CHANGE: AZs to match your region
-      "us-west-2b" = "inbound-natgw-2b"  # CHANGE: AZs to match your region
+      "us-west-2a" = "natgw-2a"  # CHANGE: AZs to match your region
+      "us-west-2b" = "natgw-2b"  # CHANGE: AZs to match your region
     }
   }
 }
-
-# =============================================================================
-#   TRANSIT GATEWAY
-# =============================================================================
 
 ## TRANSIT GATEWAY
 tgws = {
@@ -777,22 +605,14 @@ tgws = {
 }
 
 tgw_attachments = {
-  security_obew = {
+  security = {
     tgw_key                 = "tgw"
-    security_vpc_attachment  = true  # Default route from spokes goes to the OBEW VPC
-    name                    = "vmseries-obew"
-    vpc                     = "security_obew_vpc"
+    security_vpc_attachment = true
+    name                    = "vmseries"
+    vpc                     = "security_vpc"
     subnet_group            = "tgw_attach"
     route_table             = "from_security_vpc"
     propagate_routes_to     = ["from_spoke_vpc"]
-  }
-  security_inbound = {
-    tgw_key             = "tgw"
-    name                = "vmseries-inbound"
-    vpc                 = "security_inbound_vpc"
-    subnet_group        = "tgw_attach"
-    route_table         = "from_security_vpc"
-    propagate_routes_to = ["from_spoke_vpc"]
   }
   app1 = {
     tgw_key             = "tgw"
@@ -812,45 +632,32 @@ tgw_attachments = {
   }
 }
 
-# =============================================================================
-#   GATEWAY LOAD BALANCERS
-# =============================================================================
-
-### GATEWAY LOADBALANCERS
+### GATEWAY LOADBALANCER
 gwlbs = {
-  security_obew_gwlb = {
-    name         = "security-obew-gwlb"
-    vpc          = "security_obew_vpc"
-    subnet_group = "gwlb"
-  }
-  security_inbound_gwlb = {
-    name         = "security-inbound-gwlb"
-    vpc          = "security_inbound_vpc"
+  security_gwlb = {
+    name         = "security-gwlb"
+    vpc          = "security_vpc"
     subnet_group = "gwlb"
   }
 }
-
-### GWLB ENDPOINTS
 gwlb_endpoints = {
-  # Outbound/East-West endpoints — in the OBEW security VPC
   security_gwlb_eastwest = {
     name            = "eastwest-gwlb-endpoint"
-    gwlb            = "security_obew_gwlb"
-    vpc             = "security_obew_vpc"
+    gwlb            = "security_gwlb"
+    vpc             = "security_vpc"
     subnet_group    = "gwlbe_eastwest"
     act_as_next_hop = false
   }
   security_gwlb_outbound = {
     name            = "outbound-gwlb-endpoint"
-    gwlb            = "security_obew_gwlb"
-    vpc             = "security_obew_vpc"
+    gwlb            = "security_gwlb"
+    vpc             = "security_vpc"
     subnet_group    = "gwlbe_outbound"
     act_as_next_hop = false
   }
-  # Inbound endpoints — distributed in spoke VPCs, backed by inbound GWLB
   app1_inbound = {
     name                     = "app1-gwlb-endpoint"
-    gwlb                     = "security_inbound_gwlb"
+    gwlb                     = "security_gwlb"
     vpc                      = "app1_vpc"
     subnet_group             = "app1_gwlbe"
     act_as_next_hop          = true
@@ -859,7 +666,7 @@ gwlb_endpoints = {
   }
   app2_inbound = {
     name                     = "app2-gwlb-endpoint"
-    gwlb                     = "security_inbound_gwlb"
+    gwlb                     = "security_gwlb"
     vpc                      = "app2_vpc"
     subnet_group             = "app2_gwlbe"
     act_as_next_hop          = true
@@ -868,13 +675,9 @@ gwlb_endpoints = {
   }
 }
 
-# =============================================================================
-#   VM-SERIES — Outbound / East-West
-# =============================================================================
-
 ### VM-SERIES
 vmseries = {
-  vmseries_obew = {
+  vmseries = {
     instances = {
       "01" = { az = "us-west-2a" }  # CHANGE: AZs to match your region
       "02" = { az = "us-west-2b" }  # CHANGE: AZs to match your region
@@ -928,14 +731,14 @@ vmseries = {
     panos_version = "11.1.4-h7"     # CHANGE: desired PAN-OS version
     ebs_kms_id    = "alias/aws/ebs" # CHANGE: KMS key alias or ARN
 
-    vpc  = "security_obew_vpc"
-    gwlb = "security_obew_gwlb"
+    vpc  = "security_vpc"
+    gwlb = "security_gwlb"
 
     interfaces = {
       private = {
         device_index      = 0
         security_group    = "vmseries_private"
-        vpc               = "security_obew_vpc"
+        vpc               = "security_vpc"
         subnet_group      = "private"
         create_public_ip  = false
         source_dest_check = false
@@ -943,7 +746,7 @@ vmseries = {
       mgmt = {
         device_index      = 1
         security_group    = "vmseries_mgmt"
-        vpc               = "security_obew_vpc"
+        vpc               = "security_vpc"
         subnet_group      = "mgmt"
         create_public_ip  = false
         source_dest_check = true
@@ -951,7 +754,7 @@ vmseries = {
       public = {
         device_index      = 2
         security_group    = "vmseries_public"
-        vpc               = "security_obew_vpc"
+        vpc               = "security_vpc"
         subnet_group      = "public"
         create_public_ip  = true
         source_dest_check = false
@@ -959,7 +762,16 @@ vmseries = {
     }
 
     subinterfaces = {
-      inbound  = {}
+      inbound = {
+        app1 = {
+          gwlb_endpoint = "app1_inbound"
+          subinterface  = "ethernet1/1.101"
+        }
+        app2 = {
+          gwlb_endpoint = "app2_inbound"
+          subinterface  = "ethernet1/1.102"
+        }
+      }
       outbound = {
         only_1_outbound = {
           gwlb_endpoint = "security_gwlb_outbound"
@@ -979,119 +791,7 @@ vmseries = {
       ntp_primary = "pool.ntp.org" # CHANGE: your NTP server
     }
   }
-
-  # ===========================================================================
-  #   VM-SERIES — Inbound
-  # ===========================================================================
-  vmseries_inbound = {
-    instances = {
-      "01" = { az = "us-west-2a" }  # CHANGE: AZs to match your region
-      "02" = { az = "us-west-2b" }  # CHANGE: AZs to match your region
-    }
-
-    # -------------------------------------------------------------------------
-    # BOOTSTRAP OPTIONS — Choose ONE of the two blocks below.
-    # Uncomment the block that matches your management platform and delete
-    # or leave the other commented out.
-    # -------------------------------------------------------------------------
-
-    # OPTION A: Traditional Panorama bootstrap
-    # Use when firewalls are managed by an on-prem or cloud-hosted Panorama appliance.
-    # Requires: Panorama IP reachable from the mgmt interface, a pre-generated auth-key,
-    # and a device group + template stack configured on Panorama.
-    /*
-    bootstrap_options = {
-      mgmt-interface-swap         = "enable"
-      plugin-op-commands          = "panorama-licensing-mode-on,aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable"
-      panorama-server                       = "<PANORAMA_IP>"          # CHANGE: Panorama IP address
-      auth-key                              = "<PANORAMA_AUTH_KEY>"     # CHANGE: generated via Panorama > Setup > Management > Auth Key
-      dgname                                = "<DEVICE_GROUP>"         # CHANGE: Panorama device group name
-      tplname                               = "<TEMPLATE_STACK>"       # CHANGE: Panorama template stack name
-      dhcp-send-hostname                    = "yes"
-      dhcp-send-client-id                   = "yes"
-      dhcp-accept-server-hostname           = "yes"
-      dhcp-accept-server-domain             = "yes"
-      vm-series-auto-registration-pin-id    = "<PIN_ID>"               # CHANGE: from Panorama > Setup > Management > Registration PIN
-      vm-series-auto-registration-pin-value = "<PIN_VALUE>"            # CHANGE: from Panorama > Setup > Management > Registration PIN
-      authcodes                             = "<AUTH_CODE>"            # CHANGE: VM-Series license auth code
-    }
-    */
-
-    # OPTION B: Strata Cloud Manager (SCM) bootstrap — PAN-OS 11.0+
-    # Use when firewalls are managed via SCM (cloud-managed Panorama).
-    # Requires: SCM tenant with auto-registration PIN and a valid auth code.
-    bootstrap_options = {
-      mgmt-interface-swap                   = "enable"
-      plugin-op-commands                    = "aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable,advance-routing:enable"
-      panorama-server                       = "cloud"                     # CHANGE: "cloud" for SCM, or Panorama IP
-      dgname                                = "<SCM_FOLDER_NAME>"        # CHANGE: SCM folder name
-      dhcp-send-hostname                    = "yes"
-      dhcp-send-client-id                   = "yes"
-      dhcp-accept-server-hostname           = "yes"
-      dhcp-accept-server-domain             = "yes"
-      vm-series-auto-registration-pin-id    = "<PIN_ID>"                 # CHANGE: from SCM tenant settings
-      vm-series-auto-registration-pin-value = "<PIN_VALUE>"              # CHANGE: from SCM tenant settings
-      authcodes                             = "<AUTH_CODE>"              # CHANGE: VM-Series license auth code
-    }
-
-    panos_version = "11.1.4-h7"     # CHANGE: desired PAN-OS version
-    ebs_kms_id    = "alias/aws/ebs" # CHANGE: KMS key alias or ARN
-
-    vpc  = "security_inbound_vpc"
-    gwlb = "security_inbound_gwlb"
-
-    interfaces = {
-      private = {
-        device_index      = 0
-        security_group    = "vmseries_private"
-        vpc               = "security_inbound_vpc"
-        subnet_group      = "private"
-        create_public_ip  = false
-        source_dest_check = false
-      }
-      mgmt = {
-        device_index      = 1
-        security_group    = "vmseries_mgmt"
-        vpc               = "security_inbound_vpc"
-        subnet_group      = "mgmt"
-        create_public_ip  = false
-        source_dest_check = true
-      }
-      public = {
-        device_index      = 2
-        security_group    = "vmseries_public"
-        vpc               = "security_inbound_vpc"
-        subnet_group      = "public"
-        create_public_ip  = true
-        source_dest_check = false
-      }
-    }
-
-    subinterfaces = {
-      inbound = {
-        app1 = {
-          gwlb_endpoint = "app1_inbound"
-          subinterface  = "ethernet1/1.101"
-        }
-        app2 = {
-          gwlb_endpoint = "app2_inbound"
-          subinterface  = "ethernet1/1.102"
-        }
-      }
-      outbound = {}
-      eastwest = {}
-    }
-
-    system_services = {
-      dns_primary = "4.2.2.2"      # CHANGE: your DNS server
-      ntp_primary = "pool.ntp.org" # CHANGE: your NTP server
-    }
-  }
 }
-
-# =============================================================================
-#   SPOKE VMs
-# =============================================================================
 
 ### SPOKE VMS
 spoke_vms = {
@@ -1120,10 +820,6 @@ spoke_vms = {
     security_group = "app2_vm"
   }
 }
-
-# =============================================================================
-#   SPOKE LOAD BALANCERS
-# =============================================================================
 
 ### SPOKE LOADBALANCERS
 spoke_nlbs = {
@@ -1192,13 +888,9 @@ spoke_albs = {
   }
 }
 
-# =============================================================================
-#   PANORAMA CONNECTIVITY (optional)
-# =============================================================================
-
 ### PANORAMA
 # Uncomment if Panorama is in a separate VPC connected via TGW.
-# This adds a static route on the TGW for Panorama reachability from the security VPCs.
+# This adds a static route on the TGW for Panorama reachability from the security VPC.
 /*
 panorama_attachment = {
   tgw_key                      = "tgw"

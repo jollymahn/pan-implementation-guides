@@ -5,8 +5,8 @@
 #         examples/combined_design/example.tfvars
 #
 # Changes vs upstream:
-#   - region: eu-west-1 -> us-east-2
-#   - security_vpc CIDR: 10.100.0.0/16 -> 10.51.0.0/22 (8 groups x 4 AZ slots, /28 each)
+#   - region: eu-west-1 -> us-west-2
+#   - security_vpc CIDR: 10.100.0.0/16 -> 10.51.0.0/21 (8 groups x 4 AZ slots, /28 each)
 #   - added natgw subnet group (supports non-overlay routing)
 #   - NACL/SG rule CIDRs updated to track new subnets
 #   - added natgw_default route (NAT GW -> IGW egress)
@@ -16,7 +16,7 @@
 # subnets are pre-allocated for switching to non-overlay later.
 
 ### GENERAL
-region      = "us-east-2" # TODO: update here
+region      = "us-west-2"
 name_prefix = "example-"  # TODO: update here
 
 global_tags = {
@@ -31,7 +31,7 @@ ssh_key_name = "example-ssh-key" # TODO: update here
 vpcs = {
   security_vpc = {
     name = "security-vpc"
-    cidr = "10.51.0.0/22"
+    cidr = "10.51.0.0/21"
     nacls = {
       trusted_path_monitoring = {
         name = "trusted-path-monitoring"
@@ -168,72 +168,72 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/16", "10.105.0.0/16"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
+            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/21", "10.105.0.0/21"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/16", "10.105.0.0/16"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
+            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/21", "10.105.0.0/21"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/16", "10.105.0.0/16"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
+            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/21", "10.105.0.0/21"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
           }
         }
       }
     }
     subnets = {
-      # Customer IP schema: 10.51.0.0/22 carved into 8 subnet groups x 4 AZ slots, /28 each.
+      # Customer IP schema: 10.51.0.0/21 carved into 8 subnet groups x 4 AZ slots, /28 each.
       # Value of `nacl` must match key of objects stored in `nacls`.
 
       # SUBNET-0-0-TGW-ATTACH
-      "10.51.0.0/28" = { az = "us-east-2a", subnet_group = "tgw_attach" }
-      "10.51.1.0/28" = { az = "us-east-2b", subnet_group = "tgw_attach" }
-      "10.51.2.0/28" = { az = "us-east-2a", subnet_group = "tgw_attach" }
-      "10.51.3.0/28" = { az = "us-east-2b", subnet_group = "tgw_attach" }
+      "10.51.0.0/28" = { az = "us-west-2a", subnet_group = "tgw_attach" }
+      "10.51.1.0/28" = { az = "us-west-2b", subnet_group = "tgw_attach" }
+      "10.51.2.0/28" = { az = "us-west-2a", subnet_group = "tgw_attach" }
+      "10.51.3.0/28" = { az = "us-west-2b", subnet_group = "tgw_attach" }
 
       # SUBNET-1-16-GWLBE-OUTBOUND
-      "10.51.0.16/28" = { az = "us-east-2a", subnet_group = "gwlbe_outbound" }
-      "10.51.1.16/28" = { az = "us-east-2b", subnet_group = "gwlbe_outbound" }
-      "10.51.2.16/28" = { az = "us-east-2a", subnet_group = "gwlbe_outbound" }
-      "10.51.3.16/28" = { az = "us-east-2b", subnet_group = "gwlbe_outbound" }
+      "10.51.0.16/28" = { az = "us-west-2a", subnet_group = "gwlbe_outbound" }
+      "10.51.1.16/28" = { az = "us-west-2b", subnet_group = "gwlbe_outbound" }
+      "10.51.2.16/28" = { az = "us-west-2a", subnet_group = "gwlbe_outbound" }
+      "10.51.3.16/28" = { az = "us-west-2b", subnet_group = "gwlbe_outbound" }
 
       # SUBNET-2-32-GWLBE-EASTWEST
-      "10.51.0.32/28" = { az = "us-east-2a", subnet_group = "gwlbe_eastwest" }
-      "10.51.1.32/28" = { az = "us-east-2b", subnet_group = "gwlbe_eastwest" }
-      "10.51.2.32/28" = { az = "us-east-2a", subnet_group = "gwlbe_eastwest" }
-      "10.51.3.32/28" = { az = "us-east-2b", subnet_group = "gwlbe_eastwest" }
+      "10.51.0.32/28" = { az = "us-west-2a", subnet_group = "gwlbe_eastwest" }
+      "10.51.1.32/28" = { az = "us-west-2b", subnet_group = "gwlbe_eastwest" }
+      "10.51.2.32/28" = { az = "us-west-2a", subnet_group = "gwlbe_eastwest" }
+      "10.51.3.32/28" = { az = "us-west-2b", subnet_group = "gwlbe_eastwest" }
 
       # SUBNET-3-48-GWLB ALLOCATE ALL AZ'S IN REGION
-      "10.51.0.48/28" = { az = "us-east-2a", subnet_group = "gwlb" }
-      "10.51.1.48/28" = { az = "us-east-2b", subnet_group = "gwlb" }
-      "10.51.2.48/28" = { az = "us-east-2c", subnet_group = "gwlb" }
-      "10.51.3.48/28" = { az = "us-east-2c", subnet_group = "gwlb" }
+      "10.51.0.48/28" = { az = "us-west-2a", subnet_group = "gwlb" }
+      "10.51.1.48/28" = { az = "us-west-2b", subnet_group = "gwlb" }
+      "10.51.2.48/28" = { az = "us-west-2c", subnet_group = "gwlb" }
+      "10.51.3.48/28" = { az = "us-west-2c", subnet_group = "gwlb" }
 
       # SUBNET-4-64-FW-DATA-PRIVATE
-      "10.51.0.64/28" = { az = "us-east-2a", subnet_group = "private", nacl = "trusted_path_monitoring" }
-      "10.51.1.64/28" = { az = "us-east-2b", subnet_group = "private", nacl = "trusted_path_monitoring" }
-      "10.51.2.64/28" = { az = "us-east-2a", subnet_group = "private", nacl = "trusted_path_monitoring" }
-      "10.51.3.64/28" = { az = "us-east-2b", subnet_group = "private", nacl = "trusted_path_monitoring" }
+      "10.51.0.64/28" = { az = "us-west-2a", subnet_group = "private", nacl = "trusted_path_monitoring" }
+      "10.51.1.64/28" = { az = "us-west-2b", subnet_group = "private", nacl = "trusted_path_monitoring" }
+      "10.51.2.64/28" = { az = "us-west-2a", subnet_group = "private", nacl = "trusted_path_monitoring" }
+      "10.51.3.64/28" = { az = "us-west-2b", subnet_group = "private", nacl = "trusted_path_monitoring" }
 
       # SUBNET-5-80-FW-DATA-MGMT
-      "10.51.0.80/28" = { az = "us-east-2a", subnet_group = "mgmt" }
-      "10.51.1.80/28" = { az = "us-east-2b", subnet_group = "mgmt" }
-      "10.51.2.80/28" = { az = "us-east-2a", subnet_group = "mgmt" }
-      "10.51.3.80/28" = { az = "us-east-2b", subnet_group = "mgmt" }
+      "10.51.0.80/28" = { az = "us-west-2a", subnet_group = "mgmt" }
+      "10.51.1.80/28" = { az = "us-west-2b", subnet_group = "mgmt" }
+      "10.51.2.80/28" = { az = "us-west-2a", subnet_group = "mgmt" }
+      "10.51.3.80/28" = { az = "us-west-2b", subnet_group = "mgmt" }
 
       # SUBNET-6-96-FW-DATA-PUBLIC
-      "10.51.0.96/28" = { az = "us-east-2a", subnet_group = "public" }
-      "10.51.1.96/28" = { az = "us-east-2b", subnet_group = "public" }
-      "10.51.2.96/28" = { az = "us-east-2a", subnet_group = "public" }
-      "10.51.3.96/28" = { az = "us-east-2b", subnet_group = "public" }
+      "10.51.0.96/28" = { az = "us-west-2a", subnet_group = "public" }
+      "10.51.1.96/28" = { az = "us-west-2b", subnet_group = "public" }
+      "10.51.2.96/28" = { az = "us-west-2a", subnet_group = "public" }
+      "10.51.3.96/28" = { az = "us-west-2b", subnet_group = "public" }
 
       # SUBNET-7-112-NAT-GW
-      "10.51.0.112/28" = { az = "us-east-2a", subnet_group = "natgw" }
-      "10.51.1.112/28" = { az = "us-east-2b", subnet_group = "natgw" }
-      "10.51.2.112/28" = { az = "us-east-2a", subnet_group = "natgw" }
-      "10.51.3.112/28" = { az = "us-east-2b", subnet_group = "natgw" }
+      "10.51.0.112/28" = { az = "us-west-2a", subnet_group = "natgw" }
+      "10.51.1.112/28" = { az = "us-west-2b", subnet_group = "natgw" }
+      "10.51.2.112/28" = { az = "us-west-2a", subnet_group = "natgw" }
+      "10.51.3.112/28" = { az = "us-west-2b", subnet_group = "natgw" }
     }
     routes = {
       # Value of `next_hop_key` must match keys use to create TGW attachment, IGW, GWLB endpoint or other resources
@@ -319,7 +319,7 @@ vpcs = {
   }
   app1_vpc = {
     name  = "app1-spoke-vpc"
-    cidr  = "10.104.0.0/16"
+    cidr  = "10.104.0.0/21"
     nacls = {}
     security_groups = {
       app1_vm = {
@@ -333,17 +333,17 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/16", "10.105.0.0/16"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
+            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/21", "10.105.0.0/21"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/16", "10.105.0.0/16"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
+            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/21", "10.105.0.0/21"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/16", "10.105.0.0/16"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
+            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/21", "10.105.0.0/21"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
           }
         }
       }
@@ -369,12 +369,12 @@ vpcs = {
       }
     }
     subnets = {
-      "10.104.0.0/24"   = { az = "us-east-2a", subnet_group = "app1_vm" }
-      "10.104.128.0/24" = { az = "us-east-2b", subnet_group = "app1_vm" }
-      "10.104.2.0/24"   = { az = "us-east-2a", subnet_group = "app1_lb" }
-      "10.104.130.0/24" = { az = "us-east-2b", subnet_group = "app1_lb" }
-      "10.104.3.0/24"   = { az = "us-east-2a", subnet_group = "app1_gwlbe" }
-      "10.104.131.0/24" = { az = "us-east-2b", subnet_group = "app1_gwlbe" }
+      "10.104.0.0/24"   = { az = "us-west-2a", subnet_group = "app1_vm" }
+      "10.104.1.0/24" = { az = "us-west-2b", subnet_group = "app1_vm" }
+      "10.104.2.0/24"   = { az = "us-west-2a", subnet_group = "app1_lb" }
+      "10.104.3.0/24" = { az = "us-west-2b", subnet_group = "app1_lb" }
+      "10.104.3.0/24"   = { az = "us-west-2a", subnet_group = "app1_gwlbe" }
+      "10.104.5.0/24" = { az = "us-west-2b", subnet_group = "app1_gwlbe" }
     }
     routes = {
       # Value of `next_hop_key` must match keys use to create TGW attachment, IGW, GWLB endpoint or other resources
@@ -404,7 +404,7 @@ vpcs = {
   }
   app2_vpc = {
     name  = "app2-spoke-vpc"
-    cidr  = "10.105.0.0/16"
+    cidr  = "10.105.0.0/21"
     nacls = {}
     security_groups = {
       app2_vm = {
@@ -418,17 +418,17 @@ vpcs = {
           ssh = {
             description = "Permit SSH"
             type        = "ingress", from_port = "22", to_port = "22", protocol = "tcp"
-            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/16", "10.105.0.0/16"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
+            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/21", "10.105.0.0/21"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
           }
           https = {
             description = "Permit HTTPS"
             type        = "ingress", from_port = "443", to_port = "443", protocol = "tcp"
-            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/16", "10.105.0.0/16"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
+            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/21", "10.105.0.0/21"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
           }
           http = {
             description = "Permit HTTP"
             type        = "ingress", from_port = "80", to_port = "80", protocol = "tcp"
-            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/16", "10.105.0.0/16"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
+            cidr_blocks = ["1.1.1.1/32", "10.104.0.0/21", "10.105.0.0/21"] # TODO: update here (replace 1.1.1.1/32 with your IP range)
           }
         }
       }
@@ -454,12 +454,12 @@ vpcs = {
       }
     }
     subnets = {
-      "10.105.0.0/24"   = { az = "us-east-2a", subnet_group = "app2_vm" }
-      "10.105.128.0/24" = { az = "us-east-2b", subnet_group = "app2_vm" }
-      "10.105.2.0/24"   = { az = "us-east-2a", subnet_group = "app2_lb" }
-      "10.105.130.0/24" = { az = "us-east-2b", subnet_group = "app2_lb" }
-      "10.105.3.0/24"   = { az = "us-east-2a", subnet_group = "app2_gwlbe" }
-      "10.105.131.0/24" = { az = "us-east-2b", subnet_group = "app2_gwlbe" }
+      "10.105.0.0/24"   = { az = "us-west-2a", subnet_group = "app2_vm" }
+      "10.105.1.0/24" = { az = "us-west-2b", subnet_group = "app2_vm" }
+      "10.105.2.0/24"   = { az = "us-west-2a", subnet_group = "app2_lb" }
+      "10.105.3.0/24" = { az = "us-west-2b", subnet_group = "app2_lb" }
+      "10.105.3.0/24"   = { az = "us-west-2a", subnet_group = "app2_gwlbe" }
+      "10.105.5.0/24" = { az = "us-west-2b", subnet_group = "app2_gwlbe" }
     }
     routes = {
       # Value of `next_hop_key` must match keys use to create TGW attachment, IGW, GWLB endpoint or other resources
@@ -497,8 +497,8 @@ natgws = {
     vpc          = "security_vpc"
     subnet_group = "natgw"
     nat_gateway_names = {
-      "us-east-2a" = "natgw-2a"
-      "us-east-2b" = "natgw-2b"
+      "us-west-2a" = "natgw-2a"
+      "us-west-2b" = "natgw-2b"
     }
   }
 }
@@ -600,8 +600,8 @@ gwlb_endpoints = {
 vmseries = {
   vmseries = {
     instances = {
-      "01" = { az = "us-east-2a" }
-      "02" = { az = "us-east-2b" }
+      "01" = { az = "us-west-2a" }
+      "02" = { az = "us-west-2b" }
     }
 
     # Value of `panorama-server`, `auth-key`, `dgname`, `tplname` can be taken from plugin `sw_fw_license`. Delete map if SCM bootstrap required.
@@ -719,25 +719,25 @@ panorama_attachment = {
 ### SPOKE VMS
 spoke_vms = {
   "app1_vm01" = {
-    az             = "us-east-2a"
+    az             = "us-west-2a"
     vpc            = "app1_vpc"
     subnet_group   = "app1_vm"
     security_group = "app1_vm"
   }
   "app1_vm02" = {
-    az             = "us-east-2b"
+    az             = "us-west-2b"
     vpc            = "app1_vpc"
     subnet_group   = "app1_vm"
     security_group = "app1_vm"
   }
   "app2_vm01" = {
-    az             = "us-east-2a"
+    az             = "us-west-2a"
     vpc            = "app2_vpc"
     subnet_group   = "app2_vm"
     security_group = "app2_vm"
   }
   "app2_vm02" = {
-    az             = "us-east-2b"
+    az             = "us-west-2b"
     vpc            = "app2_vpc"
     subnet_group   = "app2_vm"
     security_group = "app2_vm"

@@ -1,0 +1,883 @@
+# #############################################################################
+#
+#   PANORAMA CONFIGURATION — OVERLAY ROUTING (Combined Two-Tier Design)
+#
+#   DERIVED (not yet validated) from the single-tier combined overlay config.
+#   Two-tier splits a single firewall group into two:
+#     - OBEW firewalls: outbound + east-west traffic (security_obew_vpc)
+#     - INBOUND firewalls: inbound traffic only (security_inbound_vpc)
+#
+#   Matches the cld-combined-two-tier.tfvars Terraform configuration.
+#
+#   Push this to Panorama BEFORE running terraform apply. The firewalls
+#   bootstrap with dgname/tplname from the tfvars and pull this config.
+#
+# #############################################################################
+#
+# PLACEHOLDERS — Find-and-replace before pushing to Panorama:
+#
+#   Placeholder              Example              Scope
+#   ──────────────────────   ──────────────────   ─────────────────────────────
+#   <OBEW_NET>               10.51                Security OBEW VPC prefix
+#   <INBOUND_NET>            10.52                Security Inbound VPC prefix
+#   <APP1_NET>               10.48                App1 spoke VPC prefix
+#   <APP2_NET>               10.49                App2 spoke VPC prefix
+#   <APP3_NET>               10.106               App3 spoke VPC prefix (optional)
+#   <ADMIN_IP>               203.0.113.10         Admin source IP for SSH rules
+#   <REGION_CODE>            USW2                 Short region code for template names
+#   <APP2_ALB_FQDN>          my-alb.elb...        App2 ALB FQDN (or remove object)
+#   <BSD_OBEW>               bsd-aws-obew         Bootstrap definition for OBEW FWs
+#   <BSD_INBOUND>            bsd-aws-inbound      Bootstrap definition for inbound FWs
+#
+# Quick replace:
+#   sed -i '' \
+#     's/<OBEW_NET>/10.51/g;
+#      s/<INBOUND_NET>/10.52/g;
+#      s/<APP1_NET>/10.48/g;
+#      s/<APP2_NET>/10.49/g;
+#      s/<APP3_NET>/10.106/g;
+#      s/<ADMIN_IP>/203.0.113.10/g;
+#      s/<REGION_CODE>/USW2/g;
+#      s/<BSD_OBEW>/bsd-aws-obew/g;
+#      s/<BSD_INBOUND>/bsd-aws-inbound/g' \
+#     cld-combined-two-tier-overlay.set
+#
+# =============================================================================
+#
+# Two-tier architecture:
+#   - DG-AWS-COMBINED-OBEW    → vmseries_obew group in security_obew_vpc
+#   - DG-AWS-COMBINED-INBOUND → vmseries_inbound group in security_inbound_vpc
+#   - Shared level-1 and level-2 templates are reused across both groups
+#   - Each group gets its own level-4 template with role-specific interfaces
+#
+# Edit-before-paste checklist:
+#   - Gateway IPs: $INTERNAL-GW / $EXTERNAL-GW per AZ (template stack overrides)
+#   - GWLB + private subnet CIDRs in address objects
+#   - Panorama IP: 2-TPL panorama-server line
+#   - Bootstrap definitions: <BSD_OBEW> and <BSD_INBOUND> (created via GUI)
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 1: STRUCTURAL OBJECTS
+# ═══════════════════════════════════════════════════════════════
+
+# --- Device Groups ---
+set device-group DG-AWS-COMBINED-OBEW description "AWS Combined Two-Tier — Outbound/East-West Firewalls"
+set device-group DG-AWS-COMBINED-INBOUND description "AWS Combined Two-Tier — Inbound Firewalls"
+
+# --- OBEW Template Stacks (per-AZ) ---
+set template-stack STK-AWS-COMBINED-OBEW-AZ-A templates 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW
+set template-stack STK-AWS-COMBINED-OBEW-AZ-A templates 2-TPL-AWS-GLOBAL-COMMON-BASELINE
+set template-stack STK-AWS-COMBINED-OBEW-AZ-A templates 1-TPL-AWS-REGIONAL-<REGION_CODE>
+set template-stack STK-AWS-COMBINED-OBEW-AZ-A settings default-vsys vsys1
+set template-stack STK-AWS-COMBINED-OBEW-AZ-B templates 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW
+set template-stack STK-AWS-COMBINED-OBEW-AZ-B templates 2-TPL-AWS-GLOBAL-COMMON-BASELINE
+set template-stack STK-AWS-COMBINED-OBEW-AZ-B templates 1-TPL-AWS-REGIONAL-<REGION_CODE>
+set template-stack STK-AWS-COMBINED-OBEW-AZ-B settings default-vsys vsys1
+
+# --- INBOUND Template Stacks (per-AZ) ---
+set template-stack STK-AWS-COMBINED-INBOUND-AZ-A templates 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND
+set template-stack STK-AWS-COMBINED-INBOUND-AZ-A templates 2-TPL-AWS-GLOBAL-COMMON-BASELINE
+set template-stack STK-AWS-COMBINED-INBOUND-AZ-A templates 1-TPL-AWS-REGIONAL-<REGION_CODE>
+set template-stack STK-AWS-COMBINED-INBOUND-AZ-A settings default-vsys vsys1
+set template-stack STK-AWS-COMBINED-INBOUND-AZ-B templates 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND
+set template-stack STK-AWS-COMBINED-INBOUND-AZ-B templates 2-TPL-AWS-GLOBAL-COMMON-BASELINE
+set template-stack STK-AWS-COMBINED-INBOUND-AZ-B templates 1-TPL-AWS-REGIONAL-<REGION_CODE>
+set template-stack STK-AWS-COMBINED-INBOUND-AZ-B settings default-vsys vsys1
+
+# --- OBEW per-AZ gateway variable overrides ---
+# AZ-A: private=<OBEW_NET>.0.64/28 → gw=<OBEW_NET>.0.65, public=<OBEW_NET>.0.96/28 → gw=<OBEW_NET>.0.97
+set template-stack STK-AWS-COMBINED-OBEW-AZ-A variable $INTERNAL-GW type ip-netmask <OBEW_NET>.0.65
+set template-stack STK-AWS-COMBINED-OBEW-AZ-A variable $EXTERNAL-GW type ip-netmask <OBEW_NET>.0.97
+# AZ-B: private=<OBEW_NET>.1.64/28 → gw=<OBEW_NET>.1.65, public=<OBEW_NET>.1.96/28 → gw=<OBEW_NET>.1.97
+set template-stack STK-AWS-COMBINED-OBEW-AZ-B variable $INTERNAL-GW type ip-netmask <OBEW_NET>.1.65
+set template-stack STK-AWS-COMBINED-OBEW-AZ-B variable $EXTERNAL-GW type ip-netmask <OBEW_NET>.1.97
+
+# --- INBOUND per-AZ gateway variable overrides ---
+# AZ-A: private=<INBOUND_NET>.0.64/28 → gw=<INBOUND_NET>.0.65, public=<INBOUND_NET>.0.96/28 → gw=<INBOUND_NET>.0.97
+set template-stack STK-AWS-COMBINED-INBOUND-AZ-A variable $INTERNAL-GW type ip-netmask <INBOUND_NET>.0.65
+set template-stack STK-AWS-COMBINED-INBOUND-AZ-A variable $EXTERNAL-GW type ip-netmask <INBOUND_NET>.0.97
+# AZ-B: private=<INBOUND_NET>.1.64/28 → gw=<INBOUND_NET>.1.65, public=<INBOUND_NET>.1.96/28 → gw=<INBOUND_NET>.1.97
+set template-stack STK-AWS-COMBINED-INBOUND-AZ-B variable $INTERNAL-GW type ip-netmask <INBOUND_NET>.1.65
+set template-stack STK-AWS-COMBINED-INBOUND-AZ-B variable $EXTERNAL-GW type ip-netmask <INBOUND_NET>.1.97
+
+# --- Reference templates on DGs (enables zone dropdowns in security rules) ---
+set device-group DG-AWS-COMBINED-OBEW reference-templates STK-AWS-COMBINED-OBEW-AZ-A
+set device-group DG-AWS-COMBINED-OBEW reference-templates STK-AWS-COMBINED-OBEW-AZ-B
+set device-group DG-AWS-COMBINED-INBOUND reference-templates STK-AWS-COMBINED-INBOUND-AZ-A
+set device-group DG-AWS-COMBINED-INBOUND reference-templates STK-AWS-COMBINED-INBOUND-AZ-B
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 2: SHARED OBJECTS (tags, addresses, profile groups)
+# ═══════════════════════════════════════════════════════════════
+
+set shared tag INBOUND color color1
+set shared tag INBOUND comments "INBOUND FLOW"
+set shared tag OUTBOUND color color13
+set shared tag OUTBOUND comments "OUTBOUND FLOW"
+set shared tag EASTWEST color color13
+set shared tag EASTWEST comments "EAST/WEST POLICY"
+set shared tag AWS-HEALTH-GWLB color color24
+set shared tag AWS-HEALTH-GWLB comments "HEALTH PROBES"
+set shared tag AWS-FW-DATA-PRIVATE color color24
+set shared tag AWS-FW-DATA-PRIVATE comments FW-Data-plane-interface
+set shared tag BASELINE color color15
+set shared tag BASELINE comments "BASELINE CONFIG ELEMENTS"
+set shared tag EXAMPLE color color6
+set shared tag EXAMPLE comments "EXAMPLE ELEMENT OR POLICY"
+set shared tag APP1 color color2
+set shared tag APP1 comments APP1-ELEMENTS
+set shared tag APP2 color color17
+set shared tag APP2 comments APP2-ELEMENTS
+set shared tag APP3 color color9
+set shared tag ALB color color9
+set shared tag ALB comments NLB-ELEMENTS
+set shared tag OVERLAY-NAT color color6
+set shared tag AWS-WEB-FARM-APP1 color color22
+set shared tag AWS-WEB-FARM-APP1 comments INTERNAL
+set shared tag PALO-GP-GATEWAY color color1
+set shared tag PALO-GP-GATEWAY comments PALO-GP-GATEWAY
+
+# --- Address objects: admin ---
+set shared address H-<ADMIN_IP> description ADMIN-SOURCE-IP
+set shared address H-<ADMIN_IP> ip-netmask <ADMIN_IP>
+set shared address H-<ADMIN_IP> tag [ INBOUND BASELINE PALO-GP-GATEWAY ]
+set shared address H-APP2-WEB-ALB-FQDN description <APP2_ALB_FQDN>
+set shared address H-APP2-WEB-ALB-FQDN fqdn <APP2_ALB_FQDN>
+set shared address H-APP2-WEB-ALB-FQDN tag [ APP2 ALB BASELINE ]
+set shared address N-10.0.0.0-8 description RFC-1918-10
+set shared address N-10.0.0.0-8 ip-netmask 10.0.0.0/8
+set shared address N-10.0.0.0-8 tag BASELINE
+
+# --- Address objects: OBEW VPC GWLB subnets ---
+set shared address N-<OBEW_NET>.0.48-28 description OBEW-GWLB-SUBNET-A
+set shared address N-<OBEW_NET>.0.48-28 ip-netmask <OBEW_NET>.0.48/28
+set shared address N-<OBEW_NET>.0.48-28 tag AWS-HEALTH-GWLB
+set shared address N-<OBEW_NET>.1.48-28 description OBEW-GWLB-SUBNET-B
+set shared address N-<OBEW_NET>.1.48-28 ip-netmask <OBEW_NET>.1.48/28
+set shared address N-<OBEW_NET>.1.48-28 tag AWS-HEALTH-GWLB
+set shared address N-<OBEW_NET>.2.48-28 description OBEW-GWLB-SUBNET-C
+set shared address N-<OBEW_NET>.2.48-28 ip-netmask <OBEW_NET>.2.48/28
+set shared address N-<OBEW_NET>.2.48-28 tag AWS-HEALTH-GWLB
+set shared address N-<OBEW_NET>.3.48-28 description OBEW-GWLB-SUBNET-D
+set shared address N-<OBEW_NET>.3.48-28 ip-netmask <OBEW_NET>.3.48/28
+set shared address N-<OBEW_NET>.3.48-28 tag AWS-HEALTH-GWLB
+
+# --- Address objects: OBEW VPC firewall private subnets ---
+set shared address N-<OBEW_NET>.0.64-28 description OBEW-FW-PRIVATE-SUBNET-A
+set shared address N-<OBEW_NET>.0.64-28 ip-netmask <OBEW_NET>.0.64/28
+set shared address N-<OBEW_NET>.0.64-28 tag AWS-FW-DATA-PRIVATE
+set shared address N-<OBEW_NET>.1.64-28 description OBEW-FW-PRIVATE-SUBNET-B
+set shared address N-<OBEW_NET>.1.64-28 ip-netmask <OBEW_NET>.1.64/28
+set shared address N-<OBEW_NET>.1.64-28 tag AWS-FW-DATA-PRIVATE
+set shared address N-<OBEW_NET>.2.64-28 description OBEW-FW-PRIVATE-SUBNET-C
+set shared address N-<OBEW_NET>.2.64-28 ip-netmask <OBEW_NET>.2.64/28
+set shared address N-<OBEW_NET>.2.64-28 tag AWS-FW-DATA-PRIVATE
+set shared address N-<OBEW_NET>.3.64-28 description OBEW-FW-PRIVATE-SUBNET-D
+set shared address N-<OBEW_NET>.3.64-28 ip-netmask <OBEW_NET>.3.64/28
+set shared address N-<OBEW_NET>.3.64-28 tag AWS-FW-DATA-PRIVATE
+
+# --- Address objects: INBOUND VPC GWLB subnets ---
+set shared address N-<INBOUND_NET>.0.48-28 description INBOUND-GWLB-SUBNET-A
+set shared address N-<INBOUND_NET>.0.48-28 ip-netmask <INBOUND_NET>.0.48/28
+set shared address N-<INBOUND_NET>.0.48-28 tag AWS-HEALTH-GWLB
+set shared address N-<INBOUND_NET>.1.48-28 description INBOUND-GWLB-SUBNET-B
+set shared address N-<INBOUND_NET>.1.48-28 ip-netmask <INBOUND_NET>.1.48/28
+set shared address N-<INBOUND_NET>.1.48-28 tag AWS-HEALTH-GWLB
+set shared address N-<INBOUND_NET>.2.48-28 description INBOUND-GWLB-SUBNET-C
+set shared address N-<INBOUND_NET>.2.48-28 ip-netmask <INBOUND_NET>.2.48/28
+set shared address N-<INBOUND_NET>.2.48-28 tag AWS-HEALTH-GWLB
+set shared address N-<INBOUND_NET>.3.48-28 description INBOUND-GWLB-SUBNET-D
+set shared address N-<INBOUND_NET>.3.48-28 ip-netmask <INBOUND_NET>.3.48/28
+set shared address N-<INBOUND_NET>.3.48-28 tag AWS-HEALTH-GWLB
+
+# --- Address objects: INBOUND VPC firewall private subnets ---
+set shared address N-<INBOUND_NET>.0.64-28 description INBOUND-FW-PRIVATE-SUBNET-A
+set shared address N-<INBOUND_NET>.0.64-28 ip-netmask <INBOUND_NET>.0.64/28
+set shared address N-<INBOUND_NET>.0.64-28 tag AWS-FW-DATA-PRIVATE
+set shared address N-<INBOUND_NET>.1.64-28 description INBOUND-FW-PRIVATE-SUBNET-B
+set shared address N-<INBOUND_NET>.1.64-28 ip-netmask <INBOUND_NET>.1.64/28
+set shared address N-<INBOUND_NET>.1.64-28 tag AWS-FW-DATA-PRIVATE
+set shared address N-<INBOUND_NET>.2.64-28 description INBOUND-FW-PRIVATE-SUBNET-C
+set shared address N-<INBOUND_NET>.2.64-28 ip-netmask <INBOUND_NET>.2.64/28
+set shared address N-<INBOUND_NET>.2.64-28 tag AWS-FW-DATA-PRIVATE
+set shared address N-<INBOUND_NET>.3.64-28 description INBOUND-FW-PRIVATE-SUBNET-D
+set shared address N-<INBOUND_NET>.3.64-28 ip-netmask <INBOUND_NET>.3.64/28
+set shared address N-<INBOUND_NET>.3.64-28 tag AWS-FW-DATA-PRIVATE
+
+# --- Address objects: spoke VPCs ---
+set shared address N-<APP1_NET>.0.0-21 description APP1-VPC
+set shared address N-<APP1_NET>.0.0-21 ip-netmask <APP1_NET>.0.0/21
+set shared address N-<APP1_NET>.0.0-21 tag [ AWS-WEB-FARM-APP1 BASELINE ]
+set shared address N-<APP2_NET>.0.0-21 description APP2-VPC
+set shared address N-<APP2_NET>.0.0-21 ip-netmask <APP2_NET>.0.0/21
+set shared address N-<APP2_NET>.0.0-21 tag [ APP2 BASELINE ]
+set shared address N-<APP3_NET>.0.0-21 description APP3-VPC
+set shared address N-<APP3_NET>.0.0-21 ip-netmask <APP3_NET>.0.0/21
+set shared address N-<APP3_NET>.0.0-21 tag [ APP3 BASELINE ]
+
+# --- Dynamic address groups ---
+set shared address-group GRP-AWS-GWLB-HEALTH-PROBE-SUBNETS dynamic filter "'AWS-HEALTH-GWLB'"
+set shared address-group GRP-AWS-GWLB-HEALTH-PROBE-SUBNETS tag AWS-HEALTH-GWLB
+set shared address-group GRP-FIREWALL-PRIVATE-SUBNETS dynamic filter "'AWS-FW-DATA-PRIVATE'"
+set shared address-group GRP-FIREWALL-PRIVATE-SUBNETS tag AWS-FW-DATA-PRIVATE
+
+# --- Security profile groups ---
+set shared profile-group Outbound spyware Outbound-AS
+set shared profile-group Outbound vulnerability Outbound-VP
+set shared profile-group Outbound url-filtering Outbound-URL
+set shared profile-group Outbound file-blocking Outbound-FB
+set shared profile-group Outbound wildfire-analysis Outbound-WF
+set shared profile-group Outbound virus Outbound-AV
+set shared profile-group Inbound spyware Inbound-AS
+set shared profile-group Inbound vulnerability Inbound-VP
+set shared profile-group Inbound file-blocking Inbound-FB
+set shared profile-group Inbound wildfire-analysis Inbound-WF
+set shared profile-group Inbound virus Inbound-AV
+set shared profile-group Internal spyware Internal-AS
+set shared profile-group Internal vulnerability Internal-VP
+set shared profile-group Internal file-blocking Internal-FB
+set shared profile-group Internal wildfire-analysis Internal-WF
+set shared profile-group Internal virus Internal-AV
+set shared profile-group Alert-Only spyware Alert-Only-AS
+set shared profile-group Alert-Only vulnerability Alert-Only-VP
+set shared profile-group Alert-Only url-filtering Alert-Only-URL
+set shared profile-group Alert-Only file-blocking Alert-Only-FB
+set shared profile-group Alert-Only wildfire-analysis Alert-Only-WF
+set shared profile-group Alert-Only virus Alert-Only-AV
+set shared profile-group default spyware Outbound-AS
+set shared profile-group default vulnerability Outbound-VP
+set shared profile-group default url-filtering Outbound-URL
+set shared profile-group default file-blocking Outbound-FB
+set shared profile-group default wildfire-analysis Outbound-WF
+set shared profile-group default virus Outbound-AV
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 3: SHARED TEMPLATES (level 1 + 2, reused by both groups)
+# ═══════════════════════════════════════════════════════════════
+
+set template 1-TPL-AWS-REGIONAL-<REGION_CODE> description US-WEST-REGIONAL-TEMPLATE-FOR-REGIONAL-TACACS-AND-LOG-COLLECTORS
+set template 1-TPL-AWS-REGIONAL-<REGION_CODE> settings default-vsys vsys1
+set template 1-TPL-AWS-REGIONAL-<REGION_CODE> config  vsys vsys1
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE description "COMMON SETTINGS DNS, NTP, BANNERS"
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  vsys vsys1
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system update-server updates.paloaltonetworks.com
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system dns-setting servers primary 169.254.169.253
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system dns-setting servers secondary 8.8.8.8
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system ntp-servers primary-ntp-server ntp-server-address 169.254.169.123
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system ntp-servers secondary-ntp-server ntp-server-address time.aws.com
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system type dhcp-client send-client-id no
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system type dhcp-client send-hostname yes
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system type dhcp-client accept-dhcp-hostname no
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system type dhcp-client accept-dhcp-domain no
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner motd-enable yes
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner message "!!!! DO NOT MAKE CHANGES ON THE LOCAL FIREWALL. MAKE ALL CHANGES ON PANORAMA. MAKE SURE YOU HAVE CAB APPROVAL PRIOR TO MAKING ANY CHANGES. !!!"
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner motd-color color1
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner severity warning
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner banner-header "!!! THIS IS A FIREWALL. !!!"
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner banner-header-color color1
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system motd-and-banner banner-header-text-color color18
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system panorama local-panorama panorama-server 10.251.2.51
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system domain variable.com
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system timezone UTC
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig system login-banner "!!!! GET OUT !!!!!"
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig setting ctd x-forwarded-for 2
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig setting wildfire report-benign-file yes
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config  deviceconfig setting wildfire report-grayware-file yes
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings system match-list system filter "All Logs"
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings system match-list system send-to-panorama yes
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings config match-list config filter "All Logs"
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings config match-list config send-to-panorama yes
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings userid match-list user-id filter "All Logs"
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings userid match-list user-id send-to-panorama yes
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings iptag match-list ip-tag filter "All Logs"
+set template 2-TPL-AWS-GLOBAL-COMMON-BASELINE config shared log-settings iptag match-list ip-tag send-to-panorama yes
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 4A: OBEW TEMPLATE (outbound + east-west interfaces only)
+#   ethernet1/1     — GWLB parent (health checks)
+#   ethernet1/1.20  — OUTBOUND subinterface
+#   ethernet1/1.30  — EASTWEST subinterface
+#   ethernet1/2     — UNTRUST (overlay public interface)
+# ═══════════════════════════════════════════════════════════════
+
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW description "Two-Tier OBEW — interfaces, zones, routing (overlay)"
+
+# --- Interface management profiles ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network profiles interface-management-profile AWS-HEALTH-CHECKS https yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network profiles interface-management-profile AWS-HEALTH-CHECKS http yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network profiles interface-management-profile AWS-HEALTH-CHECKS ssh no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network profiles interface-management-profile AWS-HEALTH-CHECKS permitted-ip 10.0.0.0/8
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network profiles interface-management-profile PUBLIC-PING permitted-ip <ADMIN_IP>
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network profiles interface-management-profile PUBLIC-PING ping yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network profiles interface-management-profile INTERNAL-PING permitted-ip 10.0.0.0/8
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network profiles interface-management-profile INTERNAL-PING permitted-ip 172.16.0.0/12
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network profiles interface-management-profile INTERNAL-PING permitted-ip 192.168.0.0/16
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network profiles interface-management-profile INTERNAL-PING ping yes
+
+# --- ethernet1/1 (GWLB parent) ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 ndp-proxy enabled no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 sdwan-link-settings upstream-nat enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 sdwan-link-settings upstream-nat static-ip
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 sdwan-link-settings enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 sdwan-link-settings ipv6-enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 interface-management-profile AWS-HEALTH-CHECKS
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 lldp enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 dhcp-client create-default-route no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 dhcp-client send-hostname enable yes
+
+# --- ethernet1/1.20 (OUTBOUND) ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 tag 20
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 comment OUTBOUND
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 dhcp-client create-default-route no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 sdwan-link-settings enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 sdwan-link-settings upstream-nat enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 sdwan-link-settings ipv6-enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 ndp-proxy enabled no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.20 adjust-tcp-mss enable no
+
+# --- ethernet1/1.30 (EASTWEST) ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 tag 30
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 comment EASTWEST
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 dhcp-client create-default-route no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 ndp-proxy enabled no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 sdwan-link-settings enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 sdwan-link-settings upstream-nat enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 sdwan-link-settings ipv6-enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.30 adjust-tcp-mss enable no
+
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/1 comment GWLB
+
+# --- ethernet1/2 (UNTRUST / overlay) ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/2 layer3 ndp-proxy enabled no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/2 layer3 sdwan-link-settings upstream-nat enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/2 layer3 sdwan-link-settings upstream-nat static-ip
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/2 layer3 sdwan-link-settings enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/2 layer3 sdwan-link-settings ipv6-enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/2 layer3 lldp enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/2 layer3 dhcp-client create-default-route no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network interface ethernet ethernet1/2 comment UNTRUST-OVERLAY
+
+# --- Logical Router (OBEW) ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default multicast pim ssm-address-space group-list None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default multicast pim rpf-lookup-mode mrib-then-urib
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default multicast pim route-ageout-time 210
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default multicast pim enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default multicast igmp enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default multicast msdp enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default multicast enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ecmp symmetric-return no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ecmp strict-source-path no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ecmp enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ecmp max-path 2
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp med always-compare-med no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp med deterministic-med-comparison yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp graceful-restart stale-route-time 120
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp graceful-restart max-peer-restart-time 120
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp graceful-restart enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp graceful-restart local-restart-time 120
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp global-bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp install-route no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp ecmp-multi-as no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp enforce-first-as yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp fast-external-failover yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp default-local-preference 100
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp graceful-shutdown no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default bgp always-advertise-network-route yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 nexthop ip-address $INTERNAL-GW
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 interface ethernet1/1
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 destination 10.0.0.0/8
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 metric 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 nexthop ip-address $INTERNAL-GW
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 interface ethernet1/1
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 destination 172.16.0.0/12
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 metric 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 nexthop ip-address $INTERNAL-GW
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 interface ethernet1/1
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 destination 192.168.0.0/16
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 metric 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT nexthop ip-address $EXTERNAL-GW
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT interface ethernet1/2
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT destination 0.0.0.0/0
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT metric 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospfv3 global-bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospfv3 graceful-restart enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospfv3 graceful-restart grace-period 120
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospfv3 graceful-restart helper-enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospfv3 graceful-restart strict-LSA-checking yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospfv3 graceful-restart max-neighbor-restart-time 140
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospfv3 enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospfv3 disable-transit-traffic no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default rip global-bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default rip default-information-originate no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default rip enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospf global-bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospf graceful-restart enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospf graceful-restart grace-period 120
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospf graceful-restart helper-enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospf graceful-restart strict-LSA-checking yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospf graceful-restart max-neighbor-restart-time 140
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospf enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default ospf rfc1583 no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default admin-dists ospf-intra 110
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default admin-dists ospf-inter 110
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default admin-dists ospf-ext 110
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default admin-dists ospfv3-intra 110
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default admin-dists ospfv3-inter 110
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default admin-dists ospfv3-ext 110
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default admin-dists bgp-internal 200
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default admin-dists bgp-external 20
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default admin-dists bgp-local 20
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default admin-dists rip 120
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default admin-dists static 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default admin-dists static-ipv6 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  network logical-router AWS-LR vrf default interface [ ethernet1/1 ethernet1/1.20 ethernet1/1.30 ethernet1/2 ]
+
+# --- Device config ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig system type dhcp-client accept-dhcp-hostname yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig system type dhcp-client accept-dhcp-domain yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig system type dhcp-client send-hostname yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig system type dhcp-client send-client-id yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig system device-telemetry threat-prevention no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig system device-telemetry device-health-performance no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig system device-telemetry product-usage no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig system permitted-ip 10.0.0.0/8
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig system permitted-ip 172.16.0.0/12
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig system permitted-ip 192.168.0.0/16
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig system permitted-ip <ADMIN_IP>
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig setting ctd x-forwarded-for 2
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  deviceconfig setting ctd strip-x-fwd-for yes
+
+# --- Zones ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  vsys vsys1 zone TRUST network layer3
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  vsys vsys1 zone OUTBOUND network layer3 ethernet1/1.20
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  vsys vsys1 zone EASTWEST network layer3 ethernet1/1.30
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  vsys vsys1 zone UNTRUST network layer3 ethernet1/2
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  vsys vsys1 zone GWLB network layer3 ethernet1/1
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW config  vsys vsys1 import network interface [ ethernet1/1 ethernet1/1.20 ethernet1/1.30 ethernet1/2 ]
+
+# --- Template variables ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW variable $EXTERNAL-GW type ip-netmask 1.1.1.1
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW variable $EXTERNAL-GW description PUBLIC-INTERFACE
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW variable $INTERNAL-GW type ip-netmask 2.2.2.2
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW variable $INTERNAL-GW description PRIVATE-INTERFACE
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-OBEW settings default-vsys vsys1
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 4B: INBOUND TEMPLATE (inbound interfaces only)
+#   ethernet1/1     — GWLB parent (health checks)
+#   ethernet1/1.10  — INBOUND (generic)
+#   ethernet1/1.101 — APP1-DISTRIBUTED-INBOUND
+#   ethernet1/1.102 — APP2-DISTRIBUTED-INBOUND
+#   ethernet1/1.103 — APP3-DISTRIBUTED-INBOUND
+#   ethernet1/2     — UNTRUST (overlay public interface)
+# ═══════════════════════════════════════════════════════════════
+
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND description "Two-Tier Inbound — interfaces, zones, routing (overlay)"
+
+# --- Interface management profiles ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network profiles interface-management-profile AWS-HEALTH-CHECKS https yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network profiles interface-management-profile AWS-HEALTH-CHECKS http yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network profiles interface-management-profile AWS-HEALTH-CHECKS ssh no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network profiles interface-management-profile AWS-HEALTH-CHECKS permitted-ip 10.0.0.0/8
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network profiles interface-management-profile PUBLIC-PING permitted-ip <ADMIN_IP>
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network profiles interface-management-profile PUBLIC-PING ping yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network profiles interface-management-profile INTERNAL-PING permitted-ip 10.0.0.0/8
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network profiles interface-management-profile INTERNAL-PING permitted-ip 172.16.0.0/12
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network profiles interface-management-profile INTERNAL-PING permitted-ip 192.168.0.0/16
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network profiles interface-management-profile INTERNAL-PING ping yes
+
+# --- ethernet1/1 (GWLB parent) ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 ndp-proxy enabled no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 sdwan-link-settings upstream-nat enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 sdwan-link-settings upstream-nat static-ip
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 sdwan-link-settings enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 sdwan-link-settings ipv6-enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 interface-management-profile AWS-HEALTH-CHECKS
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 lldp enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 dhcp-client create-default-route no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 dhcp-client send-hostname enable yes
+
+# --- ethernet1/1.10 (INBOUND generic) ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 sdwan-link-settings upstream-nat enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 sdwan-link-settings upstream-nat static-ip
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 sdwan-link-settings enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 sdwan-link-settings ipv6-enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 ndp-proxy enabled no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 adjust-tcp-mss enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 dhcp-client create-default-route no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 tag 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.10 comment INBOUND
+
+# --- ethernet1/1.101 (APP1-DISTRIBUTED-INBOUND) ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.101 sdwan-link-settings upstream-nat enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.101 sdwan-link-settings upstream-nat static-ip
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.101 sdwan-link-settings enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.101 sdwan-link-settings ipv6-enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.101 ndp-proxy enabled no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.101 adjust-tcp-mss enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.101 dhcp-client create-default-route no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.101 tag 101
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.101 comment APP1-DISTRIBUTED-INBOUND
+
+# --- ethernet1/1.102 (APP2-DISTRIBUTED-INBOUND) ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.102 sdwan-link-settings upstream-nat enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.102 sdwan-link-settings upstream-nat static-ip
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.102 sdwan-link-settings enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.102 sdwan-link-settings ipv6-enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.102 ndp-proxy enabled no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.102 adjust-tcp-mss enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.102 dhcp-client create-default-route no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.102 tag 102
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.102 comment APP2-DISTRIBUTED-INBOUND
+
+# --- ethernet1/1.103 (APP3-DISTRIBUTED-INBOUND) ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.103 sdwan-link-settings upstream-nat enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.103 sdwan-link-settings upstream-nat static-ip
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.103 sdwan-link-settings enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.103 sdwan-link-settings ipv6-enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.103 ndp-proxy enabled no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.103 adjust-tcp-mss enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.103 dhcp-client create-default-route no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.103 tag 103
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 layer3 units ethernet1/1.103 comment APP3-DISTRIBUTED-INBOUND
+
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/1 comment GWLB
+
+# --- ethernet1/2 (UNTRUST / overlay) ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/2 layer3 ndp-proxy enabled no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/2 layer3 sdwan-link-settings upstream-nat enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/2 layer3 sdwan-link-settings upstream-nat static-ip
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/2 layer3 sdwan-link-settings enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/2 layer3 sdwan-link-settings ipv6-enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/2 layer3 lldp enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/2 layer3 dhcp-client create-default-route no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network interface ethernet ethernet1/2 comment UNTRUST-OVERLAY
+
+# --- Logical Router (INBOUND) ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default multicast pim ssm-address-space group-list None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default multicast pim rpf-lookup-mode mrib-then-urib
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default multicast pim route-ageout-time 210
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default multicast pim enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default multicast igmp enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default multicast msdp enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default multicast enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ecmp symmetric-return no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ecmp strict-source-path no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ecmp enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ecmp max-path 2
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp med always-compare-med no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp med deterministic-med-comparison yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp graceful-restart stale-route-time 120
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp graceful-restart max-peer-restart-time 120
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp graceful-restart enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp graceful-restart local-restart-time 120
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp global-bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp install-route no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp ecmp-multi-as no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp enforce-first-as yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp fast-external-failover yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp default-local-preference 100
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp graceful-shutdown no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default bgp always-advertise-network-route yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 nexthop ip-address $INTERNAL-GW
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 interface ethernet1/1
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 destination 10.0.0.0/8
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-10 metric 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 nexthop ip-address $INTERNAL-GW
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 interface ethernet1/1
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 destination 172.16.0.0/12
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-172 metric 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 nexthop ip-address $INTERNAL-GW
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 interface ethernet1/1
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 destination 192.168.0.0/16
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route RFC-1918-192 metric 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT nexthop ip-address $EXTERNAL-GW
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT interface ethernet1/2
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT destination 0.0.0.0/0
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default routing-table ip static-route DEFAULT metric 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospfv3 global-bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospfv3 graceful-restart enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospfv3 graceful-restart grace-period 120
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospfv3 graceful-restart helper-enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospfv3 graceful-restart strict-LSA-checking yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospfv3 graceful-restart max-neighbor-restart-time 140
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospfv3 enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospfv3 disable-transit-traffic no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default rip global-bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default rip default-information-originate no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default rip enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospf global-bfd profile None
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospf graceful-restart enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospf graceful-restart grace-period 120
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospf graceful-restart helper-enable yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospf graceful-restart strict-LSA-checking yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospf graceful-restart max-neighbor-restart-time 140
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospf enable no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default ospf rfc1583 no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default admin-dists ospf-intra 110
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default admin-dists ospf-inter 110
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default admin-dists ospf-ext 110
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default admin-dists ospfv3-intra 110
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default admin-dists ospfv3-inter 110
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default admin-dists ospfv3-ext 110
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default admin-dists bgp-internal 200
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default admin-dists bgp-external 20
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default admin-dists bgp-local 20
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default admin-dists rip 120
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default admin-dists static 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default admin-dists static-ipv6 10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  network logical-router AWS-LR vrf default interface [ ethernet1/1 ethernet1/1.10 ethernet1/1.101 ethernet1/1.102 ethernet1/1.103 ethernet1/2 ]
+
+# --- Device config ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig system type dhcp-client accept-dhcp-hostname yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig system type dhcp-client accept-dhcp-domain yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig system type dhcp-client send-hostname yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig system type dhcp-client send-client-id yes
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig system device-telemetry threat-prevention no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig system device-telemetry device-health-performance no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig system device-telemetry product-usage no
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig system permitted-ip 10.0.0.0/8
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig system permitted-ip 172.16.0.0/12
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig system permitted-ip 192.168.0.0/16
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig system permitted-ip <ADMIN_IP>
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig setting ctd x-forwarded-for 2
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  deviceconfig setting ctd strip-x-fwd-for yes
+
+# --- Zones ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  vsys vsys1 zone TRUST network layer3
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  vsys vsys1 zone INBOUND network layer3 ethernet1/1.10
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  vsys vsys1 zone UNTRUST network layer3 ethernet1/2
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  vsys vsys1 zone GWLB network layer3 ethernet1/1
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  vsys vsys1 zone APP1-DISTRIBUTED-INBOUND network layer3 ethernet1/1.101
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  vsys vsys1 zone APP2-DISTRIBUTED-INBOUND network layer3 ethernet1/1.102
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  vsys vsys1 zone APP3-DISTRIBUTED-INBOUND network layer3 ethernet1/1.103
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND config  vsys vsys1 import network interface [ ethernet1/1 ethernet1/1.10 ethernet1/1.101 ethernet1/1.102 ethernet1/1.103 ethernet1/2 ]
+
+# --- Template variables ---
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND variable $EXTERNAL-GW type ip-netmask 1.1.1.1
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND variable $EXTERNAL-GW description PUBLIC-INTERFACE
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND variable $INTERNAL-GW type ip-netmask 2.2.2.2
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND variable $INTERNAL-GW description PRIVATE-INTERFACE
+set template 4-TPL-AWS-GWLB-OVRLY-COMBINED-INBOUND settings default-vsys vsys1
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 5A: OBEW DEVICE GROUP POLICY (outbound + east-west)
+# ═══════════════════════════════════════════════════════════════
+
+# --- GWLB Health Probe ---
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE target negate no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE to GWLB
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE from GWLB
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE source-user any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE category any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE application [ ssl web-browsing ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE service [ service-http service-https ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE source-hip any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE destination-hip any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE action allow
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE disabled no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE tag [ AWS-HEALTH-GWLB BASELINE EXAMPLE ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE group-tag AWS-HEALTH-GWLB
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE source GRP-AWS-GWLB-HEALTH-PROBE-SUBNETS
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE destination GRP-FIREWALL-PRIVATE-SUBNETS
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE log-end no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE log-setting default
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE log-start no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-HEALTH-PROBE description "GWLB HEALTH PROBES — OBEW FIREWALLS"
+
+# --- Outbound ---
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND target negate no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND to UNTRUST
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND from OUTBOUND
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND destination any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND source-user any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND application [ apt-get dns icmp ms-update ping ssl traceroute web-browsing yum ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND service any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND source-hip any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND destination-hip any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND tag [ OUTBOUND APP1 APP2 APP3 OVERLAY-NAT BASELINE EXAMPLE ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND action allow
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND group-tag OUTBOUND
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND log-setting default
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND disabled no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND source [ N-<APP1_NET>.0.0-21 N-<APP2_NET>.0.0-21 N-<APP3_NET>.0.0-21 ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND category any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND log-start no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND log-end yes
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND description "OUTBOUND POLICY FOR UPDATES, SOFTWARE AND INTERNET ACCESS FROM AWS"
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-OUTBOUND profile-setting group default
+
+# --- On-prem ICMP to AWS ---
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS target negate no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS to EASTWEST
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS from EASTWEST
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS destination [ N-<APP1_NET>.0.0-21 N-<APP2_NET>.0.0-21 ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS source-user any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS category any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS application [ dns icmp ping traceroute ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS service application-default
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS source-hip any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS destination-hip any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS action allow
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS log-setting default
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS disabled no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS tag [ BASELINE EXAMPLE ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS group-tag INBOUND
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS source N-10.0.0.0-8
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS log-start no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS log-end yes
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS profile-setting group Internal
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules ONPREM-ICMP-TO-AWS description "PING FROM ONPREM TO AWS"
+
+# --- East-West ---
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST target negate no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST to EASTWEST
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST from EASTWEST
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST source-user any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST category any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST application [ icmp ping scps ssh ssl traceroute web-browsing ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST service any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST source-hip any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST destination-hip any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST tag [ EASTWEST APP1 APP2 BASELINE ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST action allow
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST group-tag EASTWEST
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST disabled no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST source [ N-<APP1_NET>.0.0-21 N-<APP2_NET>.0.0-21 N-<APP3_NET>.0.0-21 ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST destination [ N-<APP1_NET>.0.0-21 N-<APP2_NET>.0.0-21 N-<APP3_NET>.0.0-21 ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST log-start no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST log-end yes
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST profile-setting group Internal
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST description "POLICY FOR EAST-WEST WEB AND SSH TRAFFIC"
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase security rules AWS-EAST-WEST log-setting default
+
+# --- NAT: Outbound source translation (overlay) ---
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase nat rules AWS-OUTBOUND source-translation dynamic-ip-and-port interface-address interface ethernet1/2
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase nat rules AWS-OUTBOUND target negate no
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase nat rules AWS-OUTBOUND to UNTRUST
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase nat rules AWS-OUTBOUND from OUTBOUND
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase nat rules AWS-OUTBOUND source [ N-<APP1_NET>.0.0-21 N-<APP2_NET>.0.0-21 ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase nat rules AWS-OUTBOUND destination any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase nat rules AWS-OUTBOUND tag [ OUTBOUND OVERLAY-NAT ]
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase nat rules AWS-OUTBOUND service any
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase nat rules AWS-OUTBOUND to-interface ethernet1/2
+set device-group DG-AWS-COMBINED-OBEW pre-rulebase nat rules AWS-OUTBOUND group-tag OUTBOUND
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 5B: INBOUND DEVICE GROUP POLICY (inbound only)
+# ═══════════════════════════════════════════════════════════════
+
+# --- GWLB Health Probe ---
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE target negate no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE to GWLB
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE from GWLB
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE source-user any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE category any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE application [ ssl web-browsing ]
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE service [ service-http service-https ]
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE source-hip any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE destination-hip any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE action allow
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE disabled no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE tag [ AWS-HEALTH-GWLB BASELINE EXAMPLE ]
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE group-tag AWS-HEALTH-GWLB
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE source GRP-AWS-GWLB-HEALTH-PROBE-SUBNETS
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE destination GRP-FIREWALL-PRIVATE-SUBNETS
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE log-end no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE log-setting default
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE log-start no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules AWS-HEALTH-PROBE description "GWLB HEALTH PROBES — INBOUND FIREWALLS"
+
+# --- Inbound SSH ---
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND target negate no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND to [ APP1-DISTRIBUTED-INBOUND APP2-DISTRIBUTED-INBOUND APP3-DISTRIBUTED-INBOUND ]
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND from [ APP1-DISTRIBUTED-INBOUND APP2-DISTRIBUTED-INBOUND APP3-DISTRIBUTED-INBOUND ]
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND source-user any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND category any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND application [ scps ssh ]
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND service application-default
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND source-hip any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND destination-hip any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND action allow
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND log-setting default
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND group-tag INBOUND
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND tag [ INBOUND APP1 APP2 APP3 BASELINE EXAMPLE ]
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND source H-<ADMIN_IP>
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND destination [ N-<APP1_NET>.0.0-21 N-<APP2_NET>.0.0-21 N-<APP3_NET>.0.0-21 ]
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND disabled no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND log-start no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND log-end yes
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND description "INBOUND SSH POLICY TO SPOKE VMS VIA DEDICATED INBOUND FIREWALLS"
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND profile-setting group Inbound
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND saas-user-list any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules SSH-INBOUND saas-tenant-list any
+
+# --- APP1 inbound web ---
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB target negate no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB to APP1-DISTRIBUTED-INBOUND
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB from APP1-DISTRIBUTED-INBOUND
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB source-user any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB category any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB application [ ssl web-browsing ]
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB service application-default
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB source-hip any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB destination-hip any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB action allow
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB log-setting default
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB group-tag INBOUND
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB tag [ INBOUND APP1 ALB BASELINE EXAMPLE ]
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB source H-<ADMIN_IP>
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB destination N-<APP1_NET>.0.0-21
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB disabled no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB log-start no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB log-end yes
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB profile-setting group Inbound
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB saas-user-list any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP1-ALB-WEB saas-tenant-list any
+
+# --- APP2 inbound web ---
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB target negate no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB to APP2-DISTRIBUTED-INBOUND
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB from APP2-DISTRIBUTED-INBOUND
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB source-user any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB category any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB application [ ssl web-browsing ]
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB service application-default
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB source-hip any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB destination-hip any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB action allow
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB log-setting default
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB group-tag INBOUND
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB tag [ INBOUND APP2 ALB BASELINE EXAMPLE ]
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB source H-<ADMIN_IP>
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB destination N-<APP2_NET>.0.0-21
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB disabled no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB log-start no
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB log-end yes
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB profile-setting group Inbound
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB saas-user-list any
+set device-group DG-AWS-COMBINED-INBOUND pre-rulebase security rules APP2-ALB-WEB saas-tenant-list any
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 6: SW FIREWALL LICENSE PLUGIN (one per firewall group)
+# ═══════════════════════════════════════════════════════════════
+
+set plugins sw_fw_license license-manager LM-AWS-COMBINED-OBEW device-group DG-AWS-COMBINED-OBEW
+set plugins sw_fw_license license-manager LM-AWS-COMBINED-OBEW template-stack STK-AWS-COMBINED-OBEW-AZ-A
+set plugins sw_fw_license license-manager LM-AWS-COMBINED-OBEW bootstrap-definition <BSD_OBEW>
+set plugins sw_fw_license license-manager LM-AWS-COMBINED-OBEW auto-deactivate Never
+
+set plugins sw_fw_license license-manager LM-AWS-COMBINED-INBOUND device-group DG-AWS-COMBINED-INBOUND
+set plugins sw_fw_license license-manager LM-AWS-COMBINED-INBOUND template-stack STK-AWS-COMBINED-INBOUND-AZ-A
+set plugins sw_fw_license license-manager LM-AWS-COMBINED-INBOUND bootstrap-definition <BSD_INBOUND>
+set plugins sw_fw_license license-manager LM-AWS-COMBINED-INBOUND auto-deactivate Never

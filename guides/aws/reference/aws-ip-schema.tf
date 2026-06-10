@@ -1,10 +1,10 @@
 # Reference IP schema for the Security VPC.
 # Plug into the `vpcs` variable of the SWFW `security_vpc` module.
-# CIDR layout: /22 carved into 8 subnet groups × 4 AZ slots, /28 each.
+# CIDR layout: /21 carved into 8 subnet groups × 4 AZ slots, /28 each.
 
 security_vpc = {
   name = "security-vpc"
-  cidr = "10.51.0.0/22"
+  cidr = "10.51.0.0/21"
   subnets = {
     # Value of `nacl` must match key of objects stored in `nacls`
 
