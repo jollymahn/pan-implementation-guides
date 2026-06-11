@@ -4774,6 +4774,152 @@ vm-series-auto-registration-pin-value=&lt;NEW-PIN-HEX&gt;</code></pre>
       </li>
       <li>Terminate the instance and run <code>terraform apply</code> to recreate with the new PIN.</li>
     </ol>
+
+    <h4>Symptom: Firewall boots but auto-commit fails &mdash; config not applied</h4>
+
+    <p><strong>What this means:</strong> The firewall successfully reached Panorama, got licensed, and joined the correct Device Group and Template Stack. But the final step &mdash; the <strong>auto-commit</strong> that pushes the Panorama configuration onto the firewall &mdash; failed. The firewall is sitting there with a valid license and the right group membership, but its interfaces, routing, zones, and policies were never actually applied. It is like an employee who got their badge and desk assignment but never received their laptop &mdash; they are in the system but cannot do any work.</p>
+
+    <p><strong>How to diagnose:</strong></p>
+    <ol>
+      <li>SSH into the firewall and check the job history:
+        <div class="code-block">
+          <pre><code>show jobs all</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Look for a commit job with status <code>FAIL</code>. Note the job ID and get its details:
+        <div class="code-block">
+          <pre><code>show jobs id &lt;JOB-ID&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>The failure message usually points to the problem. Common causes:
+        <ul>
+          <li><strong>Template variable not set:</strong> A template references <code>$INTERNAL-GW</code> or <code>$EXTERNAL-GW</code> but the per-device variable was never assigned. You will see <code>Invalid reference to template variable</code>.</li>
+          <li><strong>Object referenced before creation:</strong> A security rule references a tag, address object, or zone that does not exist in the pushed config. Usually means the Device Group parent hierarchy is wrong or a commit ordering issue.</li>
+          <li><strong>Interface conflict:</strong> The template tries to configure an interface that does not exist on this instance type (e.g., ethernet1/3 on a 2-interface VM).</li>
+        </ul>
+      </li>
+    </ol>
+
+    <p><strong>How to fix it:</strong></p>
+    <ol>
+      <li>Fix the root cause on Panorama (set the missing variable, fix the object reference, or adjust the template).</li>
+      <li>Push the corrected config from Panorama: <strong>Commit &gt; Push to Devices</strong>, select the affected firewall.</li>
+      <li>On the firewall, verify the commit succeeded: <code>show jobs all</code> &mdash; the latest job should show <code>OK</code>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">You usually do not need to terminate the instance</div>
+      <p>Unlike bootstrap parameter errors, an auto-commit failure can be fixed without recreating the instance. The firewall already has valid bootstrap parameters &mdash; it just needs a successful config push from Panorama. Fix the config on Panorama and push again.</p>
+    </div>
+
+    <h4>Symptom: <code>plugin-op-commands</code> parsing errors</h4>
+
+    <p><strong>What this means:</strong> The <code>plugin-op-commands</code> bootstrap parameter is a comma-separated string of commands that runs during first boot. It controls critical behaviors like GWLB inspection mode and VPCE-to-subinterface associations. If the format is even slightly wrong &mdash; an extra space, a missing comma, a wrong delimiter &mdash; the parser silently skips the broken command or fails the entire string. The firewall boots, but features you expected to be enabled are not.</p>
+
+    <p><strong>Common formatting mistakes:</strong></p>
+    <div class="code-block">
+      <pre><code># WRONG — spaces after commas break parsing
+plugin-op-commands=panorama-licensing-mode-on, aws-gwlb-inspect:enable
+
+# WRONG — semicolons instead of commas
+plugin-op-commands=panorama-licensing-mode-on;aws-gwlb-inspect:enable
+
+# WRONG — line break in the middle of the value
+plugin-op-commands=panorama-licensing-mode-on,aws-gwlb-inspect:enable,
+aws-gwlb-overlay-routing:enable
+
+# CORRECT — single line, commas only, no spaces
+plugin-op-commands=panorama-licensing-mode-on,aws-gwlb-inspect:enable,aws-gwlb-overlay-routing:enable</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>The VPCE association command is especially fragile:</strong></p>
+    <div class="code-block">
+      <pre><code># WRONG — space before @
+plugin-op-commands=...,aws-gwlb-associate-vpce:vpce-0abc123 @ethernet1/1.10
+
+# WRONG — using "ethernet" instead of the subinterface number
+plugin-op-commands=...,aws-gwlb-associate-vpce:vpce-0abc123@ethernet1/1.10
+
+# CORRECT — vpce-id@subinterface-number, no spaces
+plugin-op-commands=...,aws-gwlb-associate-vpce:vpce-0abc123@10</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>How to diagnose:</strong></p>
+    <ol>
+      <li>SSH into the firewall and check if GWLB inspect mode is actually enabled:
+        <div class="code-block">
+          <pre><code>show plugins vm_series aws gwlb</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>If this returns nothing or shows <code>disabled</code>, the <code>aws-gwlb-inspect:enable</code> command was not parsed correctly.</p>
+      </li>
+      <li>Check the VPCE associations:
+        <div class="code-block">
+          <pre><code>show plugins vm_series aws gwlb associations</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>This should list each VPCE ID mapped to its subinterface. If it is empty, the <code>aws-gwlb-associate-vpce</code> commands failed to parse.</p>
+      </li>
+    </ol>
+
+    <p><strong>How to fix it:</strong></p>
+    <ol>
+      <li>Correct the <code>plugin-op-commands</code> string in your Terraform <code>bootstrap_options</code>.</li>
+      <li>Terminate the instance and run <code>terraform apply</code> &mdash; plugin-op-commands are only processed at first boot.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">You can re-run GWLB commands on a live firewall</div>
+      <p>If you do not want to terminate and recreate, you can manually run the plugin commands on the firewall CLI. This is useful for testing, but the settings will not survive a reboot unless they were also in the bootstrap parameters:</p>
+      <div class="code-block">
+        <pre><code>request plugins vm_series aws gwlb inspect enable
+request plugins vm_series aws gwlb overlay-routing enable
+request plugins vm_series aws gwlb associate vpc-endpoint &lt;vpce-id&gt; interface ethernet1/1.&lt;subif-number&gt;</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>After confirming the commands work, fix the bootstrap parameters in Terraform so the next instance gets them automatically.</p>
+    </div>
+
+    <h4>Symptom: Content download times out during bootstrap</h4>
+
+    <p><strong>What this means:</strong> During bootstrap, the firewall downloads the latest threat prevention content, antivirus signatures, and WildFire updates from Palo Alto Networks update servers. If the management interface cannot reach the internet, these downloads hang or fail. The firewall still boots and gets its configuration, but its threat prevention database is empty or out-of-date &mdash; like a security guard who showed up for work but forgot to bring any of their equipment.</p>
+
+    <p><strong>How to diagnose:</strong></p>
+    <ol>
+      <li>SSH into the firewall and check the content version:
+        <div class="code-block">
+          <pre><code>show system info | match content
+show system info | match threat</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>If the content version is <code>0</code> or very old, the download failed.</p>
+      </li>
+      <li>Test connectivity to the update servers:
+        <div class="code-block">
+          <pre><code>ping host updates.paloaltonetworks.com
+request ntp server-address nslookup updates.paloaltonetworks.com</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <p><strong>How to fix it:</strong></p>
+    <ol>
+      <li>Verify the management subnet has a route to the internet &mdash; either through a NAT Gateway or an Internet Gateway (if the management interface has a public IP).</li>
+      <li>Check the management security group allows <strong>outbound HTTPS (TCP 443)</strong> to <code>0.0.0.0/0</code> (or at minimum to Palo Alto Networks update servers).</li>
+      <li>Once connectivity is restored, trigger a manual content update:
+        <div class="code-block">
+          <pre><code>request content upgrade check
+request content upgrade download latest
+request content upgrade install version latest</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
   </div>
 </div>
 
@@ -4993,6 +5139,74 @@ show system info | match uptime</code></pre>
       <li><strong>Too many commits:</strong> If Panorama is pushing frequent commits (e.g., from dynamic address groups or Auto-DAG updates), batch them. Each commit briefly taxes the management plane.</li>
       <li><strong>Log volume too high:</strong> Very high log-forwarding rates can consume management-plane resources. Check <code>show logging-status</code> and consider tuning your log forwarding profile to avoid logging every single session.</li>
     </ul>
+
+    <h4>Symptom: Targets healthy in one AZ but unhealthy in another</h4>
+
+    <p><strong>What this means:</strong> The firewalls in AZ-A pass health checks fine, but the firewalls in AZ-B (or AZ-C/D) are stuck at <code>unhealthy</code>. Same Terraform code, same template, same bootstrap &mdash; but different results per AZ. This is almost always a networking difference between the AZs, not a firewall configuration problem.</p>
+
+    <p><strong>Common causes:</strong></p>
+    <ul>
+      <li><strong>Missing GWLB subnet in one AZ:</strong> The Terraform module creates GWLB subnets per AZ. If an AZ's GWLB subnet was not created (or was created in the wrong AZ), the GWLB has no path to reach the firewall in that AZ.</li>
+      <li><strong>Security group referencing the wrong CIDR:</strong> If your security group rules reference specific GWLB subnet CIDRs (e.g., <code>10.51.0.48/28</code>) rather than the full VPC CIDR, you may have included AZ-A's GWLB subnet but missed AZ-B's (<code>10.51.1.48/28</code>).</li>
+      <li><strong>Route table not associated:</strong> Each AZ's subnets need their own route table association. If the route table association is missing for one AZ, traffic cannot flow in that AZ.</li>
+      <li><strong>Template variable mismatch:</strong> The per-AZ template variables (<code>$INTERNAL-GW</code>, <code>$EXTERNAL-GW</code>) must match the actual gateway IPs for each AZ's subnets. If the AZ-B firewall has AZ-A's gateway IPs, its routing will be broken.</li>
+    </ul>
+
+    <p><strong>How to diagnose:</strong></p>
+    <div class="code-block">
+      <pre><code># Compare target health across AZs
+aws elbv2 describe-target-health \
+  --target-group-arn &lt;TG-ARN&gt; \
+  --query 'TargetHealthDescriptions[].{ID:Target.Id,Health:TargetHealth.State,Reason:TargetHealth.Reason}' \
+  --output table
+
+# Then for each unhealthy instance, check which AZ it is in
+aws ec2 describe-instances \
+  --instance-ids &lt;UNHEALTHY-INSTANCE-ID&gt; \
+  --query 'Reservations[].Instances[].{AZ:Placement.AvailabilityZone,SubnetId:SubnetId}' \
+  --output table
+
+# Compare security group rules and route tables between AZs
+# The subnets in the unhealthy AZ should mirror the healthy AZ's setup</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>How to fix it:</strong> Compare the healthy AZ's configuration (subnets, route tables, security group CIDRs, template variables) against the unhealthy AZ piece by piece. The difference between them is your answer.</p>
+
+    <h4>Symptom: Health checks pass but GENEVE inspection is not working</h4>
+
+    <p><strong>What this means:</strong> The targets show <code>healthy</code> in the GWLB target group, which means the firewall is responding to HTTPS health checks on port 443. But no actual traffic is being inspected &mdash; sessions are not appearing on the firewall, and spoke-to-internet or spoke-to-spoke traffic is not flowing. This is a confusing combination because "healthy" usually means "everything is working." Think of it like a restaurant where the front door is open (health check passes) but the kitchen is closed (GENEVE inspection is off) &mdash; customers can walk in but nobody is making food.</p>
+
+    <p><strong>Why it happens:</strong> The health check and GENEVE inspection are <strong>independent features</strong>. The health check is a simple HTTPS request to the management plane on port 443. GENEVE inspection requires the <code>aws-gwlb-inspect:enable</code> plugin command to be active. If the command was not in the bootstrap parameters (or was formatted incorrectly), the firewall responds to health checks but silently drops all GENEVE-encapsulated traffic.</p>
+
+    <p><strong>How to diagnose:</strong></p>
+    <div class="code-block">
+      <pre><code># SSH into the firewall and check GWLB plugin status
+show plugins vm_series aws gwlb
+
+# Look for:
+#   Inspect mode: enable
+#   Overlay routing: enable (if using overlay)
+# If inspect mode shows "disable" or the command returns nothing,
+# GENEVE inspection is not active</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>How to fix it:</strong></p>
+    <ol>
+      <li><strong>Quick fix (does not survive reboot):</strong> Enable inspect mode on the live firewall:
+        <div class="code-block">
+          <pre><code>request plugins vm_series aws gwlb inspect enable</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li><strong>Permanent fix:</strong> Add <code>aws-gwlb-inspect:enable</code> to the <code>plugin-op-commands</code> in your Terraform <code>bootstrap_options</code>, terminate the instance, and run <code>terraform apply</code>.</li>
+    </ol>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Healthy targets ≠ working inspection</div>
+      <p>Do not assume that <code>healthy</code> in the GWLB target group means traffic inspection is working. The health check only verifies that the firewall's management plane is reachable on port 443. Always verify GENEVE inspect mode separately with <code>show plugins vm_series aws gwlb</code> after deployment.</p>
+    </div>
   </div>
 </div>
 
@@ -5161,9 +5375,126 @@ test security-policy-match source &lt;SRC-IP&gt; destination &lt;DST-IP&gt; \
 
     <p>If the policy test shows <code>Deny</code> or the traffic log shows drops, you need to add or modify a security rule on Panorama to allow the traffic. See <a href="#management-config">Phase 2A.8</a> for the rule structure.</p>
 
+    <h4>Check 7: GWLB Inspect Mode and VPCE Associations</h4>
+
+    <p><strong>What this does:</strong> Even if all the AWS networking is perfect and the firewall has the right routing and policy, the VM-Series has a separate "gate" that must be open for GWLB traffic: the <strong>GENEVE inspect mode</strong>. This is a plugin-level feature that tells the firewall "you are sitting behind a GWLB &mdash; accept GENEVE-encapsulated traffic and inspect it." Without it, the firewall sees GENEVE packets arriving on its interface and has no idea what to do with them &mdash; like receiving a package in a foreign language with no instructions on how to open it.</p>
+
+    <p>Additionally, in deployments that use <strong>subinterface-based zone separation</strong> (mapping each GWLB endpoint to a specific subinterface and zone), the <strong>VPCE-to-subinterface associations</strong> must be correct. If the association is wrong or missing, traffic from a GWLB endpoint arrives at the firewall but gets placed in the wrong zone &mdash; which means the wrong security policy applies, and the traffic is usually dropped.</p>
+
+    <div class="code-block">
+      <pre><code># SSH into the firewall and check the full GWLB plugin status
+show plugins vm_series aws gwlb
+
+# Check VPCE-to-subinterface associations
+show plugins vm_series aws gwlb associations
+
+# Expected output should list each VPCE ID mapped to a subinterface:
+#   vpce-0abc123def456  -->  ethernet1/1.10 (outbound)
+#   vpce-0def789ghi012  -->  ethernet1/1.20 (eastwest)
+#   vpce-0jkl345mno678  -->  ethernet1/1.30 (inbound-app1)</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>If inspect mode is disabled:</strong></p>
+    <div class="code-block">
+      <pre><code># Enable on the live firewall (does not survive reboot)
+request plugins vm_series aws gwlb inspect enable
+
+# For overlay routing deployments, also enable:
+request plugins vm_series aws gwlb overlay-routing enable</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>If a VPCE association is wrong or missing:</strong></p>
+    <div class="code-block">
+      <pre><code># Associate a VPCE to a subinterface
+request plugins vm_series aws gwlb associate vpc-endpoint &lt;vpce-id&gt; interface ethernet1/1.&lt;subif-number&gt;
+
+# Example: associate the outbound GWLBE to subinterface 10
+request plugins vm_series aws gwlb associate vpc-endpoint vpce-0abc123def456 interface ethernet1/1.10</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">These commands do not survive a reboot</div>
+      <p>Manual <code>request plugins</code> commands are stored in memory only. If the firewall reboots, they are gone. Always fix the <code>plugin-op-commands</code> in your Terraform <code>bootstrap_options</code> after confirming the manual commands work. See the <a href="#troubleshooting">Bootstrap: plugin-op-commands parsing errors</a> section for the correct format.</p>
+    </div>
+
+    <h4>Check 8: NAT Policy Issues (Overlay Routing Deployments)</h4>
+
+    <p><strong>What this does:</strong> In <strong>overlay routing</strong> deployments, the firewall performs source NAT on outbound traffic &mdash; it replaces the spoke instance's private IP with the firewall's own ethernet1/2 IP before sending the packet toward the internet. This is necessary because the NAT Gateway in the public subnet only knows how to route traffic back to IPs within the Security VPC, not to spoke IPs. Without source NAT, the outbound packet reaches the internet, but the response comes back to the NAT Gateway, which has no idea how to get it back to the original spoke IP &mdash; and drops it. Think of it like forwarding someone's mail but forgetting to put a return address they can actually reach you at.</p>
+
+    <p><strong>This only applies to overlay routing.</strong> Non-overlay deployments use the AWS NAT Gateway for source NAT and do not need a NAT policy on the firewall.</p>
+
+    <p><strong>How to diagnose:</strong></p>
+    <ol>
+      <li>Check if a NAT rule exists:
+        <div class="code-block">
+          <pre><code># On the firewall
+show running nat-policy</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Check if sessions are being NAT'd:
+        <div class="code-block">
+          <pre><code># Look at active sessions — the "nat" column should show "yes" for outbound traffic
+show session all filter destination 8.8.8.8</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>If sessions exist but show no NAT, the NAT policy is either missing, not matching, or has the wrong source translation.</li>
+    </ol>
+
+    <p><strong>How to fix it:</strong></p>
+    <ol>
+      <li>On Panorama, navigate to <strong>Policies &gt; NAT</strong> in the Device Group.</li>
+      <li>Create or verify a rule:
+        <ul>
+          <li><strong>Source zone:</strong> GWLB (where spoke traffic arrives)</li>
+          <li><strong>Destination zone:</strong> UNTRUST (where internet traffic exits)</li>
+          <li><strong>Source translation:</strong> Dynamic IP and Port, using the ethernet1/2 interface address</li>
+        </ul>
+      </li>
+      <li>Commit and push. Verify sessions now show NAT applied.</li>
+    </ol>
+
+    <h4>Check 9: Inbound Traffic &mdash; Edge Association and IGW Routing</h4>
+
+    <p><strong>What this does:</strong> Inbound traffic (internet &rarr; spoke application) follows a different path than outbound. The packet enters through an Internet Gateway (IGW) and must be redirected to a GWLB endpoint <em>before</em> it reaches the spoke instance. This redirection happens via an <strong>edge association route table</strong> on the IGW &mdash; a special route table that tells the IGW: "Before delivering this packet to the spoke subnet, send it through this GWLB endpoint first." If this route table is missing or misconfigured, inbound traffic bypasses the firewall entirely and goes straight to the spoke &mdash; uninspected.</p>
+
+    <p><strong>This check is specific to the distributed inbound design.</strong> The dedicated inbound design handles this differently through a dedicated inbound VPC.</p>
+
+    <p><strong>How to diagnose:</strong></p>
+    <div class="code-block">
+      <pre><code># Check if the spoke VPC's IGW has an edge association
+aws ec2 describe-route-tables \
+  --filters "Name=vpc-id,Values=&lt;SPOKE-VPC-ID&gt;" \
+  --query 'RouteTables[].{ID:RouteTableId,Name:Tags[?Key==`Name`].Value|[0],Assoc:Associations[].GatewayId}' \
+  --output json
+
+# Look for a route table associated with the IGW (igw-xxx)
+# That route table should have routes for the spoke's public subnets
+# pointing to the inbound GWLB endpoint (vpce-xxx)</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>What you should see:</strong></p>
+    <ul>
+      <li>A route table associated with the spoke VPC's IGW (this is the "edge association")</li>
+      <li>That route table has routes for each spoke public subnet CIDR pointing to a GWLB endpoint (<code>vpce-xxx</code>)</li>
+      <li>The GWLB endpoint maps to the inbound target group where the firewalls are registered</li>
+    </ul>
+
+    <p><strong>If the edge association is missing:</strong> The IGW delivers traffic directly to the spoke instance. You need to create the edge route table and associate it with the IGW. In Terraform, this is configured in the spoke VPC module's <code>edge_route_table</code> or <code>igw_route_table</code> block.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Edge associations are easy to miss because everything "half works"</div>
+      <p>Without the edge association, inbound traffic reaches the spoke instance just fine &mdash; it simply skips the firewall. Outbound traffic (which uses TGW routing) still goes through the firewall. So you get a confusing scenario: outbound works and is inspected, but inbound appears to work too &mdash; it is just uninspected. You will not see any errors or dropped packets. The only clue is that the firewall's session table has no inbound sessions, even though the application is reachable from the internet.</p>
+    </div>
+
     <div class="callout callout-success">
       <div class="callout-title">The debugging order matters</div>
-      <p>Always work from the outside in: <strong>TGW route tables &rarr; VPC route tables &rarr; Appliance mode &rarr; Source/dest check &rarr; Firewall routing &rarr; Firewall policy</strong>. If you jump straight to the firewall policy without checking the network path, you might spend hours tweaking security rules when the real problem is a missing TGW route that prevents traffic from ever reaching the firewall.</p>
+      <p>Always work from the outside in: <strong>TGW route tables &rarr; VPC route tables &rarr; Appliance mode &rarr; Source/dest check &rarr; Firewall routing &rarr; Firewall policy &rarr; GWLB inspect mode &rarr; NAT policy &rarr; Edge associations</strong>. If you jump straight to the firewall policy without checking the network path, you might spend hours tweaking security rules when the real problem is a missing TGW route that prevents traffic from ever reaching the firewall.</p>
     </div>
   </div>
 </div>
@@ -5282,6 +5613,11 @@ show object registered-ip all
       <tr><td>Elastic IPs per region</td><td>5</td><td>4+ (NAT GWs + Panorama)</td><td>10</td></tr>
       <tr><td>NAT Gateways per AZ</td><td>5</td><td>2&ndash;4</td><td>Usually sufficient</td></tr>
       <tr><td>TGW attachments</td><td>5</td><td>3+ (Security + Spokes)</td><td>10</td></tr>
+      <tr><td>EC2 instances (per type)</td><td>Varies</td><td>2&ndash;4 (firewalls per AZ)</td><td>Check below</td></tr>
+      <tr><td>Network interfaces per region</td><td>5,000</td><td>12+ (3 ENIs &times; 4 firewalls)</td><td>Usually sufficient</td></tr>
+      <tr><td>Security groups per VPC</td><td>300</td><td>10&ndash;20</td><td>Usually sufficient</td></tr>
+      <tr><td>Internet Gateways per region</td><td>5</td><td>2+ (Security + Spoke VPCs)</td><td>10</td></tr>
+      <tr><td>GWLB endpoints per VPC</td><td>10</td><td>3&ndash;6 (outbound + E/W + inbound per AZ)</td><td>Usually sufficient</td></tr>
     </table>
 
     <h4>Check Current Quotas</h4>
@@ -5294,7 +5630,55 @@ aws service-quotas get-service-quota \
 # Check EIP quota
 aws service-quotas get-service-quota \
   --service-code ec2 --quota-code L-0263D0A3 \
+  --query 'Quota.Value' --output text
+
+# Check Internet Gateway quota
+aws service-quotas get-service-quota \
+  --service-code vpc --quota-code L-A4707A72 \
+  --query 'Quota.Value' --output text
+
+# Check TGW attachment quota
+aws service-quotas get-service-quota \
+  --service-code ec2 --quota-code L-A1B923F7 \
   --query 'Quota.Value' --output text</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Pre-Flight Quota Check (Run Before terraform apply)</h4>
+    <p>This script checks the most commonly exhausted quotas in a single pass. Run it before your first <code>terraform apply</code> to catch quota issues before they cause a partial deployment:</p>
+    <div class="code-block">
+      <pre><code>#!/bin/bash
+# Pre-flight quota check for VM-Series GWLB deployment
+echo "=== AWS Quota Pre-Flight Check ==="
+echo ""
+
+check_quota() {
+  local svc="$1" code="$2" label="$3" needed="$4"
+  local quota=$(aws service-quotas get-service-quota \
+    --service-code "$svc" --quota-code "$code" \
+    --query 'Quota.Value' --output text 2>/dev/null)
+  local current=$(echo "$5")
+  if [ -z "$quota" ] || [ "$quota" = "None" ]; then
+    printf "  %-35s quota=UNKNOWN  (need %s)\n" "$label" "$needed"
+  elif [ "$(echo "$quota < $needed" | bc)" -eq 1 ]; then
+    printf "  %-35s quota=%-5s  need=%-5s  ** INCREASE NEEDED **\n" "$label" "$quota" "$needed"
+  else
+    printf "  %-35s quota=%-5s  need=%-5s  OK\n" "$label" "$quota" "$needed"
+  fi
+}
+
+check_quota vpc  L-F678F1CE "VPCs per region"           4
+check_quota ec2  L-0263D0A3 "Elastic IPs per region"    4
+check_quota vpc  L-A4707A72 "Internet Gateways"         2
+check_quota ec2  L-A1B923F7 "TGW VPC attachments"       3
+
+echo ""
+echo "Current usage:"
+echo "  VPCs:  $(aws ec2 describe-vpcs --query 'length(Vpcs)' --output text)"
+echo "  EIPs:  $(aws ec2 describe-addresses --query 'length(Addresses)' --output text)"
+echo "  IGWs:  $(aws ec2 describe-internet-gateways --query 'length(InternetGateways)' --output text)"
+echo ""
+echo "Done. Fix any ** INCREASE NEEDED ** items before running terraform apply."</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
@@ -5306,7 +5690,11 @@ aws service-quotas request-service-quota-increase \
 
 # Request EIP limit increase to 10
 aws service-quotas request-service-quota-increase \
-  --service-code ec2 --quota-code L-0263D0A3 --desired-value 10</code></pre>
+  --service-code ec2 --quota-code L-0263D0A3 --desired-value 10
+
+# Request IGW limit increase to 10
+aws service-quotas request-service-quota-increase \
+  --service-code vpc --quota-code L-A4707A72 --desired-value 10</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
