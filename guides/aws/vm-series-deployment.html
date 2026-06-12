@@ -89,6 +89,7 @@
     <div class="sidebar-section-title">Appendix</div>
     <a href="#appendix-routing" data-section="appendix-routing">How Routing Works</a>
     <a href="#appendix-flows" data-section="appendix-flows">Traffic Flows Explained</a>
+    <a href="#appendix-inbound-deep-dive" data-section="appendix-inbound-deep-dive">Inbound Deep Dive</a>
   </div>
 </aside>
 
@@ -6686,6 +6687,476 @@ aws ec2 describe-vpcs \
     </ul>
 
     <p><strong>The trade-off:</strong> All inbound traffic funnels through one VPC, which can become a bottleneck. The distributed model spreads the load but requires each spoke to have its own internet gateway and GWLB endpoint.</p>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  APPENDIX: INBOUND TRAFFIC DEEP DIVE                         -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="appendix-inbound-deep-dive">Appendix: Inbound Traffic &mdash; Deep Dive</h2>
+
+<p>The inbound flow sections above tell the story at a high level. This section goes much deeper &mdash; explaining every single thing that happens to a packet on its way from the internet to your application, why each piece exists, and what can go wrong. If you have ever wondered "but what is the GWLB endpoint actually <em>doing</em>?" or "how does the firewall know which rule to apply?" &mdash; this is where you find the answer.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Distributed Inbound &mdash; every step of the packet's journey</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>The setup:</strong> You have a web application running in a spoke VPC (say, "App1"). The spoke has its own Internet Gateway, its own GWLB endpoint, and an Application Load Balancer (ALB) in front of the app servers. A customer on the internet wants to visit your website.</p>
+
+    <h4>Step 1: The customer types your URL into their browser</h4>
+    <p>The browser does a DNS lookup. Your DNS record (in Route 53 or wherever you manage DNS) resolves to a <strong>public IP address</strong>. This IP belongs to your ALB in the App1 spoke VPC. The customer's browser sends an HTTP request to that IP address. The packet travels across the public internet &mdash; hopping through ISPs, peering exchanges, undersea cables &mdash; until it reaches the AWS network.</p>
+
+    <h4>Step 2: The packet arrives at the Internet Gateway</h4>
+    <p>Every VPC that needs to communicate with the internet has an <strong>Internet Gateway (IGW)</strong>. Think of it as the front door to your VPC. The IGW sits at the boundary between the public internet and your private AWS network.</p>
+    <p>When the packet arrives, the IGW does something critical: it translates the <strong>destination IP</strong>. The packet came addressed to a public IP (the ALB's Elastic IP). The IGW rewrites the destination to the ALB's <strong>private IP</strong> inside the VPC (e.g., <code>10.51.0.50</code>). This is called the <strong>1:1 NAT</strong> &mdash; the IGW maps public IPs to private IPs and vice versa.</p>
+    <p>Now the IGW needs to decide: <em>"Where do I send this packet next?"</em></p>
+
+    <h4>Step 3: The Edge Association route table intercepts the packet</h4>
+    <p>This is the most important trick in the entire inbound design. Normally, the IGW would just deliver the packet directly to the subnet where the ALB lives. But we do not want that &mdash; we want the packet to go through the <strong>firewall first</strong>.</p>
+    <p>The way AWS lets us do this is with a special route table called an <strong>Edge Association</strong>. Unlike a normal route table (which is attached to a subnet), an Edge Association route table is attached <strong>to the IGW itself</strong>. It says:</p>
+    <ul>
+      <li><em>"Any packet going to the ALB subnet (<code>10.51.0.48/28</code>)? Do NOT deliver it to that subnet directly. Instead, send it to the <strong>GWLB endpoint</strong>."</em></li>
+    </ul>
+    <p>Without this Edge Association route table, traffic would sail straight past the firewall and land directly on your ALB &mdash; completely uninspected. The Edge Association is the hook that redirects traffic into the inspection pipeline.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">If you forget the Edge Association</div>
+      <p>If the Edge Association route table is missing or misconfigured, inbound traffic will bypass the firewall entirely. Your app will work &mdash; but with zero security inspection on incoming requests. This is one of the most common deployment mistakes.</p>
+    </div>
+
+    <h4>Step 4: The GWLB endpoint receives the packet</h4>
+    <p>The packet now arrives at the <strong>Gateway Load Balancer Endpoint (GWLB-e)</strong>. This is a special kind of VPC endpoint that lives in your spoke VPC (App1). Think of it as a portal &mdash; a doorway that connects your spoke VPC to the Security VPC where the firewalls live.</p>
+    <p>At this point, the packet still has its original headers intact:</p>
+    <ul>
+      <li><strong>Source IP:</strong> the customer's public IP address (e.g., <code>203.0.113.50</code>)</li>
+      <li><strong>Destination IP:</strong> the ALB's private IP (e.g., <code>10.51.0.50</code>) &mdash; already translated by the IGW</li>
+      <li><strong>Source port:</strong> whatever random port the customer's browser picked (e.g., <code>52344</code>)</li>
+      <li><strong>Destination port:</strong> <code>443</code> (HTTPS)</li>
+      <li><strong>Protocol:</strong> TCP</li>
+    </ul>
+    <p>The endpoint now does something clever: it <strong>wraps the entire original packet</strong> inside a new packet. This is called <strong>GENEVE encapsulation</strong>.</p>
+
+    <h4>Step 5: GENEVE encapsulation &mdash; the packet gets wrapped in a tunnel</h4>
+    <p>Imagine you have a letter (the original packet). The GWLB endpoint puts that letter inside a new envelope (the GENEVE tunnel). The outer envelope has a completely different address &mdash; it is addressed to the Gateway Load Balancer in the Security VPC.</p>
+    <p>Specifically, the endpoint creates a <strong>new UDP packet</strong> on port <strong>6081</strong> (the GENEVE standard port). Here is what the wrapped packet looks like:</p>
+    <table>
+      <thead><tr><th>Layer</th><th>Field</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="4"><strong>Outer packet</strong> (the new envelope)</td><td>Source IP</td><td>GWLB endpoint's private IP</td></tr>
+        <tr><td>Destination IP</td><td>Gateway Load Balancer's IP in the Security VPC</td></tr>
+        <tr><td>Protocol</td><td>UDP</td></tr>
+        <tr><td>Destination port</td><td><code>6081</code> (GENEVE)</td></tr>
+        <tr><td rowspan="2"><strong>GENEVE header</strong></td><td>VNI</td><td>Virtual Network Identifier &mdash; tells the GWLB which endpoint sent this</td></tr>
+        <tr><td>Flow cookie</td><td>A value the GWLB uses to ensure the reply goes back to the same endpoint</td></tr>
+        <tr><td rowspan="4"><strong>Inner packet</strong> (the original letter, completely untouched)</td><td>Source IP</td><td><code>203.0.113.50</code> (the customer)</td></tr>
+        <tr><td>Destination IP</td><td><code>10.51.0.50</code> (the ALB)</td></tr>
+        <tr><td>Protocol</td><td>TCP</td></tr>
+        <tr><td>Destination port</td><td><code>443</code></td></tr>
+      </tbody>
+    </table>
+    <p>The original packet is <strong>completely preserved</strong> inside the tunnel. The customer's source IP, the ALB's destination IP, the ports &mdash; everything is untouched. This is critical because the firewall needs to see the <em>real</em> source and destination to apply security policy correctly.</p>
+    <p>The connection between the GWLB endpoint and the GWLB happens over <strong>AWS PrivateLink</strong>. This means it crosses VPC boundaries privately &mdash; no internet, no Transit Gateway, no route tables involved. It is a direct, private tunnel from the spoke to the Security VPC.</p>
+
+    <h4>Step 6: The Gateway Load Balancer picks a firewall</h4>
+    <p>The GWLB receives the GENEVE-wrapped packet. Its job now is to decide: <em>"Which firewall should inspect this packet?"</em></p>
+    <p>The GWLB has a <strong>target group</strong> &mdash; a list of registered VM-Series firewall instances. The target group defines:</p>
+    <ul>
+      <li><strong>Protocol:</strong> GENEVE (always, for GWLB)</li>
+      <li><strong>Port:</strong> 6081</li>
+      <li><strong>Targets:</strong> The private IPs of your VM-Series firewalls (e.g., firewall-1 at <code>10.51.1.10</code>, firewall-2 at <code>10.51.1.20</code>)</li>
+      <li><strong>Health check:</strong> The GWLB pings each firewall every few seconds to make sure it is alive and responding. If a firewall fails health checks, the GWLB stops sending it traffic.</li>
+    </ul>
+    <p>To decide which firewall gets this specific packet, the GWLB uses a <strong>5-tuple hash</strong>. It takes five pieces of information from the <em>inner</em> (original) packet:</p>
+    <ol>
+      <li>Source IP (<code>203.0.113.50</code>)</li>
+      <li>Destination IP (<code>10.51.0.50</code>)</li>
+      <li>Source port (<code>52344</code>)</li>
+      <li>Destination port (<code>443</code>)</li>
+      <li>Protocol (TCP)</li>
+    </ol>
+    <p>The GWLB mixes these five values together with a hash function and the result determines which firewall gets the packet. The important property: <strong>every packet with the same 5-tuple always goes to the same firewall</strong>. This is called <strong>flow stickiness</strong>. It guarantees that every packet in a TCP connection goes to the same firewall &mdash; because a firewall that only sees half the packets in a conversation cannot make good security decisions.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">What happens when a firewall goes down?</div>
+      <p>If a firewall fails health checks, the GWLB redistributes its flows across the remaining healthy firewalls. Existing connections that were pinned to the failed firewall will break (the new firewall does not have the session state), but new connections will be distributed only to healthy targets. This is why high-availability deployments use at least two firewalls per AZ.</p>
+    </div>
+
+    <h4>Step 7: The firewall receives and inspects the packet</h4>
+    <p>The selected VM-Series firewall receives the GENEVE-wrapped packet on its <strong>dataplane interface</strong> (ethernet1/1). The firewall understands GENEVE natively &mdash; it strips the outer tunnel headers and examines the <strong>original inner packet</strong>.</p>
+    <p>The firewall now runs the packet through its <strong>security policy pipeline</strong>. Here is what happens, in order:</p>
+    <ol>
+      <li><strong>Zone assignment:</strong> The firewall determines which security zone the packet belongs to. In a GWLB deployment, both the source and destination are in the same zone (because the packet enters and exits through the same interface). Palo Alto Networks uses a special zone type for this.</li>
+      <li><strong>Session lookup:</strong> The firewall checks if this packet belongs to an <em>existing</em> session (a conversation already in progress). If yes, it fast-tracks the packet &mdash; the policy decision was already made on the first packet of the session. If no, it continues to the next step.</li>
+      <li><strong>Security policy lookup:</strong> The firewall evaluates the packet against your security rules, top to bottom. Each rule specifies source zone, destination zone, source IP/network, destination IP/network, application, service (port/protocol), and action (allow, deny, drop). The first rule that matches wins.</li>
+      <li><strong>App-ID:</strong> For new sessions, the firewall initially identifies the application as "incomplete" (it only has the SYN packet). Once enough packets have been exchanged (usually 3&ndash;5), the firewall re-evaluates and identifies the actual application (e.g., "web-browsing", "ssl", "youtube"). If the identified application does not match the security rule, the firewall can drop the session mid-stream.</li>
+      <li><strong>Content inspection:</strong> If the security rule has <strong>threat prevention</strong> profiles attached, the firewall scans the payload for malware, exploits, spyware callbacks, and other threats. For HTTPS traffic, this requires <strong>SSL decryption</strong> to be configured &mdash; otherwise the firewall can only see encrypted bytes and cannot inspect the content.</li>
+      <li><strong>Logging:</strong> The firewall logs the session &mdash; allowed or denied &mdash; to its traffic log (and optionally forwards it to Panorama, Cortex Data Lake, or a syslog server).</li>
+    </ol>
+
+    <h4>Step 8: The firewall sends the inspected packet back</h4>
+    <p>Assuming the packet is allowed, the firewall re-wraps it in a GENEVE tunnel and sends it back to the <strong>GWLB</strong>. The GWLB uses the <strong>flow cookie</strong> in the GENEVE header to figure out which endpoint originally sent this packet, and returns it to that same endpoint in the spoke VPC.</p>
+
+    <h4>Step 9: The GWLB endpoint unwraps the packet and delivers it</h4>
+    <p>The GWLB endpoint in the spoke VPC receives the packet back from the GWLB. It strips the GENEVE encapsulation, revealing the original packet &mdash; still with the customer's source IP and the ALB's destination IP.</p>
+    <p>Now the packet is sitting in the GWLB endpoint's subnet. The subnet's route table is consulted. The destination (<code>10.51.0.50</code>) is a local subnet in this VPC, so the packet is delivered to the <strong>Application Load Balancer</strong>.</p>
+
+    <h4>Step 10: The ALB delivers to your application</h4>
+    <p>The ALB receives the packet and does what load balancers do: it picks one of the backend EC2 instances (or containers, or Lambda functions) registered in its target group and forwards the request. Your application processes the request and generates a response.</p>
+
+    <h4>Step 11: The return journey begins</h4>
+    <p>The application sends a response back to the customer. The response goes from the workload to the ALB. The ALB's subnet has a route table with a key entry: the <strong>default route (<code>0.0.0.0/0</code>) points to the GWLB endpoint</strong>. So the reply packet is sent to the GWLB endpoint &mdash; not directly to the IGW.</p>
+
+    <h4>Step 12: The reply goes through the firewall again</h4>
+    <p>The GWLB endpoint wraps the reply in a GENEVE tunnel, sends it to the GWLB, which hashes the 5-tuple and sends it to the <strong>same firewall</strong> that inspected the original request. The firewall matches the existing session (it remembers the conversation from Step 7), verifies the reply is legitimate, and sends it back through the GWLB.</p>
+
+    <h4>Step 13: The reply reaches the customer</h4>
+    <p>The reply arrives back at the GWLB endpoint in the spoke. The endpoint unwraps the GENEVE tunnel. The packet's destination is the customer's public IP (<code>203.0.113.50</code>), so the route table sends it to the IGW (<code>0.0.0.0/0</code> &rarr; IGW). The IGW translates the source IP from the ALB's private IP back to its public IP (the reverse of the 1:1 NAT from Step 2) and sends the reply out to the internet. The customer receives the response.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">The key takeaways</div>
+      <ul>
+        <li>The <strong>Edge Association</strong> route table is the entire reason traffic reaches the firewall. Without it, packets go straight to your app uninspected.</li>
+        <li>The <strong>Transit Gateway is not involved</strong> at any point. Everything happens over PrivateLink between the GWLB endpoint and the GWLB.</li>
+        <li>The original packet headers are <strong>preserved intact</strong> inside the GENEVE tunnel. The firewall sees the real customer IP and real destination &mdash; not some intermediate address.</li>
+        <li>Both directions (request and reply) go through the firewall. It is not a one-way inspection.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Dedicated Inbound &mdash; every step of the packet's journey</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>The setup:</strong> Instead of every spoke VPC having its own Internet Gateway and GWLB endpoint for inbound traffic, you have a single <strong>Dedicated Inbound VPC</strong>. This VPC is the only one with a public-facing load balancer. It acts as a "front desk" for all your applications. The spoke VPCs have no internet gateways for inbound traffic at all.</p>
+
+    <h4>Step 1: The customer's request reaches the Dedicated Inbound VPC</h4>
+    <p>The customer types your URL. DNS resolves to a public IP that belongs to a load balancer (NLB or ALB) in the <strong>Dedicated Inbound VPC</strong> &mdash; not in any spoke VPC. The packet crosses the internet and arrives at the Inbound VPC's Internet Gateway.</p>
+
+    <h4>Step 2: Edge Association redirects to the GWLB endpoint</h4>
+    <p>Same trick as the distributed model. The Inbound VPC's IGW has an Edge Association route table that says: <em>"Traffic going to the load balancer subnets? Send it to the GWLB endpoint first."</em> The packet is intercepted before it can reach the load balancer directly.</p>
+
+    <h4>Step 3: GENEVE tunnel to the Security VPC</h4>
+    <p>The GWLB endpoint in the Inbound VPC wraps the packet in a GENEVE tunnel (UDP 6081) and sends it through PrivateLink to the Gateway Load Balancer in the Security VPC. Same encapsulation as the distributed model &mdash; the original packet is preserved inside.</p>
+
+    <h4>Step 4: Firewall inspection</h4>
+    <p>The GWLB picks a firewall using the 5-tuple hash. The firewall inspects, applies security policy, scans for threats &mdash; exactly the same process described in the distributed model above.</p>
+
+    <h4>Step 5: The inspected packet returns to the Inbound VPC</h4>
+    <p>The firewall sends the approved packet back through the GWLB. The GWLB returns it to the GWLB endpoint in the Inbound VPC (using the flow cookie). The endpoint unwraps the GENEVE tunnel.</p>
+
+    <h4>Step 6: The load balancer in the Inbound VPC receives the packet</h4>
+    <p>The packet is now sitting in the Inbound VPC with its original headers. The route table delivers it to the Inbound VPC's load balancer (NLB or ALB).</p>
+    <p>Now here is where it gets different from the distributed model. In the distributed model, the ALB and the app servers are in the <strong>same VPC</strong>, so the ALB just delivers locally. In the dedicated model, the app servers are in a <strong>different VPC</strong> (a spoke). The load balancer needs a way to reach them.</p>
+
+    <h4>Step 7: The Transit Gateway enters the picture</h4>
+    <p>The Inbound VPC's load balancer forwards the packet toward the spoke VPC. The Inbound VPC has a TGW attachment, and its route table points spoke VPC prefixes (like <code>10.51.0.0/23</code>) toward the Transit Gateway.</p>
+    <p>The TGW has a special route table for this: <code>FROM-DEDICATED-INBOUND</code>. This route table has the spoke VPC prefixes propagated into it, so TGW knows exactly where to deliver the packet. The packet lands in the spoke VPC and reaches the application workload.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Why this traffic is NOT inspected twice</div>
+      <p>You might ask: "Wait, the spoke VPC also has a default route to the Security VPC via TGW. Won't the reply get inspected again?" No &mdash; because the <code>FROM-DEDICATED-INBOUND</code> route table sends traffic <strong>directly to the spoke</strong>, not to the Security VPC. The packet was already inspected in Step 4. The TGW route table is designed specifically to avoid double-inspection.</p>
+    </div>
+
+    <h4>Step 8: The return journey</h4>
+    <p>The application sends a reply. The reply goes from the workload to the spoke VPC's default route &rarr; TGW. The <code>FROM-SPOKES</code> route table sends it to the Security VPC (because the destination is the customer's public IP, which matches the default route). The Security VPC inspects the reply via the OUTBOUND GWLB endpoint, and after inspection the packet exits via the Security VPC's NAT Gateway and IGW.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Asymmetric return path</div>
+      <p>Notice something: the request came <em>in</em> through the Dedicated Inbound VPC, but the reply goes <em>out</em> through the Security VPC. This is <strong>asymmetric routing</strong>. The request and reply take different paths. This is expected and by design &mdash; the Inbound VPC handles ingress, the Security VPC handles egress. But it means your firewall sees both the inbound session (from the Inbound VPC's GWLB flow) and the outbound reply (from the Security VPC's GWLB flow) as potentially <strong>different sessions on different firewalls</strong>. You must configure your firewall policy to account for this.</p>
+    </div>
+
+    <h4>How this differs from distributed inbound</h4>
+    <table>
+      <thead><tr><th>Aspect</th><th>Distributed Inbound</th><th>Dedicated Inbound</th></tr></thead>
+      <tbody>
+        <tr><td>Where does the public IP live?</td><td>Each spoke VPC (on its own ALB/NLB)</td><td>The single Inbound VPC</td></tr>
+        <tr><td>How many Internet Gateways?</td><td>One per spoke that receives inbound traffic</td><td>One (in the Inbound VPC)</td></tr>
+        <tr><td>Where is the GWLB endpoint?</td><td>In each spoke VPC</td><td>In the Inbound VPC</td></tr>
+        <tr><td>Does the TGW carry inbound traffic?</td><td>No &mdash; PrivateLink handles it</td><td>Yes &mdash; TGW routes post-inspection traffic from the Inbound VPC to the spoke</td></tr>
+        <tr><td>Return path</td><td>Same path in reverse (symmetric)</td><td>Different path (asymmetric &mdash; reply exits through Security VPC)</td></tr>
+        <tr><td>Operational model</td><td>Each spoke team manages their own IGW, Edge Association, and GWLB endpoint</td><td>Central team manages the single Inbound VPC; spoke teams manage nothing inbound</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>GENEVE tunnels &mdash; what is actually happening to your packet</span>
+  </div>
+  <div class="collapsible-body">
+    <p>GENEVE stands for <strong>Generic Network Virtualization Encapsulation</strong>. It is an industry-standard tunneling protocol (defined in <a href="https://datatracker.ietf.org/doc/html/rfc8926" target="_blank" rel="noopener">RFC 8926</a>). AWS chose GENEVE for the Gateway Load Balancer because it solves a very specific problem: <em>how do you send a packet to a firewall for inspection without the firewall changing the packet's headers?</em></p>
+
+    <h4>The problem GENEVE solves</h4>
+    <p>If you routed traffic directly to the firewall's IP address (like a traditional proxy), the firewall would be the <strong>destination</strong>. It would have to NAT the traffic, rewrite headers, and generally mangle the packet to forward it onward. By the time the packet reached your application, the source IP would be the firewall's IP &mdash; not the customer's IP. Your app would see every request coming from the same address. Your firewall rules could not match on real client IPs.</p>
+    <p>GENEVE avoids this entirely. The original packet is placed <strong>inside</strong> the tunnel packet as cargo. The firewall opens the tunnel, inspects the cargo (the real packet with the real source and destination IPs), and puts it back in the tunnel. When it comes out the other end, the original packet is exactly as it was.</p>
+
+    <h4>The tunnel packet structure</h4>
+    <p>A GENEVE-wrapped packet has three layers:</p>
+    <ol>
+      <li><strong>Outer IP/UDP header:</strong> This is what AWS networking uses to deliver the packet from the GWLB endpoint to the GWLB (and then to the firewall). Source is the endpoint, destination is the GWLB. Protocol is UDP, port 6081.</li>
+      <li><strong>GENEVE header:</strong> A small header (8 bytes minimum, plus optional metadata) between the outer UDP header and the inner packet. It contains:
+        <ul>
+          <li><strong>VNI (Virtual Network Identifier):</strong> Identifies which endpoint/flow this packet belongs to. The GWLB uses this to know where to return the inspected packet.</li>
+          <li><strong>Protocol type:</strong> Tells the receiver what kind of packet is inside (usually <code>0x6558</code> for Transparent Ethernet Bridging, meaning "there is a full Ethernet frame inside").</li>
+          <li><strong>Options:</strong> AWS includes a <strong>flow cookie</strong> as a GENEVE option. This is how the GWLB tracks which endpoint sent the packet and ensures the reply goes back to the right place.</li>
+        </ul>
+      </li>
+      <li><strong>Inner packet:</strong> The entire original packet, completely untouched. The customer's source IP, your ALB's destination IP, ports, TCP flags &mdash; everything is preserved.</li>
+    </ol>
+
+    <h4>What happens at each hop</h4>
+    <table>
+      <thead><tr><th>Hop</th><th>Action</th><th>Packet state</th></tr></thead>
+      <tbody>
+        <tr><td>GWLB endpoint (spoke VPC)</td><td><strong>Encapsulates</strong> &mdash; wraps the original packet inside a GENEVE tunnel</td><td>Outer: endpoint → GWLB. Inner: customer → ALB.</td></tr>
+        <tr><td>GWLB (Security VPC)</td><td><strong>Routes</strong> &mdash; examines the inner packet's 5-tuple, picks a firewall, forwards the still-wrapped packet</td><td>Outer: GWLB → firewall. Inner: unchanged.</td></tr>
+        <tr><td>VM-Series firewall</td><td><strong>Inspects</strong> &mdash; strips GENEVE header, inspects the inner packet, re-wraps it, sends it back</td><td>The firewall sees the raw inner packet. After inspection, it re-encapsulates and returns to the GWLB.</td></tr>
+        <tr><td>GWLB</td><td><strong>Returns</strong> &mdash; uses the flow cookie to route the packet back to the correct endpoint</td><td>Outer: GWLB → endpoint. Inner: unchanged.</td></tr>
+        <tr><td>GWLB endpoint (spoke VPC)</td><td><strong>Decapsulates</strong> &mdash; strips the GENEVE tunnel, delivers the original packet to the VPC</td><td>Just the original packet. No tunnel headers. Ready for the route table.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Why UDP port 6081?</div>
+      <p>Port 6081 is the IANA-assigned port for GENEVE. You do not need to open this port in your security groups &mdash; the GENEVE traffic flows over PrivateLink (between the endpoint and the GWLB) and within the Security VPC (between the GWLB and the firewalls). It never crosses the public internet. However, your VM-Series firewall <strong>does</strong> need to accept GENEVE traffic on its dataplane interface &mdash; this is configured automatically when you set up the GWLB integration in PAN-OS.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>GWLB target groups &mdash; how the load balancer picks a firewall</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Gateway Load Balancer's <strong>target group</strong> is the list of firewalls that can receive traffic. It works differently from a normal ALB/NLB target group, so here is what you need to know.</p>
+
+    <h4>What is in the target group</h4>
+    <p>Each target is a VM-Series firewall instance, identified by its <strong>private IP address</strong> and <strong>port 6081</strong> (GENEVE). When you deploy via Terraform, the module automatically registers each firewall instance in the target group.</p>
+
+    <h4>How targets are health-checked</h4>
+    <p>The GWLB sends periodic health check probes to each target. You configure:</p>
+    <ul>
+      <li><strong>Protocol &amp; port:</strong> Typically HTTP on port 443 or TCP on a custom port. The probe hits the firewall's dataplane interface.</li>
+      <li><strong>Interval:</strong> How often to check (e.g., every 10 seconds).</li>
+      <li><strong>Thresholds:</strong> How many consecutive passes or failures before the target is marked healthy or unhealthy.</li>
+    </ul>
+    <p>If a firewall fails enough consecutive health checks, the GWLB marks it <strong>unhealthy</strong> and stops sending it new flows. Existing flows that were pinned to the failed firewall will time out or be redistributed.</p>
+
+    <h4>How traffic is distributed &mdash; the 5-tuple hash</h4>
+    <p>The GWLB does <strong>not</strong> use round-robin. It uses a <strong>5-tuple hash</strong> of the <em>inner</em> packet (the original, pre-encapsulation packet). The five values are:</p>
+    <ol>
+      <li>Source IP</li>
+      <li>Destination IP</li>
+      <li>Source port</li>
+      <li>Destination port</li>
+      <li>Protocol (TCP, UDP, ICMP, etc.)</li>
+    </ol>
+    <p>This hash produces a consistent result: the same 5-tuple always maps to the same firewall. This means:</p>
+    <ul>
+      <li>Every packet in a TCP connection goes to the <strong>same firewall</strong> (because the 5-tuple is the same for every packet in the connection).</li>
+      <li>Different connections from the same client may go to <strong>different firewalls</strong> (because the source port changes with each new connection).</li>
+      <li>Adding or removing a firewall <strong>redistributes some flows</strong> to different targets (the hash space gets recalculated).</li>
+    </ul>
+
+    <h4>Why flow stickiness matters for security</h4>
+    <p>A stateful firewall tracks connections. When it sees the first packet (TCP SYN), it creates a session entry and makes a policy decision (allow or deny). Every subsequent packet in that connection is matched against that session entry &mdash; the firewall does not re-evaluate policy for every single packet.</p>
+    <p>If packets in the same connection were split across two firewalls, neither firewall would see the complete conversation. Firewall A would see the SYN and some data packets; Firewall B would see other data packets and the FIN. Both would log errors about incomplete sessions, and the connection would likely fail. The 5-tuple hash prevents this.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Cross-AZ considerations</div>
+      <p>By default, the GWLB has <strong>cross-zone load balancing disabled</strong>. This means a GWLB node in AZ-A will only send traffic to firewalls in AZ-A. If you enable cross-zone load balancing, an AZ-A GWLB node <em>can</em> send traffic to a firewall in AZ-B &mdash; but this incurs cross-AZ data transfer charges and adds latency. In most deployments, you deploy at least one firewall per AZ and leave cross-zone disabled.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>How the firewall applies security policy</span>
+  </div>
+  <div class="collapsible-body">
+    <p>When a packet arrives at the VM-Series firewall from the GWLB, the firewall does not just glance at it and wave it through. It runs a structured decision process. Here is what happens, step by step.</p>
+
+    <h4>1. Interface and zone mapping</h4>
+    <p>The firewall first determines which <strong>interface</strong> the packet arrived on (ethernet1/1 in a GWLB deployment). Each interface is assigned to a <strong>security zone</strong>. Zones are the building blocks of firewall policy &mdash; rules are written as "from zone X to zone Y, allow/deny."</p>
+    <p>In a GWLB single-arm deployment (which is what this architecture uses), the packet enters and exits through the <strong>same interface</strong>. Palo Alto Networks handles this with a zone configuration where the GWLB-connected interface processes traffic in a way that the firewall can distinguish between the source and destination logically, even though they share the same physical interface.</p>
+
+    <h4>2. Session lookup</h4>
+    <p>The firewall checks its <strong>session table</strong>: "Have I seen traffic with this 5-tuple before?"</p>
+    <ul>
+      <li><strong>Existing session:</strong> The packet matches a session that was already created. The firewall fast-tracks it &mdash; it applies the same policy decision that was made when the session started, scans for threats if configured, and forwards the packet. No policy re-evaluation needed.</li>
+      <li><strong>New session:</strong> This is the first packet in a new conversation (typically a TCP SYN). The firewall must evaluate policy from scratch.</li>
+    </ul>
+
+    <h4>3. Security policy evaluation (new sessions only)</h4>
+    <p>The firewall evaluates the packet against your security <strong>rulebase</strong> &mdash; a list of rules evaluated top to bottom. The first matching rule wins. Each rule specifies:</p>
+    <table>
+      <thead><tr><th>Field</th><th>What it matches</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td>Source zone</td><td>Where the traffic came from</td><td><code>gwlb-zone</code></td></tr>
+        <tr><td>Destination zone</td><td>Where the traffic is going</td><td><code>gwlb-zone</code></td></tr>
+        <tr><td>Source address</td><td>The sender's IP or network</td><td><code>any</code> or <code>203.0.113.0/24</code></td></tr>
+        <tr><td>Destination address</td><td>The receiver's IP or network</td><td><code>10.51.0.0/23</code> (spoke VPC)</td></tr>
+        <tr><td>Application</td><td>The identified application (App-ID)</td><td><code>web-browsing</code>, <code>ssl</code></td></tr>
+        <tr><td>Service</td><td>Port and protocol</td><td><code>application-default</code> or <code>tcp/443</code></td></tr>
+        <tr><td>Action</td><td>What to do</td><td><strong>Allow</strong>, <strong>Deny</strong>, or <strong>Drop</strong></td></tr>
+        <tr><td>Security profiles</td><td>Extra inspection</td><td>Antivirus, Anti-Spyware, Vulnerability Protection, URL Filtering, File Blocking</td></tr>
+      </tbody>
+    </table>
+
+    <h4>4. App-ID: identifying the application</h4>
+    <p>When the first packet of a new session arrives (the TCP SYN), the firewall does not yet know what application this is. It only knows the port (443) and protocol (TCP). At this point, it matches the rule based on <strong>service</strong> (port/protocol) alone.</p>
+    <p>As more packets arrive (TCP handshake completes, TLS negotiation begins, HTTP headers appear), the firewall's <strong>App-ID engine</strong> gradually identifies the application:</p>
+    <ul>
+      <li>After the TLS handshake: "This is <code>ssl</code>"</li>
+      <li>After seeing the HTTP host header (via SNI or after decryption): "This is <code>web-browsing</code>" or "This is <code>office365-base</code>"</li>
+    </ul>
+    <p>If the identified application does not match the security rule that initially allowed the session, the firewall <strong>re-evaluates</strong>. This can result in the session being dropped mid-stream &mdash; for example, if someone starts what looks like web browsing but then tunnels SSH inside the HTTPS connection.</p>
+
+    <h4>5. Content inspection</h4>
+    <p>If the matching security rule has <strong>security profiles</strong> attached, the firewall performs deep packet inspection:</p>
+    <ul>
+      <li><strong>Antivirus:</strong> Scans file transfers for known malware signatures</li>
+      <li><strong>Anti-Spyware:</strong> Detects command-and-control (C2) traffic and spyware phone-home patterns</li>
+      <li><strong>Vulnerability Protection (IPS):</strong> Matches traffic against known exploit signatures</li>
+      <li><strong>URL Filtering:</strong> Checks the requested URL against category databases (gambling, malware, adult, etc.)</li>
+      <li><strong>File Blocking:</strong> Blocks specific file types from being uploaded or downloaded</li>
+      <li><strong>WildFire:</strong> Sends unknown files to Palo Alto Networks' cloud sandbox for analysis</li>
+    </ul>
+
+    <h4>6. The verdict</h4>
+    <p>After all of the above, the packet is either:</p>
+    <ul>
+      <li><strong>Allowed:</strong> The firewall re-wraps it in GENEVE and sends it back to the GWLB. The packet continues its journey to the application.</li>
+      <li><strong>Denied/Dropped:</strong> The firewall discards the packet. "Deny" sends a TCP RST or ICMP unreachable back to the sender. "Drop" silently discards &mdash; the sender gets no response and eventually times out.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Caveats and gotchas</span>
+  </div>
+  <div class="collapsible-body">
+    <h4>1. Asymmetric routing in the dedicated inbound model</h4>
+    <p>In the dedicated inbound model, traffic enters through the Inbound VPC but replies exit through the Security VPC. This means the inbound firewall inspection and the outbound reply inspection may happen on <strong>different firewalls</strong>. Each firewall creates its own session entry. If your policy relies on session state being complete on a single device, this can cause issues. The fix: ensure your policy rules are written to allow both the inbound and outbound legs independently, and do not assume a single firewall sees both.</p>
+
+    <h4>2. Cross-AZ data charges</h4>
+    <p>If your GWLB endpoint is in AZ-A but the GWLB sends the packet to a firewall in AZ-B, you pay <strong>cross-AZ data transfer charges</strong> (about $0.01/GB in each direction). Multiply that by the volume of inspected traffic and it adds up. Best practice: deploy at least one firewall per AZ and keep cross-zone load balancing disabled.</p>
+
+    <h4>3. Edge Association route table limits</h4>
+    <p>The Edge Association route table can only contain routes for CIDR blocks that are <strong>within the VPC's own address space</strong>. You cannot add arbitrary routes. This means you must plan your VPC CIDR carefully &mdash; the ALB subnet must be a CIDR you can reference in the Edge Association table.</p>
+
+    <h4>4. One GWLB endpoint per AZ per VPC</h4>
+    <p>Each spoke VPC (in the distributed model) or the Inbound VPC (in the dedicated model) needs a GWLB endpoint <strong>in each AZ</strong> where it has resources. If your ALB has subnets in AZ-A and AZ-B, you need GWLB endpoints in both AZ-A and AZ-B. If you only have an endpoint in AZ-A, traffic destined for AZ-B's ALB subnet will not be intercepted by the Edge Association (because there is no endpoint there).</p>
+
+    <h4>5. Health check behavior and failover</h4>
+    <p>When a firewall fails health checks, the GWLB stops sending it <strong>new flows</strong>. But existing flows that were already pinned to the failed firewall may continue to be sent for a short period (until the deregistration delay expires). During this window, those packets will be dropped. Plan for this with multi-AZ HA and acceptable failover windows.</p>
+
+    <h4>6. SSL decryption requirements</h4>
+    <p>Without SSL decryption configured on the firewall, all HTTPS traffic appears as "ssl" to App-ID. The firewall cannot see inside encrypted sessions &mdash; no URL filtering, no antivirus scanning on payloads, no data loss prevention on encrypted uploads. If you need visibility into HTTPS traffic (and for inbound web applications, you usually do), you must configure SSL decryption with appropriate certificates.</p>
+
+    <h4>7. MTU considerations</h4>
+    <p>GENEVE encapsulation adds overhead to each packet (approximately 50&ndash;60 bytes for the outer IP/UDP/GENEVE headers). If the original packet is already at the standard 1500-byte MTU, the encapsulated packet will exceed 1500 bytes. AWS PrivateLink supports jumbo frames (up to 8500 bytes), so this is usually not a problem within AWS. However, if you are running workloads with jumbo frames (9001 bytes), the encapsulated packet may exceed PrivateLink's MTU. In practice, this rarely causes issues in standard deployments, but it is worth knowing about if you see fragmentation-related problems.</p>
+
+    <h4>8. Firewall reboots and software upgrades</h4>
+    <p>When a VM-Series firewall reboots (for a PAN-OS upgrade, for example), it stops responding to health checks and the GWLB marks it unhealthy. All flows pinned to that firewall are redistributed. When the firewall comes back online and passes health checks again, it starts receiving <strong>new</strong> flows &mdash; but the sessions it had before the reboot are gone (the session table is cleared during reboot). Those old connections will fail. Plan upgrades during maintenance windows, or use a rolling upgrade strategy where you upgrade one firewall at a time.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>CDN traffic &mdash; CloudFlare, Akamai, and how they change the inbound flow</span>
+  </div>
+  <div class="collapsible-body">
+    <p>When you put a Content Delivery Network (CDN) like <strong>CloudFlare</strong> or <strong>Akamai</strong> in front of your application, the inbound traffic flow changes in important ways. The basic architecture (IGW &rarr; Edge Association &rarr; GWLB endpoint &rarr; firewall &rarr; ALB) stays the same, but <strong>what the firewall sees</strong> is very different.</p>
+
+    <h4>How a CDN changes the source IP</h4>
+    <p>Without a CDN, the customer's browser connects directly to your ALB's public IP. The firewall sees the customer's real IP address as the source.</p>
+    <p>With a CDN, the flow changes:</p>
+    <ol>
+      <li>The customer's browser connects to the <strong>CDN's edge node</strong> (a server in a data center near the customer).</li>
+      <li>The CDN's edge node processes the request (serves cached content, applies WAF rules, mitigates DDoS).</li>
+      <li>If the CDN needs to fetch content from your origin (a cache miss), the edge node opens a <strong>new connection</strong> to your ALB's public IP.</li>
+      <li>This new connection comes from the <strong>CDN's IP address</strong> &mdash; not the customer's IP address.</li>
+    </ol>
+    <p>So when the packet arrives at your IGW, goes through the Edge Association, gets tunneled through the GWLB, and reaches the firewall &mdash; the firewall sees <strong>the CDN's edge node IP</strong> as the source, not the real customer's IP.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">This breaks source-IP-based firewall rules</div>
+      <p>If you have firewall rules that allow or deny traffic based on the customer's IP address (e.g., "allow connections from the US office IP range"), those rules will not work as expected. Every inbound request looks like it comes from the CDN's IP range, regardless of where the actual customer is located.</p>
+    </div>
+
+    <h4>How to recover the real client IP</h4>
+    <p>CDN providers add HTTP headers that contain the real customer's IP address:</p>
+    <table>
+      <thead><tr><th>CDN</th><th>Header</th><th>Example value</th></tr></thead>
+      <tbody>
+        <tr><td>CloudFlare</td><td><code>CF-Connecting-IP</code></td><td><code>198.51.100.25</code></td></tr>
+        <tr><td>CloudFlare</td><td><code>X-Forwarded-For</code></td><td><code>198.51.100.25, 104.16.0.1</code></td></tr>
+        <tr><td>Akamai</td><td><code>True-Client-IP</code></td><td><code>198.51.100.25</code></td></tr>
+        <tr><td>Akamai</td><td><code>X-Forwarded-For</code></td><td><code>198.51.100.25, 23.72.0.1</code></td></tr>
+        <tr><td>Any CDN</td><td><code>X-Forwarded-For</code></td><td>Comma-separated list of IPs the request passed through</td></tr>
+      </tbody>
+    </table>
+    <p>However, these headers are <strong>inside the HTTP payload</strong>, not in the IP header. The firewall can only see these headers if:</p>
+    <ul>
+      <li><strong>SSL decryption</strong> is enabled (because the traffic is almost always HTTPS), <strong>AND</strong></li>
+      <li>You configure the firewall to <strong>parse the X-Forwarded-For header</strong> for use in policy rules (PAN-OS supports this via the <code>X-Forwarded-For</code> setting in URL filtering and log forwarding profiles).</li>
+    </ul>
+    <p>Without SSL decryption, the firewall cannot read the HTTP headers at all &mdash; it only sees encrypted bytes. In that case, every CDN request is indistinguishable from every other CDN request at the IP layer.</p>
+
+    <h4>CDN IP ranges and firewall policy</h4>
+    <p>Since all inbound traffic now comes from the CDN, your firewall's source-IP-based rules need to be adjusted:</p>
+    <ul>
+      <li><strong>Allow the CDN's IP ranges</strong> as trusted sources. Both CloudFlare and Akamai publish their IP ranges:
+        <ul>
+          <li>CloudFlare: <a href="https://www.cloudflare.com/ips/" target="_blank" rel="noopener">cloudflare.com/ips</a></li>
+          <li>Akamai: Published via their customer portal (ranges vary by service)</li>
+        </ul>
+      </li>
+      <li><strong>Block all other sources</strong> from reaching your origin directly. If someone bypasses the CDN and connects to your ALB's public IP directly, they skip the CDN's protections. You can enforce this with a firewall rule that only allows inbound HTTPS from the CDN's IP ranges.</li>
+    </ul>
+    <div class="callout callout-note">
+      <div class="callout-title">CDN IP ranges change</div>
+      <p>CDN providers add and remove IP ranges over time. You must keep your firewall's address objects up to date. CloudFlare provides an API for this; Akamai provides periodic notifications. Some teams automate this with a script that fetches the current ranges and pushes them to Panorama or SCM on a schedule.</p>
+    </div>
+
+    <h4>Proxy Protocol as an alternative</h4>
+    <p>Some CDN providers support <strong>Proxy Protocol</strong> (v1 or v2), which prepends the real client IP to the TCP payload at the connection level &mdash; before any HTTP headers. If your load balancer is an NLB (not an ALB), you can enable Proxy Protocol on the NLB target group. The NLB then passes the real client IP through to the backend.</p>
+    <p>However, the VM-Series firewall does not natively parse Proxy Protocol headers for policy decisions. So while your application servers can extract the real IP from Proxy Protocol, the firewall will still only see the CDN's IP in the packet headers during inspection.</p>
+
+    <h4>Edge Association behavior with CDN traffic</h4>
+    <p>The Edge Association route table works exactly the same way with CDN traffic. The CDN connects to your public IP, the packet hits the IGW, the Edge Association redirects it to the GWLB endpoint, and the rest of the flow proceeds normally. The CDN does not change the Edge Association behavior &mdash; it only changes <strong>who</strong> is connecting (the CDN edge node instead of the end customer).</p>
+    <p>One subtle difference: CDN providers typically maintain <strong>persistent connections</strong> (HTTP keep-alive) to your origin. Instead of opening a new TCP connection for every customer request, the CDN reuses existing connections. This means:</p>
+    <ul>
+      <li>The GWLB sees fewer unique 5-tuples (because many customer requests share the same CDN-to-origin connection)</li>
+      <li>Traffic may be <strong>less evenly distributed</strong> across firewalls (because a persistent connection stays pinned to the same firewall for its entire lifetime)</li>
+      <li>The firewall's session table may show <strong>long-lived sessions</strong> with high packet counts (a single connection carrying hundreds of requests)</li>
+    </ul>
+
+    <h4>Summary: CDN does and does not change</h4>
+    <table>
+      <thead><tr><th>Aspect</th><th>Without CDN</th><th>With CDN</th></tr></thead>
+      <tbody>
+        <tr><td>Source IP seen by firewall</td><td>Real customer IP</td><td>CDN edge node IP</td></tr>
+        <tr><td>Edge Association behavior</td><td>Normal</td><td>Unchanged</td></tr>
+        <tr><td>GWLB/GENEVE tunnel</td><td>Normal</td><td>Unchanged</td></tr>
+        <tr><td>Firewall source-IP rules</td><td>Match real customer</td><td>Match CDN IP range</td></tr>
+        <tr><td>App-ID visibility</td><td>See customer's application</td><td>See CDN's connection (may differ)</td></tr>
+        <tr><td>SSL decryption target</td><td>Customer's TLS session</td><td>CDN's TLS session (different cert chain)</td></tr>
+        <tr><td>Connection pattern</td><td>Many short connections</td><td>Fewer persistent connections (keep-alive)</td></tr>
+        <tr><td>Real client IP recovery</td><td>Not needed</td><td>Requires <code>X-Forwarded-For</code> parsing + SSL decryption</td></tr>
+        <tr><td>DDoS protection</td><td>Firewall bears the load</td><td>CDN absorbs volumetric attacks at the edge</td></tr>
+      </tbody>
+    </table>
   </div>
 </div>
 
