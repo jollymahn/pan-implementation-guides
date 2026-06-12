@@ -47,6 +47,7 @@
   <div class="sidebar-section">
     <div class="sidebar-section-title">Design</div>
     <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+    <a href="#routing-models" data-section="routing-models">Routing Models</a>
   </div>
   <div class="sidebar-section">
     <div class="sidebar-section-title">Prerequisites</div>
@@ -591,6 +592,144 @@
     <div class="callout callout-note">
       <div class="callout-title">Key design point</div>
       <p>BGP-propagated on-prem prefixes appear in <code>From-Security-TGW-RT</code>, so post-inspection traffic from the Security VPC has a route back to on-prem. Without this propagation, return traffic would black-hole.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  ROUTING MODELS                                               -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h3 id="routing-models">Routing Model: Overlay vs. Non-Overlay</h3>
+
+<p>Before deploying, choose a <strong>routing model</strong> for outbound traffic. Both models use the same GWLB + GENEVE inspection path for inbound, outbound, and east-west traffic &mdash; they differ only in how <strong>outbound (spoke &rarr; internet)</strong> traffic egresses <em>after</em> the firewall inspects it.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Non-Overlay Routing</span>
+  </div>
+  <div class="collapsible-body">
+    <p>In the non-overlay model, the VM-Series operates as a <strong>single-arm</strong> firewall. Only <code>ethernet1/1</code> (trust) is active for dataplane traffic. After the firewall inspects outbound traffic, it returns the packet to the GWLB, which delivers it back to the Security VPC&rsquo;s GWLB endpoint subnet. From there, the VPC route table sends it to an <strong>AWS NAT Gateway</strong>, which performs source-NAT and forwards the packet to the Internet Gateway.</p>
+
+    <p><strong>How it works:</strong></p>
+    <ol>
+      <li>Spoke workload sends outbound traffic &rarr; TGW routes it to the Security VPC.</li>
+      <li>GWLB endpoint encapsulates the packet (GENEVE) and sends it to a VM-Series instance.</li>
+      <li>VM-Series inspects on <code>ethernet1/1</code> subinterface and returns the packet to GWLB.</li>
+      <li>Post-inspection packet arrives at the GWLB endpoint subnet &rarr; VPC route table sends it to the <strong>NAT Gateway</strong>.</li>
+      <li>NAT Gateway performs source-NAT (replaces the spoke&rsquo;s private IP with the NAT Gateway&rsquo;s EIP) and forwards to the IGW.</li>
+    </ol>
+
+    <p><strong>Key characteristics:</strong></p>
+    <ul>
+      <li>Firewall uses DHCP-assigned default route on <code>ethernet1/1</code> &mdash; no static routes needed.</li>
+      <li><code>ethernet1/2</code> is not configured.</li>
+      <li>AWS NAT Gateway handles all outbound NAT &mdash; one per AZ.</li>
+      <li>Outbound source IP is the NAT Gateway&rsquo;s Elastic IP (one EIP per AZ, shared across all firewalls in that AZ).</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Overlay Routing</span>
+  </div>
+  <div class="collapsible-body">
+    <p>In the overlay model, the VM-Series operates as a <strong>dual-arm</strong> firewall. <code>ethernet1/1</code> (trust) receives traffic from GWLB, and <code>ethernet1/2</code> (untrust) handles outbound egress directly. After the firewall inspects outbound traffic, it source-NATs the packet and sends it out <code>ethernet1/2</code>, which has its own EIP &mdash; bypassing the AWS NAT Gateway entirely.</p>
+
+    <p><strong>How it works:</strong></p>
+    <ol>
+      <li>Spoke workload sends outbound traffic &rarr; TGW routes it to the Security VPC.</li>
+      <li>GWLB endpoint encapsulates the packet (GENEVE) and sends it to a VM-Series instance.</li>
+      <li>VM-Series inspects on <code>ethernet1/1</code> subinterface.</li>
+      <li>Firewall&rsquo;s static default route sends the packet out <code>ethernet1/2</code> (untrust).</li>
+      <li>Firewall performs source-NAT (replaces the spoke&rsquo;s private IP with the <code>ethernet1/2</code> EIP) and forwards directly to the IGW.</li>
+    </ol>
+
+    <p><strong>Key characteristics:</strong></p>
+    <ul>
+      <li>Firewall requires static routes: RFC 1918 summary routes via <code>ethernet1/1</code> gateway (for return traffic), plus a default route via <code>ethernet1/2</code> gateway (for outbound egress).</li>
+      <li><code>ethernet1/2</code> is configured with DHCP and its own Elastic IP.</li>
+      <li>No AWS NAT Gateway in the egress path &mdash; eliminates NAT Gateway costs.</li>
+      <li>Outbound source IP is the <code>ethernet1/2</code> EIP (one EIP per firewall instance, providing per-firewall source IP identity).</li>
+      <li>Per-AZ template variables (<code>$INTERNAL-GW</code>, <code>$EXTERNAL-GW</code>) are required when using Panorama-managed templates.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Comparison: Pros &amp; Cons</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Factor</th><th>Non-Overlay</th><th>Overlay</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Initial configuration complexity</strong></td>
+          <td>Low &mdash; DHCP default route on <code>ethernet1/1</code>, no static routes, single-arm</td>
+          <td>Medium &mdash; static routes, second interface (<code>ethernet1/2</code>), per-AZ template variables</td>
+        </tr>
+        <tr>
+          <td><strong>Administrative overhead (Day-2)</strong></td>
+          <td>Low &mdash; fewer firewall routes to maintain; NAT Gateway is fully managed by AWS</td>
+          <td>Medium &mdash; static routes and template variables must be updated when adding AZs or changing subnets; NAT policy managed on the firewall</td>
+        </tr>
+        <tr>
+          <td><strong>NAT Gateway cost</strong></td>
+          <td>~<strong>$33/month per AZ</strong> fixed ($0.045/hr) + <strong>$0.045/GB</strong> data processing. Two AZs = ~$66/month + per-GB charges</td>
+          <td><strong>$0</strong> &mdash; no NAT Gateway required</td>
+        </tr>
+        <tr>
+          <td><strong>Cost breakeven point</strong></td>
+          <td colspan="2">At ~<strong>1 TB/month</strong> sustained outbound egress, NAT Gateway data-processing charges (~$45/month/TB) exceed the operational simplicity savings of non-overlay</td>
+        </tr>
+        <tr>
+          <td><strong>Outbound source IP</strong></td>
+          <td>NAT Gateway EIP &mdash; one per AZ, shared across all firewalls</td>
+          <td><code>ethernet1/2</code> EIP &mdash; one per firewall, unique per instance</td>
+        </tr>
+        <tr>
+          <td><strong>Dataplane interfaces</strong></td>
+          <td>Single-arm: <code>ethernet1/1</code> only</td>
+          <td>Dual-arm: <code>ethernet1/1</code> + <code>ethernet1/2</code></td>
+        </tr>
+        <tr>
+          <td><strong>Firewall static routes</strong></td>
+          <td>None</td>
+          <td>RFC 1918 summaries (<code>10.0.0.0/8</code>, <code>172.16.0.0/12</code>, <code>192.168.0.0/16</code>) + default route, per AZ</td>
+        </tr>
+        <tr>
+          <td><strong>Egress path</strong></td>
+          <td>Firewall &rarr; GWLB &rarr; NAT Gateway &rarr; IGW</td>
+          <td>Firewall &rarr; <code>ethernet1/2</code> &rarr; IGW (direct)</td>
+        </tr>
+        <tr>
+          <td><strong>Scalability (multi-AZ)</strong></td>
+          <td>Add a NAT Gateway per new AZ &mdash; no firewall config changes</td>
+          <td>Add template variables per new AZ &mdash; firewall config grows with AZ count</td>
+        </tr>
+        <tr>
+          <td><strong>PAN-OS requirement</strong></td>
+          <td>Any supported version</td>
+          <td>PAN-OS 10.2.3+ (overlay routing with GWLB)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Rule of thumb</div>
+      <p><strong>Non-Overlay</strong> for PoCs, dev/test, or environments with low egress volume where simplicity is the priority. <strong>Overlay</strong> for production workloads with sustained egress above ~1 TB/month where eliminating NAT Gateway costs justifies the additional firewall configuration.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">This choice is made during deployment</div>
+      <p>The routing model is baked into the Terraform configuration (<code>nat_gateway_configuration</code> variable) and the Panorama/SCM template. Switching models post-deployment requires redeploying the Security VPC infrastructure and reconfiguring the firewall templates. Choose before you start Phase 2.</p>
     </div>
   </div>
 </div>
@@ -1505,7 +1644,7 @@ set template-stack &lt;name&gt; settings default-vsys vsys1</code></pre>
     <span>2A.6 TPL- Configure Interfaces &amp; Routing — Pick a Routing Model</span>
   </div>
   <div class="collapsible-body">
-    <p>The VM-Series uses two dataplane interfaces (<code>ethernet1/1</code>, <code>ethernet1/2</code>) plus subinterfaces on <code>ethernet1/1</code> for GWLB traffic separation. Before configuring the firewall, decide which <strong>routing model</strong> you're deploying. The two models handle inbound and east-west traffic identically through GWLB; they differ only in how <strong>outbound (spoke → internet)</strong> traffic egresses after inspection.</p>
+    <p>The VM-Series uses two dataplane interfaces (<code>ethernet1/1</code>, <code>ethernet1/2</code>) plus subinterfaces on <code>ethernet1/1</code> for GWLB traffic separation. Before configuring the firewall, decide which <strong>routing model</strong> you're deploying. The two models handle inbound and east-west traffic identically through GWLB; they differ only in how <strong>outbound (spoke → internet)</strong> traffic egresses after inspection. For a detailed architectural comparison, see <a href="#routing-models">Routing Model: Overlay vs. Non-Overlay</a> in the Architecture Overview.</p>
 
     <div class="callout callout-note">
       <div class="callout-title">Which path should I pick?</div>
