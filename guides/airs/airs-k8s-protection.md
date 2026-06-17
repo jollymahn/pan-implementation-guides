@@ -19,37 +19,9 @@ Prisma AIRS protects Kubernetes workloads by deploying a Container Network Inter
 
 The PAN-CNI plugin installs as a DaemonSet in the `kube-system` namespace. It chains onto the cluster's existing CNI (Calico, Azure CNI, VPC CNI, etc.) without replacing it. When a pod is annotated for protection, PAN-CNI adds routing rules that redirect the pod's egress and ingress traffic through the AIRS firewall.
 
-```
-                Kubernetes Cluster
-┌─────────────────────────────────────────────────────┐
-│                                                     │
-│   ┌───────────┐     ┌───────────┐                   │
-│   │  App Pod   │     │  App Pod   │                   │
-│   │ (annotated)│     │ (annotated)│                   │
-│   └─────┬─────┘     └─────┬─────┘                   │
-│         │                 │                           │
-│         ▼                 ▼                           │
-│   ┌─────────────────────────────┐                   │
-│   │      PAN-CNI DaemonSet       │                   │
-│   │  Redirects annotated pod    │                   │
-│   │  traffic to firewall        │                   │
-│   └─────────────┬───────────────┘                   │
-│                 │                                    │
-└─────────────────┼────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────┐
-│         AIRS AI Runtime Firewall                    │
-│   ┌─────────────────────────────────────────────┐   │
-│   │  AI Security Profile   +   Cloud-Delivered  │   │
-│   │  (Prompt Injection, DLP, Toxic Content)     │   │
-│   └─────────────────────────────────────────────┘   │
-└──────────────────┬──────────────────────────────────┘
-                   │
-                   ▼
-          AI Models / Internet
-     (Bedrock, Vertex AI, Azure OAI)
-```
+*PAN-CNI traffic redirection through the AIRS firewall:*
+
+![PAN-CNI traffic flow showing annotated pods redirected through PAN-CNI DaemonSet to AIRS AI Runtime Firewall for inspection before reaching AI Models or Internet](airs-k8s-pan-cni-flow.drawio.svg)
 
 **Two protection levels:**
 
@@ -60,18 +32,9 @@ The PAN-CNI plugin installs as a DaemonSet in the `kube-system` namespace. It ch
 
 Private Kubernetes clusters (with no public API server endpoint) cannot be directly monitored by the firewall for IP-to-tag mappings. A **Tag Collector Agent** deploys as a separate firewall instance that connects to private cluster API servers, harvests IP-tag information for pods, services, and namespaces, and redistributes those tags to the AIRS firewall.
 
-```
-Private K8s Cluster           Tag Collector Agent           AIRS Firewall
-┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-│  Private API      │      │  Polls K8s API    │      │  Receives tags   │
-│  Server            │ ◄──── │  Harvests IP-tag  │ ────► │  via CIE/redistr.│
-│                    │      │  mappings          │      │  Creates DAGs    │
-│  Pods / Services   │      │  (PAN-OS 11.2.10+)│      │  Enforces policy │
-└──────────────────┘      └──────────────────┘      └──────────────────┘
-          ▲                         │
-          │       TGW / VNet        │
-          └────── Peering ──────────┘
-```
+*Tag Collector Agent architecture for private Kubernetes clusters:*
+
+![Tag Collector Agent polls private K8s cluster API, harvests IP-tag mappings, and redistributes to AIRS Firewall for DAG-based policy enforcement via TGW/VNet peering](airs-k8s-tag-collector.drawio.svg)
 
 > **Warning: Private Clusters Only (AWS and Azure)**
 >

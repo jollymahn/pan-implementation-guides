@@ -31,42 +31,9 @@ Prisma AIRS is a comprehensive AI security platform with four components. This g
 
 API Intercept sits between your application code and the AI model. Your application sends prompts and responses to the Scan API for threat assessment *before* forwarding to or returning from the AI model.
 
-```
-                                    Prisma AIRS Scan API
-                             ┌─────────────────────────┐
-                             │   Threat Detection       │
-                             │  ┌───────────────────┐   │
-                             │  │ Prompt Injection   │   │
-                             │  │ DLP / Sensitive    │   │
-                             │  │ Toxic Content      │   │
-                             │  │ Malicious Code     │   │
-                             │  │ URL Categorization │   │
-                             │  │ Topic Guardrails   │   │
-                             │  │ DB Security        │   │
-                             │  │ Agent Threats      │   │
-                             │  └───────────────────┘   │
-                             └──────────┬──────────────┘
-                                        │
-               verdict: allow/block     │   x-pan-token auth
-                                        │
-    ┌──────────┐    1. Scan prompt     ┌───┴───┐    3. Forward if allowed    ┌──────────┐
-    │          │ ──────────────────► │       │ ──────────────────────────► │          │
-    │   User   │                    │  Your │                            │ AI Model │
-    │          │ ◄────────────────── │  App  │ ◄────────────────────────── │          │
-    └──────────┘  5. Return response  └───┬───┘  4. Scan response          └──────────┘
-                     (if allowed)         │                            (OpenAI, Bedrock,
-                                        │                             Vertex AI, Azure
-                                        ▼                             OpenAI, or any
-                              Strata Cloud Manager                     model provider)
-                              Logs, Discovery, Policy
-```
+*Request/response scanning flow through the Prisma AIRS Scan API:*
 
-**Key flow:**
-
-1. **Pre-model scan** — Your app sends the user's prompt to the Scan API. The API evaluates it against your AI security profile and returns a verdict (`allow` or `block`) with detection details.
-2. **Forward or block** — If the verdict is `allow`, your app forwards the prompt to the AI model. If `block`, your app returns an appropriate error to the user.
-3. **Post-model scan** — After receiving the AI model's response, your app sends it to the Scan API for response scanning (DLP, toxic content, malicious code, etc.).
-4. **Return or block** — If the response passes, return it to the user. If threats are detected, handle appropriately (mask sensitive data, block toxic content, etc.).
+![API Intercept traffic flow showing 5-step scanning: user prompt to app, app scans via Scan API, forwards to AI model if allowed, scans response, returns to user if allowed](airs-api-intercept-traffic-flow.drawio.svg)
 
 > **Note:** API Intercept works with **any AI model** — public, private, or self-hosted. The Scan API evaluates the content of prompts and responses regardless of which model generates them. Your application controls the integration flow.
 

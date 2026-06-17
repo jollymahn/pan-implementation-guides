@@ -30,26 +30,9 @@ Microperimeter provides L7-aware secure microsegmentation for east-west traffic 
 
 The architecture uses a hairpin traffic pattern. All packets undergo inspection before reaching their destination. Redirection operates on both inbound and outbound directions.
 
-```
-   Linux Workload                              Prisma AIRS Firewall
-   ┌───────────────────────┐                    ┌───────────────────────┐
-   │                       │                    │                       │
-   │  Application          │                    │  L7 Security Engine    │
-   │       │                │                    │  ┌─────────────────┐ │
-   │       ▼                │                    │  │ Decapsulate     │ │
-   │  ┌─────────────┐      │     GENEVE Tunnel    │  │ L7 Inspect      │ │
-   │  │ panredirect │      │     UDP 6081       │  │ Re-encapsulate  │ │
-   │  │  agent      │ ─────┼──────────────────►│  └─────────────────┘ │
-   │  └─────────────┘      │                    │          │            │
-   │       ▲                │                    │          │            │
-   │       │                │◄───────────────────┼──────────┘            │
-   │  ┌─────────────┐      │     Inspected       │                       │
-   │  │  pangnv0    │      │     Traffic        │  Data Interface (L3)  │
-   │  │  MTU 1440   │      │                    │  Static IPv4          │
-   │  └─────────────┘      │                    │  Dedicated Zone/VR    │
-   │                       │                    │                       │
-   └───────────────────────┘                    └───────────────────────┘
-```
+*Hairpin traffic pattern — GENEVE encapsulation to the AIRS firewall and back:*
+
+![Microperimeter hairpin traffic pattern showing Linux workload with panredirect agent encapsulating traffic via GENEVE tunnel (UDP 6081) to Prisma AIRS Firewall L7 Security Engine for inspection and return](airs-microperimeter-hairpin.drawio.svg)
 
 **Four-step flow:**
 
