@@ -30,48 +30,9 @@ Prisma AIRS is a comprehensive AI security platform with four components. This g
 
 Network Intercept deploys an inline firewall between your applications and AI models. All four traffic types pass through the firewall for inspection without requiring application code changes.
 
-```
-                           Prisma AIRS AI Runtime Firewall
-                    ┌──────────────────────────────────┐
-                    │    Cloud-Delivered Security        │
-                    │  ┌────────────────────────────┐  │
-                    │  │ AI Security Profile         │  │
-                    │  │  ├─ Prompt Injection        │  │
-                    │  │  ├─ Toxic Content           │  │
-                    │  │  ├─ URL Categorization      │  │
-                    │  │  ├─ DLP / Data Protection   │  │
-                    │  │  └─ Database Security       │  │
-                    │  ├────────────────────────────┤  │
-                    │  │ + ATP, WildFire, DNS Sec    │  │
-                    │  │ + Advanced URL Filtering    │  │
-                    │  └────────────────────────────┘  │
-                    └──────────┬───────────────────────┘
-                               │
-    1. User-to-App             │              3. App-to-Model
-    ┌──────────┐               │               ┌──────────────┐
-    │          │ ─────────────►│◄───────────── │              │
-    │  Users   │               │               │  AI Models   │
-    │          │ ◄─────────────│──────────────►│  (Bedrock,   │
-    └──────────┘               │               │   Vertex AI, │
-                               │               │   Azure OAI) │
-    2. App-to-App              │               └──────────────┘
-    ┌──────────┐               │
-    │  App A   │ ─────────────►│               4. App-to-Internet
-    │          │ ◄─────────────│               ┌──────────────┐
-    │  App B   │               │──────────────►│   Internet   │
-    └──────────┘               │               └──────────────┘
-                               │
-                               ▼
-                     Strata Cloud Manager
-                     Logs, Discovery, Policy
-```
+*Traffic flow through the Prisma AIRS AI Runtime Firewall:*
 
-**Four traffic types inspected:**
-
-1. **User-to-App** -- Inbound traffic from end users to AI-powered applications. Detects prompt injection attempts and malicious inputs.
-2. **App-to-App** -- East-west traffic between applications (including container-to-container). Inspects inter-service communication for threats.
-3. **App-to-Model** -- Traffic from applications to AI model endpoints (Amazon Bedrock, Google Vertex AI, Azure OpenAI). Core AI security inspection point.
-4. **App-to-Internet** -- Outbound traffic from applications to external services. Detects data exfiltration and malicious destinations.
+![Network Intercept traffic flow diagram showing four traffic types (User-to-App, App-to-App, App-to-Model, App-to-Internet) inspected inline by the Prisma AIRS AI Runtime Firewall with Cloud-Delivered Security services](airs-network-intercept-traffic-flow.drawio.svg)
 
 > **Note: No Application Code Changes**
 >
