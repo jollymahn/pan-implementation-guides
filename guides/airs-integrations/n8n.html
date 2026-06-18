@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>n8n + Prisma AIRS Runtime Security | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+<style>
+  .coverage-table td:nth-child(2) { text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">n8n + AIRS</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="../bootstrap/vm-series-bootstrap.html">Bootstrap</a>
+    <a href="../../globalprotect/index.html">GlobalProtect</a>
+    <a href="../../scm-onboarding/index.html">SCM</a>
+    <a href="../cloud-identity-engine/cie-implementation.html">CIE</a>
+    <a href="../../index.html#airs">AIRS</a>
+    <a href="index.html" class="active">AIRS Integrations</a>
+    <a href="../cngfw/cloud-ngfw-deployment.html">CNGFW</a>
+    <a href="../panorama-cli/panos-cli-reference.html">PanOS CLI</a>
+  </nav>
+</header>
+
+<!-- Layout -->
+<div class="layout">
+
+<!-- Sidebar -->
+<div class="sidebar-backdrop"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#architecture" data-section="architecture">Architecture</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Setup</div>
+    <a href="#prerequisites" data-section="prerequisites">Phase 1: Prerequisites</a>
+    <a href="#credentials" data-section="credentials">Phase 2: Credential Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configuration</div>
+    <a href="#workflow-config" data-section="workflow-config">Phase 3: Workflow Configuration</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Validate</div>
+    <a href="#verification" data-section="verification">Phase 4: Verification</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../../index.html#airs">AIRS</a>
+  <span class="sep">|</span>
+  <a href="index.html">Integrations</a>
+  <span class="sep">|</span>
+  n8n
+</div>
+
+<div class="article">
+
+<h1>n8n: Prisma AIRS Runtime Security</h1>
+<p class="subtitle">Add AI prompt and response scanning to n8n workflow automations using the Prisma AIRS community node</p>
+
+<!-- Phase Progress -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#credentials" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Credentials
+  </a>
+  <a href="#workflow-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Workflow
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Runtime Security (API Key Auth)</div>
+  <p>This guide integrates <strong>Prisma AIRS Runtime Security</strong> &mdash; real-time scanning of AI prompts and responses during workflow execution. Unlike the GitHub Actions and Jenkins integrations (which use Model Security with OAuth2), n8n uses a standard <strong>AIRS API key</strong> (<code>x-pan-token</code>) and an <strong>AI Profile Name</strong> to call the Runtime Security Scan API.</p>
+  <p>Two integration paths are available: the official <strong>Prisma AIRS community node</strong> (recommended) or direct <strong>HTTP Request nodes</strong> calling the Scan API. This guide covers both approaches.</p>
+</div>
+
+<!-- Coverage Table -->
+<table class="coverage-table">
+  <thead>
+    <tr><th>Scanning Phase</th><th>Supported</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Prompt</td><td>&#9989;</td><td>"Prompt Scan" operation scans user input for threats</td></tr>
+    <tr><td>Response</td><td>&#9989;</td><td>"Response Scan" operation scans AI-generated responses</td></tr>
+    <tr><td>Streaming</td><td>&#10060;</td><td>Node processes complete responses after generation</td></tr>
+    <tr><td>Pre-tool call</td><td>&#10060;</td><td>Workflow-based &mdash; not automatic tool interception</td></tr>
+    <tr><td>Post-tool call</td><td>&#10060;</td><td>Tool result scanning not implemented</td></tr>
+  </tbody>
+</table>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE                                                  -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture">Architecture Overview</h2>
+
+<p>The n8n integration places Prisma AIRS scan nodes at two points in a workflow: before the user prompt reaches the AI model (prompt scan) and after the AI model generates a response (response scan). Each scan returns an <code>allow</code> or <code>block</code> verdict. An IF node routes blocked content to a handler that returns a safe message instead of the flagged content.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Workflow Flow</div>
+  <ol>
+    <li><strong>Trigger</strong> &mdash; Chat message or manual trigger receives user input.</li>
+    <li><strong>Prompt Scan</strong> &mdash; Prisma AIRS scans the user prompt for injection, PII, malicious URLs, and other threats.</li>
+    <li><strong>Route</strong> &mdash; IF node checks the scan verdict. Blocked prompts are logged and a safe message is returned.</li>
+    <li><strong>AI Model</strong> &mdash; Allowed prompts are forwarded to the AI model (OpenAI, Anthropic, Google Vertex, Ollama, etc.).</li>
+    <li><strong>Response Scan</strong> &mdash; Prisma AIRS scans the AI-generated response for data leakage, malicious code, and policy violations.</li>
+    <li><strong>Route</strong> &mdash; IF node checks the response verdict. Blocked responses are replaced with a safe message.</li>
+    <li><strong>Deliver</strong> &mdash; Allowed responses are returned to the user.</li>
+  </ol>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Community Node vs HTTP Request</div>
+  <ul>
+    <li><strong>Community node</strong> (<code>@paloaltonetworks/n8n-nodes-prisma-airs</code>) &mdash; provides a purpose-built UI with operation dropdowns (Prompt Scan, Response Scan, Dual Scan, Batch Scan, Mask Data). Credential management is handled natively. Recommended for most deployments.</li>
+    <li><strong>HTTP Request node</strong> &mdash; calls the Prisma AIRS Scan API directly. Provides full control over request headers and body. Use when custom headers, metadata, or <code>tr_id</code> correlation are required.</li>
+  </ul>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                       -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1: Confirm n8n Instance Access</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Prisma AIRS community node requires instance owner permissions for installation.</p>
+
+    <ol>
+      <li>Open the n8n instance (Cloud or self-hosted).</li>
+      <li>Navigate to <code>Settings</code> &gt; <code>Community Nodes</code>.</li>
+      <li>Confirm the <code>Community Nodes</code> page loads and the <code>Install</code> button is visible.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Self-Hosted Setup</div>
+      <p>For a new self-hosted instance, follow the <a href="https://docs.n8n.io/hosting/installation/docker/">n8n Docker installation guide</a>. Ensure the instance has outbound internet access to reach the npm registry and the Prisma AIRS API endpoints.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>Settings</code> &gt; <code>Community Nodes</code> page loads. The account has owner-level permissions to install nodes.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2: Confirm Prisma AIRS License and API Key</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Runtime Security requires an active Prisma AIRS license, a configured AI Security Profile, and an API key.</p>
+
+    <ol>
+      <li>Log in to <a href="https://www.strata.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+      <li>Navigate to <code>AI Access Security</code>.</li>
+      <li>Confirm a <strong>Security Profile</strong> (AI Profile) exists and note its exact name (case-sensitive).</li>
+      <li>Obtain or generate an <strong>AIRS API key</strong> (this is the <code>x-pan-token</code> value).</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Regional API Endpoints</div>
+      <p>The Prisma AIRS API is available in multiple regions. The community node uses the US endpoint by default. For other regions, use HTTP Request nodes with the appropriate base URL:</p>
+      <table>
+        <thead>
+          <tr><th>Region</th><th>Base URL</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>US</td><td><code>https://service.api.aisecurity.paloaltonetworks.com</code></td></tr>
+          <tr><td>EU</td><td><code>https://service.api.aisecurity.eu.paloaltonetworks.com</code></td></tr>
+          <tr><td>India</td><td><code>https://service.api.aisecurity.in.paloaltonetworks.com</code></td></tr>
+          <tr><td>Singapore</td><td><code>https://service.api.aisecurity.sg.paloaltonetworks.com</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The AI Security Profile name and AIRS API key are recorded. The regional API endpoint is identified.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3: Install the Prisma AIRS Community Node</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The community node provides a native n8n interface for Prisma AIRS scan operations.</p>
+
+    <ol>
+      <li>In n8n, navigate to <code>Settings</code> &gt; <code>Community Nodes</code>.</li>
+      <li>Click <code>Install a community node</code>.</li>
+      <li>Enter <code>@paloaltonetworks/n8n-nodes-prisma-airs</code> in the search field (or visit the <a href="https://www.npmjs.com/package/@paloaltonetworks/n8n-nodes-prisma-airs">npm package page</a>).</li>
+      <li>Click <code>Install</code>.</li>
+      <li>Restart the n8n instance if prompted.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>@paloaltonetworks/n8n-nodes-prisma-airs</code> node appears in the <code>Community Nodes</code> list. Adding a new node to a workflow and searching for <code>Prisma AIRS</code> returns the node.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: CREDENTIAL SETUP                                    -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="credentials">Phase 2: Credential Setup</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.1: Create Prisma AIRS API Credentials in n8n</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The community node uses n8n's built-in credential system to store the API key and profile name securely.</p>
+
+    <ol>
+      <li>In n8n, navigate to <code>Credentials</code> from the left-hand menu.</li>
+      <li>Click <code>Add Credential</code>.</li>
+      <li>Search for and select <code>Prisma AIRS API</code>.</li>
+      <li>Fill in the credential fields:</li>
+    </ol>
+
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Value</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>API Key</code></td><td>AIRS API key from Step 1.2</td><td>The <code>x-pan-token</code> value used for API authentication</td></tr>
+        <tr><td><code>AI Profile Name</code></td><td>Profile name from Step 1.2</td><td>Exact name (case-sensitive) of the AI Security Profile configured in Strata Cloud Manager</td></tr>
+      </tbody>
+    </table>
+
+    <ol start="5">
+      <li>Click <code>Save</code>.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The credential appears in the <code>Credentials</code> list with type <code>Prisma AIRS API</code>. Click the credential to confirm both fields are populated (the API key is masked).</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: WORKFLOW CONFIGURATION                               -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="workflow-config">Phase 3: Workflow Configuration</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.1: Build a Prompt Scan Workflow (Community Node)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This step builds a minimal workflow that scans user prompts before forwarding them to an AI model. The community node handles API authentication and request formatting.</p>
+
+    <ol>
+      <li>Create a new workflow in n8n.</li>
+      <li>Add a trigger node:
+        <ul>
+          <li><strong>Chat Trigger</strong> for interactive chat workflows, or</li>
+          <li><strong>Manual Trigger</strong> for testing.</li>
+        </ul>
+      </li>
+      <li>Add a <strong>Prisma AIRS</strong> node after the trigger.</li>
+      <li>In the node properties:
+        <ul>
+          <li>Select the credential created in <a href="#credentials">Step 2.1</a>.</li>
+          <li>Set <strong>Operation</strong> to <code>Prompt Scan</code>.</li>
+          <li>Set <strong>Content</strong> to the expression referencing the trigger output (e.g., <code>{{ $json.chatInput }}</code>).</li>
+        </ul>
+      </li>
+      <li>Add an <strong>IF</strong> node after the Prisma AIRS node.</li>
+      <li>Configure the IF condition:
+        <ul>
+          <li><strong>Value 1</strong>: <code>{{ $json.action }}</code></li>
+          <li><strong>Operation</strong>: <code>equals</code></li>
+          <li><strong>Value 2</strong>: <code>block</code></li>
+        </ul>
+      </li>
+      <li>Connect the <strong>true</strong> (blocked) output to a <strong>Set</strong> node that returns a safe message (e.g., <code>Content blocked by security policy</code>).</li>
+      <li>Connect the <strong>false</strong> (allowed) output to the AI model node.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Available Operations</div>
+      <p>The community node supports five operations:</p>
+      <table>
+        <thead>
+          <tr><th>Operation</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>Prompt Scan</code></td><td>Scans user input for threats (injection, PII, malicious URLs)</td></tr>
+          <tr><td><code>Response Scan</code></td><td>Scans AI-generated responses for policy violations</td></tr>
+          <tr><td><code>Dual Scan</code></td><td>Scans both a prompt and response in a single operation</td></tr>
+          <tr><td><code>Batch Scan</code></td><td>Scans up to 5 items in a single API call</td></tr>
+          <tr><td><code>Mask Data</code></td><td>Scans content and masks sensitive data found within it</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The workflow has a trigger node connected to a Prisma AIRS node connected to an IF node. The IF node has two outputs: blocked (safe message) and allowed (AI model).</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.2: Add Response Scanning</span>
+  </div>
+  <div class="collapsible-body">
+    <p>After the AI model generates a response, add a second scan to check the output for data leakage, malicious code, and policy violations before returning it to the user.</p>
+
+    <ol>
+      <li>After the AI model node, add a <strong>Code</strong> node (optional) to clean the response text &mdash; normalize line endings, collapse excessive whitespace.</li>
+      <li>Add a second <strong>Prisma AIRS</strong> node.</li>
+      <li>In the node properties:
+        <ul>
+          <li>Select the same credential from <a href="#credentials">Step 2.1</a>.</li>
+          <li>Set <strong>Operation</strong> to <code>Response Scan</code>.</li>
+          <li>Set <strong>Content</strong> to the expression referencing the AI model output (e.g., <code>{{ $json.output }}</code>).</li>
+        </ul>
+      </li>
+      <li>Add a second <strong>IF</strong> node to check the response scan verdict (<code>{{ $json.action }}</code> equals <code>block</code>).</li>
+      <li>Connect the <strong>true</strong> (blocked) output to a <strong>Set</strong> node returning <code>Response blocked by security policy</code>.</li>
+      <li>Connect the <strong>false</strong> (allowed) output to the final output node.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The workflow now has two Prisma AIRS scan nodes: one for prompt scanning (before the AI model) and one for response scanning (after the AI model). Both feed into IF nodes that route blocked content to safe message handlers.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.3: Alternative &mdash; Use HTTP Request Nodes</span>
+  </div>
+  <div class="collapsible-body">
+    <p>For deployments requiring custom headers, <code>tr_id</code> correlation, or non-US regional endpoints, use the HTTP Request node to call the Prisma AIRS Scan API directly.</p>
+
+    <h4>Prompt Scan via HTTP Request</h4>
+
+    <p>Add an <strong>HTTP Request</strong> node with the following configuration:</p>
+
+    <table>
+      <thead>
+        <tr><th>Setting</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Method</td><td><code>POST</code></td></tr>
+        <tr><td>URL</td><td><code>https://service.api.aisecurity.paloaltonetworks.com/v1/scan/sync/request</code></td></tr>
+        <tr><td>Header: <code>Content-Type</code></td><td><code>application/json</code></td></tr>
+        <tr><td>Header: <code>x-pan-token</code></td><td><code>{{ $env.AIRS_API_KEY }}</code> (or hardcode the credential)</td></tr>
+        <tr><td>Body Type</td><td><code>JSON</code></td></tr>
+      </tbody>
+    </table>
+
+    <p>JSON body:</p>
+
+    <div class="code-block">
+      <pre><code>{
+  "tr_id": "{{ $execution.id }}-prompt",
+  "ai_profile": {
+    "profile_name": "YOUR_PROFILE_NAME"
+  },
+  "metadata": {
+    "app_user": "n8n-user",
+    "ai_model": "{{ $json.ai_model }}",
+    "application_name": "n8n-airs-integration"
+  },
+  "contents": [
+    {
+      "prompt": "{{ $json.prompt }}"
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">tr_id for Correlation</div>
+      <p>The <code>tr_id</code> field provides a unique identifier for each scan request. Using the n8n execution ID (<code>{{ $execution.id }}</code>) with a <code>-prompt</code> or <code>-response</code> suffix enables correlating scan results in Strata Cloud Manager back to the specific n8n workflow execution.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Environment Variables vs Hardcoded Values</div>
+      <p>The example uses <code>$env.AIRS_API_KEY</code> and <code>$env.AIRS_API_PROFILE_NAME</code>. For self-hosted n8n, set these as environment variables in the Docker configuration or <code>.env</code> file. For n8n Cloud, use the community node's built-in credential system instead.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The HTTP Request node is configured with the correct URL, headers, and JSON body. The <code>x-pan-token</code> header is populated. The response from the Prisma AIRS API contains an <code>action</code> field with value <code>allow</code> or <code>block</code>.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: VERIFICATION                                        -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="verification">Phase 4: Verification</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1: Test with a Safe Prompt</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run the workflow with a benign prompt to confirm the end-to-end flow works.</p>
+
+    <ol>
+      <li>Open the workflow in the n8n editor.</li>
+      <li>Click <code>Execute Workflow</code> (or send a chat message if using the Chat Trigger).</li>
+      <li>Provide a safe test prompt, e.g., <code>What is the capital of France?</code></li>
+      <li>Observe the workflow execution: the Prisma AIRS prompt scan node should return <code>action: allow</code>.</li>
+      <li>The prompt flows to the AI model, generates a response, passes the response scan, and returns to the user.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The workflow completes end-to-end. Both Prisma AIRS nodes show <code>action: allow</code> in their output. The final output contains the AI model's response.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.2: Test with a Blocked Prompt</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run the workflow with a prompt designed to trigger the security profile's block rules to confirm the block path works.</p>
+
+    <ol>
+      <li>Send a prompt that matches one of the security profile's detection categories (e.g., a prompt containing sensitive data patterns or a known injection attempt).</li>
+      <li>Observe the workflow execution: the Prisma AIRS prompt scan node should return <code>action: block</code>.</li>
+      <li>The IF node routes to the block handler, which returns the safe message instead of forwarding to the AI model.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Testing Blocked Content</div>
+      <p>Use test patterns appropriate to the security profile's configured rules. Consult the <a href="https://pan.dev/prisma-airs/api/airuntimesecurity/usecases/">Prisma AIRS use cases documentation</a> for detection categories and example patterns. Do not use actual sensitive data for testing.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Prisma AIRS node output shows <code>action: block</code> with a <code>category</code> indicating the matched detection rule. The workflow returns the safe message. The AI model node did not execute.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.3: Verify in Strata Cloud Manager</span>
+  </div>
+  <div class="collapsible-body">
+    <p>All scan events are recorded in Strata Cloud Manager for monitoring and compliance.</p>
+
+    <ol>
+      <li>Log in to <a href="https://www.strata.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+      <li>Navigate to <code>AI Access Security</code> &gt; <code>Activity Logs</code>.</li>
+      <li>Locate the scan entries from the test workflow executions.</li>
+      <li>Confirm both the allowed and blocked scan results appear with the correct verdicts.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>If using HTTP Request nodes with a <code>tr_id</code> containing the n8n execution ID, filter by that identifier to correlate scan results with specific workflow runs.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both test scans (allowed and blocked) appear in the Strata Cloud Manager activity logs with the correct AI Profile name, verdicts, and detection categories.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                               -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Common Issues and Resolutions</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Issue</th><th>Cause</th><th>Resolution</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Community node not found in node list</td>
+          <td>Node installation incomplete or n8n not restarted</td>
+          <td>Navigate to <code>Settings</code> &gt; <code>Community Nodes</code> and confirm <code>@paloaltonetworks/n8n-nodes-prisma-airs</code> is listed. Restart the n8n instance if the node was recently installed.</td>
+        </tr>
+        <tr>
+          <td>Scan returns <code>401 Unauthorized</code></td>
+          <td>Invalid or expired API key</td>
+          <td>Verify the AIRS API key in the credential configuration. Generate a new key from Strata Cloud Manager if expired.</td>
+        </tr>
+        <tr>
+          <td>Scan returns <code>400 Bad Request</code></td>
+          <td>AI Profile Name mismatch or malformed request body</td>
+          <td>Verify the <code>AI Profile Name</code> in the credential matches the exact name (case-sensitive) in Strata Cloud Manager. For HTTP Request nodes, validate the JSON body structure against the <a href="https://pan.dev/airs/">API documentation</a>.</td>
+        </tr>
+        <tr>
+          <td>Timeout on scan request</td>
+          <td>Network connectivity or large content payload</td>
+          <td>Confirm the n8n instance can reach the Prisma AIRS API endpoint. Increase the HTTP Request timeout (default 30 seconds). For large payloads, check content size limits in the API documentation.</td>
+        </tr>
+        <tr>
+          <td>All prompts are allowed (nothing blocked)</td>
+          <td>Security profile rules are not configured or too permissive</td>
+          <td>Review the AI Security Profile in Strata Cloud Manager. Confirm detection categories are enabled and thresholds are set appropriately.</td>
+        </tr>
+        <tr>
+          <td>Expression <code>{{ $json.action }}</code> is undefined</td>
+          <td>Prisma AIRS node output structure does not match expected format</td>
+          <td>Check the actual output of the Prisma AIRS node by examining the node's output data panel. The verdict field path may differ between the community node and HTTP Request node responses.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Additional Resources</div>
+      <ul>
+        <li><a href="https://n8n.io/integrations/prisma-airs/">n8n Prisma AIRS integration page</a></li>
+        <li><a href="https://www.npmjs.com/package/@paloaltonetworks/n8n-nodes-prisma-airs">npm package: @paloaltonetworks/n8n-nodes-prisma-airs</a></li>
+        <li><a href="https://pan.dev/airs/">Prisma AIRS API documentation</a></li>
+        <li><a href="https://pan.dev/prisma-airs/api/airuntimesecurity/usecases/">Prisma AIRS use cases and detection categories</a></li>
+        <li><a href="https://docs.n8n.io/hosting/installation/docker/">n8n self-hosted installation guide</a></li>
+      </ul>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The troubleshooting table covers the issue encountered. If the issue persists, collect the n8n workflow execution log, the scan request/response payloads, and the AI Profile Name for a support case.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- Back to top -->
+<button class="back-to-top" onclick="scrollToTop()" aria-label="Back to top">&#9650;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>

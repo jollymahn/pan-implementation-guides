@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>GitHub Actions + Prisma AIRS Model Security | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+<style>
+  .coverage-table td:nth-child(2) { text-align: center; }
+  .file-tree {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    font-family: 'Source Code Pro', monospace;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">GitHub Actions + AIRS</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="../bootstrap/vm-series-bootstrap.html">Bootstrap</a>
+    <a href="../../globalprotect/index.html">GlobalProtect</a>
+    <a href="../../scm-onboarding/index.html">SCM</a>
+    <a href="../cloud-identity-engine/cie-implementation.html">CIE</a>
+    <a href="../../index.html#airs">AIRS</a>
+    <a href="index.html" class="active">AIRS Integrations</a>
+    <a href="../cngfw/cloud-ngfw-deployment.html">CNGFW</a>
+    <a href="../panorama-cli/panos-cli-reference.html">PanOS CLI</a>
+  </nav>
+</header>
+
+<!-- Layout -->
+<div class="layout">
+
+<!-- Sidebar -->
+<div class="sidebar-backdrop"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#architecture" data-section="architecture">Architecture</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Setup</div>
+    <a href="#prerequisites" data-section="prerequisites">Phase 1: Prerequisites</a>
+    <a href="#credentials" data-section="credentials">Phase 2: Credential Configuration</a>
+    <a href="#workflow-setup" data-section="workflow-setup">Phase 3: Workflow Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configuration</div>
+    <a href="#scan-config" data-section="scan-config">Phase 4: Scan Configuration</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Validate</div>
+    <a href="#verification" data-section="verification">Phase 5: Verification</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../../index.html#airs">AIRS</a>
+  <span class="sep">|</span>
+  <a href="index.html">Integrations</a>
+  <span class="sep">|</span>
+  GitHub Actions
+</div>
+
+<div class="article">
+
+<h1>GitHub Actions: Prisma AIRS Model Security</h1>
+<p class="subtitle">Add pre-deployment AI model scanning to GitHub Actions CI/CD pipelines using the Prisma AIRS Model Security SDK</p>
+
+<!-- Phase Progress -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#credentials" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Credentials
+  </a>
+  <a href="#workflow-setup" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Workflow
+  </a>
+  <a href="#scan-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Scan Config
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Model Security, Not Runtime Security</div>
+  <p>This guide integrates <strong>Prisma AIRS Model Security</strong> &mdash; pre-deployment scanning of AI model files (weights, binaries, configs) before they reach production infrastructure. This is different from AI Runtime Security, which scans prompts and responses at inference time.</p>
+  <p>Model Security uses <strong>OAuth2 client credentials</strong> (Client ID + Client Secret from a Prisma Cloud Service Account), not an AIRS API key. The authentication flow, SDK, and API endpoints are distinct from the Runtime Security integrations covered in the other AIRS guides.</p>
+</div>
+
+<!-- Coverage Table -->
+<table class="coverage-table">
+  <thead>
+    <tr><th>Scanning Phase</th><th>Supported</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Model file scan</td><td>&#9989;</td><td>Scans model weights/binaries for security risks before deployment</td></tr>
+    <tr><td>Prompt</td><td>N/A</td><td>Use an AI Runtime Security integration for prompt scanning</td></tr>
+    <tr><td>Response</td><td>N/A</td><td>Use an AI Runtime Security integration for response scanning</td></tr>
+    <tr><td>Streaming</td><td>N/A</td><td>Not applicable to model file scanning</td></tr>
+    <tr><td>Pre-tool call</td><td>N/A</td><td>Not applicable to model file scanning</td></tr>
+    <tr><td>Post-tool call</td><td>N/A</td><td>Not applicable to model file scanning</td></tr>
+  </tbody>
+</table>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE                                                  -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture">Architecture Overview</h2>
+
+<p>The GitHub Actions integration adds a security gate to the CI/CD pipeline. When an AI model configuration changes, the workflow authenticates with Prisma AIRS via OAuth2, installs the Model Security SDK from a private PyPI repository, and scans the model. A scan result of <code>ALLOWED</code> permits deployment; <code>BLOCKED</code> halts the pipeline and prevents the model from reaching production.</p>
+
+<div style="text-align:center; margin:1.5rem 0; overflow-x:auto;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" style="max-width:880px; width:100%; height:auto;">
+  <defs>
+    <marker id="gh-arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#006DCC"/>
+    </marker>
+    <marker id="gh-arrow-green" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22c55e"/>
+    </marker>
+    <marker id="gh-arrow-red" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444"/>
+    </marker>
+  </defs>
+
+  <!-- Step 1: Git Push -->
+  <rect x="20" y="130" width="130" height="60" rx="8" fill="#f7f8fa" stroke="#00294D" stroke-width="2"/>
+  <text x="85" y="155" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#00294D">Git Push</text>
+  <text x="85" y="175" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">model-config.yaml</text>
+
+  <!-- Arrow 1 -->
+  <line x1="150" y1="160" x2="190" y2="160" stroke="#006DCC" stroke-width="2" marker-end="url(#gh-arrow)"/>
+
+  <!-- Step 2: GitHub Actions -->
+  <rect x="195" y="120" width="140" height="80" rx="8" fill="#f7f8fa" stroke="#00294D" stroke-width="2"/>
+  <rect x="195" y="120" width="140" height="26" rx="8" fill="#00294D"/>
+  <text x="265" y="138" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff">GitHub Actions</text>
+  <text x="265" y="163" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Detect Changes</text>
+  <text x="265" y="178" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Setup Python 3.11</text>
+  <text x="265" y="193" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Install SDK</text>
+
+  <!-- Arrow 2 -->
+  <line x1="335" y1="160" x2="385" y2="160" stroke="#006DCC" stroke-width="2" marker-end="url(#gh-arrow)"/>
+
+  <!-- Step 3: OAuth2 Auth -->
+  <rect x="390" y="120" width="140" height="80" rx="8" fill="#fffbeb" stroke="#FFB81C" stroke-width="2"/>
+  <rect x="390" y="120" width="140" height="26" rx="8" fill="#FFB81C"/>
+  <text x="460" y="138" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#00294D">OAuth2 Auth</text>
+  <text x="460" y="163" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Client ID + Secret</text>
+  <text x="460" y="178" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Token Endpoint</text>
+  <text x="460" y="193" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Private PyPI URL</text>
+
+  <!-- Arrow 3 -->
+  <line x1="530" y1="160" x2="575" y2="160" stroke="#006DCC" stroke-width="2" marker-end="url(#gh-arrow)"/>
+
+  <!-- Step 4: AIRS Model Scan -->
+  <rect x="580" y="110" width="150" height="100" rx="8" fill="#e7f3ff" stroke="#006DCC" stroke-width="2"/>
+  <rect x="580" y="110" width="150" height="26" rx="8" fill="#006DCC"/>
+  <text x="655" y="128" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff">AIRS Model Scan</text>
+  <text x="655" y="153" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#333">Malware detection</text>
+  <text x="655" y="168" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#333">Vulnerability check</text>
+  <text x="655" y="183" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#333">Supply chain risk</text>
+  <text x="655" y="198" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#333">Compliance review</text>
+
+  <!-- Arrow to ALLOWED -->
+  <line x1="730" y1="140" x2="785" y2="80" stroke="#22c55e" stroke-width="2" marker-end="url(#gh-arrow-green)"/>
+
+  <!-- Arrow to BLOCKED -->
+  <line x1="730" y1="180" x2="785" y2="260" stroke="#ef4444" stroke-width="2" marker-end="url(#gh-arrow-red)"/>
+
+  <!-- ALLOWED box -->
+  <rect x="790" y="40" width="70" height="50" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="2"/>
+  <text x="825" y="60" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#22c55e">ALLOWED</text>
+  <text x="825" y="78" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Deploy</text>
+
+  <!-- BLOCKED box -->
+  <rect x="790" y="240" width="70" height="50" rx="8" fill="#fef2f2" stroke="#ef4444" stroke-width="2"/>
+  <text x="825" y="260" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ef4444">BLOCKED</text>
+  <text x="825" y="278" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Pipeline fails</text>
+
+  <!-- Legend -->
+  <text x="20" y="330" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">PR branches: scan only (no deploy) | Main branch: scan + deploy on ALLOWED</text>
+</svg>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">What Gets Scanned</div>
+  <p>Prisma AIRS Model Security evaluates AI model files for:</p>
+  <ul>
+    <li><strong>Model provenance and supply chain risks</strong> &mdash; verifying model source and integrity</li>
+    <li><strong>Known vulnerabilities</strong> &mdash; checking against CVEs and security advisories</li>
+    <li><strong>Malicious payloads</strong> &mdash; detecting embedded malicious code or backdoors in model weights</li>
+    <li><strong>Compliance violations</strong> &mdash; ensuring models meet organizational security policies</li>
+    <li><strong>Training data risks</strong> &mdash; identifying potential data poisoning indicators</li>
+  </ul>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                       -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1: Confirm GitHub Repository Access</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The GitHub Actions workflow requires a repository with Actions enabled and sufficient permissions to create secrets.</p>
+
+    <ol>
+      <li>Open the target GitHub repository.</li>
+      <li>Navigate to <code>Settings</code> &gt; <code>Actions</code> &gt; <code>General</code>.</li>
+      <li>Confirm <strong>Actions permissions</strong> is set to <code>Allow all actions and reusable workflows</code> (or a policy that permits the required actions).</li>
+      <li>Confirm the account has <code>Admin</code> or <code>Maintain</code> role on the repository (required to create repository secrets).</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>Settings</code> &gt; <code>Actions</code> page loads without permission errors, and the <code>Secrets and variables</code> submenu is visible in the left sidebar.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2: Confirm Prisma AIRS Model Security License</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Model Security scanning requires an active Prisma AIRS subscription with the Model Security add-on enabled.</p>
+
+    <ol>
+      <li>Log in to <a href="https://www.strata.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+      <li>Navigate to <code>AI Access Security</code>.</li>
+      <li>Confirm the <strong>Model Security</strong> section is visible and accessible.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>If Model Security is not visible, contact the Palo Alto Networks account team to enable the add-on. The <a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-model-security">Model Security documentation</a> covers licensing prerequisites.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>Model Security</code> dashboard loads and displays scan activity logs (empty is fine for new deployments).</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3: Create a Prisma Cloud Service Account</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The CI/CD pipeline authenticates with Prisma AIRS using OAuth2 client credentials from a dedicated service account.</p>
+
+    <ol>
+      <li>In Strata Cloud Manager, navigate to <code>Settings</code> &gt; <code>Identity &amp; Access</code> &gt; <code>Service Accounts</code>.</li>
+      <li>Click <code>Add</code> &gt; <code>Add Service Account</code>.</li>
+      <li>Set <strong>Name</strong> to a descriptive identifier (e.g., <code>github-actions-model-security</code>).</li>
+      <li>Assign the appropriate role for Model Security API access.</li>
+      <li>Click <code>Save</code>.</li>
+      <li>Record the <strong>Client ID</strong> and <strong>Client Secret</strong> immediately &mdash; the secret is shown only once.</li>
+      <li>Note the <strong>TSG ID</strong> (Tenant Service Group ID) from the account details page.</li>
+    </ol>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Store Credentials Securely</div>
+      <p>The Client Secret cannot be retrieved after initial creation. Store it in a password manager or secrets vault before navigating away from the page.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The service account appears in the <code>Service Accounts</code> list with status <code>Active</code>. The Client ID, Client Secret, and TSG ID are recorded.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4: Configure a Model Security Profile</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The security profile defines which scan rules and thresholds apply to model evaluations. The scan script references this profile by its UUID.</p>
+
+    <ol>
+      <li>In Strata Cloud Manager, navigate to <code>AI Access Security</code> &gt; <code>Model Security</code>.</li>
+      <li>Create or select a <strong>Security Profile</strong> (also called a Security Group).</li>
+      <li>Configure the desired scan rules &mdash; malware detection, vulnerability checks, compliance policies.</li>
+      <li>Save the profile and record the <strong>Profile UUID</strong> from the profile details.</li>
+      <li>Note the <strong>API Endpoint URL</strong> (e.g., <code>https://api.sase.paloaltonetworks.com/aims</code>).</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The security profile appears in the list with at least one scan rule enabled. The Profile UUID and API Endpoint URL are recorded.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: CREDENTIAL CONFIGURATION                            -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="credentials">Phase 2: Credential Configuration</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.1: Create GitHub Actions Secrets for Model Security</span>
+  </div>
+  <div class="collapsible-body">
+    <p>GitHub Actions secrets store the OAuth2 credentials and scan configuration. The workflow references these secrets as environment variables at runtime.</p>
+
+    <ol>
+      <li>Open the GitHub repository and navigate to <code>Settings</code> &gt; <code>Secrets and variables</code> &gt; <code>Actions</code>.</li>
+      <li>Click <code>New repository secret</code> and create each secret listed below.</li>
+    </ol>
+
+    <table>
+      <thead>
+        <tr><th>Secret Name</th><th>Value</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>MODEL_SECURITY_CLIENT_ID</code></td><td>Client ID from Step 1.3</td><td>OAuth2 client ID for Prisma AIRS authentication</td></tr>
+        <tr><td><code>MODEL_SECURITY_CLIENT_SECRET</code></td><td>Client Secret from Step 1.3</td><td>OAuth2 client secret for Prisma AIRS authentication</td></tr>
+        <tr><td><code>MODEL_SECURITY_PROFILE_ID</code></td><td>Profile UUID from Step 1.4</td><td>Security profile UUID that defines scan rules</td></tr>
+        <tr><td><code>MODEL_SECURITY_API_ENDPOINT</code></td><td>API Endpoint from Step 1.4</td><td>Prisma AIRS API base URL</td></tr>
+        <tr><td><code>TSG_ID</code></td><td>TSG ID from Step 1.3</td><td>Tenant Service Group identifier</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Different From Runtime Security Secrets</div>
+      <p>These secrets are <strong>not</strong> the same as <code>PRISMA_AIRS_API_KEY</code>, <code>PRISMA_AIRS_PROFILE_NAME</code>, or <code>PRISMA_AIRS_URL</code> used by AI Runtime Security integrations. Model Security uses OAuth2 client credentials and communicates through the Model Security SDK, not the Runtime Scan API.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All five secrets appear in the <code>Repository secrets</code> list with <code>Updated</code> timestamps. Each shows as a masked value &mdash; exact values are never displayed after creation.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: WORKFLOW SETUP                                       -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="workflow-setup">Phase 3: Workflow Setup</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.1: Understand the Repository Structure</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The integration requires three categories of files: the GitHub Actions workflow definition, the authentication and scan scripts, and a model configuration file that triggers the pipeline.</p>
+
+    <div class="file-tree">.
+├── .github/
+│   └── workflows/
+│       └── model-security-scan.yml    # GitHub Actions workflow definition
+├── config/
+│   └── model-config.yaml             # Model configuration (pipeline trigger)
+├── scripts/
+│   ├── scan_model.py                 # Prisma AIRS Model Security scan script
+│   └── get_pypi_url.sh               # Private PyPI authentication script
+├── requirements.txt                  # Python dependencies (pyyaml, python-dotenv)
+└── README.md</div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>The reference implementation includes optional deployment scripts (<code>deploy_model.sh</code>, <code>test_model.py</code>, <code>undeploy_model.sh</code>) targeting Google Cloud Vertex AI. Replace these with deployment logic for the target infrastructure (AWS SageMaker, Azure ML, on-premises, etc.).</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The file structure is understood. Proceed to create each file in the following steps.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.2: Create the PyPI Authentication Script</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Model Security SDK is distributed through a private PyPI repository. This script authenticates with the Prisma AIRS token endpoint to obtain an access token, then uses that token to retrieve the private PyPI URL.</p>
+
+    <p>Create <code>scripts/get_pypi_url.sh</code>:</p>
+
+    <div class="code-block">
+      <pre><code>#!/bin/bash
+#
+# Model Security Private PyPI Authentication Script
+# Authenticates with SCM and retrieves PyPI repository URL
+#
+
+set -euo pipefail
+
+# Check required environment variables
+: "${MODEL_SECURITY_CLIENT_ID:?Error: MODEL_SECURITY_CLIENT_ID not set}"
+: "${MODEL_SECURITY_CLIENT_SECRET:?Error: MODEL_SECURITY_CLIENT_SECRET not set}"
+: "${TSG_ID:?Error: TSG_ID not set}"
+
+# Set default endpoints
+API_ENDPOINT="${MODEL_SECURITY_API_ENDPOINT:-https://api.sase.paloaltonetworks.com/aims}"
+TOKEN_ENDPOINT="${MODEL_SECURITY_TOKEN_ENDPOINT:-https://auth.apps.paloaltonetworks.com/oauth2/access_token}"
+
+# Get SCM access token via OAuth2 client credentials
+TOKEN_RESPONSE=$(curl -sf -X POST "$TOKEN_ENDPOINT" \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -u "$MODEL_SECURITY_CLIENT_ID:$MODEL_SECURITY_CLIENT_SECRET" \
+    -d "grant_type=client_credentials&amp;scope=tsg_id:$TSG_ID") || {
+    echo "Error: Failed to obtain SCM access token" &gt;&amp;2
+    exit 1
+}
+
+SCM_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+if [[ -z "$SCM_TOKEN" || "$SCM_TOKEN" == "null" ]]; then
+    echo "Error: Failed to extract access token from response" &gt;&amp;2
+    exit 1
+fi
+
+# Use access token to retrieve private PyPI URL
+PYPI_RESPONSE=$(curl -sf -X GET "$API_ENDPOINT/mgmt/v1/pypi/authenticate" \
+    -H "Authorization: Bearer $SCM_TOKEN") || {
+    echo "Error: Failed to retrieve PyPI URL" &gt;&amp;2
+    exit 1
+}
+
+PYPI_URL=$(echo "$PYPI_RESPONSE" | jq -r '.url')
+if [[ -z "$PYPI_URL" || "$PYPI_URL" == "null" ]]; then
+    echo "Error: Failed to extract PyPI URL from response" &gt;&amp;2
+    exit 1
+fi
+
+echo "$PYPI_URL"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Make the script executable:</p>
+
+    <div class="code-block">
+      <pre><code>chmod +x scripts/get_pypi_url.sh</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">OAuth2 Authentication Flow</div>
+      <p>The script performs two API calls: (1) POST to the token endpoint at <code>https://auth.apps.paloaltonetworks.com/oauth2/access_token</code> with client credentials to get an access token, then (2) GET to the API endpoint's <code>/mgmt/v1/pypi/authenticate</code> path using that token to retrieve the private PyPI URL. The <code>jq</code> tool must be available on the runner.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The file <code>scripts/get_pypi_url.sh</code> exists, is executable, and contains the OAuth2 authentication logic.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.3: Create the Model Scan Script</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The scan script loads the model configuration, initializes the Model Security SDK client, and calls the scan API. A result of <code>BLOCKED</code> causes a non-zero exit, which fails the GitHub Actions job and prevents deployment.</p>
+
+    <p>Create <code>scripts/scan_model.py</code>:</p>
+
+    <div class="code-block">
+      <pre><code>#!/usr/bin/env python3
+"""
+Prisma AIRS Model Security Scanner
+
+Scans an AI model against Palo Alto Prisma AIRS security policies
+using the official Model Security SDK. Exits non-zero if the model
+fails the security assessment, blocking the CI/CD pipeline.
+"""
+
+import argparse
+import os
+import sys
+
+import yaml
+from dotenv import load_dotenv
+from model_security_client.api import ModelSecurityAPIClient
+
+load_dotenv()
+
+
+def print_scan_results(result, model_name):
+    """Pretty-print the scan results for CI log visibility."""
+    print()
+    print("=" * 64)
+    print("  PRISMA AIRS MODEL SECURITY SCAN RESULTS")
+    print("=" * 64)
+    print(f"  Model:        {model_name}")
+    print(f"  Scan UUID:    {getattr(result, 'uuid', 'N/A')}")
+    print(f"  Outcome:      {result.eval_outcome}")
+    print(f"  Summary:      {getattr(result, 'eval_summary', 'N/A')}")
+    print(f"  Sec. Group:   {getattr(result, 'security_group_name', 'N/A')}")
+    print(f"  Rules:        {getattr(result, 'enabled_rule_count_snapshot', 'N/A')}")
+    print(f"  Files Scanned:{getattr(result, 'total_files_scanned', 'N/A')}")
+    print(f"  Files Skipped:{getattr(result, 'total_files_skipped', 'N/A')}")
+
+    violations = (
+        getattr(result, 'rule_violations', None)
+        or getattr(result, 'findings', [])
+    )
+    if violations:
+        print(f"  Violations:   {len(violations)}")
+        for v in violations:
+            severity = getattr(v, 'severity', getattr(v, 'level', 'unknown'))
+            desc = getattr(v, 'description', getattr(v, 'rule_name', 'No description'))
+            print(f"    [{str(severity).upper()}] {desc}")
+
+    print("=" * 64)
+    print()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Scan an AI model with Prisma AIRS Model Security"
+    )
+    parser.add_argument(
+        "--config", required=True,
+        help="Path to the model configuration YAML file",
+    )
+    args = parser.parse_args()
+
+    with open(args.config) as f:
+        config = yaml.safe_load(f)
+
+    if not config.get("security", {}).get("scan_enabled", True):
+        print("Security scan is disabled in model config. Skipping.")
+        sys.exit(0)
+
+    # Allow overriding security_profile_id from environment variable
+    profile_id = os.environ.get("MODEL_SECURITY_PROFILE_ID")
+    if profile_id:
+        config.setdefault("security", {})["security_profile_id"] = profile_id
+
+    security_group_uuid = config["security"]["security_profile_id"]
+    if not security_group_uuid:
+        print("ERROR: No security_profile_id configured.")
+        sys.exit(1)
+
+    model_name = config["model"]["huggingface_id"]
+    model_uri = f"https://huggingface.co/{model_name}"
+    api_endpoint = os.environ.get(
+        "MODEL_SECURITY_API_ENDPOINT",
+        "https://api.sase.paloaltonetworks.com/aims",
+    )
+
+    print("Initializing Prisma AIRS Model Security SDK...")
+    client = ModelSecurityAPIClient(base_url=api_endpoint)
+
+    labels = {
+        "deployment_target": "vertex_ai",
+        "machine_type": config["deployment"]["machine_type"],
+        "version": config["model"].get("version", "unknown").replace(".", "-"),
+        "pipeline": "github-actions",
+    }
+
+    print(f"Scanning model: {model_name}")
+    print(f"  URI: {model_uri}")
+    print(f"  Security Group: {security_group_uuid}")
+    print(f"  Labels: {labels}")
+
+    result = client.scan(
+        security_group_uuid=security_group_uuid,
+        model_uri=model_uri,
+        labels=labels,
+    )
+
+    print_scan_results(result, model_name)
+
+    outcome = str(result.eval_outcome)
+    if "BLOCKED" in outcome:
+        print("BLOCKED: Model blocked by Prisma AIRS security policy.")
+        print("The model will NOT be deployed.")
+        sys.exit(1)
+    elif "ALLOWED" in outcome:
+        print("ALLOWED: Model approved by Prisma AIRS security policy.")
+        print("The model is cleared for deployment.")
+    else:
+        print(f"WARNING: Unexpected scan outcome '{outcome}'. Blocking deployment.")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The file <code>scripts/scan_model.py</code> exists. Running <code>python scripts/scan_model.py --help</code> outputs the argument parser usage without errors (assuming dependencies are installed).</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.4: Create the GitHub Actions Workflow</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The workflow file defines the CI/CD pipeline. It triggers on changes to the model configuration file, runs the security scan, and conditionally deploys the model.</p>
+
+    <p>Create <code>.github/workflows/model-security-scan.yml</code>:</p>
+
+    <div class="code-block">
+      <pre><code>name: Model Security Scan &amp; Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'config/model-config.yaml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'config/model-config.yaml'
+  workflow_dispatch:
+
+jobs:
+
+  # Detect whether the model config file changed
+  detect-changes:
+    name: Detect Model Changes
+    runs-on: ubuntu-latest
+    outputs:
+      model_changed: ${{ steps.filter.outputs.model }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            model:
+              - 'config/model-config.yaml'
+
+  # ── Prisma AIRS Model Security Scan ──────────────────────────
+  # This job authenticates with Prisma AIRS via OAuth2,
+  # installs the Model Security SDK from a private PyPI,
+  # and scans the model. BLOCKED = pipeline failure.
+  security-scan:
+    name: Prisma AIRS Model Security Scan
+    needs: detect-changes
+    if: &gt;
+      needs.detect-changes.outputs.model_changed == 'true'
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Authenticate and get private PyPI URL
+      - name: Get Model Security SDK PyPI URL
+        id: pypi
+        env:
+          MODEL_SECURITY_CLIENT_ID: ${{ secrets.MODEL_SECURITY_CLIENT_ID }}
+          MODEL_SECURITY_CLIENT_SECRET: ${{ secrets.MODEL_SECURITY_CLIENT_SECRET }}
+          MODEL_SECURITY_API_ENDPOINT: ${{ secrets.MODEL_SECURITY_API_ENDPOINT }}
+          TSG_ID: ${{ secrets.TSG_ID }}
+        run: echo "url=$(bash scripts/get_pypi_url.sh)" &gt;&gt; "$GITHUB_OUTPUT"
+
+      # Install SDK from private PyPI
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install "model-security-client[all]" \
+            --extra-index-url "${{ steps.pypi.outputs.url }}"
+
+      # Run the scan — exits non-zero on BLOCKED
+      - name: Run Prisma AIRS Model Security Scan
+        env:
+          MODEL_SECURITY_CLIENT_ID: ${{ secrets.MODEL_SECURITY_CLIENT_ID }}
+          MODEL_SECURITY_CLIENT_SECRET: ${{ secrets.MODEL_SECURITY_CLIENT_SECRET }}
+          MODEL_SECURITY_API_ENDPOINT: ${{ secrets.MODEL_SECURITY_API_ENDPOINT }}
+          MODEL_SECURITY_PROFILE_ID: ${{ secrets.MODEL_SECURITY_PROFILE_ID }}
+          TSG_ID: ${{ secrets.TSG_ID }}
+        run: python scripts/scan_model.py --config config/model-config.yaml
+
+  # ── Deploy (replace with your infrastructure) ────────────────
+  deploy-model:
+    name: Deploy Model
+    needs: security-scan
+    if: &gt;
+      (github.event_name == 'push' &amp;&amp; github.ref == 'refs/heads/main')
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Add your deployment logic here"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Workflow Triggers</div>
+      <p>The workflow triggers on three events: (1) a push to <code>main</code> that modifies <code>config/model-config.yaml</code>, (2) a pull request targeting <code>main</code> with the same path filter, and (3) a manual <code>workflow_dispatch</code>. On pull requests, only the scan runs &mdash; deployment is skipped. On pushes to <code>main</code>, both scan and deploy run if the scan passes.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The file <code>.github/workflows/model-security-scan.yml</code> exists. Navigate to the repository's <code>Actions</code> tab in GitHub &mdash; the workflow <code>Model Security Scan &amp; Deploy</code> appears in the left sidebar.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: SCAN CONFIGURATION                                  -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="scan-config">Phase 4: Scan Configuration</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1: Create the Model Configuration File</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The model configuration file specifies which model to scan and whether scanning is enabled. Changes to this file trigger the GitHub Actions workflow.</p>
+
+    <p>Create <code>config/model-config.yaml</code>:</p>
+
+    <div class="code-block">
+      <pre><code># Model Configuration
+# Changing this file triggers the Prisma AIRS Model Security Scan pipeline.
+
+model:
+  huggingface_id: "google/gemma-3-1b-it"
+  display_name: "gemma-3-1b-it"
+  description: "Google Gemma 3 1B Instruction-Tuned model deployed via Vertex AI Model Garden"
+  version: "2.1"
+
+deployment:
+  machine_type: "g2-standard-12"
+  accelerator_type: "NVIDIA_L4"
+  accelerator_count: 1
+  region: "us-central1"
+
+security:
+  scan_enabled: true
+  security_profile_id: ""  # Set via MODEL_SECURITY_PROFILE_ID env var or GitHub Variable</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Description</th><th>Example</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>model.huggingface_id</code></td><td>The HuggingFace model identifier. The scan script constructs the model URI from this value.</td><td><code>google/gemma-3-1b-it</code></td></tr>
+        <tr><td><code>model.display_name</code></td><td>Human-readable name for log output.</td><td><code>gemma-3-1b-it</code></td></tr>
+        <tr><td><code>model.version</code></td><td>Version string applied as a scan label for tracking.</td><td><code>2.1</code></td></tr>
+        <tr><td><code>deployment.machine_type</code></td><td>GCP machine type for the model endpoint. Applied as a scan label.</td><td><code>g2-standard-12</code></td></tr>
+        <tr><td><code>deployment.accelerator_type</code></td><td>GPU accelerator type for inference.</td><td><code>NVIDIA_L4</code></td></tr>
+        <tr><td><code>deployment.accelerator_count</code></td><td>Number of accelerators attached to the endpoint.</td><td><code>1</code></td></tr>
+        <tr><td><code>deployment.region</code></td><td>GCP region for deployment.</td><td><code>us-central1</code></td></tr>
+        <tr><td><code>security.scan_enabled</code></td><td>Set to <code>false</code> to skip scanning (the scan script exits 0 immediately).</td><td><code>true</code></td></tr>
+        <tr><td><code>security.security_profile_id</code></td><td>Profile UUID. Leave empty when overriding via the <code>MODEL_SECURITY_PROFILE_ID</code> environment variable.</td><td><code>a1b2c3d4-...</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The file <code>config/model-config.yaml</code> passes YAML lint validation. Running <code>python -c "import yaml; yaml.safe_load(open('config/model-config.yaml'))"</code> produces no errors.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.2: Create the Python Dependencies File</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The scan script requires <code>pyyaml</code> for configuration parsing and <code>python-dotenv</code> for environment variable loading. The Model Security SDK itself is installed separately from the private PyPI.</p>
+
+    <p>Create <code>requirements.txt</code>:</p>
+
+    <div class="code-block">
+      <pre><code>pyyaml>=6.0
+python-dotenv>=1.0</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>The <code>model-security-client[all]</code> SDK is <strong>not</strong> listed in <code>requirements.txt</code>. It is installed from a private PyPI repository using the authenticated URL retrieved by <code>get_pypi_url.sh</code>. See <a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-model-security/model-security-to-secure-your-ai-models/get-started-with-ai-model-security/install-ai-model-security">Model Security SDK installation guide</a> for details.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The file <code>requirements.txt</code> exists with <code>pyyaml</code> and <code>python-dotenv</code> listed.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.3: Configure Scan Labels for Tracking</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The scan script applies labels to each scan result, enabling filtering and correlation in Strata Cloud Manager. Modify the <code>labels</code> dictionary in <code>scripts/scan_model.py</code> to match the deployment environment.</p>
+
+    <div class="code-block">
+      <pre><code>labels = {
+    "pipeline": "github-actions",
+    "deployment_target": "vertex_ai",        # Replace with target platform
+    "version": config["model"].get("version", "unknown").replace(".", "-"),
+    "team": "ml-platform",                   # Optional: owning team
+    "environment": "production",             # Optional: target environment
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>These labels appear in the Strata Cloud Manager scan activity logs and support filtering scans by pipeline source, deployment target, and team ownership.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>labels</code> dictionary in <code>scan_model.py</code> includes at minimum a <code>pipeline</code> key set to <code>github-actions</code>.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: VERIFICATION                                        -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="verification">Phase 5: Verification</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.1: Trigger the Pipeline</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Trigger the workflow by modifying the model configuration and pushing the change, or by using the manual dispatch option.</p>
+
+    <h4>Option A: Push a Configuration Change</h4>
+    <ol>
+      <li>Edit <code>config/model-config.yaml</code> (e.g., update the <code>version</code> field).</li>
+      <li>Commit and push the change to the <code>main</code> branch (or open a pull request).</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>git add config/model-config.yaml
+git commit -m "chore: bump model version to trigger security scan"
+git push origin main</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Option B: Manual Dispatch</h4>
+    <ol>
+      <li>Navigate to the repository's <code>Actions</code> tab.</li>
+      <li>Select the <code>Model Security Scan &amp; Deploy</code> workflow.</li>
+      <li>Click <code>Run workflow</code> &gt; select the branch &gt; click <code>Run workflow</code>.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>Actions</code> tab shows a new workflow run in <code>In progress</code> or <code>Queued</code> state for the <code>Model Security Scan &amp; Deploy</code> workflow.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.2: Verify Scan Results in GitHub Actions</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The scan script produces structured output in the GitHub Actions logs showing the model name, scan UUID, outcome, and any violations.</p>
+
+    <ol>
+      <li>Open the workflow run from the <code>Actions</code> tab.</li>
+      <li>Click the <code>Prisma AIRS Model Security Scan</code> job.</li>
+      <li>Expand the <code>Run Prisma AIRS Model Security Scan</code> step.</li>
+      <li>Locate the scan results block in the log output.</li>
+    </ol>
+
+    <p>Expected output for a passing scan:</p>
+
+    <div class="code-block">
+      <pre><code>================================================================
+  PRISMA AIRS MODEL SECURITY SCAN RESULTS
+================================================================
+  Model:        google/gemma-3-1b-it
+  Scan UUID:    a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  Outcome:      EvalOutcome.ALLOWED
+  Summary:      Model passed all security checks
+  ...
+================================================================
+
+ALLOWED: Model approved by Prisma AIRS security policy.
+The model is cleared for deployment.</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>security-scan</code> job shows a green checkmark. The log output contains <code>ALLOWED: Model approved by Prisma AIRS security policy</code> and a valid Scan UUID.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.3: Verify Results in Strata Cloud Manager</span>
+  </div>
+  <div class="collapsible-body">
+    <p>All scan results are recorded in Strata Cloud Manager for audit and compliance tracking, regardless of the pipeline outcome.</p>
+
+    <ol>
+      <li>Log in to <a href="https://www.strata.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+      <li>Navigate to <code>AI Access Security</code> &gt; <code>Model Security</code>.</li>
+      <li>Locate the scan entry matching the Scan UUID from the GitHub Actions log.</li>
+      <li>Confirm the scan outcome, rule evaluations, and model details match expectations.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>Scan results include the <code>pipeline: github-actions</code> label, enabling filtering to isolate CI/CD-originated scans from manual or SDK-initiated scans.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The scan entry appears in the Model Security activity log with the correct model name, outcome, and <code>github-actions</code> pipeline label.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                               -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Common Issues and Resolutions</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Issue</th><th>Cause</th><th>Resolution</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>get_pypi_url.sh</code> fails with <code>Failed to obtain SCM access token</code></td>
+          <td>Invalid Client ID, Client Secret, or TSG ID</td>
+          <td>Verify the <code>MODEL_SECURITY_CLIENT_ID</code>, <code>MODEL_SECURITY_CLIENT_SECRET</code>, and <code>TSG_ID</code> secrets match the values from the service account in Strata Cloud Manager.</td>
+        </tr>
+        <tr>
+          <td>SDK installation fails with <code>pip install</code> error</td>
+          <td>Private PyPI URL was not retrieved in the previous step</td>
+          <td>Check the <code>Get Model Security SDK PyPI URL</code> step log. If the PyPI URL step failed silently, the subsequent <code>pip install</code> cannot find the <code>model-security-client</code> package.</td>
+        </tr>
+        <tr>
+          <td>Scan returns unexpected <code>BLOCKED</code> result</td>
+          <td>Security profile rules are more restrictive than expected</td>
+          <td>Check the <code>MODEL_SECURITY_PROFILE_ID</code> points to the intended security profile. Review the profile's rules in Strata Cloud Manager and adjust thresholds.</td>
+        </tr>
+        <tr>
+          <td>Workflow does not trigger on push</td>
+          <td>The changed file does not match the <code>paths</code> filter</td>
+          <td>The workflow triggers only on changes to <code>config/model-config.yaml</code>. Confirm the file path matches exactly. Use <code>workflow_dispatch</code> for manual testing.</td>
+        </tr>
+        <tr>
+          <td><code>jq: command not found</code></td>
+          <td>The runner image does not include <code>jq</code></td>
+          <td>The <code>ubuntu-latest</code> runner includes <code>jq</code> by default. If using a custom runner, add <code>sudo apt-get install -y jq</code> before the PyPI authentication step.</td>
+        </tr>
+        <tr>
+          <td>Scan passes but deploy job does not run</td>
+          <td>The deploy job runs only on pushes to <code>main</code> or manual dispatch</td>
+          <td>Pull request triggers run the scan only. Merge the PR to <code>main</code> to trigger the deploy job.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Additional Resources</div>
+      <ul>
+        <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-model-security">Prisma AIRS Model Security documentation</a></li>
+        <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-model-security/model-security-to-secure-your-ai-models/get-started-with-ai-model-security/install-ai-model-security">Model Security SDK installation guide</a></li>
+        <li><a href="https://pan.dev/airs/">Prisma AIRS API documentation</a></li>
+      </ul>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The troubleshooting table covers the issue encountered. If the issue persists, collect the full GitHub Actions log output and the Scan UUID for a support case with Palo Alto Networks.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- Back to top -->
+<button class="back-to-top" onclick="scrollToTop()" aria-label="Back to top">&#9650;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>

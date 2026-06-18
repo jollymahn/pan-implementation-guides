@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Jenkins + Prisma AIRS Model Security | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+<style>
+  .coverage-table td:nth-child(2) { text-align: center; }
+  .file-tree {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    font-family: 'Source Code Pro', monospace;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">Jenkins + AIRS</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="../bootstrap/vm-series-bootstrap.html">Bootstrap</a>
+    <a href="../../globalprotect/index.html">GlobalProtect</a>
+    <a href="../../scm-onboarding/index.html">SCM</a>
+    <a href="../cloud-identity-engine/cie-implementation.html">CIE</a>
+    <a href="../../index.html#airs">AIRS</a>
+    <a href="index.html" class="active">AIRS Integrations</a>
+    <a href="../cngfw/cloud-ngfw-deployment.html">CNGFW</a>
+    <a href="../panorama-cli/panos-cli-reference.html">PanOS CLI</a>
+  </nav>
+</header>
+
+<!-- Layout -->
+<div class="layout">
+
+<!-- Sidebar -->
+<div class="sidebar-backdrop"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#architecture" data-section="architecture">Architecture</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Setup</div>
+    <a href="#prerequisites" data-section="prerequisites">Phase 1: Prerequisites</a>
+    <a href="#credentials" data-section="credentials">Phase 2: Credential Configuration</a>
+    <a href="#pipeline-setup" data-section="pipeline-setup">Phase 3: Pipeline Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configuration</div>
+    <a href="#scan-config" data-section="scan-config">Phase 4: Scan Configuration</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Validate</div>
+    <a href="#verification" data-section="verification">Phase 5: Verification</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../../index.html#airs">AIRS</a>
+  <span class="sep">|</span>
+  <a href="index.html">Integrations</a>
+  <span class="sep">|</span>
+  Jenkins
+</div>
+
+<div class="article">
+
+<h1>Jenkins: Prisma AIRS Model Security</h1>
+<p class="subtitle">Add pre-deployment AI model scanning to Jenkins Declarative Pipelines using the Prisma AIRS Model Security SDK</p>
+
+<!-- Phase Progress -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#credentials" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Credentials
+  </a>
+  <a href="#pipeline-setup" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Pipeline
+  </a>
+  <a href="#scan-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Scan Config
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Model Security, Not Runtime Security</div>
+  <p>This guide integrates <strong>Prisma AIRS Model Security</strong> &mdash; pre-deployment scanning of AI model files (weights, binaries, configs) before they reach production infrastructure. This is different from AI Runtime Security, which scans prompts and responses at inference time.</p>
+  <p>Model Security uses <strong>OAuth2 client credentials</strong> (Client ID + Client Secret from a Prisma Cloud Service Account), not an AIRS API key. The authentication flow, SDK, and API endpoints are distinct from the Runtime Security integrations.</p>
+</div>
+
+<!-- Coverage Table -->
+<table class="coverage-table">
+  <thead>
+    <tr><th>Scanning Phase</th><th>Supported</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Model file scan</td><td>&#9989;</td><td>Scans model weights/binaries for security risks before deployment</td></tr>
+    <tr><td>Prompt</td><td>N/A</td><td>Use an AI Runtime Security integration for prompt scanning</td></tr>
+    <tr><td>Response</td><td>N/A</td><td>Use an AI Runtime Security integration for response scanning</td></tr>
+    <tr><td>Streaming</td><td>N/A</td><td>Not applicable to model file scanning</td></tr>
+    <tr><td>Pre-tool call</td><td>N/A</td><td>Not applicable to model file scanning</td></tr>
+    <tr><td>Post-tool call</td><td>N/A</td><td>Not applicable to model file scanning</td></tr>
+  </tbody>
+</table>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE                                                  -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture">Architecture Overview</h2>
+
+<p>The Jenkins integration adds a security gate to the Declarative Pipeline. When a model configuration change is detected via SCM polling (or manual trigger), the pipeline authenticates with Prisma AIRS via OAuth2, installs the Model Security SDK from a private PyPI repository, and scans the model. A result of <code>ALLOWED</code> permits deployment; <code>BLOCKED</code> fails the pipeline stage and prevents the model from reaching production.</p>
+
+<div style="text-align:center; margin:1.5rem 0; overflow-x:auto;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" style="max-width:880px; width:100%; height:auto;">
+  <defs>
+    <marker id="jk-arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#006DCC"/>
+    </marker>
+    <marker id="jk-arrow-green" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22c55e"/>
+    </marker>
+    <marker id="jk-arrow-red" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444"/>
+    </marker>
+  </defs>
+
+  <!-- Step 1: SCM Poll -->
+  <rect x="20" y="130" width="130" height="60" rx="8" fill="#f7f8fa" stroke="#00294D" stroke-width="2"/>
+  <text x="85" y="155" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#00294D">SCM Poll</text>
+  <text x="85" y="175" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">model-config.yaml</text>
+
+  <!-- Arrow 1 -->
+  <line x1="150" y1="160" x2="190" y2="160" stroke="#006DCC" stroke-width="2" marker-end="url(#jk-arrow)"/>
+
+  <!-- Step 2: Jenkins Pipeline -->
+  <rect x="195" y="120" width="140" height="80" rx="8" fill="#f7f8fa" stroke="#00294D" stroke-width="2"/>
+  <rect x="195" y="120" width="140" height="26" rx="8" fill="#00294D"/>
+  <text x="265" y="138" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff">Jenkins Pipeline</text>
+  <text x="265" y="163" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Detect Changes</text>
+  <text x="265" y="178" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Python venv</text>
+  <text x="265" y="193" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Install SDK</text>
+
+  <!-- Arrow 2 -->
+  <line x1="335" y1="160" x2="385" y2="160" stroke="#006DCC" stroke-width="2" marker-end="url(#jk-arrow)"/>
+
+  <!-- Step 3: OAuth2 Auth -->
+  <rect x="390" y="120" width="140" height="80" rx="8" fill="#fffbeb" stroke="#FFB81C" stroke-width="2"/>
+  <rect x="390" y="120" width="140" height="26" rx="8" fill="#FFB81C"/>
+  <text x="460" y="138" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#00294D">OAuth2 Auth</text>
+  <text x="460" y="163" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Client ID + Secret</text>
+  <text x="460" y="178" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Token Endpoint</text>
+  <text x="460" y="193" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Private PyPI URL</text>
+
+  <!-- Arrow 3 -->
+  <line x1="530" y1="160" x2="575" y2="160" stroke="#006DCC" stroke-width="2" marker-end="url(#jk-arrow)"/>
+
+  <!-- Step 4: AIRS Model Scan -->
+  <rect x="580" y="110" width="150" height="100" rx="8" fill="#e7f3ff" stroke="#006DCC" stroke-width="2"/>
+  <rect x="580" y="110" width="150" height="26" rx="8" fill="#006DCC"/>
+  <text x="655" y="128" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff">AIRS Model Scan</text>
+  <text x="655" y="153" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#333">Malware detection</text>
+  <text x="655" y="168" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#333">Vulnerability check</text>
+  <text x="655" y="183" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#333">Supply chain risk</text>
+  <text x="655" y="198" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#333">Compliance review</text>
+
+  <!-- Arrow to ALLOWED -->
+  <line x1="730" y1="140" x2="785" y2="80" stroke="#22c55e" stroke-width="2" marker-end="url(#jk-arrow-green)"/>
+
+  <!-- Arrow to BLOCKED -->
+  <line x1="730" y1="180" x2="785" y2="260" stroke="#ef4444" stroke-width="2" marker-end="url(#jk-arrow-red)"/>
+
+  <!-- ALLOWED box -->
+  <rect x="790" y="40" width="70" height="50" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="2"/>
+  <text x="825" y="60" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#22c55e">ALLOWED</text>
+  <text x="825" y="78" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Deploy</text>
+
+  <!-- BLOCKED box -->
+  <rect x="790" y="240" width="70" height="50" rx="8" fill="#fef2f2" stroke="#ef4444" stroke-width="2"/>
+  <text x="825" y="260" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ef4444">BLOCKED</text>
+  <text x="825" y="278" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Build fails</text>
+
+  <!-- Legend -->
+  <text x="20" y="330" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#666">Non-main branches: scan only (no deploy) | Main branch: scan + deploy on ALLOWED | FORCE_RUN: bypass change detection</text>
+</svg>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">What Gets Scanned</div>
+  <p>Prisma AIRS Model Security evaluates AI model files for:</p>
+  <ul>
+    <li><strong>Model provenance and supply chain risks</strong> &mdash; verifying model source and integrity</li>
+    <li><strong>Known vulnerabilities</strong> &mdash; checking against CVEs and security advisories</li>
+    <li><strong>Malicious payloads</strong> &mdash; detecting embedded malicious code or backdoors in model weights</li>
+    <li><strong>Compliance violations</strong> &mdash; ensuring models meet organizational security policies</li>
+    <li><strong>Training data risks</strong> &mdash; identifying potential data poisoning indicators</li>
+  </ul>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                       -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1: Confirm Jenkins Server Requirements</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Declarative Pipeline requires a Jenkins instance with specific plugins and agent tools.</p>
+
+    <table>
+      <thead>
+        <tr><th>Requirement</th><th>Minimum Version</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Jenkins</td><td>2.400+</td><td>Declarative Pipeline support</td></tr>
+        <tr><td><a href="https://plugins.jenkins.io/workflow-aggregator/">Pipeline plugin</a></td><td>Latest</td><td>Pipeline DSL and stage management</td></tr>
+        <tr><td><a href="https://plugins.jenkins.io/credentials/">Credentials plugin</a></td><td>Latest</td><td>Secret text and secret file credential types</td></tr>
+        <tr><td>Python</td><td>3.11+</td><td>Model Security SDK and scan script</td></tr>
+        <tr><td><code>curl</code></td><td>Any</td><td>OAuth2 token and PyPI URL retrieval</td></tr>
+        <tr><td><code>jq</code></td><td>Any</td><td>JSON response parsing in shell scripts</td></tr>
+      </tbody>
+    </table>
+
+    <ol>
+      <li>Navigate to <code>Manage Jenkins</code> &gt; <code>Manage Plugins</code>.</li>
+      <li>Confirm the <strong>Pipeline</strong> and <strong>Credentials</strong> plugins are installed.</li>
+      <li>On the Jenkins agent, run <code>python3 --version</code>, <code>curl --version</code>, and <code>jq --version</code> to confirm tool availability.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Jenkins is running version 2.400+. The Pipeline and Credentials plugins appear in the <code>Installed</code> tab. Python 3.11+, <code>curl</code>, and <code>jq</code> are available on the agent.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2: Confirm Prisma AIRS Model Security License</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Model Security scanning requires an active Prisma AIRS subscription with the Model Security add-on enabled.</p>
+
+    <ol>
+      <li>Log in to <a href="https://www.strata.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+      <li>Navigate to <code>AI Access Security</code>.</li>
+      <li>Confirm the <strong>Model Security</strong> section is visible and accessible.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>If Model Security is not visible, contact the Palo Alto Networks account team to enable the add-on. The <a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-model-security">Model Security documentation</a> covers licensing prerequisites.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>Model Security</code> dashboard loads and displays scan activity logs (empty is fine for new deployments).</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3: Create a Prisma Cloud Service Account</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The pipeline authenticates with Prisma AIRS using OAuth2 client credentials from a dedicated service account.</p>
+
+    <ol>
+      <li>In Strata Cloud Manager, navigate to <code>Settings</code> &gt; <code>Identity &amp; Access</code> &gt; <code>Service Accounts</code>.</li>
+      <li>Click <code>Add</code> &gt; <code>Add Service Account</code>.</li>
+      <li>Set <strong>Name</strong> to a descriptive identifier (e.g., <code>jenkins-model-security</code>).</li>
+      <li>Assign the appropriate role for Model Security API access.</li>
+      <li>Click <code>Save</code>.</li>
+      <li>Record the <strong>Client ID</strong> and <strong>Client Secret</strong> immediately &mdash; the secret is shown only once.</li>
+      <li>Note the <strong>TSG ID</strong> (Tenant Service Group ID) from the account details page.</li>
+    </ol>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Store Credentials Securely</div>
+      <p>The Client Secret cannot be retrieved after initial creation. Store it in a password manager or secrets vault before navigating away from the page.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The service account appears in the <code>Service Accounts</code> list with status <code>Active</code>. The Client ID, Client Secret, and TSG ID are recorded.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4: Configure a Model Security Profile</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The security profile defines which scan rules and thresholds apply to model evaluations.</p>
+
+    <ol>
+      <li>In Strata Cloud Manager, navigate to <code>AI Access Security</code> &gt; <code>Model Security</code>.</li>
+      <li>Create or select a <strong>Security Profile</strong> (also called a Security Group).</li>
+      <li>Configure the desired scan rules &mdash; malware detection, vulnerability checks, compliance policies.</li>
+      <li>Save the profile and record the <strong>Profile UUID</strong>.</li>
+      <li>Note the <strong>API Endpoint URL</strong> (e.g., <code>https://api.sase.paloaltonetworks.com/aims</code>).</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The security profile appears in the list with at least one scan rule enabled. The Profile UUID and API Endpoint URL are recorded.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: CREDENTIAL CONFIGURATION                            -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="credentials">Phase 2: Credential Configuration</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.1: Create Jenkins Credentials for Model Security</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Jenkins stores credentials in its built-in Credentials store. The Declarative Pipeline references these by their Credential ID using the <code>withCredentials</code> binding.</p>
+
+    <ol>
+      <li>Navigate to <code>Manage Jenkins</code> &gt; <code>Manage Credentials</code>.</li>
+      <li>Select the appropriate scope (e.g., <code>Jenkins</code> &gt; <code>Global credentials</code>).</li>
+      <li>Click <code>Add Credentials</code> and create each credential listed below.</li>
+    </ol>
+
+    <table>
+      <thead>
+        <tr><th>Credential ID</th><th>Type</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>model-security-client-id</code></td><td>Secret text</td><td>Prisma AIRS OAuth Client ID from Step 1.3</td></tr>
+        <tr><td><code>model-security-client-secret</code></td><td>Secret text</td><td>Prisma AIRS OAuth Client Secret from Step 1.3</td></tr>
+        <tr><td><code>model-security-profile-id</code></td><td>Secret text</td><td>Security Profile UUID from Step 1.4</td></tr>
+        <tr><td><code>model-security-api-endpoint</code></td><td>Secret text</td><td>API endpoint URL (e.g., <code>https://api.sase.paloaltonetworks.com/aims</code>)</td></tr>
+        <tr><td><code>tsg-id</code></td><td>Secret text</td><td>Tenant Service Group ID from Step 1.3</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Credential Scope Matters</div>
+      <p>Ensure credentials are created in a scope accessible to the pipeline job. If using folder-level credentials, the pipeline job must reside within that folder. Global credentials are accessible to all jobs.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Different From Runtime Security Credentials</div>
+      <p>These credentials are <strong>not</strong> the same as <code>PRISMA_AIRS_API_KEY</code>, <code>PRISMA_AIRS_PROFILE_NAME</code>, or <code>PRISMA_AIRS_URL</code> used by AI Runtime Security integrations. Model Security uses OAuth2 client credentials and the Model Security SDK.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All five credentials appear in the Jenkins Credentials list. Each shows the Credential ID, type (<code>Secret text</code>), and description. Navigate to <code>Manage Jenkins</code> &gt; <code>Manage Credentials</code> to confirm.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: PIPELINE SETUP                                      -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="pipeline-setup">Phase 3: Pipeline Setup</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.1: Understand the Repository Structure</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The integration requires a Jenkinsfile at the repository root, supporting scripts, and a model configuration file.</p>
+
+    <div class="file-tree">.
+├── Jenkinsfile                          # Declarative Pipeline definition
+├── config/
+│   └── model-config.yaml               # Model configuration (pipeline trigger)
+├── scripts/
+│   ├── scan_model.py                   # Prisma AIRS Model Security scan script
+│   └── get_pypi_url.sh                 # Private PyPI authentication script
+├── requirements.txt                    # Python dependencies (pyyaml, python-dotenv)
+└── README.md</div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>The reference implementation includes optional deployment scripts (<code>deploy_model.sh</code>, <code>test_model.py</code>, <code>undeploy_model.sh</code>) targeting Google Cloud Vertex AI. Replace these with deployment logic for the target infrastructure.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The file structure is understood. Proceed to create each file in the following steps.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.2: Create the Supporting Scripts</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The pipeline requires two scripts: <code>get_pypi_url.sh</code> for OAuth2 authentication and PyPI URL retrieval, and <code>scan_model.py</code> for the model security scan. These scripts are identical to the GitHub Actions versions with one difference: the <code>pipeline</code> label is set to <code>jenkins</code>.</p>
+
+    <p>Create <code>scripts/get_pypi_url.sh</code>:</p>
+
+    <div class="code-block">
+      <pre><code>#!/bin/bash
+set -euo pipefail
+
+: "${MODEL_SECURITY_CLIENT_ID:?Error: MODEL_SECURITY_CLIENT_ID not set}"
+: "${MODEL_SECURITY_CLIENT_SECRET:?Error: MODEL_SECURITY_CLIENT_SECRET not set}"
+: "${TSG_ID:?Error: TSG_ID not set}"
+
+API_ENDPOINT="${MODEL_SECURITY_API_ENDPOINT:-https://api.sase.paloaltonetworks.com/aims}"
+TOKEN_ENDPOINT="${MODEL_SECURITY_TOKEN_ENDPOINT:-https://auth.apps.paloaltonetworks.com/oauth2/access_token}"
+
+# OAuth2 client credentials flow
+TOKEN_RESPONSE=$(curl -sf -X POST "$TOKEN_ENDPOINT" \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -u "$MODEL_SECURITY_CLIENT_ID:$MODEL_SECURITY_CLIENT_SECRET" \
+    -d "grant_type=client_credentials&amp;scope=tsg_id:$TSG_ID") || {
+    echo "Error: Failed to obtain SCM access token" &gt;&amp;2
+    exit 1
+}
+
+SCM_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+if [[ -z "$SCM_TOKEN" || "$SCM_TOKEN" == "null" ]]; then
+    echo "Error: Failed to extract access token" &gt;&amp;2
+    exit 1
+fi
+
+PYPI_RESPONSE=$(curl -sf -X GET "$API_ENDPOINT/mgmt/v1/pypi/authenticate" \
+    -H "Authorization: Bearer $SCM_TOKEN") || {
+    echo "Error: Failed to retrieve PyPI URL" &gt;&amp;2
+    exit 1
+}
+
+PYPI_URL=$(echo "$PYPI_RESPONSE" | jq -r '.url')
+if [[ -z "$PYPI_URL" || "$PYPI_URL" == "null" ]]; then
+    echo "Error: Failed to extract PyPI URL" &gt;&amp;2
+    exit 1
+fi
+
+echo "$PYPI_URL"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Create <code>scripts/scan_model.py</code> with the same content as the <a href="github-actions.html#workflow-setup">GitHub Actions scan script</a>, changing the <code>pipeline</code> label:</p>
+
+    <div class="code-block">
+      <pre><code>labels = {
+    "deployment_target": "vertex_ai",
+    "machine_type": config["deployment"]["machine_type"],
+    "version": config["model"].get("version", "unknown").replace(".", "-"),
+    "pipeline": "jenkins",    # Identifies scan origin in SCM dashboard
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Make the shell script executable:</p>
+
+    <div class="code-block">
+      <pre><code>chmod +x scripts/get_pypi_url.sh</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both scripts exist in the <code>scripts/</code> directory. <code>get_pypi_url.sh</code> is executable. <code>scan_model.py</code> contains <code>"pipeline": "jenkins"</code> in the labels dictionary.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.3: Create the Jenkinsfile</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Jenkinsfile defines a Declarative Pipeline with three stages: change detection, security scan, and deployment. The scan stage uses <code>withCredentials</code> to inject secrets as environment variables.</p>
+
+    <p>Create <code>Jenkinsfile</code> at the repository root:</p>
+
+    <div class="code-block">
+      <pre><code>pipeline {
+    agent any
+
+    options {
+        timestamps()
+        timeout(time: 60, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
+
+    triggers {
+        pollSCM('H/5 * * * *')   // Poll for changes every 5 minutes
+    }
+
+    parameters {
+        booleanParam(
+            name: 'FORCE_RUN',
+            defaultValue: false,
+            description: 'Run the pipeline even if model config has not changed'
+        )
+        booleanParam(
+            name: 'SKIP_DEPLOY',
+            defaultValue: false,
+            description: 'Run security scan only, skip deployment'
+        )
+    }
+
+    environment {
+        CONFIG_FILE = 'config/model-config.yaml'
+    }
+
+    stages {
+
+        stage('Detect Changes') {
+            steps {
+                script {
+                    env.MODEL_CHANGED = 'false'
+                    if (params.FORCE_RUN) {
+                        echo 'FORCE_RUN enabled — skipping change detection.'
+                        env.MODEL_CHANGED = 'true'
+                        return
+                    }
+                    def changes = currentBuild.changeSets.collectMany {
+                        it.items.collectMany { item -&gt;
+                            item.affectedFiles.collect { it.path }
+                        }
+                    }
+                    if (changes.any { it == 'config/model-config.yaml' }) {
+                        echo 'Model config changed — proceeding with scan.'
+                        env.MODEL_CHANGED = 'true'
+                    } else {
+                        echo 'No model config changes detected.'
+                    }
+                }
+            }
+        }
+
+        // ── Prisma AIRS Model Security Scan ──────────────────
+        stage('Prisma AIRS Model Security Scan') {
+            when {
+                expression { env.MODEL_CHANGED == 'true' }
+            }
+            steps {
+                withCredentials([
+                    string(credentialsId: 'model-security-client-id',
+                           variable: 'MODEL_SECURITY_CLIENT_ID'),
+                    string(credentialsId: 'model-security-client-secret',
+                           variable: 'MODEL_SECURITY_CLIENT_SECRET'),
+                    string(credentialsId: 'model-security-api-endpoint',
+                           variable: 'MODEL_SECURITY_API_ENDPOINT'),
+                    string(credentialsId: 'model-security-profile-id',
+                           variable: 'MODEL_SECURITY_PROFILE_ID'),
+                    string(credentialsId: 'tsg-id',
+                           variable: 'TSG_ID'),
+                ]) {
+                    sh '''
+                        echo "=== Setting up Python environment ==="
+                        python3 -m venv .venv
+                        . .venv/bin/activate
+
+                        echo "=== Installing base dependencies ==="
+                        pip install --quiet -r requirements.txt
+
+                        echo "=== Authenticating with Prisma AIRS ==="
+                        PYPI_URL=$(bash scripts/get_pypi_url.sh)
+
+                        echo "=== Installing Model Security SDK ==="
+                        pip install --quiet "model-security-client[all]" \
+                            --extra-index-url "${PYPI_URL}"
+
+                        echo "=== Running Model Security Scan ==="
+                        python scripts/scan_model.py \
+                            --config ${CONFIG_FILE}
+                    '''
+                }
+            }
+        }
+
+        // ── Deploy (replace with your infrastructure) ────────
+        stage('Deploy Model to Vertex AI') {
+            when {
+                allOf {
+                    expression { env.MODEL_CHANGED == 'true' }
+                    expression { !params.SKIP_DEPLOY }
+                    expression {
+                        env.GIT_BRANCH == 'main' ||
+                        env.GIT_BRANCH == 'origin/main'
+                    }
+                }
+            }
+            steps {
+                sh 'echo "Add your deployment logic here"'
+            }
+        }
+    }
+
+    // NOTE: The reference implementation includes a full 'Deploy Model to
+    // Vertex AI' stage with GCP service account auth, gcloud CLI setup,
+    // and a deploy_model.sh script, plus a 'Test Model Endpoint' stage.
+    // See the source repository for the complete Jenkinsfile.
+
+    post {
+        success { echo 'Pipeline completed successfully.' }
+        failure { echo 'Pipeline failed. Check logs above.' }
+        always  { sh 'rm -rf .venv || true' }
+    }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Deploy Stage Simplified</div>
+      <p>The deploy stage above is a placeholder. The <a href="https://github.com/PaloAltoNetworks/prisma-airs-integrations/tree/main/Jenkins/declarative-pipeline">reference implementation</a> includes a full <code>Deploy Model to Vertex AI</code> stage with GCP service account authentication, <code>gcloud</code> CLI setup, and a <code>deploy_model.sh</code> deployment script, plus a <code>Test Model Endpoint</code> validation stage. Replace the placeholder with deployment logic for the target infrastructure.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Pipeline Parameters</div>
+      <p>The pipeline exposes two parameters: <code>FORCE_RUN</code> bypasses change detection and runs the scan unconditionally; <code>SKIP_DEPLOY</code> runs the scan without triggering deployment (useful for testing scan rules). Access these via <code>Build with Parameters</code> in the Jenkins UI.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Virtual Environment Cleanup</div>
+      <p>The <code>post.always</code> block removes the Python virtual environment (<code>.venv</code>) after every build to prevent stale SDK versions from persisting on the agent. The SDK is reinstalled fresh on each run from the private PyPI.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>Jenkinsfile</code> exists at the repository root. Create a Pipeline job in Jenkins, point it to the repository, and run <code>Build with Parameters</code> &gt; <code>FORCE_RUN: true</code>. The <code>Detect Changes</code> stage should log <code>FORCE_RUN enabled</code>.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: SCAN CONFIGURATION                                  -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="scan-config">Phase 4: Scan Configuration</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1: Create the Model Configuration File</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The model configuration file specifies which model to scan. Changes to this file are detected by SCM polling, triggering the pipeline.</p>
+
+    <p>Create <code>config/model-config.yaml</code>:</p>
+
+    <div class="code-block">
+      <pre><code># Model Configuration
+# Changes to this file are detected by Jenkins SCM polling.
+
+model:
+  huggingface_id: "google/gemma-3-1b-it"
+  display_name: "gemma-3-1b-it"
+  description: "Google Gemma 3 1B Instruction-Tuned model"
+  version: "1.0"
+
+security:
+  scan_enabled: true
+  security_profile_id: ""  # Set via MODEL_SECURITY_PROFILE_ID credential</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The file <code>config/model-config.yaml</code> passes YAML validation. Running <code>python3 -c "import yaml; yaml.safe_load(open('config/model-config.yaml'))"</code> produces no errors.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.2: Create the Python Dependencies File</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create <code>requirements.txt</code> with the base dependencies. The Model Security SDK is installed separately from the private PyPI.</p>
+
+    <div class="code-block">
+      <pre><code>pyyaml>=6.0
+python-dotenv>=1.0</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The file <code>requirements.txt</code> exists with <code>pyyaml</code> and <code>python-dotenv</code> listed.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.3: Configure SCM Polling</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Jenkinsfile includes a <code>pollSCM</code> trigger that checks the repository for changes every 5 minutes. Adjust the cron expression in the Jenkinsfile to match the desired polling interval.</p>
+
+    <div class="code-block">
+      <pre><code>triggers {
+    pollSCM('H/5 * * * *')   // Every 5 minutes (H adds distributed jitter)
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Cron Expression</th><th>Interval</th><th>Use Case</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>H/5 * * * *</code></td><td>Every 5 minutes</td><td>Active development with frequent model changes</td></tr>
+        <tr><td><code>H/15 * * * *</code></td><td>Every 15 minutes</td><td>Standard development cadence</td></tr>
+        <tr><td><code>H * * * *</code></td><td>Every hour</td><td>Low-frequency model updates</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>The <code>H</code> prefix adds distributed jitter to prevent all Jenkins jobs from polling simultaneously. Replace <code>H</code> with a specific minute (e.g., <code>*/5</code>) only if precise timing is required.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>In the Jenkins job configuration page, the <code>Poll SCM</code> trigger shows the configured schedule. The <code>Polling Log</code> link (on the job page) shows recent poll activity.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: VERIFICATION                                        -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="verification">Phase 5: Verification</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.1: Trigger the Pipeline</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Trigger the pipeline using one of three methods.</p>
+
+    <h4>Option A: Push a Configuration Change</h4>
+    <ol>
+      <li>Edit <code>config/model-config.yaml</code> (e.g., update the <code>version</code> field).</li>
+      <li>Commit and push. The next SCM poll cycle triggers the pipeline.</li>
+    </ol>
+
+    <h4>Option B: Manual Build with FORCE_RUN</h4>
+    <ol>
+      <li>Open the Jenkins job page.</li>
+      <li>Click <code>Build with Parameters</code>.</li>
+      <li>Check <code>FORCE_RUN</code> and click <code>Build</code>.</li>
+    </ol>
+
+    <h4>Option C: Scan-Only Mode</h4>
+    <ol>
+      <li>Click <code>Build with Parameters</code>.</li>
+      <li>Check both <code>FORCE_RUN</code> and <code>SKIP_DEPLOY</code>.</li>
+      <li>Click <code>Build</code> &mdash; the scan runs but the Deploy stage is skipped.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A new build appears in the <code>Build History</code> sidebar. The build is <code>In Progress</code> or <code>Queued</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.2: Verify Scan Results in Jenkins Console</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The scan script produces structured output in the Jenkins console log.</p>
+
+    <ol>
+      <li>Open the build from the <code>Build History</code> sidebar.</li>
+      <li>Click <code>Console Output</code>.</li>
+      <li>Locate the <code>=== Running Model Security Scan ===</code> section.</li>
+      <li>Find the scan results block.</li>
+    </ol>
+
+    <p>Expected output for a passing scan:</p>
+
+    <div class="code-block">
+      <pre><code>================================================================
+  PRISMA AIRS MODEL SECURITY SCAN RESULTS
+================================================================
+  Model:        google/gemma-3-1b-it
+  Scan UUID:    a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  Outcome:      EvalOutcome.ALLOWED
+  Summary:      Model passed all security checks
+  ...
+================================================================
+
+ALLOWED: Model approved by Prisma AIRS security policy.
+The model is cleared for deployment.</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The build shows a blue ball (success). The console output contains <code>ALLOWED: Model approved by Prisma AIRS security policy</code> and a valid Scan UUID.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.3: Verify Results in Strata Cloud Manager</span>
+  </div>
+  <div class="collapsible-body">
+    <p>All scan results are recorded in Strata Cloud Manager regardless of the pipeline outcome.</p>
+
+    <ol>
+      <li>Log in to <a href="https://www.strata.paloaltonetworks.com/">Strata Cloud Manager</a>.</li>
+      <li>Navigate to <code>AI Access Security</code> &gt; <code>Model Security</code>.</li>
+      <li>Locate the scan entry matching the Scan UUID from the Jenkins console.</li>
+      <li>Confirm the outcome, rule evaluations, and model details.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>Scan results include the <code>pipeline: jenkins</code> label, enabling filtering to isolate Jenkins-originated scans from other sources.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The scan entry appears in the Model Security activity log with the correct model name, outcome, and <code>jenkins</code> pipeline label.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                               -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Common Issues and Resolutions</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Issue</th><th>Cause</th><th>Resolution</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>get_pypi_url.sh</code> fails with <code>Failed to obtain SCM access token</code></td>
+          <td>Invalid Client ID, Client Secret, or TSG ID</td>
+          <td>Verify the <code>model-security-client-id</code>, <code>model-security-client-secret</code>, and <code>tsg-id</code> credentials in Jenkins match the values from the service account.</td>
+        </tr>
+        <tr>
+          <td>SDK installation fails</td>
+          <td>Private PyPI URL was not retrieved in the previous step</td>
+          <td>Check the <code>Authenticating with Prisma AIRS</code> output in the console log. If the PyPI URL step failed, the SDK cannot be installed.</td>
+        </tr>
+        <tr>
+          <td>Scan returns unexpected <code>BLOCKED</code></td>
+          <td>Security profile rules are more restrictive than expected</td>
+          <td>Verify <code>model-security-profile-id</code> points to the intended profile. Review rules in Strata Cloud Manager.</td>
+        </tr>
+        <tr>
+          <td>Credentials not found</td>
+          <td>Credentials are in a scope not accessible to the pipeline job</td>
+          <td>Verify credentials are in the correct Jenkins scope (global or folder-level). The pipeline job must be within the credential scope.</td>
+        </tr>
+        <tr>
+          <td>SCM polling not triggering</td>
+          <td>Poll schedule misconfigured or repository URL inaccessible</td>
+          <td>Check the <code>pollSCM</code> schedule in the Jenkinsfile (<code>H/5 * * * *</code>). Verify the repository URL in the job configuration is correct and reachable from the Jenkins server.</td>
+        </tr>
+        <tr>
+          <td><code>python3: command not found</code></td>
+          <td>Python is not installed or not in PATH on the Jenkins agent</td>
+          <td>Install Python 3.11+ on the agent. Alternatively, use a Docker agent with Python pre-installed: <code>agent { docker { image 'python:3.11-slim' } }</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Additional Resources</div>
+      <ul>
+        <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-model-security">Prisma AIRS Model Security documentation</a></li>
+        <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-model-security/model-security-to-secure-your-ai-models/get-started-with-ai-model-security/install-ai-model-security">Model Security SDK installation guide</a></li>
+        <li><a href="https://pan.dev/airs/">Prisma AIRS API documentation</a></li>
+        <li><a href="https://www.jenkins.io/doc/book/pipeline/">Jenkins Pipeline documentation</a></li>
+      </ul>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The troubleshooting table covers the issue encountered. If the issue persists, collect the full Jenkins console output, the Scan UUID, and the Jenkins version for a support case with Palo Alto Networks.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- Back to top -->
+<button class="back-to-top" onclick="scrollToTop()" aria-label="Back to top">&#9650;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>
