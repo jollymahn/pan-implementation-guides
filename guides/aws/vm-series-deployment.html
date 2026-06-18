@@ -736,6 +736,188 @@
 </div>
 
 <!-- ════════════════════════════════════════════════════════════ -->
+<!--  GWLB ENDPOINT-TO-SUBINTERFACE MAPPING                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h3 id="endpoint-mapping">GWLB Endpoint-to-Subinterface Mapping</h3>
+
+<p>Every GWLB endpoint must be <strong>associated</strong> with a specific subinterface on the VM-Series firewall. This association is the bridge between the AWS networking layer (GWLB endpoints) and the PAN-OS security layer (zones and policy). Without it, the firewall receives GENEVE-encapsulated traffic but has no way to classify it by source or apply zone-based policy.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>What the Association Does</span>
+  </div>
+  <div class="collapsible-body">
+    <p>When a GWLB endpoint is associated with a subinterface, the firewall maps incoming GENEVE-encapsulated traffic from that endpoint to the subinterface&rsquo;s <strong>security zone</strong>. This is what makes zone-based policy possible in a GWLB architecture:</p>
+
+    <table>
+      <thead>
+        <tr><th>GWLB Endpoint</th><th>Subinterface</th><th>Zone</th><th>Traffic Type</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>EAST-WEST endpoint (AZ-A)</td><td><code>ethernet1/1.10</code></td><td>GWLB</td><td>Spoke-to-spoke, on-prem flows</td></tr>
+        <tr><td>OUTBOUND endpoint (AZ-A)</td><td><code>ethernet1/1.20</code></td><td>OUTBOUND</td><td>Spoke-to-internet flows</td></tr>
+        <tr><td>HEALTH-CHECK endpoint (AZ-A)</td><td><code>ethernet1/1.30</code></td><td>GWLB</td><td>GWLB target health probes</td></tr>
+        <tr><td>App1 inbound endpoint (AZ-A)</td><td><code>ethernet1/1.101</code></td><td>APP1-INBOUND</td><td>Internet-to-App1 (distributed inbound)</td></tr>
+      </tbody>
+    </table>
+
+    <p>The subinterface <strong>does not carry an IP address</strong> &mdash; it exists purely for zone classification. The VLAN tag on the subinterface has no relationship to any AWS VLAN; it is a local PAN-OS construct that the GWLB association maps to.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Why not use a single subinterface for everything?</div>
+      <p>You <em>could</em> map all endpoints to one subinterface, but then all traffic lands in the same zone and you lose the ability to write differentiated policy. Separate subinterfaces per traffic type let you create rules like &ldquo;allow OUTBOUND zone to any&rdquo; while &ldquo;deny GWLB zone to GWLB zone&rdquo; (east-west default deny). The subinterface-per-endpoint design is what gives you microsegmentation in a GWLB architecture.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>How the Association Is Created</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Endpoint-to-subinterface associations are established via <strong>plugin-op-commands</strong> in the firewall&rsquo;s bootstrap user data. Terraform populates these automatically, but understanding the syntax is important for troubleshooting and for manual operations like adding a new spoke.</p>
+
+    <p>There are three plugin-op-commands, and their presence depends on the routing model:</p>
+
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Purpose</th><th>Required?</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>aws-gwlb-inspect:enable</code></td>
+          <td>Enables GENEVE inspection so the firewall can decapsulate and inspect GWLB traffic</td>
+          <td><strong>Always</strong> &mdash; both overlay and non-overlay</td>
+        </tr>
+        <tr>
+          <td><code>aws-gwlb-associate-vpce:&lt;endpoint-id&gt;@&lt;subinterface&gt;</code></td>
+          <td>Maps a specific GWLB endpoint to a specific subinterface</td>
+          <td><strong>Always</strong> &mdash; one entry per endpoint</td>
+        </tr>
+        <tr>
+          <td><code>aws-gwlb-overlay-routing:enable</code></td>
+          <td>Enables overlay routing so the firewall routes outbound traffic via <code>ethernet1/2</code> instead of returning it to GWLB</td>
+          <td><strong>Overlay only</strong> &mdash; omit for non-overlay</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>Example Bootstrap User Data (Overlay)</h4>
+    <div class="code-block">
+      <pre><code>type=dhcp-client
+panorama-server=10.51.7.4
+panorama-server-2=10.51.7.5
+tplname=STK-AWS-COMBINED-AZ-A
+dgname=DG-AWS-COMBINED
+dns-primary=169.254.169.253
+authcodes=D1234567
+vm-auth-key=123456789012345
+plugin-op-commands=aws-gwlb-inspect:enable,aws-gwlb-associate-vpce:vpce-0a1b2c3d4e@ethernet1/1.10,aws-gwlb-associate-vpce:vpce-0e5f6a7b8c@ethernet1/1.20,aws-gwlb-overlay-routing:enable
+dhcp-accept-server-hostname=yes
+dhcp-accept-server-domain=yes</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Case-sensitive and order-dependent</div>
+      <p>The <code>tplname</code> and <code>dgname</code> values must <strong>exactly match</strong> the Template Stack and Device Group names on Panorama. The <code>plugin-op-commands</code> value is a single comma-separated string with no spaces. If any endpoint ID is wrong, that association silently fails and the firewall will not inspect traffic from that endpoint.</p>
+    </div>
+
+    <h4>Post-Bootstrap: Manual Association via CLI</h4>
+    <p>If you need to add a new endpoint after bootstrap (e.g., adding a new spoke for distributed inbound), SSH to the firewall and run:</p>
+    <div class="code-block">
+      <pre><code>request plugins vm_series aws gwlb associate vpc-endpoint vpce-0a1b2c3d4e interface ethernet1/1.101</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>This takes effect immediately &mdash; no commit required. However, it does <strong>not persist across reboots</strong>. To make it permanent, update the launch template user data so new instances (or replacements from auto-scaling) include the association.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Verifying the Association</span>
+  </div>
+  <div class="collapsible-body">
+    <p>After the firewall boots and bootstraps, verify that GWLB inspection is enabled, overlay routing matches your deployment model, and all endpoint associations are present:</p>
+    <div class="code-block">
+      <pre><code>show plugins vm_series aws gwlb</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Healthy Output (Overlay)</h4>
+    <div class="code-block">
+      <pre><code>admin@fw-az-a> show plugins vm_series aws gwlb
+
+    GWLB enabled     :    True
+    Overlay Routing   :    True
+    ==================================================
+    VPC endpoint              Interface
+    ==================================================
+    vpce-0a1b2c3d4e5f6a7b8    ethernet1/1.10
+    vpce-0c9d8e7f6a5b4c3d2    ethernet1/1.20</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Healthy Output (Non-Overlay)</h4>
+    <div class="code-block">
+      <pre><code>admin@fw-az-a> show plugins vm_series aws gwlb
+
+    GWLB enabled     :    True
+    Overlay Routing   :    False
+    ==================================================
+    VPC endpoint              Interface
+    ==================================================
+    vpce-0a1b2c3d4e5f6a7b8    ethernet1/1.10
+    vpce-0c9d8e7f6a5b4c3d2    ethernet1/1.20</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>What to Check</h4>
+    <table>
+      <thead>
+        <tr><th>Check</th><th>Expected</th><th>If Wrong</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>GWLB enabled</strong></td>
+          <td><code>True</code></td>
+          <td><code>aws-gwlb-inspect:enable</code> missing from user data. Redeploy the instance with corrected user data.</td>
+        </tr>
+        <tr>
+          <td><strong>Overlay Routing</strong></td>
+          <td><code>True</code> (overlay) or <code>False</code> (non-overlay)</td>
+          <td>Mismatch between user data and your routing model. If overlay was intended but shows False, <code>aws-gwlb-overlay-routing:enable</code> was missing from user data.</td>
+        </tr>
+        <tr>
+          <td><strong>VPC endpoint count</strong></td>
+          <td>One row per GWLB endpoint in this firewall&rsquo;s AZ</td>
+          <td>Missing endpoint = wrong endpoint ID in user data, or the endpoint doesn&rsquo;t exist in the same AZ. Verify the endpoint ID in the AWS Console and re-associate via CLI.</td>
+        </tr>
+        <tr>
+          <td><strong>Interface column</strong></td>
+          <td>Each endpoint maps to the correct subinterface</td>
+          <td>Wrong subinterface = traffic lands in the wrong zone. Re-associate via CLI: <code>request plugins vm_series aws gwlb associate vpc-endpoint &lt;id&gt; interface &lt;correct-subif&gt;</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">No output or &ldquo;GWLB enabled: False&rdquo;</div>
+      <p>If the command returns no output or shows GWLB as disabled, the firewall is <strong>not inspecting any GWLB traffic</strong>. All traffic passing through GWLB endpoints associated with this firewall will be black-holed. Check:</p>
+      <ol>
+        <li>The Cloud Services plugin is installed and running: <code>show plugins vm_series aws</code></li>
+        <li>The user data included <code>plugin-op-commands</code> with <code>aws-gwlb-inspect:enable</code></li>
+        <li>The firewall successfully bootstrapped (check <code>Panorama &gt; Managed Devices &gt; Summary</code> for connection status)</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
 <!--  PHASE 1: PREREQUISITES                                      -->
 <!-- ════════════════════════════════════════════════════════════ -->
 
