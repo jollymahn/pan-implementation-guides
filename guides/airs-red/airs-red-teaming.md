@@ -43,37 +43,9 @@ AI Red Teaming operates through three API planes, each serving a distinct purpos
 | **Data Plane** | `/ai-red-teaming/data-plane` | Scans, reports, categories, quota, error logs |
 | **Network Broker** | `/ai-red-teaming/data-plane/network-broker` | Network channels for private endpoint access |
 
-```
-+------------------------------------------------------------------+
-|                       SCM CONSOLE (UI)                           |
-|   AI Security > AI Red Teaming > Dashboard | Targets | Scans    |
-+-------------------------------+----------------------------------+
-                                |
-               +----------------+---------------+
-               |                |               |
-               v                v               v
-+---------------+ +--------------+ +----------------+
-| MGMT PLANE    | | DATA PLANE   | | NET BROKER     |
-|               | |              | |                |
-| Targets       | | Scans        | | Channels       |
-| Custom Attacks| | Reports      | | Client Deploy  |
-| Dashboard     | | Categories   | | WebSocket Tun. |
-|               | | Quota        | |                |
-+---------------+ +--------------+ +----------------+
-               |                |               |
-               +----------------+---------------+
-                                |
-                                v
-+---------------------------------------------------+
-|           AI SYSTEM UNDER TEST                    |
-|                                                   |
-|  APPLICATION     AGENT          MODEL             |
-|  (chatbot,       (autonomous     (raw LLM         |
-|   copilot)        tool user)      endpoint)       |
-|                                                   |
-|  Reached via: Public endpoint OR Network Channel  |
-+---------------------------------------------------+
-```
+*AI Red Teaming architecture — SCM console, API planes, and target system:*
+
+![AI Red Teaming architecture showing SCM Console connecting to Management Plane, Data Plane, and Network Broker, which target the AI System Under Test](airs-red-screenshots/red-teaming-architecture.drawio.svg)
 
 ### Attack Categories
 
@@ -535,20 +507,9 @@ For targets with type `AGENT`, Agentic Profiling automatically interrogates the 
 
 Network Channels provide secure connectivity between the AI Red Teaming cloud service and AI systems on private networks. The architecture uses a client/server model where a lightweight daemon in the customer's Kubernetes cluster initiates an **outbound WebSocket connection** to the cloud service. No inbound firewall rules are needed.
 
-```
-+----------------------------+    outbound     +----------------------------+
-| AI RED TEAMING CLOUD       |   WebSocket    | CUSTOMER K8S CLUSTER       |
-|                            | <----------    |                            |
-|  Network Broker Server     |               |  Network Channel Client    |
-|  (receives tunnel)         |               |  (initiates tunnel)        |
-+-------------+--------------+               +-------------+--------------+
-              |                                             |
-              v attack traffic                              v internal route
-+----------------------------+               +----------------------------+
-| PRIVATE AI SYSTEM          |               |  Target: internal-llm      |
-| (not internet-accessible)  | <----------   |  10.0.1.50:8080            |
-+----------------------------+               +----------------------------+
-```
+*Network Channel architecture — outbound WebSocket tunnel from customer cluster to cloud service:*
+
+![Network Channel architecture showing outbound WebSocket tunnel from Customer K8s Cluster to AI Red Teaming Cloud, with attack traffic routed to Private AI System](airs-red-screenshots/red-teaming-network-channel.drawio.svg)
 
 ### Step 5.2: Create a Network Channel
 
