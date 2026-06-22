@@ -1224,6 +1224,157 @@ helm install airs-channel \
   </div>
 </div>
 
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.5: Custom SSL &amp; Private Certificates</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If your target endpoints use self-signed certificates, internal CA-issued certificates, or are deployed in on-premises / private cloud environments without public PKI, the Network Channel client must be configured to handle non-standard SSL. This step also covers proxy configuration for environments where outbound traffic routes through a corporate proxy.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Prerequisites</div>
+      <ul>
+        <li>Network Channel client deployed and connected (Step 5.3 complete, channel status <code>ONLINE</code>)</li>
+        <li>Client version <strong>v1.0.4+</strong> required for custom SSL support</li>
+        <li>Client version <strong>v1.0.5+</strong> required for proxy support</li>
+        <li>Helm CLI v3.x and <code>kubectl</code> configured for your cluster</li>
+        <li>Your Channel ID, Client ID, and Client Secret from Step 5.2</li>
+      </ul>
+    </div>
+
+    <h4>Check Your Client Version</h4>
+    <p>Verify the currently deployed chart version before proceeding:</p>
+    <div class="code-block">
+      <pre><code># Check the installed Helm release
+helm list -n airs-red-teaming</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>If the chart version is below <code>1.0.4</code>, upgrade before enabling custom SSL:</p>
+    <div class="code-block">
+      <pre><code># Upgrade to v1.0.4+ for custom SSL support
+helm upgrade panw-network-client \
+  oci://registry.ai-red-teaming.paloaltonetworks.com/pairs-redteam-prd-fckx/red-teaming-onprem/charts/panw-network-client:1.0.4 \
+  --set config.clientId=&lt;CLIENT_ID&gt; \
+  --set config.clientSecret=&lt;CLIENT_SECRET&gt; \
+  --set config.channelId=&lt;CHANNEL_ID&gt; \
+  -n airs-red-teaming</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Enable Custom SSL (Self-Signed / Internal CA Certificates)</h4>
+    <p>For endpoints secured with self-signed or internal CA-issued certificates, enable custom SSL by setting <code>config.disableSSLVerification=true</code>. This disables certificate chain validation on the Network Channel client so it can reach endpoints that do not present publicly trusted certificates.</p>
+    <div class="code-block">
+      <pre><code># Deploy or upgrade with custom SSL enabled
+helm upgrade panw-network-client \
+  oci://registry.ai-red-teaming.paloaltonetworks.com/pairs-redteam-prd-fckx/red-teaming-onprem/charts/panw-network-client:1.0.4 \
+  --set config.clientId=&lt;CLIENT_ID&gt; \
+  --set config.clientSecret=&lt;CLIENT_SECRET&gt; \
+  --set config.channelId=&lt;CHANNEL_ID&gt; \
+  --set config.disableSSLVerification=true \
+  -n airs-red-teaming</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Security Warning</div>
+      <p><code>disableSSLVerification=true</code> disables <strong>all</strong> SSL certificate verification for the Network Channel client. This means the client will not validate the certificate chain, expiry, or hostname of the target endpoint. Only use this setting when you trust the endpoint and the network path between the client and target.</p>
+      <ul>
+        <li><strong>Development / staging environments</strong> with self-signed certs &mdash; acceptable</li>
+        <li><strong>Production environments with valid public certificates</strong> &mdash; this setting is <strong>not required</strong> and should not be used</li>
+        <li><strong>Production environments with internal CA</strong> &mdash; required, since there is currently no option to import a custom CA trust bundle into the client</li>
+      </ul>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Limitation: No Custom CA Bundle Import</div>
+      <p>The Network Channel client does not currently support mounting or importing specific CA certificates or trust bundles. The only mechanism for handling non-public certificates is the binary <code>disableSSLVerification</code> toggle. If your organization requires certificate validation against an internal CA, this is a known gap &mdash; monitor the <a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/network-channels/networks-channels-management">Network Channels documentation</a> for future updates.</p>
+    </div>
+
+    <h4>Proxy Configuration (v1.0.5+)</h4>
+    <p>If the Network Channel client requires a proxy to reach the AI Red Teaming cloud service or target endpoints, configure proxy settings during install or upgrade. This is common in enterprise environments with egress filtering.</p>
+    <div class="code-block">
+      <pre><code># Deploy with proxy configuration (client v1.0.5+)
+helm upgrade panw-network-client \
+  oci://registry.ai-red-teaming.paloaltonetworks.com/pairs-redteam-prd-fckx/red-teaming-onprem/charts/panw-network-client:1.0.5 \
+  --set config.clientId=&lt;CLIENT_ID&gt; \
+  --set config.clientSecret=&lt;CLIENT_SECRET&gt; \
+  --set config.channelId=&lt;CHANNEL_ID&gt; \
+  --set config.httpProxy=http://proxy.corp.example.com:8080 \
+  --set config.httpsProxy=http://proxy.corp.example.com:8080 \
+  --set config.noProxy=localhost,127.0.0.1,.internal.corp.com \
+  -n airs-red-teaming</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Parameter</th><th>Min Version</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>config.httpProxy</code></td><td>v1.0.5+</td><td>HTTP proxy URL for outbound HTTP connections</td></tr>
+        <tr><td><code>config.httpsProxy</code></td><td>v1.0.5+</td><td>HTTPS proxy URL for outbound HTTPS/WSS connections</td></tr>
+        <tr><td><code>config.noProxy</code></td><td>v1.0.5+</td><td>Comma-separated list of hosts or domains that bypass the proxy</td></tr>
+        <tr><td><code>config.disableSSLVerification</code></td><td>v1.0.4+</td><td>Disable SSL certificate verification (<code>true</code>/<code>false</code>)</td></tr>
+      </tbody>
+    </table>
+
+    <p>You can combine custom SSL and proxy settings in a single command:</p>
+    <div class="code-block">
+      <pre><code># Combined: custom SSL + proxy
+helm upgrade panw-network-client \
+  oci://registry.ai-red-teaming.paloaltonetworks.com/pairs-redteam-prd-fckx/red-teaming-onprem/charts/panw-network-client:1.0.5 \
+  --set config.clientId=&lt;CLIENT_ID&gt; \
+  --set config.clientSecret=&lt;CLIENT_SECRET&gt; \
+  --set config.channelId=&lt;CHANNEL_ID&gt; \
+  --set config.disableSSLVerification=true \
+  --set config.httpsProxy=http://proxy.corp.example.com:8080 \
+  --set config.noProxy=localhost,127.0.0.1 \
+  -n airs-red-teaming</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>OAuth 2.0 Certificate Authentication</h4>
+    <div class="callout callout-note">
+      <div class="callout-title">Limitation: Certificate-Based Auth Not Supported</div>
+      <p>If your target uses Azure Entra ID (formerly Azure AD) for OAuth 2.0 authentication, AI Red Teaming currently supports <strong>client_secret authentication only</strong>. Certificate-based authentication (<code>client_assertion</code>) and federated credentials are <strong>not yet supported</strong>. You must create a client secret in your Entra ID app registration and use that for the OAuth 2.0 configuration.</p>
+      <p>To create a client secret in Entra ID:</p>
+      <ol>
+        <li>Navigate to <a href="https://portal.azure.com/">Azure Portal</a> &rarr; <strong>Microsoft Entra ID</strong> &rarr; <strong>App registrations</strong></li>
+        <li>Select your app registration (or create one)</li>
+        <li>Go to <strong>Certificates &amp; secrets</strong> &rarr; <strong>Client secrets</strong> &rarr; <strong>New client secret</strong></li>
+        <li>Set an expiry period (6, 12, or 24 months) and copy the secret value immediately &mdash; it is not shown again</li>
+        <li>Use the <code>client_id</code> and <code>client_secret</code> values in your AI Red Teaming target OAuth 2.0 configuration</li>
+      </ol>
+      <p>See <a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/entra-id-airt-oauth2">Entra ID OAuth 2.0 for AI Red Teaming</a> for full setup instructions including token URL format, scopes, and expiry configuration.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After enabling custom SSL or proxy settings:</p>
+      <ol>
+        <li>Check the pod restarted successfully: <code>kubectl get pods -n airs-red-teaming</code> (status <code>Running</code>)</li>
+        <li>Verify the client reconnected: <code>kubectl logs -n airs-red-teaming deploy/panw-network-client</code> &mdash; look for <em>&ldquo;Connected to the server&rdquo;</em></li>
+        <li>Confirm the channel is still <code>ONLINE</code> in SCM under <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <code>Network Channels</code></li>
+        <li>Re-validate your private target (Step 4.4) to confirm traffic flows through the SSL-disabled tunnel</li>
+      </ol>
+    </div>
+
+    <h4>Reference Documentation</h4>
+    <table>
+      <thead>
+        <tr><th>Topic</th><th>Link</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Network Channels Management (custom SSL, proxy, Helm commands)</td><td><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/network-channels/networks-channels-management">PAN Docs: Networks Channels Management</a></td></tr>
+        <tr><td>Target configuration (public vs private endpoints)</td><td><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets">PAN Docs: Targets</a></td></tr>
+        <tr><td>Entra ID OAuth 2.0 setup (client_secret auth)</td><td><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/entra-id-airt-oauth2">PAN Docs: Entra ID OAuth 2.0</a></td></tr>
+        <tr><td>Network Channels overview (architecture, flow)</td><td><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/network-channels">PAN Docs: Network Channels</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <!-- ════════════════════════════════════════════════════════════ -->
 <!--  PHASE 6 — SCANNING                                          -->
 <!-- ════════════════════════════════════════════════════════════ -->
