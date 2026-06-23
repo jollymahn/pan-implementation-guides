@@ -989,19 +989,58 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 
         <ol>
           <li>Log in to the primary Panorama appliance.</li>
-          <li>Navigate to <code>Dashboard</code> and confirm the <strong>Panorama Software Version</strong> is <code>11.2</code> or later.</li>
+          <li>Navigate to <code>Dashboard</code> and confirm the <strong>Panorama Software Version</strong> is <code>11.2</code> or later (recommend <code>11.2.7+</code> to avoid a known issue where Cloud NGFW devices are incorrectly counted against the Panorama license device limit).</li>
           <li>Confirm the <strong>System Mode</strong> is <code>panorama</code> (not <code>management-only</code>). If it reads <code>management-only</code>, change the mode via CLI:
             <div class="code-block">
               <pre><code>&gt; request system system-mode panorama</code></pre>
               <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             </div>
           </li>
+          <li>Verify a <strong>device certificate</strong> is installed on the Panorama management server. The device certificate authenticates Panorama with the Customer Support Portal and enables cloud services integration. Navigate to <code>Panorama &gt; Certificate Management &gt; Certificates</code> and confirm a valid device certificate is present. If not installed, follow <a href="https://docs.paloaltonetworks.com/panorama/11-2/panorama-admin/set-up-panorama/install-the-panorama-device-certificate" target="_blank" rel="noopener">Install Device Certificate</a>.</li>
           <li>Navigate to <code>Panorama &gt; Plugins</code>. Confirm <code>azure</code> plugin version <code>5.2.3</code> or later is installed. If not, download and install it.</li>
         </ol>
 
         <div class="callout callout-warning">
+          <div class="callout-title">Panorama HA: Plugin installation order</div>
+          <p>If running Panorama in an HA pair, install the Azure plugin on the <strong>secondary</strong> node first, then on the <strong>primary</strong> node. Reversing this order can cause plugin initialization failures.</p>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">CSP email must match</div>
+          <p>The email address used to register Panorama on the Customer Support Portal (CSP) must match the email used for the Cloud NGFW and Panorama integration. If the emails differ, the integration will fail. Verify the CSP account email at <a href="https://support.paloaltonetworks.com" target="_blank" rel="noopener">support.paloaltonetworks.com</a> before proceeding.</p>
+        </div>
+
+        <div class="callout callout-warning">
           <div class="callout-title">Panorama network requirements</div>
           <p>Cloud NGFW resources must be able to reach Panorama on ports <code>3978</code>, <code>28443</code>, and <code>28270</code>. Ensure NSGs and firewall rules allow these ports between the Cloud NGFW VNet and the Panorama management interface. Configuring <strong>Permitted IP Addresses</strong> under Panorama &gt; Setup &gt; Management is <strong>not supported</strong> for Cloud NGFW for Azure resources.</p>
+          <p><strong>Panorama connectivity options:</strong></p>
+          <table>
+            <thead>
+              <tr><th>Scenario</th><th>How It Works</th><th>NSG / Routing Notes</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Panorama in Azure VNet (private IP)</td>
+                <td>Panorama deployed in the hub VNet or a VNet peered to it. Cloud NGFW reaches Panorama&rsquo;s private IP directly.</td>
+                <td>No additional NSGs required beyond standard VNet security groups.</td>
+              </tr>
+              <tr>
+                <td>On-premises Panorama via VPN</td>
+                <td>VPN gateway in the hub VNet tunnels to on-premises. Cloud NGFW reaches Panorama&rsquo;s private IP through the tunnel.</td>
+                <td>Hub VNet must have a route pointing the VPN tunnel with Panorama&rsquo;s private IP as destination.</td>
+              </tr>
+              <tr>
+                <td>Panorama public IP (internet)</td>
+                <td>No peering or VPN. Cloud NGFW connects to Panorama&rsquo;s public IP over the internet.</td>
+                <td>Create an NSG rule on the Panorama NIC allowing inbound from the Cloud NGFW public IP on ports 3978, 28443, 28270.</td>
+              </tr>
+              <tr>
+                <td>Panorama via vWAN (any location)</td>
+                <td>Cloud NGFW deployed in a vWAN hub. Panorama reachable at any location connected to the vWAN.</td>
+                <td>If the vWAN has NSGs for east-west traffic, add a rule allowing Cloud NGFW private IP to reach Panorama private IP on the required ports.</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <div class="callout callout-success">
@@ -1132,6 +1171,21 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
         <div class="callout callout-note">
           <div class="callout-title">Note: Cloud NGFW zones</div>
           <p>Panorama-managed Cloud NGFW supports three zones: <code>private</code>, <code>public</code>, and <code>loopback</code>. Zone mapping can be configured during Cloud DG creation. Infrastructure settings such as interfaces and routing protocols configured in templates are ignored by Cloud NGFW &mdash; only certificate management and log settings are honored.</p>
+        </div>
+
+        <div class="callout callout-danger">
+          <div class="callout-title">Template stack name is permanent</div>
+          <p>The Cloud Template Stack name <strong>cannot be changed</strong> after a Cloud NGFW resource is deployed against it. Choose a descriptive, durable name now. If a rename is needed later, destroy and recreate the Cloud NGFW resource.</p>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Changes that require Cloud NGFW redeployment</div>
+          <p>Two post-deployment changes force a full Cloud NGFW resource redeployment (destroy + recreate):</p>
+          <ul>
+            <li><strong>Adding a log collector to Panorama</strong> after the Cloud NGFW resource is already deployed.</li>
+            <li><strong>Changing the Panorama IP address</strong> after the Cloud NGFW resource is already deployed.</li>
+          </ul>
+          <p>Plan collector groups and Panorama networking before deploying Cloud NGFW resources to avoid unplanned redeployments. Alternatively, generate a new registration string and update the Cloud NGFW resource configuration in the Azure portal (see <a href="#troubleshooting">Troubleshooting</a>).</p>
         </div>
 
         <div class="callout callout-success">
@@ -1607,6 +1661,16 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
           <td></td>
         </tr>
         <tr>
+          <td>Device certificate installed (Panorama path)</td>
+          <td>Panorama: <code>Certificate Management &gt; Certificates</code> shows a valid device certificate</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>CSP email matches integration email</td>
+          <td>Email used to register Panorama on CSP matches the email used for Cloud NGFW integration</td>
+          <td></td>
+        </tr>
+        <tr>
           <td>Management platform accessible</td>
           <td>Panorama web UI loads, or SCM login succeeds</td>
           <td></td>
@@ -2038,6 +2102,23 @@ test_infrastructure = {
         </ul>
       </li>
     </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">vWAN hub throughput and auto-scaling</div>
+      <p>Cloud NGFW throughput in a vWAN hub scales with the hub address space. Use at least a <code>/16</code> hub for maximum throughput and auto-scaling headroom:</p>
+      <table>
+        <thead>
+          <tr><th>Hub Address Space</th><th>NVA Subnet Hosts</th><th>Max Throughput</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>/16</code></td><td>123</td><td>~100 Gbps</td></tr>
+          <tr><td><code>/21</code></td><td>27</td><td>~50 Gbps</td></tr>
+          <tr><td><code>/23</code></td><td>11</td><td>~30 Gbps</td></tr>
+          <tr><td><code>/24</code></td><td>11</td><td>~30 Gbps</td></tr>
+        </tbody>
+      </table>
+      <p>The NVA subnet within the vWAN hub requires a minimum of 40 IP addresses. A <code>/24</code> hub address space provides the minimum viable throughput but limits auto-scaling.</p>
+    </div>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
@@ -2723,7 +2804,72 @@ test_infrastructure = {
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 5.5: Verify Network Connectivity</span>
+    <span>Step 5.5: Register Azure Tenant for Cloud-Delivered Security Services</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Register the Azure tenant with the Palo Alto Networks Customer Support Portal (CSP) to activate Advanced Threat Prevention, Advanced URL Filtering, WildFire, and DNS Security on Cloud NGFW resources. Without registration, only standard Threat Prevention and URL Filtering are available.</p>
+
+    <ol>
+      <li>In the Azure portal, navigate to the Cloud NGFW resource.</li>
+      <li>Under <code>Support + troubleshooting</code>, click <code>Register User account and create a case at Customer Support Portal</code>.</li>
+      <li>On the <strong>New Support Request</strong> page, click <code>Create Case at Customer Support Portal</code>. You are redirected to the Palo Alto Networks CSP.</li>
+      <li>Sign in with existing CSP credentials, or create a new CSP account.</li>
+      <li>If Cloud Marketplace information (Tenant ID, Serial Number) is prepopulated, verify it is correct and click <code>Next</code>.</li>
+      <li>Follow the prompts to complete registration.</li>
+      <li>After registration, verify by navigating to <code>Products &gt; Assets &gt; Cloud NGFW</code> in the CSP. The tenant and serial number should appear.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Email address mismatch</div>
+      <p>If the email used for the Azure subscription differs from the CSP account email, skip registration during the initial Cloud NGFW tenant login. Register the tenant later directly in the Customer Support Portal, or create a dedicated Palo Alto Networks support account for Cloud NGFW.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The CSP <code>Products &gt; Assets &gt; Cloud NGFW</code> tab shows the registered tenant. In the Azure portal, <code>Support + troubleshooting</code> confirms the tenant is linked.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.6 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.6: Enable DNS Proxy (Optional)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Enable DNS Proxy if you want Cloud NGFW to inspect DNS queries from spoke VMs and apply DNS Security policies. DNS Proxy is <strong>required</strong> for DNS Security and Advanced DNS Security features.</p>
+
+    <ol>
+      <li>Navigate to the Cloud NGFW resource in the Azure portal.</li>
+      <li>Under <code>Settings</code>, click <code>DNS Proxy</code>.</li>
+      <li>Select the <code>Enabled</code> radio button.</li>
+      <li>Choose the DNS resolution method:
+        <ul>
+          <li><strong>Default</strong> &mdash; uses Azure&rsquo;s default DNS server (<code>168.63.129.16</code>).</li>
+          <li><strong>Custom</strong> &mdash; specify a custom DNS server already configured in the VNet.</li>
+        </ul>
+      </li>
+      <li>Click <code>Save</code>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">DNS Security prerequisite</div>
+      <p>DNS Security (including Advanced DNS Security with AI-driven detection) requires DNS Proxy to be enabled. If DNS Proxy is disabled, DNS queries bypass the Cloud NGFW and DNS Security policies have no effect. Advanced DNS Security adds approximately 30% to the base firewall credit cost as an Azure consumption surcharge.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The DNS Proxy page shows <code>Enabled</code>. DNS queries from spoke VMs are now routed through the Cloud NGFW for inspection.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.7 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.7: Verify Network Connectivity</span>
   </div>
   <div class="collapsible-body">
     <p>Confirm the connectivity model deployed in Phase 4 is established. The verification depends on the deployment model.</p>
@@ -2743,7 +2889,7 @@ test_infrastructure = {
     </ol>
 
     <h4>Distributed — No Connectivity to Verify</h4>
-    <p>Application VNets are isolated by design — there is no peering or hub connectivity to verify. Proceed to Step 5.6.</p>
+    <p>Application VNets are isolated by design — there is no peering or hub connectivity to verify. Proceed to Step 5.8.</p>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
@@ -2752,11 +2898,11 @@ test_infrastructure = {
   </div>
 </div>
 
-<!-- Step 5.6 -->
+<!-- Step 5.8 -->
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 5.6: Verify Traffic Steering</span>
+    <span>Step 5.8: Verify Traffic Steering</span>
   </div>
   <div class="collapsible-body">
     <p>Confirm traffic steering is configured to route workload traffic through the Cloud NGFW.</p>
@@ -2785,11 +2931,11 @@ test_infrastructure = {
     </div>
 
     <h4>Virtual WAN — Verify Routing Intent</h4>
-    <p>vWAN deployments use routing intent policies instead of UDRs. Traffic steering is verified in Step 5.5 when confirming routing intent policies are active on the virtual hub. No UDR route tables exist for vWAN spoke subnets.</p>
+    <p>vWAN deployments use routing intent policies instead of UDRs. Traffic steering is verified in Step 5.7 when confirming routing intent policies are active on the virtual hub. No UDR route tables exist for vWAN spoke subnets.</p>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p><strong>Centralized VNet / Distributed:</strong> Each workload subnet's route table contains <code>0.0.0.0/0 → Virtual appliance → [Cloud NGFW private IP]</code>. The effective routes on a workload VM NIC show the UDR overriding the default internet route. <strong>Virtual WAN:</strong> Routing intent confirmed in Step 5.5 — no UDRs to verify.</p>
+      <p><strong>Centralized VNet / Distributed:</strong> Each workload subnet's route table contains <code>0.0.0.0/0 → Virtual appliance → [Cloud NGFW private IP]</code>. The effective routes on a workload VM NIC show the UDR overriding the default internet route. <strong>Virtual WAN:</strong> Routing intent confirmed in Step 5.7 — no UDRs to verify.</p>
     </div>
   </div>
 </div>
@@ -3034,6 +3180,11 @@ curl http://172.16.1.4:80</code></pre>
     <div class="callout callout-note">
       <div class="callout-title">Note: No NAT on east-west</div>
       <p>Cloud NGFW does not perform NAT on east-west traffic. Both the source and destination IP addresses in the traffic logs should be the actual spoke VM private IPs.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Private Source NAT for asymmetric routing</div>
+      <p>If spoke traffic to Azure PaaS services (via private endpoints) fails TCP handshakes, enable <strong>Private Source NAT</strong> on the Cloud NGFW resource. Without it, return traffic from the PaaS service goes directly to the spoke VM (bypassing the firewall), creating an asymmetric route that breaks the TCP session. Navigate to <code>Settings &gt; Networking &amp; NAT &gt; Edit</code>, check <code>Enable Private Source NAT</code>, enter the PaaS destination address, and click <code>Save</code>. This translates the spoke VM source IP to the Cloud NGFW private interface IP for the specified destinations.</p>
     </div>
 
     <div class="callout callout-success">
@@ -3370,6 +3521,84 @@ PaloAltoNetworksCNGFWTrafficLogs
       <div class="callout-title">Verification</div>
       <p>The Cloud NGFW resource overview page shows <code>Provisioning State: Succeeded</code> and <code>Health Status: Healthy</code>.</p>
     </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Update Panorama Registration String (Day 2)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Generate and apply a new registration string when making post-deployment changes to the Panorama integration. Scenarios that require a registration string update:</p>
+    <ul>
+      <li>Migrating Cloud NGFW from one Panorama appliance to another</li>
+      <li>Adding a log collector to Panorama after Cloud NGFW deployment</li>
+      <li>Moving Cloud NGFW to a different Cloud Device Group</li>
+      <li>Changing the Panorama IP address</li>
+      <li>Enabling or disabling Strata Logging Service on an existing Panorama-managed firewall</li>
+    </ul>
+
+    <h4>Generate New Registration String</h4>
+    <ol>
+      <li>Log in to Panorama.</li>
+      <li>Navigate to <code>Panorama &gt; Azure &gt; Cloud NGFW</code>.</li>
+      <li>Select the Cloud Device Group and make the necessary configuration changes.</li>
+      <li>Click <code>Generate</code> to display the new registration string.</li>
+      <li>Commit changes to Panorama.</li>
+      <li>Click <code>Copy Registration String</code>.</li>
+    </ol>
+
+    <h4>Apply to Cloud NGFW in Azure Portal</h4>
+    <ol>
+      <li>Log in to the Azure portal.</li>
+      <li>Navigate to the Cloud NGFW resource.</li>
+      <li>Go to <code>Settings &gt; Security Policies</code>.</li>
+      <li>Paste the new registration string into the <strong>Panorama Registration String</strong> field.</li>
+      <li>Click <code>Save</code>.</li>
+    </ol>
+
+    <p>Azure automatically creates a dry-run instance to validate the changes. If dry-run succeeds, firewall instances are updated through a rolling upgrade (20% at a time, 80% continue processing traffic). If dry-run fails, changes revert to the previous configuration.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Do not push Panorama changes during update</div>
+      <p>Palo Alto Networks recommends <strong>not pushing any configuration changes</strong> in Panorama while a registration string update is in progress. Wait until the Cloud NGFW health status returns to <code>Healthy</code> before making additional changes.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After the update, the Cloud NGFW resource shows <strong>Health Status</strong> = <code>Healthy</code> and <strong>Provision Status</strong> = <code>Succeeded</code>. If the status shows <code>Degraded</code> with a Panorama connectivity error, verify network reachability and the registration string validity.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Panorama Device Lifecycle and Scale-In Behavior</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Cloud NGFW resources follow specific lifecycle rules when managed by Panorama:</p>
+
+    <table>
+      <thead>
+        <tr><th>Event</th><th>Behavior</th><th>Timeline</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Firewall becomes unhealthy and disconnects</td>
+          <td>Device remains visible in Panorama, then is automatically removed</td>
+          <td>~3 days after disconnect</td>
+        </tr>
+        <tr>
+          <td>Cloud NGFW instance scaled in (auto-scaling)</td>
+          <td>Grace period begins before device is removed from Panorama</td>
+          <td>72 hours</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>These grace periods prevent premature deletion of firewall entries and allow time for recovery or investigation before the device is removed from the Panorama inventory.</p>
   </div>
 </div>
 
