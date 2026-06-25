@@ -148,21 +148,9 @@
   }
 
   function resolveHref(ref) {
-    var page = document.querySelector('link[rel="canonical"]');
-    if (page && page.href) {
-      var pageUrl = new URL(page.href);
-      return new URL(ref, pageUrl.href.replace(/[^/]*$/, '')).pathname;
-    }
-    var loc = window.location.pathname;
-    var depth = loc.split('/').filter(Boolean).length - 1;
-    if (loc.endsWith('/')) depth++;
-    var docsIdx = loc.indexOf('/docs/');
-    if (docsIdx !== -1) {
-      return loc.slice(0, docsIdx + 6) + ref;
-    }
-    var prefix = '';
-    for (var i = 0; i < depth; i++) prefix += '../';
-    return prefix + ref;
+    // basePath points to shared/ relative to the current page.
+    // Docs root is one level up from shared/.
+    return basePath + '../' + ref;
   }
 
   function makeSnippet(body, query) {
