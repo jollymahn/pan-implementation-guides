@@ -51,7 +51,7 @@ AI Red Teaming operates through three API planes, each serving a distinct purpos
 
 AI Red Teaming organizes attacks into four top-level categories, each with subcategories targeting specific vulnerability classes.
 
-#### Security (10 subcategories)
+#### Security (9 subcategories)
 
 | Subcategory | Description | Severity |
 |---|---|---|
@@ -65,7 +65,7 @@ AI Red Teaming organizes attacks into four top-level categories, each with subca
 | System Prompt Leak | Tricking model into disclosing internal system instructions | Medium |
 | Tool Leak | Extracting info about available tools, schemas, function definitions | Medium |
 
-#### Safety (10 subcategories)
+#### Safety (9 subcategories)
 
 | Subcategory | Description |
 |---|---|
@@ -1477,3 +1477,49 @@ Complete checklist for end-to-end AI Red Teaming deployment. Print or save for t
 - [ ] Quota consumption tracked and within allocation
 - [ ] Escalation path defined for critical vulnerability findings
 - [ ] Custom attack library plan documented for organization-specific testing
+
+---
+
+## Appendix: Technical Requirements Document (TRD)
+
+The TRD captures customer-specific information needed to configure and deploy AI Red Teaming. Complete it **before** starting this guide — every configuration value in Phases 3–6 comes from the TRD.
+
+> **TRD ≠ Deployment Guide:** The TRD **collects**; this guide **executes**. The TRD is an intake form — it asks "what do you have?" This guide is a step-by-step procedure — it says "here's how to configure it."
+
+### TRD Structure
+
+| Part | Scope | Key Sections | Feeds Guide Step |
+|---|---|---|---|
+| **Part A** — Engagement Context | Once per customer | Business driver, target inventory, compliance, remediation | Engagement scoping |
+| **Part B** — Platform Configuration | Once per engagement | Licensing, tenant/TSG, IAM, network topology, sizing | Steps 3.1–3.2, Phase 5 |
+| **Part C** — Per-Target Configuration | Repeated per target | Architecture, auth, rate limits, guardrails, scan strategy, API payload | Steps 4.2–4.3, 6.2–6.5 |
+| **Day-2 Appendix** | Optional, post-first-scan | SIEM, cadence, CI/CD, reporting | Day-2 operations |
+
+### Download TRD Forms
+
+**Consultant Version** (internal — includes guidance, examples, field tips):
+- [Excel Workbook — Consultant](../../trd/red-teaming/trd-red-teaming-consultant.xlsx)
+- [Word Document — Consultant](../../trd/red-teaming/trd-red-teaming-consultant.docx)
+
+**Customer Version** (clean — questions and answer fields only):
+- [Excel Workbook — Customer](../../trd/red-teaming/trd-red-teaming-customer.xlsx)
+- [Word Document — Customer](../../trd/red-teaming/trd-red-teaming-customer.docx)
+
+**Interactive HTML Version:**
+- [TRD — Full Interactive Version](../../trd/red-teaming/trd-red-teaming.html) — toggleable consultant/customer view
+
+### Critical TRD Fields
+
+These fields directly populate configuration steps. Missing any one blocks progress:
+
+| TRD Field | Guide Step | Why It Blocks |
+|---|---|---|
+| CSP admin email | 3.1: Create Deployment Profile | Cannot log into CSP without credit allocation permissions |
+| Region | 3.1: Create Deployment Profile | Cannot be changed after activation |
+| SLS status | 3.1: Create Deployment Profile | Mandatory — must activate first if not enabled |
+| Endpoint URL + auth | 4.2: Add Target | Cannot create target without reachable, authenticated endpoint |
+| Request template with `{{prompt}}` | 4.2: Add Target | Most critical field — bad placeholder = scans produce no results |
+| Response body path | 4.2: Add Target | Must extract actual model response text |
+| Rate limits (RPM/TPM) | 4.3 + scan execution | #1 cause of scan failures |
+| Guardrail error pattern | 4.3: Configure Details | Reports can't distinguish blocked vs. refused |
+| Public vs. private endpoints | Phase 5 decision | Determines Network Channel deployment |
