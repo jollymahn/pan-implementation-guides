@@ -114,6 +114,114 @@
   <a href="../azure/vm-series-deployment.html">Azure VM-Series</a>
 </div>
 
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  UNDERSTANDING SECURITY ZONES (always visible)               -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="understanding-zones">Understanding Security Zones</h2>
+
+<p>In traditional PAN-OS firewalls (PA-Series, VM-Series), every physical or logical interface is bound to a <strong>security zone</strong> — trust, untrust, dmz, and so on. Security policy rules then specify zone pairs (e.g., <em>trust → untrust</em>) to control which traffic is allowed. This 1:1 interface-to-zone binding is a foundational concept that PS engineers and customers carry into cloud deployments.</p>
+
+<p><strong>Cloud NGFW breaks this model.</strong> Because Cloud NGFW is a fully managed service with no customer-visible interfaces, there are no interfaces to bind zones to. How zones are handled — and whether they exist at all — depends entirely on the cloud platform and management mode.</p>
+
+<p><em>Traditional PAN-OS zones vs Cloud NGFW — the interface-to-zone binding disappears in the cloud:</em></p>
+<img src="diagrams/zones/traditional-vs-cloud-zones.svg" alt="Side-by-side comparison showing traditional PAN-OS with trust, untrust, and DMZ zones bound to physical interfaces on the left, versus Cloud NGFW with no physical interfaces and abstracted zone behavior that varies by platform on the right" loading="lazy">
+
+<h3>Zone Behavior by Platform</h3>
+
+<p>The table below is the single most important reference for understanding zones in Cloud NGFW. Each platform handles zones differently — <strong>there is no universal behavior</strong>.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Aspect</th>
+      <th>Traditional PAN-OS</th>
+      <th>AWS</th>
+      <th>Azure (Panorama)</th>
+      <th>Azure (SCM)</th>
+      <th>Azure Native Rulestack</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Zone model</strong></td>
+      <td>Custom zones bound to interfaces</td>
+      <td>No zones</td>
+      <td>2 pre-defined: <code>public</code>, <code>private</code></td>
+      <td>Zones exist but hidden</td>
+      <td>Single implicit zone</td>
+    </tr>
+    <tr>
+      <td><strong>Source/Dest zone in rules</strong></td>
+      <td>Specific zone names</td>
+      <td><code>any</code> / <code>any</code></td>
+      <td>Zone names (<code>public</code>, <code>private</code>)</td>
+      <td><code>any</code> / <code>any</code></td>
+      <td><code>ANY</code> / <code>ANY</code></td>
+    </tr>
+    <tr>
+      <td><strong>Traffic differentiation</strong></td>
+      <td>Zone pairs</td>
+      <td>IP address ranges</td>
+      <td>Zone pairs + addresses</td>
+      <td>Address objects</td>
+      <td>Prefix lists, FQDN lists</td>
+    </tr>
+    <tr>
+      <td><strong>Custom zones</strong></td>
+      <td>Unlimited</td>
+      <td>N/A</td>
+      <td>No — only <code>public</code> and <code>private</code></td>
+      <td>N/A</td>
+      <td>N/A</td>
+    </tr>
+    <tr>
+      <td><strong>Intrazone default</strong></td>
+      <td>Allow (configurable)</td>
+      <td>N/A</td>
+      <td style="background:#fef2f2;"><strong style="color:#ef4444;">Allow (must override!)</strong></td>
+      <td>N/A</td>
+      <td>N/A</td>
+    </tr>
+    <tr>
+      <td><strong>Interzone default</strong></td>
+      <td>Deny</td>
+      <td>N/A</td>
+      <td>Deny</td>
+      <td>N/A</td>
+      <td>N/A</td>
+    </tr>
+    <tr>
+      <td><strong>Zones in logs</strong></td>
+      <td>Yes</td>
+      <td>No</td>
+      <td>Yes (<code>public</code>/<code>private</code>)</td>
+      <td>Yes (<code>public</code>/<code>private</code>)</td>
+      <td>May show <code>public</code>/<code>private</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Critical: Azure Panorama Intrazone Default = ALLOW</div>
+  <p>When managing Cloud NGFW for Azure through Panorama, east-west traffic (private → private) is <strong>intrazone</strong> traffic. The default intrazone rule is <strong>ALLOW</strong> — meaning all spoke-to-spoke traffic passes without inspection unless you explicitly override it.</p>
+  <p><strong>Immediately after deploying Cloud NGFW with Panorama management, change the intrazone-default action to DENY</strong> in the Panorama security policy. Without this override, your east-west segmentation is not enforced.</p>
+  <p>This does not apply to AWS (no zones), Azure SCM (any/any rules), or Azure Native Rulestack (ANY/ANY rules) — in those modes, all traffic is matched by explicit policy rules.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Why do zones differ across clouds?</div>
+  <p>The zone model depends on the underlying data plane architecture:</p>
+  <ul>
+    <li><strong>AWS</strong> uses GWLB (Gateway Load Balancer) — all traffic enters through a single GWLB endpoint, so there is no directional interface to bind a zone to. All rules use <code>any</code>/<code>any</code> zones.</li>
+    <li><strong>Azure (Panorama/SCM)</strong> uses delegated subnets — traffic enters through a <code>public</code> subnet or a <code>private</code> subnet, giving the firewall two natural zone assignments. Panorama exposes these as zone names; SCM abstracts them to <code>any</code>.</li>
+    <li><strong>Azure Native Rulestack</strong> uses the same delegated subnet model, but the native rulestack policy engine does not expose zone fields — all rules match <code>ANY</code>/<code>ANY</code>.</li>
+  </ul>
+</div>
+
+<p><em>Zone behavior by platform — how each Cloud NGFW deployment handles source and destination zones in security rules:</em></p>
+<img src="diagrams/zones/zone-behavior-summary.svg" alt="Four-quadrant diagram showing zone behavior for each Cloud NGFW platform: AWS (no zones, any/any), Azure Panorama (public/private zones with intrazone-default ALLOW danger), Azure SCM (any/any, zones in logs only), Azure Native (ANY/ANY, single implicit zone)" loading="lazy">
+
 <!-- ── Cloud Picker ──────────────────────────────────────────── -->
 <div class="guide-cloud-picker">
   <button class="guide-cloud-btn active" data-cloud="aws" onclick="pickGuideCloud('aws')">AWS</button>
@@ -129,6 +237,26 @@
 <h2 id="aws-architecture-overview">Architecture Overview</h2>
 
 <p>Cloud NGFW for AWS is a Palo Alto Networks next-generation firewall delivered as a fully managed, cloud-native service. Palo Alto Networks owns and operates the underlying firewall infrastructure — including scaling, patching, and high availability — while you retain full control over security policy. Traffic reaches the Cloud NGFW through <strong>NGFW endpoints</strong> (AWS Gateway Load Balancer endpoints) that you place in your VPC subnets and reference in VPC route tables.</p>
+
+<h3 id="aws-zones">Security Zones on AWS</h3>
+
+<p>Cloud NGFW for AWS has <strong>no security zone concept</strong>. Because traffic reaches the Cloud NGFW through GWLB endpoints — a single data plane tunnel — there is no interface-to-zone binding. All security rules must use <code>any</code> for both source and destination zones.</p>
+
+<table>
+  <thead>
+    <tr><th>Traffic Direction</th><th>Source Zone</th><th>Dest Zone</th><th>How to Match</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Inbound</td><td><code>any</code></td><td><code>any</code></td><td>Source IP = external/public ranges</td></tr>
+    <tr><td>Outbound</td><td><code>any</code></td><td><code>any</code></td><td>Source IP = internal VPC CIDRs</td></tr>
+    <tr><td>East-West</td><td><code>any</code></td><td><code>any</code></td><td>Source &amp; Dest = different internal CIDRs</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Tip: Organize rules by direction</div>
+  <p>Without zones, use <strong>separate rulestacks</strong> or <strong>device groups</strong> per traffic direction (inbound, outbound, east-west) as an organizational equivalent. Within each rulestack, use IP address ranges and address groups to distinguish traffic flows. This replaces the zone-pair logic from traditional PAN-OS.</p>
+</div>
 
 <p>Five deployment models exist. Each balances control, complexity, and blast radius differently. Expand the model that matches your environment to study the architecture and traffic flows.</p>
 
@@ -577,6 +705,37 @@
 <p><em>Multi-region deployment — Cloud NGFW spans availability zones within each region:</em></p>
 <img src="diagrams/azure/Regions.png" alt="Azure multi-region Cloud NGFW deployment showing East US and West US regions, each with three availability zones and Cloud NGFW resources distributed across zones for high availability" loading="lazy">
 
+<h3 id="azure-zones">Security Zones on Azure</h3>
+
+<p>Azure Cloud NGFW uses <strong>delegated subnets</strong> (public and private) that provide a natural two-zone model. However, whether you can use these zones in security rules depends on the management mode.</p>
+
+<h4>Panorama-Managed</h4>
+
+<p>When Cloud NGFW for Azure is managed through Panorama, the firewall exposes two <strong>pre-defined zones</strong>: <code>public</code> and <code>private</code>. These map directly to the two delegated subnets. You cannot create custom zones — only <code>public</code> and <code>private</code> are available.</p>
+
+<table>
+  <thead>
+    <tr><th>Traffic Direction</th><th>Source Zone</th><th>Dest Zone</th><th>Zone Type</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Inbound (internet → spoke)</td><td><code>public</code></td><td><code>private</code></td><td>Interzone</td></tr>
+    <tr><td>Outbound (spoke → internet)</td><td><code>private</code></td><td><code>public</code></td><td>Interzone</td></tr>
+    <tr style="background:#fef2f2;"><td>East-West (spoke → spoke)</td><td><code>private</code></td><td><code>private</code></td><td><strong style="color:#ef4444;">Intrazone</strong></td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Override Intrazone Default to DENY</div>
+  <p>East-west traffic (private → private) is <strong>intrazone</strong>. PAN-OS defaults intrazone to <strong>ALLOW</strong>. This means all spoke-to-spoke traffic passes without inspection after deployment unless you change this immediately.</p>
+  <p>In Panorama: <strong>Policies → Security → Default Rules → intrazone-default → Action: Deny</strong>. Push the change to the Cloud NGFW device group.</p>
+</div>
+
+<h4>SCM-Managed</h4>
+
+<p>When managed through Strata Cloud Manager, security rules use <code>any</code> for both source and destination zones. The zone fields are not editable in the SCM UI. Traffic direction is determined by <strong>address objects</strong> — use source/destination address groups to distinguish inbound, outbound, and east-west flows.</p>
+
+<p>Logs from SCM-managed Cloud NGFW will still show <code>public</code>/<code>private</code> zone names (the underlying firewall still has zones), but policy rules always use <code>any</code>/<code>any</code>.</p>
+
 <p>Three deployment models exist. The right choice depends on the Azure networking topology and whether cross-VNet (east-west) inspection is required.</p>
 
 <div class="callout callout-note">
@@ -908,6 +1067,26 @@
 
 <p><em>Management boundary — what is managed where:</em></p>
 <img src="diagrams/azure-native/management-boundary.png" alt="Management boundary diagram showing three swim lanes: Azure Portal manages NAT, DNS Proxy, DNS Security, TLS Decryption, and Log Settings; Strata Cloud Manager manages security policy, address objects, profiles, IP Tag Collection, and DAGs; Panorama manages advanced DNS Security, XFF, cloud certificates, and device groups" loading="lazy">
+
+<h3 id="azure-native-zones">Security Zones on Azure Native Rulestack</h3>
+
+<p>Azure Native Rulestack uses a <strong>single implicit zone</strong>. The rulestack policy engine does not expose zone fields — all rules use <code>ANY</code> for source and destination zones. Traffic direction is determined by <strong>prefix lists</strong> and <strong>FQDN lists</strong> in the rule definition.</p>
+
+<table>
+  <thead>
+    <tr><th>Traffic Direction</th><th>Source Zone</th><th>Dest Zone</th><th>How to Match</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Inbound</td><td><code>ANY</code></td><td><code>ANY</code></td><td>Source = external prefix list; Dest = internal prefix list</td></tr>
+    <tr><td>Outbound</td><td><code>ANY</code></td><td><code>ANY</code></td><td>Source = internal prefix list; Dest = FQDN list or external</td></tr>
+    <tr><td>East-West</td><td><code>ANY</code></td><td><code>ANY</code></td><td>Source &amp; Dest = different internal prefix lists</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Zones in logs</div>
+  <p>Even though rulestack rules use <code>ANY</code>/<code>ANY</code>, Cloud NGFW logs may still display <code>public</code> or <code>private</code> zone names. This reflects the underlying data plane behavior — the delegated subnets still have a directional nature — but it does not affect rule matching.</p>
+</div>
 
 <h3>VNet Hub-and-Spoke</h3>
 
