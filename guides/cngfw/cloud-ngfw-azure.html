@@ -472,48 +472,174 @@
     <span>Step 1.1: Verify Azure Subscription and RBAC Setup</span>
   </div>
   <div class="collapsible-body">
-    <p>The Cloud NGFW Terraform provider and Azure portal operations require specific RBAC permissions. Create a custom role with the minimum required permissions for the service principal that Panorama (or automation) will use.</p>
+    <p>Cloud NGFW on Azure requires <strong>two separate service principals</strong> with different permission scopes. Neither is created by Terraform &mdash; both must exist before <code>terraform init</code>.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Service Principal</th>
+          <th>Purpose</th>
+          <th>Role</th>
+          <th>Permission Level</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>CloudNGFW-ServicePrincipal</code></td>
+          <td>Panorama Azure plugin &mdash; VM-Monitoring, Dynamic Address Groups, resource discovery</td>
+          <td><code>CloudNGFW-PluginRole</code> (custom)</td>
+          <td>Read-only</td>
+        </tr>
+        <tr>
+          <td><code>terraform-cloudngfw</code></td>
+          <td>Terraform &mdash; create/modify/delete resource groups, VNets, route tables, Cloud NGFW resources</td>
+          <td><code>Contributor</code> (built-in)</td>
+          <td>Read-write</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>Part A: Register the Panorama Plugin Service Principal</h4>
 
     <ol>
       <li>Confirm an active Azure subscription is associated with the Azure account that will host the Cloud NGFW resources.</li>
       <li>Navigate to <code>Home &gt; Microsoft Entra ID</code> (formerly Azure Active Directory).</li>
-      <li>Copy the <strong>Tenant ID</strong> from the Overview tab — it is needed later for Panorama plugin configuration and Terraform variables.</li>
+      <li>Copy the <strong>Tenant ID</strong> from the Overview tab &mdash; it is needed later for Panorama plugin configuration and Terraform variables.</li>
       <li>Navigate to <code>Home &gt; App registrations</code> and click <code>New registration</code>.</li>
       <li>Set <strong>Name</strong> to <code>CloudNGFW-ServicePrincipal</code> and click <code>Register</code>.</li>
       <li>Copy the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong>.</li>
       <li>Navigate to <code>Certificates &amp; secrets</code> and click <code>New client secret</code>.</li>
       <li>Set <strong>Description</strong> to <code>CloudNGFW-ServicePrincipal</code>, set <strong>Expires</strong> to <code>24 months</code>, and click <code>Add</code>.</li>
-      <li>Copy the secret <strong>Value</strong> immediately — it cannot be retrieved after leaving the page.</li>
+      <li>Copy the secret <strong>Value</strong> immediately &mdash; it cannot be retrieved after leaving the page.</li>
     </ol>
 
-    <p>Next, create a custom RBAC role with the minimum permissions the service principal needs.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Record these values now</div>
+      <p>You will need four values from this step: <strong>Subscription ID</strong>, <strong>Tenant ID</strong>, <strong>Application (client) ID</strong>, and <strong>Client Secret</strong>. Store them securely &mdash; the client secret is only visible at creation time.</p>
+    </div>
+
+    <h4>Part B: Create the <code>CloudNGFW-PluginRole</code> Custom RBAC Role</h4>
+
+    <p>The Panorama Azure plugin needs read-only access to discover VMs, network interfaces, and VNet topology for VM-Monitoring and Dynamic Address Groups. Create a custom role scoped to the minimum required permissions rather than using the broad built-in <code>Reader</code> role.</p>
 
     <ol start="10">
       <li>Navigate to <code>Home &gt; Subscriptions</code> and copy the <strong>Subscription ID</strong>.</li>
-      <li>Navigate to <code>Access Control (IAM)</code> → <code>Add</code> → <code>Add custom role</code>.</li>
+      <li>Navigate to <code>Access Control (IAM)</code> &rarr; <code>Add</code> &rarr; <code>Add custom role</code>.</li>
       <li>Set <strong>Custom role name</strong> to <code>CloudNGFW-PluginRole</code>.</li>
       <li>Select <code>Start from scratch</code>, click <code>Next</code>, navigate to the <strong>JSON</strong> tab, and click <code>Edit</code>.</li>
-      <li>Add the following permissions to the <code>actions</code> array:</li>
+      <li>Add the following permissions to the <code>actions</code> array (the portal pre-populates the surrounding JSON structure):</li>
     </ol>
 
     <div class="code-block">
       <pre><code>"actions": [
+    "Microsoft.Compute/virtualMachines/read",
+    "Microsoft.Network/networkInterfaces/read",
     "Microsoft.Network/virtualNetworks/read",
     "Microsoft.Network/virtualNetworks/subnets/read",
-    "Microsoft.Compute/virtualMachines/read",
-    "Microsoft.Resources/subscriptions/resourceGroups/read",
-    "Microsoft.Network/locations/serviceTags/read",
     "Microsoft.Network/publicIPAddresses/read",
     "Microsoft.Network/loadBalancers/read",
     "Microsoft.Network/applicationGateways/read",
-    "Microsoft.Network/networkInterfaces/read"
+    "Microsoft.Network/locations/serviceTags/read",
+    "Microsoft.Resources/subscriptions/resourceGroups/read",
+    "Microsoft.Resources/subscriptions/read"
 ]</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
+    <div class="callout callout-note">
+      <div class="callout-title">Alternative: Create via Azure CLI</div>
+      <p>If you prefer the command line, save the following as <code>cloudngfw-plugin-role.json</code> and run <code>az role definition create --role-definition @cloudngfw-plugin-role.json</code>:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>{
+  "Name": "CloudNGFW-PluginRole",
+  "IsCustom": true,
+  "Description": "Minimum read-only permissions for the Panorama Azure plugin to perform VM-Monitoring and populate Dynamic Address Groups for Cloud NGFW.",
+  "Actions": [
+    "Microsoft.Compute/virtualMachines/read",
+    "Microsoft.Network/networkInterfaces/read",
+    "Microsoft.Network/virtualNetworks/read",
+    "Microsoft.Network/virtualNetworks/subnets/read",
+    "Microsoft.Network/publicIPAddresses/read",
+    "Microsoft.Network/loadBalancers/read",
+    "Microsoft.Network/applicationGateways/read",
+    "Microsoft.Network/locations/serviceTags/read",
+    "Microsoft.Resources/subscriptions/resourceGroups/read",
+    "Microsoft.Resources/subscriptions/read"
+  ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": [
+    "/subscriptions/&lt;your-subscription-id&gt;"
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Each permission serves a specific purpose in the Panorama Azure plugin:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Permission</th>
+          <th>Why the Plugin Needs It</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>Microsoft.Compute/virtualMachines/read</code></td>
+          <td>Discover VMs and their Azure tags for Dynamic Address Group membership</td>
+        </tr>
+        <tr>
+          <td><code>Microsoft.Network/networkInterfaces/read</code></td>
+          <td>Map VM NICs to private/public IP addresses</td>
+        </tr>
+        <tr>
+          <td><code>Microsoft.Network/virtualNetworks/read</code></td>
+          <td>Discover VNet topology and address spaces</td>
+        </tr>
+        <tr>
+          <td><code>Microsoft.Network/virtualNetworks/subnets/read</code></td>
+          <td>Read subnet configurations and CIDR ranges</td>
+        </tr>
+        <tr>
+          <td><code>Microsoft.Network/publicIPAddresses/read</code></td>
+          <td>Resolve public IPs associated with monitored VMs</td>
+        </tr>
+        <tr>
+          <td><code>Microsoft.Network/loadBalancers/read</code></td>
+          <td>Discover load balancer frontend/backend configurations</td>
+        </tr>
+        <tr>
+          <td><code>Microsoft.Network/applicationGateways/read</code></td>
+          <td>Discover application gateway configurations</td>
+        </tr>
+        <tr>
+          <td><code>Microsoft.Network/locations/serviceTags/read</code></td>
+          <td>Read Azure service tags for use in security policy</td>
+        </tr>
+        <tr>
+          <td><code>Microsoft.Resources/subscriptions/resourceGroups/read</code></td>
+          <td>Enumerate resource groups for scoped VM discovery</td>
+        </tr>
+        <tr>
+          <td><code>Microsoft.Resources/subscriptions/read</code></td>
+          <td>Validate subscription access during plugin credential verification. <em>Not in canonical PAN docs &mdash; prevents a known validation warning in some Azure plugin versions.</em></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Why a custom role instead of built-in Reader?</div>
+      <p>The built-in <code>Reader</code> role grants read access to <em>all</em> resource types in the subscription &mdash; including Key Vaults, storage accounts, and databases. The custom <code>CloudNGFW-PluginRole</code> follows the principle of least privilege by restricting access to only the compute and network resources the plugin actually queries.</p>
+    </div>
+
+    <h4>Part C: Assign the Custom Role to the Service Principal</h4>
+
     <ol start="15">
       <li>Click <code>Review + Create</code>, then <code>Create</code>.</li>
-      <li>Return to <code>Access Control (IAM)</code> → <code>Add</code> → <code>Add role assignment</code>.</li>
+      <li>Return to <code>Access Control (IAM)</code> &rarr; <code>Add</code> &rarr; <code>Add role assignment</code>.</li>
       <li>Search for <code>CloudNGFW-PluginRole</code>, select it, click <code>Next</code>.</li>
       <li>Click <code>Select members</code>, search for <code>CloudNGFW-ServicePrincipal</code>, select it, click <code>Select</code>.</li>
       <li>Click <code>Review + assign</code>.</li>
@@ -521,11 +647,11 @@
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Navigate to <code>Home &gt; Subscriptions &gt; [your subscription] &gt; Access Control (IAM) &gt; Role assignments</code>. Confirm <code>CloudNGFW-ServicePrincipal</code> appears with the <code>CloudNGFW-PluginRole</code> role assigned.</p>
+      <p>Navigate to <code>Home &gt; Subscriptions &gt; [your subscription] &gt; Access Control (IAM) &gt; Role assignments</code>. Confirm <code>CloudNGFW-ServicePrincipal</code> appears with the <code>CloudNGFW-PluginRole</code> role assigned at the subscription scope.</p>
     </div>
 
-    <h4>Service Principal for Terraform Deployment</h4>
-    <p>The service principal above grants <strong>read-only</strong> permissions for the Panorama Azure plugin. Deploying Cloud NGFW infrastructure with Terraform requires a <strong>separate</strong> identity with write permissions to create resource groups, VNets, route tables, and Cloud NGFW resources.</p>
+    <h4>Part D: Service Principal for Terraform Deployment</h4>
+    <p>The <code>CloudNGFW-ServicePrincipal</code> above grants <strong>read-only</strong> permissions for the Panorama Azure plugin. Deploying Cloud NGFW infrastructure with Terraform requires a <strong>separate</strong> identity with write permissions to create resource groups, VNets, route tables, and Cloud NGFW resources. The Terraform modules do not create either service principal &mdash; both must exist before <code>terraform init</code>.</p>
 
     <h4>Option A: Logged-in user (development / Cloud Shell)</h4>
     <p>The simplest path for development is to authenticate Terraform with your own user account via <code>az login</code>. The user must have <strong>Contributor</strong> on the target subscription (or scoped to a resource group).</p>
