@@ -99,7 +99,7 @@ Confirm you have credentials for both platforms:
 
 | Platform | URL | What You Need It For |
 |---|---|---|
-| **Palo Alto Networks Customer Support Portal** | [support.paloaltonetworks.com](https://support.paloaltonetworks.com) | License activation, deployment profile creation, device certificate generation, auth codes |
+| **Palo Alto Networks Customer Support Portal** | [support.paloaltonetworks.com](https://support.paloaltonetworks.com) | License activation, deployment profile creation, auth codes |
 | **Strata Cloud Manager (SCM)** | [stratacloudmanager.paloaltonetworks.com](https://stratacloudmanager.paloaltonetworks.com) | API key generation, AI security profile configuration, cloud account onboarding, discovery dashboard |
 
 > **Warning:** Strata Cloud Manager and Tenant Service Groups (TSGs) are currently available in: **US, UK, India, Canada, Singapore**. Your CSP deployment can be in any supported cloud region, but the management plane must be in one of these regions.
@@ -153,7 +153,7 @@ Cloud account onboarding (Phase 4) enables AI asset discovery. If you plan to us
 
 ## Phase 2: License Activation & Foundation
 
-Activate your license, Strata Logging Service, and device certificate. These are the foundation everything else builds on.
+Activate your license and Strata Logging Service. These are the foundation everything else builds on.
 
 ### Step 2.1 — Activate Your AIRS License
 
@@ -189,36 +189,19 @@ Strata Logging Service stores scan results and provides data for the discovery d
 
 *Verification:* In the Hub, navigate to your TSG and confirm the SLS instance shows as **Active** with the correct region.
 
-### Step 2.3 — Generate a Device Certificate
+### Step 2.3 — Create a Deployment Profile
 
-The device certificate enables secure communication with Palo Alto Networks licensing servers and Cloud-Delivered Security Services.
-
-1. Log in to the [Customer Support Portal](https://support.paloaltonetworks.com).
-2. Navigate to **Products → Device Certificates → Generate Registration PIN**.
-3. Enter a **description** (e.g., "AIRS API Intercept Production").
-4. Select a **PIN expiration period**.
-5. Click **Generate Registration PIN**.
-6. Immediately save both values:
-   - **PIN ID**
-   - **PIN Value**
-
-> **Danger:** Registration PINs have an expiration date. If you do not use the PIN before it expires, you must return to the Customer Support Portal and generate a new one. Plan to use it within the same session.
-
-*Verification:* Confirm you have both the PIN ID and PIN Value saved securely. You will need these in Phase 3.
-
-### Step 2.4 — Create a Deployment Profile
-
-A deployment profile defines your resource allocation and bundles the required services.
+A deployment profile is your AIRS license allocation. Creating an API deployment profile is also what provisions your Strata Cloud Manager tenant.
 
 1. In the Customer Support Portal, navigate to **Products → Software/Cloud NGFW Credits**.
-2. Locate your credit pool and click **Create Deployment Profile**.
-3. Select product type: **AI Runtime Security (Instance)**.
-4. Select PAN-OS version: **PAN-OS 11.2.2 and above**.
-5. Configure the profile:
+2. Locate the appropriate credit pool and click **Create Deployment Profile**.
+3. Select product type: **AI Runtime Security (API)**. (The AI Security package and "Use Credits to Enable" are selected by default.)
+4. Configure the profile:
    - **Deployment Profile Name:** A descriptive name (e.g., "AIRS-API-Production")
-   - **Number of instances:** How many AIRS instances you need
-   - **vCPUs per instance:** Planned allocation (impacts transaction limits: 10K AI transactions/day/vCPU)
-6. Click **Create Deployment Profile**.
+   - **Monthly Tokens (Billions):** Your estimated monthly usage (minimum 1; one token is roughly four characters)
+5. Click **Create Deployment Profile**.
+
+> **Note:** As a current limitation, Prisma AIRS API must run on its **own dedicated Strata Cloud Manager tenant**. When you finish setup, let it provision a new tenant for AIRS rather than attaching it to an existing SCM tenant.
 
 #### Associate the Profile with a TSG
 
@@ -389,7 +372,6 @@ Before integrating the API into your application code, verify every foundation p
 
 - [ ] **License active** — AIRS AI Runtime API Intercept subscription shows active in the Customer Support Portal
 - [ ] **SLS active** — Strata Logging Service instance running in your TSG with correct region
-- [ ] **Device certificate** — Registration PIN ID and PIN Value saved (and not expired)
 - [ ] **Deployment profile** — Profile created, associated with TSG, Auth Code recorded
 - [ ] **AI security profile** — Created in SCM with detection services configured
 - [ ] **API key** — Generated and stored securely in a secrets manager
@@ -821,9 +803,8 @@ Rotate your API key periodically:
 | Symptom | Cause & Fix |
 |---|---|
 | Deployment profile association stuck | The initial TSG association can take up to 30 minutes. If it takes longer, contact Palo Alto Networks support. |
-| Registration PIN expired | Generate a new PIN in the Customer Support Portal under Products → Device Certificates → Generate Registration PIN. |
 | Cannot reach Scan API endpoint | Verify firewall rules allow outbound TCP 443 to the regional Scan API endpoint. Test with `curl -v` to diagnose TLS or DNS issues. |
-| Transaction limit reached | 10K AI transactions/day/vCPU limit. Increase vCPUs in your deployment profile or optimize scanning (skip scans for low-risk operations). |
+| Monthly token quota exhausted | API usage is metered in monthly tokens (billions) and resets each calendar month. Increase the Monthly Tokens on your deployment profile, or optimize scanning (skip scans for low-risk operations). |
 
 ---
 
@@ -899,7 +880,6 @@ For programmatic API key and profile management, use the Management API at `http
 - [ ] Customer Support Portal access confirmed
 - [ ] AIRS AI Runtime API Intercept license activated
 - [ ] Strata Logging Service activated and associated with TSG
-- [ ] Device certificate PIN generated (not expired)
 - [ ] Deployment profile created and associated with TSG
 - [ ] Auth Code recorded
 

@@ -140,6 +140,13 @@ function ownPanels(group) {
     .filter(p => p.closest('.mgmt-tabs') === group);
 }
 
+// A panel may serve several planes via a space-separated data-plane
+// (e.g. data-plane="aws azure gcp local"). Single values still match.
+function planeMatches(attr, plane) {
+  if (!attr) return false;
+  return attr === plane || attr.split(/\s+/).indexOf(plane) !== -1;
+}
+
 function initMgmtTabs() {
   const tabGroups = document.querySelectorAll('.mgmt-tabs');
   if (!tabGroups.length) return;
@@ -153,13 +160,13 @@ function initMgmtTabs() {
     // Restore saved preference for this group
     const saved = localStorage.getItem(storageKey);
     if (saved) {
-      const matchingTab = tabs.find(t => t.dataset.plane === saved);
-      if (matchingTab) {
-        tabs.forEach(t => t.classList.remove('active'));
-        panels.forEach(p => p.classList.remove('active'));
-        matchingTab.classList.add('active');
-        const panel = panels.find(p => p.dataset.plane === saved);
-        if (panel) panel.classList.add('active');
+      // Tabs are optional: a group may rely on a selector elsewhere on the page.
+      if (tabs.length) {
+        tabs.forEach(t => t.classList.toggle('active', t.dataset.plane === saved));
+      }
+      // Restore the active panel even when this group has no tab bar of its own.
+      if (panels.some(p => planeMatches(p.dataset.plane, saved))) {
+        panels.forEach(p => p.classList.toggle('active', planeMatches(p.dataset.plane, saved)));
       }
     }
 
@@ -175,7 +182,7 @@ function initMgmtTabs() {
             t.classList.toggle('active', t.dataset.plane === plane);
           });
           ownPanels(g).forEach(p => {
-            p.classList.toggle('active', p.dataset.plane === plane);
+            p.classList.toggle('active', planeMatches(p.dataset.plane, plane));
           });
         });
 
