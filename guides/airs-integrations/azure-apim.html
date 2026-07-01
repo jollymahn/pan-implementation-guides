@@ -137,7 +137,7 @@
 
 <div class="callout callout-note">
   <div class="callout-title">Guide Approach</div>
-  <p>This guide integrates <strong>Prisma AIRS</strong> with <strong>Azure API Management</strong> (APIM) using policy fragments. APIM policy fragments execute inline during request/response processing, scanning prompts and completions through the AIRS API without any external compute. Two versions are available: v1 for OpenAI-only environments, and v2 for multi-model support including Anthropic and streaming.</p>
+  <p>This guide integrates <strong>Prisma AIRS</strong> with <strong>Azure API Management</strong> (APIM) using policy fragments. APIM policy fragments execute inline during request/response processing, scanning prompts and completions through the AIRS API without any external compute. Three versions are available: v1 for OpenAI-only environments, v2 for multi-model support including Anthropic and streaming, and v2.1 which adds Claude Code session grouping and graceful blocking.</p>
   <p><strong>What you get:</strong> An Azure AI Gateway that scans prompts on inbound, responses on outbound, and tool results on submission &mdash; blocking prompt injection, DLP violations, toxic content, and more with per-category error messages.</p>
 </div>
 
@@ -238,6 +238,7 @@
       <th>Scanning Phase</th>
       <th>v1 (OpenAI only)</th>
       <th>v2 (Multi-model)</th>
+      <th>v2.1 (Claude Code)</th>
     </tr>
   </thead>
   <tbody>
@@ -245,9 +246,11 @@
       <td>Prompt</td>
       <td class="check">&#10003;</td>
       <td class="check">&#10003;</td>
+      <td class="check">&#10003;</td>
     </tr>
     <tr>
       <td>Response</td>
+      <td class="check">&#10003;</td>
       <td class="check">&#10003;</td>
       <td class="check">&#10003;</td>
     </tr>
@@ -255,9 +258,11 @@
       <td>Streaming (SSE)</td>
       <td class="nocheck">&#10007;</td>
       <td class="check">&#10003;</td>
+      <td class="check">&#10003;</td>
     </tr>
     <tr>
       <td>Tool event scanning</td>
+      <td class="check">&#10003;</td>
       <td class="check">&#10003;</td>
       <td class="check">&#10003;</td>
     </tr>
@@ -265,9 +270,11 @@
       <td>PII masking</td>
       <td class="check">&#10003;</td>
       <td class="check">&#10003;</td>
+      <td class="check">&#10003;</td>
     </tr>
     <tr>
       <td>OpenAI chat/completions</td>
+      <td class="check">&#10003;</td>
       <td class="check">&#10003;</td>
       <td class="check">&#10003;</td>
     </tr>
@@ -275,19 +282,41 @@
       <td>OpenAI Responses API</td>
       <td class="check">&#10003;</td>
       <td class="check">&#10003;</td>
+      <td class="check">&#10003;</td>
     </tr>
     <tr>
       <td>Anthropic /v1/messages</td>
       <td class="nocheck">&#10007;</td>
+      <td class="check">&#10003;</td>
       <td class="check">&#10003;</td>
     </tr>
     <tr>
       <td>Azure AI Foundry Claude</td>
       <td class="nocheck">&#10007;</td>
       <td class="check">&#10003;</td>
+      <td class="check">&#10003;</td>
     </tr>
     <tr>
       <td>Anthropic tool_result</td>
+      <td class="nocheck">&#10007;</td>
+      <td class="check">&#10003;</td>
+      <td class="check">&#10003;</td>
+    </tr>
+    <tr>
+      <td>Claude Code session grouping</td>
+      <td class="nocheck">&#10007;</td>
+      <td class="nocheck">&#10007;</td>
+      <td class="check">&#10003;</td>
+    </tr>
+    <tr>
+      <td>Claude Code graceful blocking</td>
+      <td class="nocheck">&#10007;</td>
+      <td class="nocheck">&#10007;</td>
+      <td class="check">&#10003;</td>
+    </tr>
+    <tr>
+      <td>Claude Code user/agent attribution</td>
+      <td class="nocheck">&#10007;</td>
       <td class="nocheck">&#10007;</td>
       <td class="check">&#10003;</td>
     </tr>
@@ -308,6 +337,7 @@
   <ul>
     <li><strong>v1</strong> &mdash; OpenAI-only. Simpler policy fragment for environments using only OpenAI-compatible endpoints (<code>/chat/completions</code> and <code>/responses</code>). No streaming support.</li>
     <li><strong>v2</strong> &mdash; Multi-model. Adds Anthropic and Azure AI Foundry Claude support (<code>/v1/messages</code>), streaming/SSE response scanning via chunk reassembly, and Anthropic <code>tool_result</code> scanning. Use v2 for multi-provider or streaming environments.</li>
+    <li><strong>v2.1</strong> &mdash; Claude Code. Builds on v2 with Claude Code session grouping, graceful blocking (200 streaming refusal so the session continues instead of erroring), and automatic user/agent attribution. Backward-compatible with existing v2 policies &mdash; drop-in replacement, no policy changes required. Ships as the current <code>panw-airs-scan-v2</code> fragment.</li>
   </ul>
 </div>
 
@@ -586,8 +616,8 @@
             <tr><td><code>toolProfile</code></td><td>string</td><td>inherits <code>currentProfile</code></td><td>Separate profile for tool events</td></tr>
             <tr><td><code>scanTools</code></td><td>boolean</td><td><code>true</code></td><td>Scan tool results</td></tr>
             <tr><td><code>appName</code></td><td>string</td><td><code>APIM-Gateway</code></td><td>Application name in AIRS metadata</td></tr>
-            <tr><td><code>user</code></td><td>string</td><td><code>anonymous</code></td><td>User identifier</td></tr>
-            <tr><td><code>agent</code></td><td>string</td><td>&mdash;</td><td>Agent/workflow identifier</td></tr>
+            <tr><td><code>user</code></td><td>string</td><td><code>anonymous</code></td><td>User identifier. Falls back to <code>x-user-id</code> header, then Claude Code's body <code>metadata.user_id</code> (v2.1), then <code>anonymous</code>.</td></tr>
+            <tr><td><code>agent</code></td><td>string</td><td>&mdash;</td><td>Agent/workflow identifier. If unset, v2.1 falls back to Claude Code's <code>x-claude-code-agent-id</code> header (treat as untrusted client metadata, not a security boundary).</td></tr>
             <tr><td><code>FailOpen</code></td><td>boolean</td><td><code>false</code></td><td><code>true</code> to allow if AIRS unreachable</td></tr>
             <tr><td><code>airsDescriptions</code></td><td>JObject</td><td>(built-in defaults)</td><td>Custom error messages per category</td></tr>
           </tbody>
@@ -706,7 +736,7 @@
 
         <div class="callout callout-note">
           <div class="callout-title">Note: Session Tracking</div>
-          <p>The fragment automatically tracks multi-turn conversations under the same session ID in AIRS. Priority order: <code>x-session-id</code> header (recommended for production) &rarr; conversation hash (IP + system message + first user message) &rarr; <code>RequestId</code> (fallback). For strict session isolation, clients should send an <code>x-session-id</code> header.</p>
+          <p>The fragment automatically tracks multi-turn conversations under the same session ID in AIRS. Priority order: <code>x-claude-code-session-id</code> header (Claude Code, v2.1 &mdash; sent automatically) &rarr; <code>x-session-id</code> header (recommended for production) &rarr; conversation hash (IP + system message + first user message) &rarr; <code>RequestId</code> (fallback). Claude Code sessions are grouped automatically with no configuration needed. For other clients, send an <code>x-session-id</code> header for strict session isolation.</p>
         </div>
 
         <div class="callout callout-success">
@@ -1042,6 +1072,11 @@
           <td><code>finish_reason = tool_calls</code> (response)</td>
           <td>Pass through (no scan)</td>
           <td>Pass through (no scan)</td>
+        </tr>
+        <tr>
+          <td>Claude Code blocked (v2.1)</td>
+          <td>N/A</td>
+          <td>Return <code>200</code> streaming refusal with <code>x-airs-blocked: true</code> header (session continues)</td>
         </tr>
       </tbody>
     </table>

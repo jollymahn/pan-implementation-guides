@@ -884,7 +884,10 @@ curl -X POST \
           </thead>
           <tbody>
             <tr><td><code>api_key</code></td><td>Yes</td><td>&mdash;</td><td>Prisma AIRS API token</td></tr>
-            <tr><td><code>profile_name</code></td><td>Yes</td><td>&mdash;</td><td>AIRS security profile name</td></tr>
+            <tr><td><code>profile_name</code></td><td>Yes</td><td>&mdash;</td><td>AIRS security profile name (static default; see <a href="#dynamic-profile">Dynamic profile selection</a>)</td></tr>
+            <tr><td><code>profile_claim</code></td><td>No</td><td>&mdash;</td><td>JWT claim that selects the profile per request (e.g., <code>risk_tier</code>). Unset = static <code>profile_name</code>.</td></tr>
+            <tr><td><code>profile_claim_map</code></td><td>No</td><td>&mdash;</td><td>Map of claim value to profile name. Omit to use the claim value directly as the profile name.</td></tr>
+            <tr><td><code>fallback_profile_name</code></td><td>No</td><td><code>profile_name</code></td><td>Strict profile applied when the claim is missing or unmapped (fail closed).</td></tr>
             <tr><td><code>app_name</code></td><td>No</td><td>&mdash;</td><td>Application identifier (sent as <code>kong-{app_name}</code>; also used as MCP <code>server_name</code>)</td></tr>
             <tr><td><code>api_endpoint</code></td><td>No</td><td><code>https://service.api.aisecurity.paloaltonetworks.com/v1/scan/sync/request</code></td><td>AIRS API endpoint</td></tr>
             <tr><td><code>ssl_verify</code></td><td>No</td><td><code>true</code></td><td>Verify SSL certificates. Keep <code>true</code> on Kong 3.14+.</td></tr>
@@ -954,6 +957,65 @@ curl -X POST \
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
           <p>Understanding confirmed. MCP <code>tools/call</code> requests are scanned; control messages (<code>tools/list</code>, <code>initialize</code>, etc.) pass through without scanning.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span id="dynamic-profile">Step 3.3: Dynamic Profile Selection (v2, Optional)</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Apply a different AIRS profile per request on a single shared route, chosen from a signed JWT claim instead of deploying a separate gateway (or route) per application. The profile is selected from the caller's already-validated token, so it cannot be spoofed the way a header can.</p>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Requires an Auth Plugin</div>
+          <p>This plugin runs at priority <code>1000</code>, below <code>jwt</code> (1450) and <code>openid-connect</code> (1050), so the token is validated before the claim is read. On a route with no auth plugin, no valid claim is present and selection falls <strong>closed</strong> to <code>fallback_profile_name</code>. Do not enable claim-based selection on an unauthenticated route.</p>
+        </div>
+
+        <p>Example &mdash; one shared route, profile chosen by a <code>risk_tier</code> claim:</p>
+
+        <div class="code-block">
+          <pre><code>curl -X POST http://localhost:8001/services/{service}/plugins \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "prisma-airs-intercept",
+    "config": {
+      "api_key": "YOUR_AIRS_API_KEY",
+      "profile_name": "default-baseline",
+      "profile_claim": "risk_tier",
+      "profile_claim_map": {
+        "high": "strict-production",
+        "medium": "default-baseline",
+        "low": "flexible-internal"
+      },
+      "fallback_profile_name": "strict-production"
+    }
+  }'</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <h4>Resolution Order</h4>
+        <ol>
+          <li>Claim value is looked up in <code>profile_claim_map</code> &rarr; mapped profile name is used.</li>
+          <li>If <code>profile_claim_map</code> is omitted, the claim value itself is used directly as the profile name.</li>
+          <li>If the claim is missing or unmapped, falls closed to <code>fallback_profile_name</code>.</li>
+          <li>If <code>profile_claim</code> is not set at all, behavior is the static <code>profile_name</code> (legacy default).</li>
+        </ol>
+
+        <p>The resolved profile is logged at <code>debug</code> level and stamped on the upstream request as <code>X-AIRS-Profile-Used</code>.</p>
+
+        <h4>Unit Tests</h4>
+        <p>The plugin exposes pure resolver helpers that can be tested without a Kong runtime:</p>
+        <div class="code-block">
+          <pre><code>lua spec/profile_selection_spec.lua</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Send requests with different JWT claim values and confirm the <code>X-AIRS-Profile-Used</code> response header reflects the expected profile. Check AIRS scan logs in Strata Cloud Manager to verify different profiles are applied per request.</p>
         </div>
       </div>
     </div>
