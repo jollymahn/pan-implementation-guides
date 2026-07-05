@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
 <title>Cloud NGFW on AWS | Implementation Guides</title>
 <link rel="stylesheet" href="../../shared/css/pan-guides.css">
@@ -21,6 +22,7 @@
     <a href="../aws/index.html">AWS</a>
     <a href="../azure/index.html">Azure</a>
     <a href="../gcp/index.html">GCP</a>
+    <a href="../oci/index.html">OCI</a>
     <a href="../bootstrap/vm-series-bootstrap.html">Bootstrap</a>
     <a href="../../globalprotect/index.html">GlobalProtect</a>
     <a href="../../scm-onboarding/index.html">SCM</a>
@@ -133,9 +135,9 @@
 
 <div class="callout callout-note">
   <div class="callout-title">Guide Approach</div>
-  <p>This guide follows a <strong>management-first</strong> approach. Cloud NGFW management — via <strong>Panorama</strong> or <strong>Strata Cloud Manager (SCM)</strong> — is configured <em>before</em> any AWS infrastructure is deployed. This ensures Cloud NGFW resources bootstrap into a fully configured management plane on creation.</p>
+  <p>This guide follows a <strong>management-first</strong> approach. Cloud NGFW management (via <strong>Panorama</strong> or <strong>Strata Cloud Manager (SCM)</strong>) is configured <em>before</em> any AWS infrastructure is deployed. This ensures Cloud NGFW resources bootstrap into a fully configured management plane on creation.</p>
   <p><strong>Design model:</strong> Combined Design (TGW hub-and-spoke for east-west + distributed inbound in spoke VPCs) with GWLB endpoints and non-overlay routing.</p>
-  <p><strong>Deployment method:</strong> All AWS infrastructure (Phases 4–6) is deployed with <strong>Terraform</strong> using the official <a href="https://github.com/PaloAltoNetworks/terraform-aws-swfw-modules/tree/main/examples/cloudngfw_combined_design">Palo Alto Networks SWFW Modules — Cloud NGFW Combined Design</a>.</p>
+  <p><strong>Deployment method:</strong> All AWS infrastructure (Phases 4–6) is deployed with <strong>Terraform</strong> using the official <a href="https://github.com/PaloAltoNetworks/terraform-aws-swfw-modules/tree/main/examples/cloudngfw_combined_design">Palo Alto Networks SWFW Modules Cloud NGFW Combined Design example</a>.</p>
 </div>
 
 
@@ -151,7 +153,7 @@
 
 <h2 id="architecture-overview">Architecture Overview</h2>
 
-<p>Cloud NGFW for AWS is a Palo Alto Networks next-generation firewall delivered as a fully managed, cloud-native service. Palo Alto Networks owns and operates the underlying firewall infrastructure — including scaling, patching, and high availability — while you retain full control over security policy. Traffic reaches the Cloud NGFW through <strong>NGFW endpoints</strong> (AWS Gateway Load Balancer endpoints) that you place in your VPC subnets and reference in VPC route tables.</p>
+<p>Cloud NGFW for AWS is a Palo Alto Networks next-generation firewall delivered as a fully managed, cloud-native service. Palo Alto Networks owns and operates the underlying firewall infrastructure (including scaling, patching, and high availability) while you retain full control over security policy. Traffic reaches the Cloud NGFW through <strong>NGFW endpoints</strong> (AWS Gateway Load Balancer endpoints) that you place in your VPC subnets and reference in VPC route tables.</p>
 
 <p>Five deployment models exist. Each balances control, complexity, and blast radius differently. Expand the model that matches your environment to study the architecture and traffic flows.</p>
 
@@ -166,17 +168,17 @@
   </ul>
 </div>
 
-<h4>Key Concepts</h4>
+<h3>Key Concepts</h3>
 
-<p><strong>Availability Zone mapping is account-specific.</strong> AWS maps AZ <em>names</em> (e.g., <code>us-east-1a</code>) to physical AZ <em>IDs</em> (e.g., <code>use1-az1</code>) independently per account. This means <code>us-east-1a</code> in Account A may correspond to a different physical data center than <code>us-east-1a</code> in Account B. When deploying cross-account NGFW endpoints, always use <strong>AZ IDs</strong> — not AZ names — to ensure endpoints and workloads share the same physical AZ and avoid cross-AZ data transfer charges.</p>
+<p><strong>Availability Zone mapping is account-specific.</strong> AWS maps AZ <em>names</em> (e.g., <code>us-east-1a</code>) to physical AZ <em>IDs</em> (e.g., <code>use1-az1</code>) independently per account. This means <code>us-east-1a</code> in Account A may correspond to a different physical data center than <code>us-east-1a</code> in Account B. When deploying cross-account NGFW endpoints, always use <strong>AZ IDs</strong>, not AZ names, to ensure endpoints and workloads share the same physical AZ and avoid cross-AZ data transfer charges.</p>
 
 <p><em>AZ name-to-ID mapping varies per AWS account:</em></p>
-<img src="diagrams/aws/Availability Zone Concept.png" alt="AWS Availability Zone mapping showing how AZ names like us-east-1a map to different physical AZ IDs (use1-az1, use1-az2, use1-az3) depending on the AWS account, demonstrating why AZ IDs must be used for cross-account deployments" loading="lazy">
+<img src="diagrams/aws/availability-zone-concept.png" alt="AWS Availability Zone mapping showing how AZ names like us-east-1a map to different physical AZ IDs (use1-az1, use1-az2, use1-az3) depending on the AWS account, demonstrating why AZ IDs must be used for cross-account deployments" loading="lazy">
 
 <p><strong>Cross-account endpoint sharing.</strong> In the Combined and Isolated models, Cloud NGFW runs in a dedicated security account while NGFW endpoints are placed in spoke VPCs that may reside in separate AWS accounts. The Cloud NGFW resource owner shares the GWLB service via <strong>AWS PrivateLink</strong>, and spoke account administrators create GWLB endpoints referencing the shared service name.</p>
 
-<p><em>Multi-account architecture — Cloud NGFW in a security account with cross-account endpoints in spoke VPCs:</em></p>
-<img src="diagrams/aws/Combined Account Concept.png" alt="AWS multi-account architecture showing Cloud NGFW in a security account with cross-account NGFW endpoints deployed into App01 and App02 spoke accounts via AWS PrivateLink" loading="lazy">
+<p><em>Multi-account architecture, with Cloud NGFW in a security account and cross-account endpoints in spoke VPCs:</em></p>
+<img src="diagrams/aws/combined-account-concept.png" alt="AWS multi-account architecture showing Cloud NGFW in a security account with cross-account NGFW endpoints deployed into App01 and App02 spoke accounts via AWS PrivateLink" loading="lazy">
 
 <!-- ── Combined Model ────────────────────────────────────────── -->
 <div class="collapsible">
@@ -193,10 +195,10 @@
       <li>An <strong>Inbound NGFW</strong> with cross-account endpoints placed in each spoke VPC — inspects traffic arriving from the internet before it reaches the application load balancer.</li>
     </ul>
 
-    <p><em>Combined Design — high-level architecture:</em></p>
-    <img src="diagrams/aws/Combined Simplified.png" alt="AWS Combined Design architecture showing spoke VPCs with NGFW endpoints for inbound, TGW hub, centralized security VPC with east-west and outbound NGFW, Panorama management, and Cortex Data Lake logging" loading="lazy">
+    <p><em>High-level architecture of the Combined Design:</em></p>
+    <img src="diagrams/aws/combined-simplified.png" alt="AWS Combined Design architecture showing spoke VPCs with NGFW endpoints for inbound, TGW hub, centralized security VPC with east-west and outbound NGFW, Panorama management, and Cortex Data Lake logging" loading="lazy">
 
-    <h4>Key Components</h4>
+    <h3>Key Components</h3>
     <table>
       <thead>
         <tr><th>Component</th><th>Location</th><th>Purpose</th></tr>
@@ -211,7 +213,7 @@
       </tbody>
     </table>
 
-    <h4>TGW Route Table Design</h4>
+    <h3>TGW Route Table Design</h3>
     <p>Two TGW route tables isolate traffic domains:</p>
     <table>
       <thead>
@@ -228,7 +230,7 @@
       <p>Enable <strong>Appliance Mode</strong> on the security VPC TGW attachment. Without it, return traffic may cross AZ boundaries and break flow symmetry, causing packet drops.</p>
     </div>
 
-    <h4>Inbound Traffic Flow (Combined)</h4>
+    <h3>Inbound Traffic Flow (Combined)</h3>
     <ol>
       <li>Client sends a request to the application's public DNS name. DNS resolves to the EIP of the internet-facing ELB in the spoke VPC.</li>
       <li>The IGW edge association route table directs traffic to the inbound NGFW endpoint in the ELB's AZ.</li>
@@ -239,12 +241,12 @@
     </ol>
 
     <p><em>Combined inbound traffic flow:</em></p>
-    <img src="diagrams/aws/Combined Inbound Flow.png" alt="AWS Combined Design inbound traffic flow showing client request entering spoke VPC IGW, routed to inbound NGFW endpoint, inspected by Cloud NGFW, then forwarded to ELB and application targets" loading="lazy">
+    <img src="diagrams/aws/combined-inbound-flow.png" alt="AWS Combined Design inbound traffic flow showing client request entering spoke VPC IGW, routed to inbound NGFW endpoint, inspected by Cloud NGFW, then forwarded to ELB and application targets" loading="lazy">
 
     <p><em>Combined inbound return path:</em></p>
-    <img src="diagrams/aws/Combined Inbound Flow Return.png" alt="AWS Combined Design inbound return path showing response from application target through ELB, NGFW endpoint, and IGW back to client" loading="lazy">
+    <img src="diagrams/aws/combined-inbound-flow-return.png" alt="AWS Combined Design inbound return path showing response from application target through ELB, NGFW endpoint, and IGW back to client" loading="lazy">
 
-    <h4>Outbound Traffic Flow (Combined)</h4>
+    <h3>Outbound Traffic Flow (Combined)</h3>
     <ol>
       <li>An instance in a spoke VPC sends traffic to the internet. The instance subnet route table directs it to the TGW attachment.</li>
       <li>The TGW spokes route table matches the default route and forwards to the security VPC attachment.</li>
@@ -257,12 +259,12 @@
     </ol>
 
     <p><em>Combined outbound traffic flow:</em></p>
-    <img src="diagrams/aws/Comb Out Flow.png" alt="AWS Combined Design outbound traffic flow showing spoke instance through TGW to security VPC NGFW endpoint, inspected by Cloud NGFW, then through NAT gateway and IGW to internet" loading="lazy">
+    <img src="diagrams/aws/comb-out-flow.png" alt="AWS Combined Design outbound traffic flow showing spoke instance through TGW to security VPC NGFW endpoint, inspected by Cloud NGFW, then through NAT gateway and IGW to internet" loading="lazy">
 
     <p><em>Combined outbound return path:</em></p>
-    <img src="diagrams/aws/Comb Out Return Flow.png" alt="AWS Combined Design outbound return path showing internet response through IGW, NAT gateway, NGFW endpoint, Cloud NGFW inspection, then TGW back to spoke VPC" loading="lazy">
+    <img src="diagrams/aws/comb-out-return-flow.png" alt="AWS Combined Design outbound return path showing internet response through IGW, NAT gateway, NGFW endpoint, Cloud NGFW inspection, then TGW back to spoke VPC" loading="lazy">
 
-    <h4>East-West Traffic Flow (Combined)</h4>
+    <h3>East-West Traffic Flow (Combined)</h3>
     <ol>
       <li>An instance in App01 VPC sends traffic to an instance in App02 VPC. The instance subnet route table directs it to the TGW attachment.</li>
       <li>The TGW spokes route table forwards to the security VPC attachment (no direct spoke-to-spoke routes exist).</li>
@@ -275,12 +277,12 @@
     </ol>
 
     <p><em>Combined east-west traffic flow:</em></p>
-    <img src="diagrams/aws/Comb E-W Flow.png" alt="AWS Combined Design east-west traffic flow showing App01 instance through TGW to security VPC NGFW endpoint, inspected by Cloud NGFW, then returned via TGW to App02 instance" loading="lazy">
+    <img src="diagrams/aws/comb-e-w-flow.png" alt="AWS Combined Design east-west traffic flow showing App01 instance through TGW to security VPC NGFW endpoint, inspected by Cloud NGFW, then returned via TGW to App02 instance" loading="lazy">
 
     <p><em>Combined east-west return path:</em></p>
-    <img src="diagrams/aws/Comb E-W Return Flow.png" alt="AWS Combined Design east-west return path showing App02 response through TGW, security VPC NGFW inspection, then TGW back to App01" loading="lazy">
+    <img src="diagrams/aws/comb-e-w-return-flow.png" alt="AWS Combined Design east-west return path showing App02 response through TGW, security VPC NGFW inspection, then TGW back to App01" loading="lazy">
 
-    <h4>Route Tables (Combined Model)</h4>
+    <h3>Route Tables (Combined Model)</h3>
 
     <p><strong>Spoke VPC Route Tables (App01 shown; App02 identical):</strong></p>
     <table>
@@ -319,8 +321,8 @@
         <span>See detailed routing diagram</span>
       </div>
       <div class="collapsible-body">
-        <p><em>Combined Design — complete architecture with all route tables and endpoints:</em></p>
-        <img src="diagrams/aws/Combined Complete.png" alt="AWS Combined Design complete architecture showing all VPCs, subnets, route tables, NGFW endpoints, NAT gateways, TGW route tables, and traffic paths with full routing detail" loading="lazy">
+        <p><em>Complete Combined Design architecture with all route tables and endpoints:</em></p>
+        <img src="diagrams/aws/combined-complete.png" alt="AWS Combined Design complete architecture showing all VPCs, subnets, route tables, NGFW endpoints, NAT gateways, TGW route tables, and traffic paths with full routing detail" loading="lazy">
       </div>
     </div>
 
@@ -330,8 +332,8 @@
         <span>See TGW attachment diagram</span>
       </div>
       <div class="collapsible-body">
-        <p><em>Combined Design — TGW attachments and route table associations:</em></p>
-        <img src="diagrams/aws/Combined TGW Attachments.png" alt="AWS Combined Design TGW attachment detail showing spoke and security VPC attachments, route table associations, and route propagation" loading="lazy">
+        <p><em>Combined Design TGW attachments and route table associations:</em></p>
+        <img src="diagrams/aws/combined-tgw-attachments.png" alt="AWS Combined Design TGW attachment detail showing spoke and security VPC attachments, route table associations, and route propagation" loading="lazy">
       </div>
     </div>
 
@@ -349,7 +351,7 @@
     <span>Centralized Model</span>
   </div>
   <div class="collapsible-body">
-    <p>The Centralized model routes <strong>all</strong> traffic flows — inbound, outbound, and east-west — through dedicated security VPCs connected via Transit Gateway. No NGFW endpoints are placed in spoke VPCs.</p>
+    <p>The Centralized model routes <strong>all</strong> traffic flows (inbound, outbound, and east-west) through dedicated security VPCs connected via Transit Gateway. No NGFW endpoints are placed in spoke VPCs.</p>
 
     <p>This model deploys <strong>two security VPCs</strong>:</p>
     <ul>
@@ -357,17 +359,17 @@
       <li>A <strong>Centralized Inbound Security VPC</strong> with NGFW endpoints and an internet-facing ELB that accepts all inbound traffic.</li>
     </ul>
 
-    <p><em>Centralized Design — high-level architecture:</em></p>
-    <img src="diagrams/aws/Centralized Simplified.png" alt="AWS Centralized Design architecture showing spoke VPCs connecting via TGW to separate east-west/outbound and inbound security VPCs, Panorama management, and Cortex Data Lake logging" loading="lazy">
+    <p><em>High-level architecture of the Centralized Design:</em></p>
+    <img src="diagrams/aws/centralized-simplified.png" alt="AWS Centralized Design architecture showing spoke VPCs connecting via TGW to separate east-west/outbound and inbound security VPCs, Panorama management, and Cortex Data Lake logging" loading="lazy">
 
-    <h4>When to Use Centralized</h4>
+    <h3>When to Use Centralized</h3>
     <ul>
       <li>Regulatory requirements mandate that inbound traffic is inspected <strong>outside</strong> the application VPC.</li>
       <li>A single ingress point is preferred for all applications.</li>
       <li>Fewer Cloud NGFW resources to manage (one per traffic direction, not one per spoke).</li>
     </ul>
 
-    <h4>TGW Route Tables</h4>
+    <h3>TGW Route Tables</h3>
     <p>Three TGW route tables are used:</p>
     <table>
       <thead>
@@ -380,7 +382,7 @@
       </tbody>
     </table>
 
-    <h4>Inbound Traffic Flow (Centralized)</h4>
+    <h3>Inbound Traffic Flow (Centralized)</h3>
     <ol>
       <li>Client sends a request to the application's public DNS name. DNS resolves to the EIP of the internet-facing ELB in the <strong>inbound security VPC</strong>.</li>
       <li>The ELB listener selects a target from the target group (private IPs in spoke VPCs) and forwards the request.</li>
@@ -393,29 +395,29 @@
     </ol>
 
     <p><em>Centralized inbound traffic flow:</em></p>
-    <img src="diagrams/aws/Cent In Traffic Flow.png" alt="AWS Centralized Design inbound traffic flow showing client request entering inbound security VPC ELB, routed to NGFW endpoint, inspected by Cloud NGFW, then forwarded via TGW to spoke VPC" loading="lazy">
+    <img src="diagrams/aws/cent-in-traffic-flow.png" alt="AWS Centralized Design inbound traffic flow showing client request entering inbound security VPC ELB, routed to NGFW endpoint, inspected by Cloud NGFW, then forwarded via TGW to spoke VPC" loading="lazy">
 
     <p><em>Centralized inbound return path:</em></p>
-    <img src="diagrams/aws/Cent In Return Traffic Flow.png" alt="AWS Centralized Design inbound return path showing response from spoke VPC through TGW, inbound security VPC NGFW inspection, then through ELB and IGW back to client" loading="lazy">
+    <img src="diagrams/aws/cent-in-return-traffic-flow.png" alt="AWS Centralized Design inbound return path showing response from spoke VPC through TGW, inbound security VPC NGFW inspection, then through ELB and IGW back to client" loading="lazy">
 
     <div class="callout callout-note">
       <div class="callout-title">Centralized Inbound Limitation</div>
       <p>Centralized inbound inspection supports only TCP traffic with IP address targets in the ELB target group. UDP-based or non-ELB inbound workloads require the Combined model instead.</p>
     </div>
 
-    <p>Outbound and east-west traffic flows are identical to the Combined model — they route through the centralized East-West &amp; Outbound security VPC via TGW.</p>
+    <p>Outbound and east-west traffic flows are identical to the Combined model: they route through the centralized East-West &amp; Outbound security VPC via TGW.</p>
 
     <p><em>Centralized outbound traffic flow:</em></p>
-    <img src="diagrams/aws/Cent Out Flow.png" alt="AWS Centralized Design outbound traffic flow showing spoke instance through TGW to east-west/outbound security VPC NGFW endpoint, inspected by Cloud NGFW, then through NAT gateway and IGW to internet" loading="lazy">
+    <img src="diagrams/aws/cent-out-flow.png" alt="AWS Centralized Design outbound traffic flow showing spoke instance through TGW to east-west/outbound security VPC NGFW endpoint, inspected by Cloud NGFW, then through NAT gateway and IGW to internet" loading="lazy">
 
     <p><em>Centralized outbound return path:</em></p>
-    <img src="diagrams/aws/Cent Out Return.png" alt="AWS Centralized Design outbound return path showing internet response through IGW, NAT gateway, NGFW endpoint, Cloud NGFW inspection, then TGW back to spoke VPC" loading="lazy">
+    <img src="diagrams/aws/cent-out-return.png" alt="AWS Centralized Design outbound return path showing internet response through IGW, NAT gateway, NGFW endpoint, Cloud NGFW inspection, then TGW back to spoke VPC" loading="lazy">
 
     <p><em>Centralized east-west traffic flow:</em></p>
-    <img src="diagrams/aws/Cent E-W Flow.png" alt="AWS Centralized Design east-west traffic flow showing App01 instance through TGW to security VPC NGFW endpoint, inspected by Cloud NGFW, then returned via TGW to App02 instance" loading="lazy">
+    <img src="diagrams/aws/cent-e-w-flow.png" alt="AWS Centralized Design east-west traffic flow showing App01 instance through TGW to security VPC NGFW endpoint, inspected by Cloud NGFW, then returned via TGW to App02 instance" loading="lazy">
 
     <p><em>Centralized east-west return path:</em></p>
-    <img src="diagrams/aws/Cent E-W Return.png" alt="AWS Centralized Design east-west return path showing App02 response through TGW, security VPC NGFW inspection, then TGW back to App01" loading="lazy">
+    <img src="diagrams/aws/cent-e-w-return.png" alt="AWS Centralized Design east-west return path showing App02 response through TGW, security VPC NGFW inspection, then TGW back to App01" loading="lazy">
 
     <div class="collapsible">
       <div class="collapsible-header">
@@ -423,8 +425,8 @@
         <span>See detailed routing diagram</span>
       </div>
       <div class="collapsible-body">
-        <p><em>Centralized Design — complete architecture with all route tables and endpoints:</em></p>
-        <img src="diagrams/aws/Centralized Complete.png" alt="AWS Centralized Design complete architecture showing all VPCs, subnets, route tables, NGFW endpoints, NAT gateways, TGW route tables, and traffic paths with full routing detail" loading="lazy">
+        <p><em>Complete Centralized Design architecture with all route tables and endpoints:</em></p>
+        <img src="diagrams/aws/centralized-complete.png" alt="AWS Centralized Design complete architecture showing all VPCs, subnets, route tables, NGFW endpoints, NAT gateways, TGW route tables, and traffic paths with full routing detail" loading="lazy">
       </div>
     </div>
 
@@ -434,8 +436,8 @@
         <span>See TGW attachment diagram</span>
       </div>
       <div class="collapsible-body">
-        <p><em>Centralized Design — TGW attachments and route table associations:</em></p>
-        <img src="diagrams/aws/Centralized TGW Attachments.png" alt="AWS Centralized Design TGW attachment detail showing spoke and security VPC attachments, route table associations, and route propagation" loading="lazy">
+        <p><em>Centralized Design TGW attachments and route table associations:</em></p>
+        <img src="diagrams/aws/centralized-tgw-attachments.png" alt="AWS Centralized Design TGW attachment detail showing spoke and security VPC attachments, route table associations, and route propagation" loading="lazy">
       </div>
     </div>
 
@@ -457,7 +459,7 @@
 
     <p>Three traffic patterns are supported within a single VPC:</p>
 
-    <h4>Distributed East-West (Intra-VPC)</h4>
+    <h3>Distributed East-West (Intra-VPC)</h3>
     <p>Traffic between subnets within the same VPC routes through NGFW endpoints placed in a firewall subnet. Subnet route tables direct inter-subnet traffic to the endpoint.</p>
     <ol>
       <li>Traffic from the source subnet routes to the NGFW endpoint.</li>
@@ -465,7 +467,7 @@
       <li>If allowed, the NGFW returns the packet to the NGFW endpoint, which delivers it to the destination subnet.</li>
     </ol>
 
-    <h4>Distributed Outbound</h4>
+    <h3>Distributed Outbound</h3>
     <p>Outbound internet traffic from a private subnet routes through the NGFW endpoint before reaching the NAT gateway and IGW.</p>
     <ol>
       <li>Traffic from the private subnet routes to the NGFW endpoint.</li>
@@ -474,7 +476,7 @@
       <li>The NAT gateway forwards through the IGW to the internet.</li>
     </ol>
 
-    <h4>Distributed Inbound</h4>
+    <h3>Distributed Inbound</h3>
     <p>Inbound traffic from the internet enters via the IGW, hits the NGFW endpoint (via IGW edge association route table), is inspected, then forwarded to an ALB and ultimately to application instances.</p>
     <ol>
       <li>Traffic arrives at the IGW, which routes to the NGFW endpoint.</li>
@@ -496,7 +498,7 @@
     <span>Isolated Model</span>
   </div>
   <div class="collapsible-body">
-    <p>The Isolated model shares a single Cloud NGFW resource across multiple standalone VPCs using cross-account NGFW endpoints — without a Transit Gateway. Each VPC operates independently with its own IGW, NAT gateway, and NGFW endpoints.</p>
+    <p>The Isolated model shares a single Cloud NGFW resource across multiple standalone VPCs using cross-account NGFW endpoints, without a Transit Gateway. Each VPC operates independently with its own IGW, NAT gateway, and NGFW endpoints.</p>
 
     <p>This model is ideal when:</p>
     <ul>
@@ -505,7 +507,7 @@
       <li>VPCs span multiple AWS accounts but share a common Cloud NGFW tenant.</li>
     </ul>
 
-    <h4>Isolated Inbound Flow</h4>
+    <h3>Isolated Inbound Flow</h3>
     <ol>
       <li>The IGW forwards traffic to the ALB.</li>
       <li>The ALB subnet route table directs target-group traffic to the inbound NGFW endpoint.</li>
@@ -513,7 +515,7 @@
       <li>The firewall subnet route table delivers traffic to the application instances.</li>
     </ol>
 
-    <h4>Isolated Outbound Flow</h4>
+    <h3>Isolated Outbound Flow</h3>
     <ol>
       <li>EC2 instance traffic routes to the egress NGFW endpoint.</li>
       <li>The NGFW inspects and, if allowed, returns traffic to the endpoint.</li>
@@ -539,13 +541,13 @@
 
     <p>Cloud NGFW should be deployed in <strong>every AWS region</strong> that the Cloud WAN spans to maintain low-latency inspection and regional cost optimization.</p>
 
-    <h4>Deployment Approaches</h4>
+    <h3>Deployment Approaches</h3>
     <ul>
       <li><strong>Federated TGW + Cloud WAN</strong> — Replace TGW peering with Cloud WAN while keeping existing TGW attachments. Use this when migrating from TGW.</li>
       <li><strong>Cloud WAN only</strong> — All VPCs connect directly to Cloud WAN. TGW is removed entirely.</li>
     </ul>
 
-    <h4>East-West Packet Walkthrough (Cloud WAN)</h4>
+    <h3>East-West Packet Walkthrough (Cloud WAN)</h3>
     <ol>
       <li>App VPC 1 sends traffic to App VPC 2. The VPC route table has a default route to the Cloud WAN Core Network ARN.</li>
       <li>The core network performs a prod segment route table lookup. The default route points to the security VPC attachment.</li>
@@ -579,7 +581,7 @@
 
 <h2 id="prerequisites">Phase 1: Prerequisites</h2>
 
-<p>Complete these prerequisites before configuring any management platform or deploying infrastructure. Each step ends with a verification check — do not proceed until every check passes.</p>
+<p>Complete these prerequisites before configuring any management platform or deploying infrastructure. Each step ends with a verification check; do not proceed until every check passes.</p>
 
 <!-- Step 1.1 -->
 <div class="collapsible">
@@ -697,8 +699,8 @@
   <div class="collapsible-body">
     <p>This guide deploys all AWS infrastructure with <strong>Terraform</strong> using the official Palo Alto Networks SWFW modules. Set up your deployment environment using one of the options below.</p>
 
-    <h4>Option A: Local Workstation or Bastion Host (Preferred)</h4>
-    <p>Install the following tools on your deployment machine. This is the recommended approach — it gives you full control over tool versions, persistent state, and IDE integration.</p>
+    <h3>Option A: Local Workstation or Bastion Host (Preferred)</h3>
+    <p>Install the following tools on your deployment machine. This is the recommended approach: it gives you full control over tool versions, persistent state, and IDE integration.</p>
     <table>
       <tr><th>Tool</th><th>Purpose</th><th>Install</th></tr>
       <tr><td><strong>Terraform CLI</strong></td><td>Infrastructure provisioning</td><td><a href="https://developer.hashicorp.com/terraform/install">developer.hashicorp.com/terraform/install</a></td></tr>
@@ -725,7 +727,10 @@
 brew install hashicorp/tap/terraform</code></pre>
               <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             </div>
-            <p>Verify the installation:</p>
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Run the command below and confirm it prints the installed Terraform version. The version must be <code>v1.5.0</code> or later.</p>
+            </div>
             <div class="code-block">
               <pre><code>terraform -v</code></pre>
               <button class="copy-btn" onclick="copyCode(this)">Copy</button>
@@ -738,7 +743,10 @@ brew install hashicorp/tap/terraform</code></pre>
               <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             </div>
             <p>Or download the binary manually from <a href="https://developer.hashicorp.com/terraform/install" target="_blank" rel="noopener">developer.hashicorp.com/terraform/install</a>. Extract the <code>.zip</code>, place <code>terraform.exe</code> in a directory on your <code>PATH</code> (e.g., <code>C:\tools\terraform</code>), and add that directory to your system <code>PATH</code> environment variable.</p>
-            <p>Verify the installation (open a new terminal):</p>
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Open a new terminal so the updated <code>PATH</code> is loaded, then run the command below. It should print the installed Terraform version, which must be <code>v1.5.0</code> or later.</p>
+            </div>
             <div class="code-block">
               <pre><code>terraform -v</code></pre>
               <button class="copy-btn" onclick="copyCode(this)">Copy</button>
@@ -770,15 +778,21 @@ brew install hashicorp/tap/terraform</code></pre>
               <pre><code>brew install git</code></pre>
               <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             </div>
-            <p>Verify the installation:</p>
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Run the command below and confirm it prints an installed Git version (e.g., <code>git version 2.x.x</code>).</p>
+            </div>
             <div class="code-block">
               <pre><code>git --version</code></pre>
               <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             </div>
           </div>
           <div class="mgmt-panel" data-plane="windows">
-            <p>Download the installer from <a href="https://git-scm.com/downloads/win" target="_blank" rel="noopener">git-scm.com/downloads/win</a> and run it. Accept the defaults &mdash; the installer includes <strong>Git Bash</strong>, which provides a Bash-compatible shell on Windows.</p>
-            <p>Verify the installation (open a new terminal):</p>
+            <p>Download the installer from <a href="https://git-scm.com/downloads/win" target="_blank" rel="noopener">git-scm.com/downloads/win</a> and run it. Accept the defaults; the installer includes <strong>Git Bash</strong>, which provides a Bash-compatible shell on Windows.</p>
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>Open a new terminal, then run the command below. It should print an installed Git version (e.g., <code>git version 2.x.x</code>).</p>
+            </div>
             <div class="code-block">
               <pre><code>git --version</code></pre>
               <button class="copy-btn" onclick="copyCode(this)">Copy</button>
@@ -817,6 +831,10 @@ brew install hashicorp/tap/terraform</code></pre>
           </div>
         </div>
         <p>After installing, open VS Code and install the <strong>HashiCorp Terraform</strong> extension from the Extensions marketplace (<code>Ctrl+Shift+X</code> / <code>Cmd+Shift+X</code> &rarr; search "HashiCorp Terraform"). This provides HCL syntax highlighting, autocompletion, and format-on-save.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>VS Code launches, and the <strong>HashiCorp Terraform</strong> extension shows an <strong>Installed</strong> status in the Extensions view. Opening any <code>.tf</code> file displays HCL syntax highlighting.</p>
+        </div>
       </div>
     </div>
 
@@ -863,8 +881,8 @@ aws sts get-caller-identity</code></pre>
       </div>
     </div>
 
-    <h4>Option B: AWS CloudShell (Quick Alternative)</h4>
-    <p>CloudShell automatically assumes the IAM permissions of the logged-in console user &mdash; no credentials to configure. Use this if you need to get started quickly without installing anything locally.</p>
+    <h3>Option B: AWS CloudShell (Quick Alternative)</h3>
+    <p>CloudShell automatically assumes the IAM permissions of the logged-in console user, so there are no credentials to configure. Use this if you need to get started quickly without installing anything locally.</p>
     <ol>
       <li>Open <strong>CloudShell</strong> from the AWS Console.</li>
       <li>Install Terraform:</li>
@@ -898,7 +916,15 @@ terraform -v</code></pre>
       <ul>
         <li><strong>Terraform</strong> &ge; <code>1.5.0</code></li>
         <li><strong>AWS Provider</strong> <code>~> 5.17</code></li>
-        <li><strong>Cloud NGFW Provider</strong> (<code>cloudngfwaws</code>) &ge; <code>2.0.20</code></li>
+        <li><strong>Cloud NGFW Provider</strong> (<code>cloudngfwaws</code>) <code>~> 2.0</code></li>
+      </ul>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">About the provider version pins</div>
+      <ul>
+        <li><strong><code>cloudngfwaws</code> <code>~> 2.0</code></strong> &mdash; the provider has since released a 4.x line with breaking schema changes. The HCL in this guide targets the 2.x series, so the pin prevents <code>terraform init</code> from resolving to an incompatible major version.</li>
+        <li><strong><code>aws</code> <code>~> 5.17</code></strong> &mdash; the AWS provider 6.x line is current; this pin targets the 5.x series that the swfw-modules examples were validated against.</li>
       </ul>
     </div>
 
@@ -921,7 +947,7 @@ terraform -v</code></pre>
     }
     cloudngfwaws = {
       source  = "PaloAltoNetworks/cloudngfwaws"
-      version = ">= 2.0.20"
+      version = "~> 2.0"
     }
   }
 }</code></pre>
@@ -952,7 +978,7 @@ terraform -v</code></pre>
 
 <p>All security policy, device groups, templates, and log forwarding are configured on the management platform <strong>before</strong> any AWS infrastructure is deployed. This management-first approach ensures that Cloud NGFW resources bootstrap into a fully configured policy on creation.</p>
 
-<p>Cloud NGFW supports three management methods. Select the tab that matches your environment — the selection persists across the page.</p>
+<p>Cloud NGFW supports three management methods. Select the tab that matches your environment; the selection persists across the page.</p>
 
 <div class="callout callout-note">
   <div class="callout-title">Which path should I pick?</div>
@@ -964,7 +990,7 @@ terraform -v</code></pre>
 
 <div class="callout callout-note">
   <div class="callout-title">Native Rulestacks (Local Management)</div>
-  <p>Cloud NGFW also supports <strong>local rulestacks</strong> managed directly through the Cloud NGFW console, Terraform, or CloudFormation. Local rulestacks are suitable for proof-of-concept or small deployments. This guide does not cover local rulestack configuration in detail — refer to <a href="https://docs.paloaltonetworks.com/cloud-ngfw/aws/cloud-ngfw-on-aws/rules-and-rulestacks">Cloud NGFW Rules and Rulestacks</a> in TechDocs.</p>
+  <p>Cloud NGFW also supports <strong>local rulestacks</strong> managed directly through the Cloud NGFW console, Terraform, or CloudFormation. Local rulestacks are suitable for proof-of-concept or small deployments. This guide does not cover local rulestack configuration in detail; refer to <a href="https://docs.paloaltonetworks.com/cloud-ngfw/aws/cloud-ngfw-on-aws/rules-and-rulestacks">Cloud NGFW Rules and Rulestacks</a> in TechDocs.</p>
 </div>
 
 <div class="mgmt-tabs" data-tab-group="aws-mgmt">
@@ -1011,8 +1037,8 @@ terraform -v</code></pre>
           <p>Panorama is running PAN-OS <code>10.2.5</code>+ in management-only mode with a valid device certificate. Cortex Data Lake status is <code>OK</code> and the tenant IDs match.</p>
         </div>
 
-        <p><em>Panorama management plane — Panorama pushes policy and configuration to Cloud NGFW resources in the AWS VPC:</em></p>
-        <img src="diagrams/aws/PN Mgmt.png" alt="Panorama management architecture showing Panorama on a management network pushing policy to two Cloud NGFW resources in an AWS VPC, with administrators accessing Panorama for centralized management" loading="lazy">
+        <p><em>The Panorama management plane pushes policy and configuration to Cloud NGFW resources in the AWS VPC:</em></p>
+        <img src="diagrams/aws/pn-mgmt.png" alt="Panorama management architecture showing Panorama on a management network pushing policy to two Cloud NGFW resources in an AWS VPC, with administrators accessing Panorama for centralized management" loading="lazy">
       </div>
     </div>
 
@@ -1068,8 +1094,8 @@ terraform -v</code></pre>
           <p>The Integrations page in the Cloud NGFW console shows the Panorama link with status <code>Connected</code>. In Panorama, the Cloud NGFW tenant appears under the <code>Panorama</code> tab when selecting the tenant and region.</p>
         </div>
 
-        <p><em>Panorama with Cortex Data Lake — Panorama manages Cloud NGFW policy while CDL collects traffic logs:</em></p>
-        <img src="diagrams/aws/PN Mgmt &amp; CDL.png" alt="Panorama management with Cortex Data Lake integration showing Panorama pushing policy to Cloud NGFW resources in an AWS VPC, with Cloud NGFW forwarding traffic logs to Cortex Data Lake for centralized logging and analytics" loading="lazy">
+        <p><em>With Cortex Data Lake, Panorama manages Cloud NGFW policy while CDL collects traffic logs:</em></p>
+        <img src="diagrams/aws/pn-mgmt-cdl.png" alt="Panorama management with Cortex Data Lake integration showing Panorama pushing policy to Cloud NGFW resources in an AWS VPC, with Cloud NGFW forwarding traffic logs to Cortex Data Lake for centralized logging and analytics" loading="lazy">
       </div>
     </div>
 
@@ -1179,7 +1205,7 @@ terraform -v</code></pre>
 
         <div class="callout callout-warning">
           <div class="callout-title">Important: The Magic "default" Keyword</div>
-          <p>Naming the log forwarding profile exactly <code>default</code> (lowercase) causes PAN-OS to auto-attach it to <strong>new</strong> security rules created in this device group. This is case-sensitive and not retroactive — existing rules without a log forwarding profile must be updated manually.</p>
+          <p>Naming the log forwarding profile exactly <code>default</code> (lowercase) causes PAN-OS to auto-attach it to <strong>new</strong> security rules created in this device group. This is case-sensitive and not retroactive; existing rules without a log forwarding profile must be updated manually.</p>
         </div>
 
         <div class="callout callout-success">
@@ -1223,7 +1249,7 @@ terraform -v</code></pre>
 
         <div class="callout callout-note">
           <div class="callout-title">SCM Pro for Cloud NGFW</div>
-          <p>Cloud NGFW for AWS automatically enables SCM Pro features when registered with an SCM tenant. This includes Strata Logging Service with one year retention, Command Center dashboards, and Activity Insights &mdash; no separate license purchase is required for these Cloud NGFW-specific capabilities.</p>
+          <p>Cloud NGFW for AWS automatically enables SCM Pro features when registered with an SCM tenant. This includes Strata Logging Service with one year retention, Command Center dashboards, and Activity Insights; no separate license purchase is required for these Cloud NGFW-specific capabilities.</p>
         </div>
 
         <div class="callout callout-success">
@@ -1270,7 +1296,7 @@ terraform -v</code></pre>
         <span>Step 2B.3: Create Folder Structure</span>
       </div>
       <div class="collapsible-body">
-        <p>SCM uses a hierarchical folder structure to organize policy &mdash; this is the SCM equivalent of Panorama device groups. Folders support up to four levels of nesting, and child folders inherit rules from their parents. Create a folder for the AWS Cloud NGFW deployment with sub-folders to separate traffic policies.</p>
+        <p>SCM uses a hierarchical folder structure to organize policy; this is the SCM equivalent of Panorama device groups. Folders support up to four levels of nesting, and child folders inherit rules from their parents. Create a folder for the AWS Cloud NGFW deployment with sub-folders to separate traffic policies.</p>
 
         <ol>
           <li>In SCM, navigate to <code>Manage</code> &rarr; <code>Configuration</code> &rarr; <code>NGFW and Prisma Access</code>.</li>
@@ -1312,7 +1338,7 @@ terraform -v</code></pre>
       <div class="collapsible-body">
         <p>Security profiles enable Cloud NGFW to inspect traffic for threats beyond basic allow/deny. Create profiles for each threat type, then bundle them into a Security Profile Group for easy attachment to rules.</p>
 
-        <h4>Create Security Profiles</h4>
+        <h3>Create Security Profiles</h3>
         <ol>
           <li>In SCM, select the <code>Cloud-NGFW-AWS</code> parent folder from the Configuration Scope dropdown.</li>
           <li>Navigate to <code>Manage</code> &rarr; <code>Configuration</code> &rarr; <code>NGFW and Prisma Access</code> &rarr; <code>Security Services</code>.</li>
@@ -1331,7 +1357,7 @@ terraform -v</code></pre>
           </li>
         </ol>
 
-        <h4>Create Security Profile Group</h4>
+        <h3>Create Security Profile Group</h3>
         <ol start="4">
           <li>Navigate to <code>Security Services</code> &rarr; <code>Security Profile Groups</code>.</li>
           <li>Click <code>Add</code>.</li>
@@ -1373,7 +1399,7 @@ terraform -v</code></pre>
       <div class="collapsible-body">
         <p>Create security rules in each sub-folder to define allowed and denied traffic, with the security profile group attached for threat inspection.</p>
 
-        <h4>East-West and Outbound Rules</h4>
+        <h3>East-West and Outbound Rules</h3>
         <ol>
           <li>In SCM, select the <code>East-West-Outbound</code> folder from the Configuration Scope dropdown.</li>
           <li>Navigate to <code>Security Services</code> &rarr; <code>Security Policy</code>.</li>
@@ -1399,7 +1425,7 @@ terraform -v</code></pre>
           <li>Add a <strong>deny-all</strong> cleanup rule at the bottom of the rulebase.</li>
         </ol>
 
-        <h4>Inbound Rules</h4>
+        <h3>Inbound Rules</h3>
         <ol start="6">
           <li>Switch to the <code>Inbound</code> folder in the Configuration Scope dropdown.</li>
           <li>Click <code>Add Rule</code> and create inbound application rules appropriate for your published services (e.g., web servers, APIs).</li>
@@ -1448,7 +1474,7 @@ terraform -v</code></pre>
 
         <div class="callout callout-warning">
           <div class="callout-title">The "default" Keyword</div>
-          <p>Naming the log forwarding profile exactly <code>default</code> (lowercase) causes SCM to auto-attach it to <strong>new</strong> security rules created in this folder scope. This is case-sensitive and not retroactive &mdash; existing rules without a log forwarding profile must be updated manually.</p>
+          <p>Naming the log forwarding profile exactly <code>default</code> (lowercase) causes SCM to auto-attach it to <strong>new</strong> security rules created in this folder scope. This is case-sensitive and not retroactive; existing rules without a log forwarding profile must be updated manually.</p>
         </div>
 
         <div class="callout callout-success">
@@ -1497,7 +1523,7 @@ terraform -v</code></pre>
 
 <h2 id="review-checkpoint">Phase 3: Review Checkpoint</h2>
 
-<p>This is a hard gate. Do not proceed to Terraform configuration until every item below is confirmed. Deploying infrastructure without a fully configured management plane results in Cloud NGFW resources that have no security policy — all traffic will be denied by default.</p>
+<p>This is a hard gate. Do not proceed to Terraform configuration until every item below is confirmed. Deploying infrastructure without a fully configured management plane results in Cloud NGFW resources that have no security policy: all traffic will be denied by default.</p>
 
 <div class="collapsible">
   <div class="collapsible-header">
@@ -2049,7 +2075,7 @@ global_tags = {
 
     <div class="callout callout-warning">
       <div class="callout-title">Important: Combined Model Only</div>
-      <p>This step applies to the <strong>Combined model</strong> only. In the Centralized model, inbound traffic enters through the centralized inbound security VPC — no NGFW endpoints are needed in spoke VPCs.</p>
+      <p>This step applies to the <strong>Combined model</strong> only. In the Centralized model, inbound traffic enters through the centralized inbound security VPC; no NGFW endpoints are needed in spoke VPCs.</p>
     </div>
 
     <ol>
@@ -2127,7 +2153,7 @@ global_tags = {
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The ALB is active and healthy in the EC2 console. Route tables are configured with the correct targets. The IGW edge association routes point ELB subnet CIDRs to the NGFW endpoints. Test by sending a request to the ALB DNS name — it should pass through the Cloud NGFW (visible in logs) before reaching the application.</p>
+      <p>The ALB is active and healthy in the EC2 console. Route tables are configured with the correct targets. The IGW edge association routes point ELB subnet CIDRs to the NGFW endpoints. Test by sending a request to the ALB DNS name; it should pass through the Cloud NGFW (visible in logs) before reaching the application.</p>
     </div>
   </div>
 </div>
@@ -2167,7 +2193,7 @@ global_tags = {
       </li>
     </ol>
 
-    <h4>Expected Traffic Path</h4>
+    <h3>Expected Traffic Path</h3>
     <ol>
       <li>Instance (App01) &rarr; TGW attachment (spoke VPC)</li>
       <li>TGW (Spokes route table, <code>0.0.0.0/0</code>) &rarr; Security VPC attachment</li>
@@ -2215,7 +2241,7 @@ global_tags = {
       </li>
     </ol>
 
-    <h4>Expected Traffic Path</h4>
+    <h3>Expected Traffic Path</h3>
     <ol>
       <li>Instance (App01) &rarr; TGW attachment (App01 VPC)</li>
       <li>TGW (Spokes route table) &rarr; Security VPC attachment</li>
@@ -2259,7 +2285,7 @@ global_tags = {
       </li>
     </ol>
 
-    <h4>Expected Traffic Path (Combined Model)</h4>
+    <h3>Expected Traffic Path (Combined Model)</h3>
     <ol>
       <li>Client &rarr; IGW (spoke VPC)</li>
       <li>IGW edge association route table &rarr; NGFW endpoint (spoke VPC)</li>
@@ -2267,7 +2293,7 @@ global_tags = {
       <li>NGFW endpoint &rarr; ALB &rarr; Application instance</li>
     </ol>
 
-    <h4>Expected Traffic Path (Centralized Model)</h4>
+    <h3>Expected Traffic Path (Centralized Model)</h3>
     <ol>
       <li>Client &rarr; IGW (inbound security VPC)</li>
       <li>Internet-facing ELB &rarr; ELB subnet route table &rarr; NGFW endpoint</li>
@@ -2332,14 +2358,14 @@ global_tags = {
     <span>Step 7.5: Verify Strata Logging Service</span>
   </div>
   <div class="collapsible-body">
-    <p>Confirm that the Cloud NGFW resource is enrolled in Strata Logging Service (SLS) and that logs are flowing to the centralized logging platform. This step applies to both Panorama-managed and SCM-managed deployments &mdash; SLS is automatically enabled when the Cloud NGFW resource is linked to either management platform.</p>
+    <p>Confirm that the Cloud NGFW resource is enrolled in Strata Logging Service (SLS) and that logs are flowing to the centralized logging platform. This step applies to both Panorama-managed and SCM-managed deployments; SLS is automatically enabled when the Cloud NGFW resource is linked to either management platform.</p>
 
     <div class="callout callout-note">
       <div class="callout-title">Automatic Enrollment</div>
-      <p>Strata Logging Service is automatically enabled when the Cloud NGFW resource is linked to Panorama (via the Cloud Services plugin) or to SCM. No separate SLS activation or license purchase is required for Cloud NGFW &mdash; enrollment happens as part of the management platform integration completed in <a href="#management-config">Phase 2</a>. Cloud NGFW is a managed service, so there are no firewall-side configuration steps for SLS connectivity (no ports, FQDNs, or device certificates to configure).</p>
+      <p>Strata Logging Service is automatically enabled when the Cloud NGFW resource is linked to Panorama (via the Cloud Services plugin) or to SCM. No separate SLS activation or license purchase is required for Cloud NGFW; enrollment happens as part of the management platform integration completed in <a href="#management-config">Phase 2</a>. Cloud NGFW is a managed service, so there are no firewall-side configuration steps for SLS connectivity (no ports, FQDNs, or device certificates to configure).</p>
     </div>
 
-    <h4>Verify SLS Inventory</h4>
+    <h3>Verify SLS Inventory</h3>
     <ol>
       <li>Log in to <a href="https://stratacloudmanager.paloaltonetworks.com">Strata Cloud Manager</a>.</li>
       <li>In the lower-left corner of the SCM interface, click the <strong>Tenant</strong> icon to view available tenants.</li>
@@ -2354,7 +2380,7 @@ global_tags = {
       <p>Strata Logging Service storage allocation is determined by the Cloud NGFW license tier. New SLS licenses (post-October 2024) include a default one-year log retention period with unlimited storage. To view current storage usage and retention settings, navigate to <code>Strata Logging Service</code> &gt; <code>Settings</code> &gt; <code>Storage</code>. For additional storage or retention adjustments, contact your Palo Alto Networks account team.</p>
     </div>
 
-    <h4>Query Logs in Strata Logging Service</h4>
+    <h3>Query Logs in Strata Logging Service</h3>
     <ol>
       <li>From the Strata Logging Service dashboard, click <code>Explore</code> to open the log query interface.</li>
       <li>Select <code>Firewall/Threat</code> from the log type drop-down.</li>
@@ -2370,7 +2396,7 @@ global_tags = {
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The Strata Logging Service <code>Inventory</code> &gt; <code>Cloud NGFW</code> tab lists the Cloud NGFW resource with a connected status. The <code>Explore</code> query returns traffic log entries matching the test sessions from Steps 7.1&ndash;7.3. If the resource does not appear in the inventory, wait 5 minutes and refresh &mdash; initial registration propagation can take several minutes after the management platform link in Phase 2.</p>
+      <p>The Strata Logging Service <code>Inventory</code> &gt; <code>Cloud NGFW</code> tab lists the Cloud NGFW resource with a connected status. The <code>Explore</code> query returns traffic log entries matching the test sessions from Steps 7.1&ndash;7.3. If the resource does not appear in the inventory, wait 5 minutes and refresh; initial registration propagation can take several minutes after the management platform link in Phase 2.</p>
     </div>
   </div>
 </div>
@@ -2393,7 +2419,7 @@ global_tags = {
   <div class="collapsible-body">
     <p><strong>Symptom:</strong> Traffic between spoke VPCs or from spoke VPCs to the internet does not flow.</p>
 
-    <h4>Checks</h4>
+    <h3>Checks</h3>
     <ol>
       <li>Verify the spoke VPC attachment is <strong>associated</strong> with the Spokes route table (not just propagated).</li>
       <li>Verify the security VPC attachment is <strong>associated</strong> with the Security route table.</li>
@@ -2418,7 +2444,7 @@ global_tags = {
   <div class="collapsible-body">
     <p><strong>Symptom:</strong> NGFW endpoints show <code>available</code> but traffic is not being inspected. The Cloud NGFW resource may show degraded health.</p>
 
-    <h4>Checks</h4>
+    <h3>Checks</h3>
     <ol>
       <li>In the Cloud NGFW console, click the NGFW resource and check the <strong>Health</strong> status per AZ.</li>
       <li>Verify the NGFW resource status is <code>CREATE_COMPLETE</code>, not <code>CREATE_IN_PROGRESS</code> or <code>CREATE_FAILED</code>.</li>
@@ -2442,7 +2468,7 @@ global_tags = {
   <div class="collapsible-body">
     <p><strong>Symptom:</strong> The Cloud NGFW resource shows <code>CREATE_FAILED</code> or remains in <code>CREATE_IN_PROGRESS</code> beyond 60 minutes.</p>
 
-    <h4>Checks</h4>
+    <h3>Checks</h3>
     <ol>
       <li>Verify the Cloud NGFW tenant has an active AWS Marketplace subscription.</li>
       <li>Confirm the selected AWS account is added to the Cloud NGFW tenant.</li>
@@ -2473,7 +2499,7 @@ global_tags = {
   <div class="collapsible-body">
     <p><strong>Symptom:</strong> <code>terraform init</code> or <code>terraform plan</code> fails with provider version constraint errors.</p>
 
-    <h4>Checks</h4>
+    <h3>Checks</h3>
     <ol>
       <li>Verify the Terraform CLI version:
         <div class="code-block">
@@ -2509,7 +2535,7 @@ terraform init -upgrade</code></pre>
   <div class="collapsible-body">
     <p><strong>Symptom:</strong> Cloud NGFW console shows licensing warnings, or NGFW creation fails with a subscription error.</p>
 
-    <h4>Checks</h4>
+    <h3>Checks</h3>
     <ol>
       <li>Navigate to AWS Marketplace &rarr; <code>Manage subscriptions</code>. Confirm <code>Cloud Next-Generation Firewall</code> shows status <code>Active</code>.</li>
       <li>If the subscription is in a free trial, verify the trial has not expired.</li>
@@ -2533,7 +2559,7 @@ terraform init -upgrade</code></pre>
   <div class="collapsible-body">
     <p><strong>Symptom:</strong> Panorama or SCM cannot push policy to the Cloud NGFW, or log entries do not appear.</p>
 
-    <h4>Checks</h4>
+    <h3>Checks</h3>
     <ol>
       <li>In the Cloud NGFW console, navigate to <code>Settings</code> &rarr; <code>Integrations</code>. Confirm the management platform link shows <code>Connected</code>.</li>
       <li>For Panorama:

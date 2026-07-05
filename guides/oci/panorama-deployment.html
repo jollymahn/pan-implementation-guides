@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Panorama Deployment on OCI | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">Panorama on OCI</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="index.html" class="active">OCI</a>
+    <a href="../bootstrap/vm-series-bootstrap.html">Bootstrap</a>
+    <a href="../../globalprotect/index.html">GlobalProtect</a>
+    <a href="../../scm-onboarding/index.html">SCM</a>
+    <a href="../cloud-identity-engine/cie-implementation.html">CIE</a>
+    <a href="../../index.html#airs">AIRS</a>
+    <a href="../portkey/index.html">AI Gateway</a>
+    <a href="../cngfw/cloud-ngfw-deployment.html">CNGFW</a>
+    <a href="../panorama-cli/panos-cli-reference.html">PanOS CLI</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<div class="sidebar-backdrop"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prerequisites</div>
+    <a href="#prerequisites" data-section="prerequisites">Cloud &amp; Tools Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Terraform</div>
+    <a href="#terraform-config" data-section="terraform-config">Prepare Configuration</a>
+    <a href="#deploy-verify" data-section="deploy-verify">Deploy &amp; Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Post-Deploy</div>
+    <a href="#post-deploy" data-section="post-deploy">Initial Access</a>
+    <a href="#verification" data-section="verification">Verification</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#cleanup" data-section="cleanup">Cleanup</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">OCI</a>
+  <span class="sep">|</span>
+  Panorama Deployment
+</div>
+
+<div class="article">
+
+<h1>Panorama Deployment on OCI</h1>
+<p class="subtitle">End-to-end guide: OCI tenancy setup through a fully licensed, accessible Panorama management plane</p>
+
+<div class="cloud-links">
+  <a href="../aws/panorama-deployment.html">AWS Panorama Guide</a>
+  <a href="../azure/panorama-deployment.html">Azure Panorama Guide</a>
+  <a href="../gcp/panorama-deployment.html">GCP Panorama Guide</a>
+  <a href="vm-series-deployment.html">OCI VM-Series Guide</a>
+</div>
+
+<!-- ── Phase Progress ────────────────────────────────────────── -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#terraform-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Terraform Config
+  </a>
+  <a href="#deploy-verify" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Deploy
+  </a>
+  <a href="#post-deploy" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Post-Deploy
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide deploys <strong>Panorama</strong>, the centralized management platform for Palo Alto Networks firewalls, as a Compute instance on Oracle Cloud Infrastructure. Panorama should be operational <em>before</em> deploying VM-Series firewalls so that firewalls can bootstrap into a configured management plane on first boot.</p>
+  <p><strong>Deployment method:</strong> All OCI infrastructure is deployed with <strong>Terraform</strong> using the OCI provider. Panorama itself runs from the Palo Alto Networks Marketplace image on an OCI Compute instance, with a Block Volume attached for log storage.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">No first-party Panorama module for OCI</div>
+  <p>On AWS, Azure, and GCP, Palo Alto Networks publishes SWFW Terraform modules with a ready-made <code>panorama_standalone</code> example. <strong>OCI has no equivalent first-party Panorama module.</strong> The joint Oracle and Palo Alto Networks repository <a href="https://github.com/oracle-quickstart/oci-palo-alto-networks">oracle-quickstart/oci-palo-alto-networks</a> and the <a href="https://github.com/PaloAltoNetworks/OracleCloud">PaloAltoNetworks/OracleCloud</a> sample template target the <em>VM-Series firewall</em>, not Panorama. This guide therefore builds the Panorama resources directly with the standard OCI Terraform provider. The same resources can be packaged as an Oracle Resource Manager (ORM) stack if you prefer console-driven deployment.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE OVERVIEW                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>Before deploying anything, study the target architecture. This guide provisions a dedicated management VCN with a Panorama Compute instance reachable over a public IP or through an OCI Bastion, plus a Block Volume for log storage.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Topology</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The deployment creates the following OCI resources:</p>
+    <ul>
+      <li><strong>Compartment</strong> &mdash; a dedicated compartment that isolates the Panorama resources for IAM and billing (for example <code>panorama-mgmt</code>)</li>
+      <li><strong>VCN</strong> &mdash; a management Virtual Cloud Network (<code>10.255.0.0/16</code>), the OCI equivalent of a VPC, with an Internet Gateway for management access</li>
+      <li><strong>Subnet</strong> &mdash; a regional management subnet (<code>10.255.0.0/24</code>) with its own Route Table and either a Security List or a Network Security Group (NSG)</li>
+      <li><strong>Panorama instance</strong> &mdash; an OCI Compute instance running the Palo Alto Networks Marketplace image, with a primary VNIC in the management subnet and a static private IP</li>
+      <li><strong>Block Volume</strong> &mdash; a dedicated Block Volume attached to the instance and used by Panorama as a logging disk</li>
+      <li><strong>Gateways</strong> &mdash; an Internet Gateway (IGW) for public management access, or a NAT Gateway plus Service Gateway for a private deployment</li>
+    </ul>
+
+    <div class="callout callout-note">
+      <div class="callout-title">OCI networking terms at a glance</div>
+      <ul>
+        <li><strong>VCN</strong> &mdash; Virtual Cloud Network, the tenancy-level virtual network (equivalent to an AWS VPC or Azure VNet)</li>
+        <li><strong>Subnet</strong> &mdash; regional or availability-domain scoped; each subnet has one Route Table</li>
+        <li><strong>Security List / NSG</strong> &mdash; stateful ingress and egress rules; a Security List applies to a subnet, an NSG applies to a set of VNICs</li>
+        <li><strong>VNIC</strong> &mdash; Virtual Network Interface Card, the interface attached to a Compute instance</li>
+        <li><strong>IGW / NAT / Service GW / DRG</strong> &mdash; Internet, NAT, Service, and Dynamic Routing gateways for internet, outbound-only, Oracle-service, and inter-VCN traffic respectively</li>
+      </ul>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">HA pair vs. single instance</div>
+      <p>This guide deploys a single Panorama instance for clarity. For an HA pair, duplicate the Compute instance and Block Volume resources into a second availability domain (or fault domain in a single-AD region) and configure Panorama HA after both instances are running. HA peering is a Panorama configuration task, not an infrastructure task; see <a href="#verification">Phase 5</a>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Network &amp; Security Design</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Access to the Panorama management interface is controlled by a Security List or NSG on the management subnet. The baseline configuration exposes three services:</p>
+
+    <table>
+      <thead>
+        <tr><th>Rule</th><th>Direction</th><th>Port</th><th>Protocol</th><th>Source/Dest</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>SSH</td><td>Ingress</td><td><code>22</code></td><td>TCP</td><td>Your admin IP</td></tr>
+        <tr><td>HTTPS</td><td>Ingress</td><td><code>443</code></td><td>TCP</td><td>Your admin IP</td></tr>
+        <tr><td>All outbound</td><td>Egress</td><td><code>all</code></td><td>All</td><td><code>0.0.0.0/0</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Add port 3978 for managed firewalls</div>
+      <p>If VM-Series firewalls in other VCNs will connect to this Panorama over the network (via DRG, local peering, or VPN), add an ingress rule for TCP <code>3978</code> (Panorama device management). Set the source CIDR to the firewall management subnet CIDRs. Without this rule, firewalls cannot register with Panorama.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Security List or NSG?</div>
+      <p>A <strong>Security List</strong> attaches to a subnet and applies to every VNIC in it. A <strong>Network Security Group</strong> attaches to individual VNICs and lets you scope rules per instance. This guide uses an NSG on the Panorama VNIC so the management rules travel with the instance and do not affect other workloads in the subnet.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<p>Complete these one-time setup tasks before deploying Panorama infrastructure. If you have already completed them for a VM-Series deployment on OCI, skip to <a href="#terraform-config">Phase 2</a>.</p>
+
+<!-- Prereq 1.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1: Verify Tenancy, Compartment &amp; IAM Permissions</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Terraform needs an OCI compartment to hold the resources and an IAM policy granting the deploying user or group permission to manage networking and Compute. In OCI, policies are written against groups or dynamic-groups scoped to a compartment.</p>
+
+    <h3>Create a compartment</h3>
+    <ol>
+      <li>In the OCI Console, open the navigation menu and go to <strong>Identity &amp; Security &gt; Compartments</strong>.</li>
+      <li>Click <strong>Create Compartment</strong>.</li>
+      <li>Set the name (for example <code>panorama-mgmt</code>) and a description, choose the parent compartment, and click <strong>Create Compartment</strong>.</li>
+      <li>Record the compartment OCID; it is needed for the Terraform variables in <a href="#terraform-config">Phase 2</a>.</li>
+    </ol>
+
+    <h3>Grant IAM permissions</h3>
+    <p>Attach a policy to the group that the deploying user belongs to. The following statements allow that group to manage the resources this guide creates within the compartment.</p>
+    <div class="code-block">
+      <pre><code>Allow group PanoramaAdmins to manage virtual-network-family in compartment panorama-mgmt
+Allow group PanoramaAdmins to manage instance-family in compartment panorama-mgmt
+Allow group PanoramaAdmins to manage volume-family in compartment panorama-mgmt
+Allow group PanoramaAdmins to manage app-catalog-listing in compartment panorama-mgmt
+Allow group PanoramaAdmins to read marketplace-listings in tenancy</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Break-glass and least privilege</div>
+      <p>The tenancy administrator account is the break-glass account for OCI. Store its credentials in a secure vault and use a named group such as <code>PanoramaAdmins</code> for daily deployment work. Grant the broad policy above for the initial deployment, then narrow it once the environment is stable. Repeated failed sign-ins can trigger account lockout, so protect the administrator credentials carefully.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The compartment appears under <strong>Identity &amp; Security &gt; Compartments</strong> in an <code>Active</code> state, and the policy is listed under <strong>Identity &amp; Security &gt; Policies</strong> for the target compartment.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 1.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2: Install Deployment Tools</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Set up your deployment environment using one of the options below before starting Phase 2.</p>
+
+    <h3>Option A: Local Workstation or Bastion Host (Preferred)</h3>
+    <p>Install the following tools on your deployment machine. This approach gives you full control over tool versions, persistent state, and IDE integration.</p>
+    <table>
+      <tr><th>Tool</th><th>Purpose</th><th>Install</th></tr>
+      <tr><td><strong>Terraform CLI</strong></td><td>Infrastructure provisioning (&gt;= 1.5.0, &lt; 2.0.0)</td><td><a href="https://developer.hashicorp.com/terraform/install">developer.hashicorp.com/terraform/install</a></td></tr>
+      <tr><td><strong>OCI CLI</strong></td><td>OCI authentication and resource management</td><td><a href="https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm">docs.oracle.com/.../cliinstall</a></td></tr>
+      <tr><td><strong>Git</strong></td><td>Version control for Terraform code</td><td><a href="https://git-scm.com/downloads">git-scm.com/downloads</a></td></tr>
+      <tr><td><strong>VS Code</strong> (recommended)</td><td>HCL syntax highlighting, Terraform extension</td><td><a href="https://code.visualstudio.com/download">code.visualstudio.com/download</a></td></tr>
+    </table>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Install Terraform</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="mgmt-tabs" data-tab-group="tf-install-os">
+          <div class="mgmt-tab-bar">
+            <button class="mgmt-tab active" data-plane="mac">macOS</button>
+            <button class="mgmt-tab" data-plane="windows">Windows</button>
+          </div>
+          <div class="mgmt-panel active" data-plane="mac">
+            <p>Install via <a href="https://brew.sh" target="_blank" rel="noopener">Homebrew</a> (recommended):</p>
+            <div class="code-block">
+              <pre><code>brew tap hashicorp/tap
+brew install hashicorp/tap/terraform</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>Verify the installation:</p>
+            <div class="code-block">
+              <pre><code>terraform -v</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </div>
+          <div class="mgmt-panel" data-plane="windows">
+            <p>Install via <strong>winget</strong> (recommended):</p>
+            <div class="code-block">
+              <pre><code>winget install Hashicorp.Terraform</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>Or download the binary manually from <a href="https://developer.hashicorp.com/terraform/install" target="_blank" rel="noopener">developer.hashicorp.com/terraform/install</a>. Extract the <code>.zip</code>, place <code>terraform.exe</code> in a directory on your <code>PATH</code> (for example <code>C:\tools\terraform</code>), and add that directory to your system <code>PATH</code> environment variable.</p>
+            <p>Verify the installation (open a new terminal):</p>
+            <div class="code-block">
+              <pre><code>terraform -v</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Install the OCI CLI</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="mgmt-tabs" data-tab-group="oci-install-os">
+          <div class="mgmt-tab-bar">
+            <button class="mgmt-tab active" data-plane="mac">macOS / Linux</button>
+            <button class="mgmt-tab" data-plane="windows">Windows</button>
+          </div>
+          <div class="mgmt-panel active" data-plane="mac">
+            <p>Install with the official bootstrap script:</p>
+            <div class="code-block">
+              <pre><code>bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)"</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>Verify the installation:</p>
+            <div class="code-block">
+              <pre><code>oci --version</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </div>
+          <div class="mgmt-panel" data-plane="windows">
+            <p>Install from PowerShell:</p>
+            <div class="code-block">
+              <pre><code>Set-ExecutionPolicy RemoteSigned -Scope Process
+Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.ps1'))</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>Verify the installation (open a new terminal):</p>
+            <div class="code-block">
+              <pre><code>oci --version</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </div>
+        </div>
+        <p>After installing, run <code>oci setup config</code> to generate an API signing key pair and a <code>~/.oci/config</code> profile. Keep the generated public key; it is uploaded to your OCI user in <a href="#terraform-config">Step 2.1</a>.</p>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Install Git</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="mgmt-tabs" data-tab-group="git-install-os">
+          <div class="mgmt-tab-bar">
+            <button class="mgmt-tab active" data-plane="mac">macOS</button>
+            <button class="mgmt-tab" data-plane="windows">Windows</button>
+          </div>
+          <div class="mgmt-panel active" data-plane="mac">
+            <p>Git is included with the Xcode Command Line Tools. Install them if you have not already:</p>
+            <div class="code-block">
+              <pre><code>xcode-select --install</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>Or install via Homebrew:</p>
+            <div class="code-block">
+              <pre><code>brew install git</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>Verify the installation:</p>
+            <div class="code-block">
+              <pre><code>git --version</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </div>
+          <div class="mgmt-panel" data-plane="windows">
+            <p>Download the installer from <a href="https://git-scm.com/downloads/win" target="_blank" rel="noopener">git-scm.com/downloads/win</a> and run it. Accept the defaults. The installer includes <strong>Git Bash</strong>, which provides a Bash-compatible shell on Windows.</p>
+            <p>Verify the installation (open a new terminal):</p>
+            <div class="code-block">
+              <pre><code>git --version</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Confirm the tools are installed and your OCI credentials work:</p>
+    </div>
+    <div class="code-block">
+      <pre><code>terraform -v
+oci --version
+git --version
+oci iam region list --output table</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The <code>oci iam region list</code> command returns a table of subscribed regions, which confirms the CLI is authenticated to your tenancy.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Windows Users</div>
+      <p>All shell commands in this guide use Bash syntax (Linux/macOS). If deploying from a Windows workstation, use one of the following:</p>
+      <ul>
+        <li><strong>Windows Subsystem for Linux (WSL), recommended:</strong> Install <a href="https://learn.microsoft.com/en-us/windows/wsl/install">WSL 2</a> with Ubuntu, then install Terraform, the OCI CLI, and Git inside WSL. All commands in this guide work as-is.</li>
+        <li><strong>Git Bash:</strong> Installed alongside <a href="https://git-scm.com/downloads">Git for Windows</a>. Provides a Bash-compatible shell where most commands work without modification.</li>
+        <li><strong>PowerShell:</strong> Terraform and the OCI CLI work natively, but shell syntax differs.</li>
+      </ul>
+    </div>
+
+    <h3>Option B: OCI Cloud Shell (Quick Alternative)</h3>
+    <p>OCI Cloud Shell is a browser-based terminal that runs with the console user's credentials and comes with the OCI CLI, Terraform, and Git preinstalled. Use it to get started quickly without installing anything locally.</p>
+    <ol>
+      <li>In the OCI Console, click the <strong>Cloud Shell</strong> icon in the top navigation bar.</li>
+      <li>Confirm the preinstalled tools:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>terraform -v
+oci --version
+git --version</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Cloud Shell authentication</div>
+      <p>Cloud Shell authenticates automatically as the signed-in console user. Configure the OCI Terraform provider to use that session by exporting <code>TF_VAR</code> values or by running <code>export OCI_CLI_AUTH=security_token</code> and pointing the provider at the delegated session token. No API signing key is required inside Cloud Shell.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 1.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3: Obtain Panorama License</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama requires a valid license. All cloud deployments use the BYOL (Bring Your Own License) model with an auth code.</p>
+
+    <h3>Option A: Existing License</h3>
+    <ol>
+      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
+      <li>Navigate to <strong>Products &gt; Assets</strong> and locate your Panorama serial numbers or auth codes.</li>
+      <li>Confirm you have one license per Panorama instance (two licenses for an HA pair).</li>
+    </ol>
+
+    <h3>Option B: Provision from Flex Credits</h3>
+    <p>If your organization uses a Palo Alto Networks flex credit profile, you can provision a Panorama license directly from your credit pool.</p>
+    <ol>
+      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
+      <li>Navigate to <strong>Products &gt; Flex Credits</strong>.</li>
+      <li>Select <strong>Provision</strong> and choose <strong>Panorama</strong> as the product.</li>
+      <li>Select the desired management capacity and license term.</li>
+      <li>Complete the provisioning. An auth code is generated and appears under <strong>Products &gt; Assets</strong>.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>License activation happens after deployment in <a href="#post-deploy">Phase 4</a>. At this stage, confirm the license exists in your support portal account. Activation requires the Panorama instance to be running with outbound internet connectivity.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Your Panorama auth codes or serial numbers are visible in the Customer Support Portal under <strong>Products &gt; Assets</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 1.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4: Create or Identify an SSH Key Pair</span>
+  </div>
+  <div class="collapsible-body">
+    <p>SSH access is the only way to reach Panorama before the web UI password is set. On OCI, the instance receives your <strong>public</strong> key at launch through instance metadata; you keep the private key locally. Unlike AWS, there is no named key-pair object stored in the cloud, so any standard SSH key works.</p>
+
+    <h3>Option A: Create a new key pair</h3>
+    <div class="code-block">
+      <pre><code>ssh-keygen -t ed25519 -f ~/.ssh/panorama-oci -C "panorama-oci"
+chmod 400 ~/.ssh/panorama-oci</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>This creates <code>~/.ssh/panorama-oci</code> (private key) and <code>~/.ssh/panorama-oci.pub</code> (public key). The public key contents are supplied to Terraform in <a href="#terraform-config">Phase 2</a>.</p>
+
+    <h3>Option B: Use an existing key pair</h3>
+    <p>Print an existing public key so you can paste it into the Terraform variables:</p>
+    <div class="code-block">
+      <pre><code>cat ~/.ssh/id_ed25519.pub</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important</div>
+      <p>Supply the <strong>public</strong> key (<code>.pub</code>) to Terraform, never the private key. The private key stays on your workstation and is used only when connecting with <code>ssh -i</code>.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both key files exist and the private key has permissions <code>400</code>. Confirm with <code>ls -l ~/.ssh/panorama-oci*</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Prereq 1.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.5: Subscribe to the Panorama Marketplace Image</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama is published as a BYOL image in the Oracle Cloud Marketplace. You must accept the terms and subscribe the image to your compartment before Terraform can launch an instance from it. This is a one-time action per compartment.</p>
+    <ol>
+      <li>In the OCI Console, open the navigation menu and go to <strong>Marketplace &gt; All Applications</strong>.</li>
+      <li>Search for <strong>Palo Alto Networks Panorama</strong> and open the listing.</li>
+      <li>Select the target compartment, review and accept the Oracle terms of use and the partner terms, then click <strong>Subscribe</strong>.</li>
+      <li>Wait for the subscription to complete.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Subscribing through Terraform instead</div>
+      <p>The subscription can also be created in code with <code>oci_core_app_catalog_listing_resource_version_agreement</code> and <code>oci_core_app_catalog_subscription</code> resources, which is how the joint <a href="https://github.com/oracle-quickstart/oci-palo-alto-networks">oracle-quickstart</a> templates handle the VM-Series image. If you subscribe in the console first, you can skip those resources and reference the resulting image OCID directly.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Panorama listing shows an active subscription for your compartment. You can now retrieve the image OCID from <strong>Marketplace &gt; All Applications</strong> or with the OCI CLI for use in the Terraform configuration.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: PREPARE TERRAFORM CONFIGURATION                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="terraform-config">Phase 2: Prepare Terraform Configuration</h2>
+
+<p>Create a small Terraform project that provisions the compartment networking and the Panorama Compute instance. The examples below use placeholder values; replace every OCID and CIDR with values from your tenancy.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Reference implementations</div>
+  <p>There is no first-party Panorama module for OCI. The Terraform shown here is representative and self-contained. For patterns you can adapt, review the joint <a href="https://github.com/oracle-quickstart/oci-palo-alto-networks">oracle-quickstart/oci-palo-alto-networks</a> repository and the <a href="https://github.com/PaloAltoNetworks/OracleCloud">PaloAltoNetworks/OracleCloud</a> sample template. Both target VM-Series but demonstrate OCI provider usage, Marketplace image subscription, and VCN construction that apply equally to Panorama.</p>
+</div>
+
+<!-- Step 2.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.1: Gather OCI Provider Credentials</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The OCI Terraform provider authenticates with an API signing key. If you ran <code>oci setup config</code> in <a href="#prerequisites">Step 1.2</a>, the key pair and profile already exist under <code>~/.oci</code>.</p>
+    <ol>
+      <li>Upload the API public key to your OCI user: <strong>Identity &amp; Security &gt; Users &gt; your user &gt; API Keys &gt; Add API Key</strong>, then paste the contents of <code>~/.oci/oci_api_key_public.pem</code>.</li>
+      <li>Record the five values the provider needs: the <strong>tenancy OCID</strong>, <strong>user OCID</strong>, key <strong>fingerprint</strong>, <strong>private key path</strong>, and <strong>region</strong>. The fingerprint is shown when the key is added and also appears under the user's <strong>API Keys</strong> list.</li>
+    </ol>
+    <div class="code-block">
+      <pre><code># Confirm the profile the OCI CLI is using
+cat ~/.oci/config</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Never commit the private key</div>
+      <p>The API private key and the SSH private key must never be committed to version control. Keep them outside the Terraform working directory and reference them by path. Add <code>*.pem</code> and <code>terraform.tfvars</code> to <code>.gitignore</code>.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The new API key appears under the user's <strong>API Keys</strong> with a fingerprint that matches your local key, and <code>oci iam region list</code> succeeds using that profile.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.2: Create the Provider &amp; Variables Files</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create a working directory and define the provider and input variables. The OCI provider takes the five credential values from <a href="#terraform-config">Step 2.1</a>.</p>
+    <div class="code-block">
+      <pre><code>mkdir panorama-oci &amp;&amp; cd panorama-oci</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><code>provider.tf</code>:</p>
+    <div class="code-block">
+      <pre><code>terraform {
+  required_version = "&gt;= 1.5.0, &lt; 2.0.0"
+  required_providers {
+    oci = {
+      source  = "oracle/oci"
+      version = "&gt;= 5.0.0"
+    }
+  }
+}
+
+provider "oci" {
+  tenancy_ocid     = var.tenancy_ocid
+  user_ocid        = var.user_ocid
+  fingerprint      = var.fingerprint
+  private_key_path = var.private_key_path
+  region           = var.region
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><code>variables.tf</code>:</p>
+    <div class="code-block">
+      <pre><code>variable "tenancy_ocid"     { type = string }
+variable "user_ocid"        { type = string }
+variable "fingerprint"      { type = string }
+variable "private_key_path" { type = string }
+variable "region"           { type = string }
+
+variable "compartment_ocid" {
+  type        = string
+  description = "Compartment where Panorama resources are created"
+}
+
+variable "availability_domain" {
+  type        = string
+  description = "Full AD name, e.g. Uocm:PHX-AD-1"
+}
+
+variable "panorama_image_ocid" {
+  type        = string
+  description = "OCID of the subscribed Panorama Marketplace image"
+}
+
+variable "ssh_public_key" {
+  type        = string
+  description = "Contents of your SSH public key (.pub)"
+}
+
+variable "admin_cidr" {
+  type        = string
+  description = "Your admin public IP in CIDR form, e.g. 203.0.113.10/32"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both files exist in the working directory and reference only variables, with no hard-coded OCIDs or keys.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.3: Define the VCN, Subnet &amp; Gateways</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create the management VCN, an Internet Gateway, a Route Table with a default route to the IGW, and a regional management subnet.</p>
+    <p><code>network.tf</code>:</p>
+    <div class="code-block">
+      <pre><code>resource "oci_core_vcn" "mgmt" {
+  compartment_id = var.compartment_ocid
+  cidr_blocks    = ["10.255.0.0/16"]
+  display_name   = "panorama-mgmt-vcn"
+  dns_label      = "panoramamgmt"
+}
+
+resource "oci_core_internet_gateway" "igw" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.mgmt.id
+  display_name   = "panorama-igw"
+}
+
+resource "oci_core_route_table" "mgmt" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.mgmt.id
+  display_name   = "panorama-mgmt-rt"
+
+  route_rules {
+    destination       = "0.0.0.0/0"
+    network_entity_id = oci_core_internet_gateway.igw.id
+  }
+}
+
+resource "oci_core_subnet" "mgmt" {
+  compartment_id             = var.compartment_ocid
+  vcn_id                     = oci_core_vcn.mgmt.id
+  cidr_block                 = "10.255.0.0/24"
+  display_name               = "panorama-mgmt-subnet"
+  dns_label                  = "mgmt"
+  route_table_id             = oci_core_route_table.mgmt.id
+  prohibit_public_ip_on_vnic = false
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Private deployment variant</div>
+      <p>For a Panorama with no public IP, set <code>prohibit_public_ip_on_vnic = true</code>, replace the IGW route with a <code>oci_core_nat_gateway</code> for outbound licensing and content traffic, and add a <code>oci_core_service_gateway</code> for Oracle service access. Inbound admin access then goes through an OCI Bastion or a DRG-connected network. See <a href="#terraform-config">Step 2.7</a>.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The file defines exactly one VCN, one IGW, one Route Table with a <code>0.0.0.0/0</code> rule pointing at the IGW, and one subnet referencing that Route Table.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.4: Define the Network Security Group</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create an NSG that allows SSH and HTTPS from your admin IP and all outbound traffic. The NSG attaches to the Panorama VNIC in the next step.</p>
+    <p><code>nsg.tf</code>:</p>
+    <div class="code-block">
+      <pre><code>resource "oci_core_network_security_group" "panorama" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.mgmt.id
+  display_name   = "panorama-mgmt-nsg"
+}
+
+resource "oci_core_network_security_group_security_rule" "ssh_in" {
+  network_security_group_id = oci_core_network_security_group.panorama.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source                    = var.admin_cidr
+  source_type               = "CIDR_BLOCK"
+  tcp_options { destination_port_range { min = 22, max = 22 } }
+}
+
+resource "oci_core_network_security_group_security_rule" "https_in" {
+  network_security_group_id = oci_core_network_security_group.panorama.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source                    = var.admin_cidr
+  source_type               = "CIDR_BLOCK"
+  tcp_options { destination_port_range { min = 443, max = 443 } }
+}
+
+resource "oci_core_network_security_group_security_rule" "all_out" {
+  network_security_group_id = oci_core_network_security_group.panorama.id
+  direction                 = "EGRESS"
+  protocol                  = "all"
+  destination               = "0.0.0.0/0"
+  destination_type          = "CIDR_BLOCK"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Do not open SSH or HTTPS to the internet</div>
+      <p>Set <code>admin_cidr</code> to your specific public IP with a <code>/32</code> mask. Using <code>0.0.0.0/0</code> exposes the Panorama management interface to the entire internet. Find your current IP with <code>curl -s ifconfig.me</code>.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Add port 3978 for VM-Series management</div>
+      <p>If VM-Series firewalls in other VCNs will register with this Panorama, add an ingress rule for TCP <code>3978</code> with the source set to the firewall management subnet CIDRs. Duplicate the <code>ssh_in</code> block, change the port range to <code>3978</code>, and set <code>source</code> to the firewall CIDR.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The NSG defines ingress rules for ports 22 and 443 scoped to <code>var.admin_cidr</code> and a single permissive egress rule.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.5: Define the Panorama Instance &amp; Block Volume</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create the Compute instance from the subscribed Marketplace image, attach the NSG to its VNIC, and attach a Block Volume for log storage.</p>
+    <p><code>compute.tf</code>:</p>
+    <div class="code-block">
+      <pre><code>resource "oci_core_instance" "panorama" {
+  compartment_id      = var.compartment_ocid
+  availability_domain = var.availability_domain
+  display_name        = "panorama-1"
+  shape               = "VM.Standard.E4.Flex"
+
+  shape_config {
+    ocpus         = 8   # 8 OCPUs = 16 vCPUs on x86 shapes
+    memory_in_gbs = 32
+  }
+
+  source_details {
+    source_type = "image"
+    source_id   = var.panorama_image_ocid
+  }
+
+  create_vnic_details {
+    subnet_id        = oci_core_subnet.mgmt.id
+    private_ip       = "10.255.0.4"
+    assign_public_ip = true
+    nsg_ids          = [oci_core_network_security_group.panorama.id]
+  }
+
+  metadata = {
+    ssh_authorized_keys = var.ssh_public_key
+  }
+}
+
+resource "oci_core_volume" "panorama_logs" {
+  compartment_id      = var.compartment_ocid
+  availability_domain = var.availability_domain
+  display_name        = "panorama-logs"
+  size_in_gbs         = 2048
+}
+
+resource "oci_core_volume_attachment" "panorama_logs" {
+  attachment_type = "paravirtualized"
+  instance_id     = oci_core_instance.panorama.id
+  volume_id       = oci_core_volume.panorama_logs.id
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">OCPU to vCPU mapping</div>
+      <p>On OCI x86 flexible shapes, <strong>1 OCPU equals 2 vCPUs</strong>. Panorama in Panorama mode requires a minimum of 16 vCPUs and 32 GB RAM, so set <code>ocpus = 8</code>. Confirm the current sizing requirements in the Panorama setup prerequisites before production use, and increase the shape for larger managed-device counts.</p>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Parameter</th><th>Value</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>shape</code></td><td><code>VM.Standard.E4.Flex</code></td><td>Flexible AMD shape. Any supported flexible shape meeting the vCPU and RAM minimum works.</td></tr>
+        <tr><td><code>ocpus</code></td><td><code>8</code></td><td>8 OCPUs equal 16 vCPUs on x86 shapes.</td></tr>
+        <tr><td><code>memory_in_gbs</code></td><td><code>32</code></td><td>Minimum for Panorama mode.</td></tr>
+        <tr><td><code>size_in_gbs</code></td><td><code>2048</code></td><td>Block Volume size for the logging disk (2 TB).</td></tr>
+        <tr><td><code>assign_public_ip</code></td><td><code>true</code></td><td>Set to <code>false</code> for a private deployment reached via Bastion or DRG.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Panorama modes and the logging disk</div>
+      <p>A fresh Panorama boots in <strong>Panorama mode</strong>. The attached Block Volume is not used for logs until it is added as a virtual logging disk on Panorama itself; that is done post-deployment in <a href="#post-deploy">Step 4.5</a>. For a management-only deployment that forwards logs elsewhere, switch Panorama to <strong>Management Only</strong> mode and the logging disk is optional.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The file defines one instance referencing <code>var.panorama_image_ocid</code>, the NSG attached via <code>nsg_ids</code>, and a Block Volume plus attachment.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.6 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.6: Define Outputs &amp; the tfvars File</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Define outputs for the addresses you will need after deployment, then create a <code>terraform.tfvars</code> file with your tenancy-specific values.</p>
+    <p><code>outputs.tf</code>:</p>
+    <div class="code-block">
+      <pre><code>output "panorama_public_ip" {
+  value = oci_core_instance.panorama.public_ip
+}
+
+output "panorama_private_ip" {
+  value = oci_core_instance.panorama.private_ip
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><code>terraform.tfvars</code> (replace every placeholder):</p>
+    <div class="code-block">
+      <pre><code>tenancy_ocid        = "ocid1.tenancy.oc1..aaaa..."
+user_ocid           = "ocid1.user.oc1..aaaa..."
+fingerprint         = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+private_key_path    = "~/.oci/oci_api_key.pem"
+region              = "us-phoenix-1"
+
+compartment_ocid    = "ocid1.compartment.oc1..aaaa..."
+availability_domain = "Uocm:PHX-AD-1"
+panorama_image_ocid = "ocid1.image.oc1.phx.aaaa..."
+ssh_public_key      = "ssh-ed25519 AAAA... panorama-oci"
+admin_cidr          = "203.0.113.10/32"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Finding your availability domain</div>
+      <p>List availability domains for your compartment with <code>oci iam availability-domain list -c &lt;compartment-ocid&gt; --output table</code>. Use the full name (for example <code>Uocm:PHX-AD-1</code>) as the <code>availability_domain</code> value.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every value in <code>terraform.tfvars</code> is a real OCID, region, or CIDR from your tenancy, and no placeholder <code>aaaa...</code> strings remain.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.7 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.7: Optional &mdash; Private Panorama via NAT &amp; Bastion</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If Panorama should not have a public IP, keep the management interface private and provide outbound and inbound paths separately.</p>
+    <ol>
+      <li>In <code>compute.tf</code>, set <code>assign_public_ip = false</code> and, in <code>network.tf</code>, set <code>prohibit_public_ip_on_vnic = true</code>.</li>
+      <li>Add a NAT Gateway for outbound licensing and content-update traffic, and point the subnet's default route at it instead of the IGW:
+        <div class="code-block">
+          <pre><code>resource "oci_core_nat_gateway" "nat" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.mgmt.id
+  display_name   = "panorama-nat"
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Add a Service Gateway if Panorama should reach Oracle services (such as Object Storage) without traversing the internet.</li>
+      <li>Provide inbound admin access through an <strong>OCI Bastion</strong> session or a DRG-connected on-premises network. Create the Bastion under <strong>Identity &amp; Security &gt; Bastion</strong>, targeting the management subnet, then open a port-forwarding session to the Panorama private IP.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Important</div>
+      <p>With no public IP, the only access to Panorama is through the OCI Bastion or a private network path (DRG, VPN, or FastConnect). Confirm that path is in place before deploying, or you will not be able to complete the first-boot setup.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>For a private deployment: <code>assign_public_ip</code> is <code>false</code>, the default route points at the NAT Gateway, and a Bastion or DRG path to the management subnet exists. For the default public deployment: the IGW route remains and <code>assign_public_ip</code> is <code>true</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2.8 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.8: Initialize &amp; Validate</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run Terraform initialization and validation to catch errors before deploying.</p>
+    <ol>
+      <li>Initialize the working directory (downloads the OCI provider plugin):
+        <div class="code-block">
+          <pre><code>terraform init</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Validate the configuration syntax:
+        <div class="code-block">
+          <pre><code>terraform validate</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>terraform validate</code> returns <code>Success! The configuration is valid.</code> with no errors or warnings.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: DEPLOY & VERIFY                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="deploy-verify">Phase 3: Deploy &amp; Verify Infrastructure</h2>
+
+<p>With the configuration validated, deploy the Panorama infrastructure and capture the output values needed for post-deployment access.</p>
+
+<!-- Step 3.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.1: Plan the Deployment</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Generate an execution plan to review what Terraform will create before committing.</p>
+    <div class="code-block">
+      <pre><code>terraform plan -var-file=terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Review the output. For a single-instance deployment, expect approximately:</p>
+    <ul>
+      <li>1 VCN with an Internet Gateway</li>
+      <li>1 subnet with a Route Table</li>
+      <li>1 NSG with ingress and egress rules</li>
+      <li>1 Compute instance (<code>VM.Standard.E4.Flex</code>)</li>
+      <li>1 Block Volume with an attachment</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The plan completes without errors and shows the expected resources to create. No resources should show <code>destroy</code> on the initial deployment.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.2: Apply the Configuration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Deploy the infrastructure. Terraform prompts for confirmation before making changes.</p>
+    <div class="code-block">
+      <pre><code>terraform apply -var-file=terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Type <code>yes</code> when prompted. Provisioning the OCI resources takes a few minutes.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>The Terraform apply completing does not mean Panorama is ready. The Compute instance is created, but Panorama's internal boot process takes an additional 5 to 10 minutes after the instance reaches the <code>Running</code> state.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Terraform completes with <code>Apply complete!</code> and displays the output values (public IP and private IP).</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.3: Record Output Values</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Capture the Panorama access details from the Terraform outputs. These values are needed for SSH, the web UI, and firewall bootstrap configuration.</p>
+    <div class="code-block">
+      <pre><code>terraform output panorama_public_ip
+terraform output panorama_private_ip</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important</div>
+      <p>Record the <strong>private IP</strong>. This is the address VM-Series firewalls use for the <code>panorama-server</code> bootstrap parameter. The private IP is static and persists across reboots. The public IP is used for admin access only.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both output commands return values, and the private IP matches the <code>private_ip</code> set in <code>compute.tf</code> (<code>10.255.0.4</code>).</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.4: Verify OCI Console Resources</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the deployed resources in the OCI Console.</p>
+    <ol>
+      <li>Open <strong>Compute &gt; Instances</strong>. Verify the Panorama instance shows the <code>Running</code> state and the expected shape (<code>VM.Standard.E4.Flex</code>).</li>
+      <li>Open <strong>Storage &gt; Block Volumes</strong>. Verify the <code>panorama-logs</code> volume shows <code>Available</code> and is attached to the instance.</li>
+      <li>Open <strong>Networking &gt; Virtual Cloud Networks</strong>. Verify the management VCN exists with the correct CIDR and that the subnet references the Route Table with a default route to the IGW.</li>
+      <li>Open the instance's VNIC and confirm the <code>panorama-mgmt-nsg</code> is attached with ingress rules for ports 22 and 443 from your admin IP.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The instance is <code>Running</code>, the Block Volume is <code>Available</code> and attached, and the VCN, subnet, and NSG match the Terraform configuration.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: POST-DEPLOYMENT                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="post-deploy">Phase 4: Post-Deployment Setup</h2>
+
+<p>Panorama's internal boot takes several minutes after the instance reaches the <code>Running</code> state. Complete the initial access setup once boot finishes.</p>
+
+<!-- Step 4.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1: Wait for Panorama Boot</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama takes 5 to 10 minutes to complete its internal boot after the Compute instance shows <code>Running</code> in the OCI Console. During this time, SSH and HTTPS connections are refused.</p>
+
+    <p>Check boot progress by polling SSH availability:</p>
+    <div class="code-block">
+      <pre><code># Replace with your Panorama public IP
+PANORAMA_IP="203.0.113.50"
+
+# Poll until SSH responds (Ctrl+C to stop)
+until ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
+  -i ~/.ssh/panorama-oci admin@${PANORAMA_IP} \
+  echo "SSH ready" 2>/dev/null; do
+  echo "Waiting for Panorama boot..."
+  sleep 30
+done</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Alternative: OCI serial console</div>
+      <p>Check boot progress through the instance console connection. In the OCI Console, open <strong>Compute &gt; Instances &gt; your instance &gt; Console connection</strong>, create a connection, and launch the <strong>Cloud Shell</strong> serial console. Look for the PAN-OS <code>login:</code> prompt in the output.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>SSH connects successfully and presents the PAN-OS CLI prompt (<code>admin@Panorama&gt;</code>).</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.2: Set the Admin Password</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama ships with no admin password on first boot. The web UI is inaccessible until a password is set via SSH. This is a security gate; no one can reach the web UI until credentials are set explicitly.</p>
+    <ol>
+      <li>SSH into the Panorama instance:
+        <div class="code-block">
+          <pre><code>ssh -i ~/.ssh/panorama-oci admin@203.0.113.50</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Enter configuration mode:
+        <div class="code-block">
+          <pre><code>configure</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Set the admin password:
+        <div class="code-block">
+          <pre><code>set mgt-config users admin password</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Enter the new password twice when prompted. Use a strong password that meets your organization's policy.</p>
+      </li>
+      <li>Commit the change:
+        <div class="code-block">
+          <pre><code>commit</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Exit the SSH session:
+        <div class="code-block">
+          <pre><code>exit
+exit</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: Break-glass account</div>
+      <p>The <code>admin</code> account is the break-glass account for Panorama. Store the password in a secure vault. After initial setup, create named admin accounts for daily operations and reserve <code>admin</code> for emergency access only. Multiple failed login attempts will lock the account.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>commit</code> command completes without errors: <code>Commit job completed</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.3: Access the Web UI</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Open the Panorama web interface in a browser using the public IP from the Terraform output.</p>
+    <ol>
+      <li>Navigate to <code>https://&lt;PANORAMA_PUBLIC_IP&gt;</code> (for example <code>https://203.0.113.50</code>).</li>
+      <li>Accept the self-signed certificate warning.</li>
+      <li>Log in with username <code>admin</code> and the password set in the previous step.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>The browser shows a certificate warning because Panorama uses a self-signed certificate by default. This is expected and safe for initial access. Replace the certificate with a CA-signed certificate after completing the initial setup.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Panorama dashboard loads and shows the system status panel with hostname, serial number, and PAN-OS version.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.4: Activate the License</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama must be licensed before it can manage firewalls or receive content updates.</p>
+    <ol>
+      <li>In the Panorama web UI, navigate to <strong>Panorama &gt; Licenses</strong>.</li>
+      <li>Click <strong>Activate feature using auth code</strong>.</li>
+      <li>Enter the Panorama auth code obtained from the Customer Support Portal in <a href="#prerequisites">Step 1.3</a>.</li>
+      <li>Click <strong>OK</strong>. Panorama contacts the licensing server and activates the license.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Internet connectivity required</div>
+      <p>License activation requires outbound HTTPS connectivity to <code>updates.paloaltonetworks.com</code>. If Panorama is behind a NAT Gateway, confirm outbound port 443 is permitted. See <a href="#troubleshooting">Troubleshooting</a> if activation fails.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <strong>Panorama &gt; Licenses</strong> page shows active licenses with valid expiration dates. The <strong>Device Management</strong> license indicates the maximum number of managed devices.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.5: Add the Logging Disk</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The attached Block Volume is not used for logs until it is added as a virtual logging disk on Panorama. In Panorama mode, add the disk so local log collection has storage.</p>
+    <ol>
+      <li>In the web UI, navigate to <strong>Panorama &gt; Setup &gt; Operations</strong>.</li>
+      <li>Under the Storage Partition or disk section, add the newly attached virtual disk and follow the prompt to format it.</li>
+    </ol>
+    <p>Alternatively, from the CLI:</p>
+    <div class="code-block">
+      <pre><code>request system disk add</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Panorama detects the unformatted Block Volume, formats it, and adds it to the logging storage pool. Adding a disk requires a reboot, which Panorama schedules as part of the operation.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Management Only mode</div>
+      <p>If Panorama is switched to <strong>Management Only</strong> mode and forwards logs to a separate Log Collector or to Strata Logging Service, the local logging disk is not required and this step can be skipped.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After the reboot completes, <code>show system disk-space</code> lists the new log partition with the Block Volume's capacity. This is confirmed in <a href="#verification">Step 5.5</a>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: VERIFICATION                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="verification">Phase 5: Post-Deployment Verification</h2>
+
+<p>Run these checks to confirm Panorama is fully operational and ready to manage firewalls.</p>
+
+<!-- Step 5.1 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.1: Verify System Information</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the running PAN-OS version, hostname, and operational mode from the CLI or web UI.</p>
+    <h3>CLI</h3>
+    <div class="code-block">
+      <pre><code>ssh -i ~/.ssh/panorama-oci admin@203.0.113.50
+show system info</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Check the following fields:</p>
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Expected Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>model</code></td><td><code>Panorama</code></td></tr>
+        <tr><td><code>system-mode</code></td><td><code>panorama</code> (or <code>management-only</code> if changed)</td></tr>
+        <tr><td><code>operational-mode</code></td><td><code>normal</code></td></tr>
+        <tr><td><code>ip-address</code></td><td>Matches the private IP assigned in <code>compute.tf</code> (<code>10.255.0.4</code>)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Web UI</h3>
+    <p>Navigate to <strong>Dashboard</strong>. The <strong>General Information</strong> widget shows the hostname, model, serial number, PAN-OS version, and uptime.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The model is <code>Panorama</code>, the operational mode is <code>normal</code>, and the IP address matches the configured private IP.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.2 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.2: Verify the Device Certificate</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The device certificate authenticates Panorama to Palo Alto Networks cloud services (licensing, content updates, telemetry). On newer PAN-OS versions, it installs automatically during first boot if internet connectivity is available.</p>
+    <ol>
+      <li>In the web UI, navigate to <strong>Panorama &gt; Setup &gt; Management &gt; General Settings</strong>.</li>
+      <li>Check the <strong>Device Certificate</strong> status. It should show as installed.</li>
+    </ol>
+    <p>Alternatively, from the CLI:</p>
+    <div class="code-block">
+      <pre><code>show device-certificate status</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>If the device certificate is not installed, navigate to <strong>Panorama &gt; Setup &gt; Management &gt; General Settings</strong> and click <strong>Get Device Certificate</strong>. This requires outbound HTTPS connectivity to Palo Alto Networks certificate services.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Device certificate status shows <code>Installed</code> with a valid expiration date.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.3 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.3: Verify Content Updates</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama must have current content databases (Applications, Threats, WildFire, URL) before pushing security policy to managed firewalls.</p>
+    <ol>
+      <li>Navigate to <strong>Panorama &gt; Dynamic Updates</strong>.</li>
+      <li>Click <strong>Check Now</strong> to query for available updates.</li>
+      <li>Download and install the latest <strong>Applications and Threats</strong> content package.</li>
+      <li>If licensed, download and install <strong>WildFire</strong> and <strong>Antivirus</strong> updates.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <strong>Dynamic Updates</strong> page shows the currently installed content version. After installation, the <strong>Currently Installed</strong> column matches the latest available version.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.4 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.4: Verify the HA Pair (if applicable)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If two Panorama instances were deployed across two availability domains or fault domains, configure and verify the HA pair.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">HA configuration is separate from deployment</div>
+      <p>Terraform deploys the instances and network infrastructure. HA peering is configured on Panorama itself after both instances are operational. Refer to <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/panorama-high-availability/manage-a-panorama-ha-pair/set-up-ha-on-panorama">Set Up HA on Panorama</a> for the complete procedure.</p>
+    </div>
+
+    <p>After HA is configured, verify the pairing:</p>
+    <div class="code-block">
+      <pre><code>show high-availability state</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Expected output fields:</p>
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Primary</th><th>Secondary</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>Local State</code></td><td><code>active</code></td><td><code>passive</code></td></tr>
+        <tr><td><code>Peer State</code></td><td><code>passive</code></td><td><code>active</code></td></tr>
+        <tr><td><code>Running Config Sync</code></td><td><code>synchronized</code></td><td><code>synchronized</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both Panorama instances show the correct active and passive roles and the running config is synchronized between peers.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 5.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.5: Verify the Logging Disk</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the Block Volume is mounted and recognized by Panorama for log storage.</p>
+    <div class="code-block">
+      <pre><code>show system disk-space</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The output should show the additional log partition from the Block Volume added in <a href="#post-deploy">Step 4.5</a>. Total available log storage should reflect the provisioned Block Volume capacity (approximately 2 TB).</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>show system disk-space</code> lists the log partition with the expected capacity, and it does not show 100% usage on a fresh deployment.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                            -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Instance Launch Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td>Terraform error referencing the image or app catalog</td>
+        <td>Marketplace image not subscribed in the target compartment, or a wrong image OCID</td>
+        <td>Subscribe to the Panorama listing under <strong>Marketplace &gt; All Applications</strong> (Step 1.5) and re-copy the image OCID into <code>terraform.tfvars</code>.</td>
+      </tr>
+      <tr>
+        <td>Error: out of host capacity or shape unavailable</td>
+        <td>The chosen flexible shape is not available in the selected availability domain</td>
+        <td>Try a different availability domain, or switch to another supported flexible shape (for example <code>VM.Standard3.Flex</code>) that meets the vCPU and RAM minimum.</td>
+      </tr>
+      <tr>
+        <td>Error: authorization failed or 404 NotAuthorizedOrNotFound</td>
+        <td>The deploying group lacks an IAM policy for the resource, or the compartment OCID is wrong</td>
+        <td>Confirm the policy statements from Step 1.1 are attached to your group and that <code>compartment_ocid</code> is correct.</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>SSH Connection Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td><code>Connection timed out</code></td>
+        <td>The NSG or Security List does not allow SSH from your IP, or Panorama is still booting</td>
+        <td>Verify the NSG ingress rule for port 22 references your current IP. Wait 5 to 10 minutes for boot to complete. Check the instance serial console.</td>
+      </tr>
+      <tr>
+        <td><code>Permission denied (publickey)</code></td>
+        <td>Wrong private key or wrong username</td>
+        <td>Confirm the SSH private key matches the public key supplied in <code>ssh_public_key</code>. The username must be <code>admin</code>, not <code>opc</code> or <code>root</code>.</td>
+      </tr>
+      <tr>
+        <td><code>Permissions are too open</code></td>
+        <td>SSH private key file permissions too permissive</td>
+        <td>Run <code>chmod 400 ~/.ssh/panorama-oci</code></td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Web UI Not Accessible</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td>Browser shows <code>ERR_CONNECTION_REFUSED</code></td>
+        <td>Panorama is still booting, or the admin password has not been set</td>
+        <td>SSH in and set the admin password first (Step 4.2). The web UI does not start until a password is configured.</td>
+      </tr>
+      <tr>
+        <td>Browser shows <code>ERR_CONNECTION_TIMED_OUT</code></td>
+        <td>The NSG does not allow HTTPS from your IP</td>
+        <td>Verify the NSG includes an ingress rule for port 443 from your current public IP.</td>
+      </tr>
+      <tr>
+        <td>Login fails with valid credentials</td>
+        <td>Account lockout after multiple failed attempts</td>
+        <td>Wait for the lockout period to expire (default 30 minutes) or unlock via CLI: <code>set mgt-config users admin lockout disabled</code> then <code>commit</code></td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>License Activation Failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td><code>Failed to connect to server</code></td>
+        <td>No outbound internet connectivity</td>
+        <td>Verify the management subnet Route Table has a default route to the IGW (or NAT Gateway). Verify the NSG allows all outbound traffic. Test connectivity from the CLI.</td>
+      </tr>
+      <tr>
+        <td><code>Invalid auth code</code></td>
+        <td>Auth code does not match the Panorama product type</td>
+        <td>Confirm the auth code is for Panorama, not VM-Series. Check the Customer Support Portal under <strong>Products &gt; Assets</strong>.</td>
+      </tr>
+      <tr>
+        <td><code>Auth code already used</code></td>
+        <td>The auth code was previously applied to another Panorama instance</td>
+        <td>Each Panorama instance requires its own auth code. Obtain a second auth code for the HA secondary.</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Block Volume &amp; Logging Disk Issues</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr>
+        <td>Log storage shows less than expected</td>
+        <td>The Block Volume was attached but not added as a Panorama logging disk</td>
+        <td>Run the add-disk operation in Panorama (Step 4.5): <code>request system disk add</code>, then reboot. Confirm with <code>show system disk-space</code>.</td>
+      </tr>
+      <tr>
+        <td>Volume shows attached in OCI but not seen by Panorama</td>
+        <td>Attachment type or device enumeration mismatch after boot</td>
+        <td>Confirm the attachment is <code>paravirtualized</code> in the OCI Console under <strong>Storage &gt; Block Volumes</strong>, then reboot the instance so PAN-OS re-enumerates the disk.</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  CLEANUP                                                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="cleanup">Cleanup</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Destroy All Resources (Terraform)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>To remove all resources created by this deployment, run the destroy command from the same directory where the deployment was executed.</p>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Data loss warning</div>
+      <p>Running <code>terraform destroy</code> will <strong>permanently delete</strong> the Panorama instance, the Block Volume (including all stored logs and configuration), the VCN, subnet, Route Table, gateways, and NSG. This action cannot be undone.</p>
+      <p>If you need to preserve Panorama's configuration, export it first: <strong>Panorama &gt; Setup &gt; Operations &gt; Export Panorama and devices config bundle</strong>.</p>
+    </div>
+
+    <div class="code-block">
+      <pre><code>terraform destroy -var-file=terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Type <code>yes</code> when prompted. The destroy operation takes a few minutes.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Terraform completes with <code>Destroy complete!</code> and reports the number of resources destroyed. Verify in the OCI Console that the instance, Block Volume, and VCN are no longer present.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Manual Teardown (Console)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If the deployment was created outside Terraform or the state file is lost, remove resources in dependency order so that no resource blocks the deletion of the one before it.</p>
+    <ol>
+      <li>Terminate the Panorama <strong>Compute instance</strong> (<strong>Compute &gt; Instances</strong>). Choose whether to preserve or delete the boot volume.</li>
+      <li>Detach and delete the <strong>Block Volume</strong> (<strong>Storage &gt; Block Volumes</strong>).</li>
+      <li>Delete the <strong>subnet</strong>, then its <strong>Route Table</strong> and <strong>NSG</strong> (<strong>Networking &gt; Virtual Cloud Networks</strong>).</li>
+      <li>Delete the <strong>gateways</strong> (Internet Gateway, and NAT or Service Gateway if used).</li>
+      <li>Delete the <strong>VCN</strong>.</li>
+      <li>Remove the <strong>IAM policies</strong> created in Step 1.1, and delete the <strong>compartment</strong> once it is empty.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Order matters</div>
+      <p>A VCN cannot be deleted while it still contains subnets, gateways, Route Tables, or Security Lists. A compartment cannot be deleted while it still contains active resources or policies. Work from the innermost resource outward.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The compartment shows no remaining Compute, networking, or storage resources, and the VCN no longer appears under <strong>Networking &gt; Virtual Cloud Networks</strong>.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>

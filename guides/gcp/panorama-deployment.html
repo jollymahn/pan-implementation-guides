@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
 <title>Panorama Deployment on GCP | Implementation Guides</title>
 <link rel="stylesheet" href="../../shared/css/pan-guides.css">
@@ -116,7 +117,7 @@
   <div class="callout-title">Guide Approach</div>
   <p>This guide deploys a standalone Panorama instance on Google Cloud Platform in <strong>management-only mode</strong> (no additional logging disks). Panorama serves as the centralized management platform for VM-Series firewalls deployed across your cloud environment.</p>
   <p><strong>Deployment method:</strong> All GCP infrastructure is deployed with <strong>Terraform</strong> using the official <a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules">Palo Alto Networks SWFW Modules for GCP</a>. The <a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules/tree/main/examples/panorama_standalone"><code>panorama_standalone</code></a> example creates a VPC network, subnetwork, firewall rules, and a Panorama instance with approximately <strong>8 Terraform resources</strong>.</p>
-  <p><strong>Access methods:</strong> Two options are documented &mdash; direct SSH/HTTPS with a public IP, or GCP Identity-Aware Proxy (IAP) tunneling for deployments without a public IP.</p>
+  <p><strong>Access methods:</strong> Two options are documented: direct SSH/HTTPS with a public IP, or GCP Identity-Aware Proxy (IAP) tunneling for deployments without a public IP.</p>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════ -->
@@ -139,15 +140,15 @@
       <li><strong>1 Panorama instance</strong> with a static private IP (<code>172.21.21.2</code>) and an optional public IP</li>
       <li><strong>GCP firewall rules</strong> controlling management access (SSH, HTTPS, device registration on port <code>3978</code>)</li>
     </ul>
-    <p>Panorama runs in management-only mode &mdash; no additional logging disks are attached. For dedicated logging, refer to the <a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules/tree/main/modules/panorama#inputs">Panorama module documentation</a> for <code>log_disks</code> configuration.</p>
+    <p>Panorama runs in management-only mode; no additional logging disks are attached. For dedicated logging, refer to the <a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules/tree/main/modules/panorama#inputs">Panorama module documentation</a> for <code>log_disks</code> configuration.</p>
 
     <p><em>Panorama VPC topology:</em></p>
-    <img src="diagrams/panorama-topology.svg" alt="GCP Panorama standalone deployment topology — firewall-vpc with panorama-subnet, GCP firewall rules, Compute Engine instance with static private IP and optional external IP" loading="lazy">
+    <img src="diagrams/panorama-topology.svg" alt="GCP Panorama standalone deployment topology: firewall-vpc with panorama-subnet, GCP firewall rules, Compute Engine instance with static private IP and optional external IP" loading="lazy">
 
     <p><em>Panorama to VM-Series traffic flow via VPC Peering:</em></p>
-    <img src="diagrams/panorama-traffic-flow.svg" alt="GCP Panorama traffic flow — Panorama communicates with VM-Series firewalls in the security-vpc via VPC Peering on TCP/3978 for device management and TCP/28443 for log forwarding" loading="lazy">
+    <img src="diagrams/panorama-traffic-flow.svg" alt="GCP Panorama traffic flow: Panorama communicates with VM-Series firewalls in the security-vpc via VPC Peering on TCP/3978 for device management and log forwarding, and TCP/28443 for update retrieval" loading="lazy">
 
-    <h4>Network Connectivity</h4>
+    <h3>Network Connectivity</h3>
     <p>Managed VM-Series firewalls must reach Panorama on specific ports. Plan network connectivity (VPC Peering, Cloud VPN, or Cloud Interconnect) before deployment.</p>
     <table>
       <thead>
@@ -157,7 +158,7 @@
         <tr><td><code>TCP/22</code></td><td>Admin &rarr; Panorama</td><td>SSH management access</td></tr>
         <tr><td><code>TCP/443</code></td><td>Admin &rarr; Panorama</td><td>Web UI management access</td></tr>
         <tr><td><code>TCP/3978</code></td><td>Firewall &rarr; Panorama</td><td>Device registration and management</td></tr>
-        <tr><td><code>TCP/28443</code></td><td>Firewall &rarr; Panorama</td><td>Log forwarding (Cortex Data Lake)</td></tr>
+        <tr><td><code>TCP/28443</code></td><td>Firewall &rarr; Panorama</td><td>Software and content update retrieval from Panorama (PAN-OS 8.x and later)</td></tr>
       </tbody>
     </table>
 
@@ -174,11 +175,11 @@
     <span>SSH Key Format</span>
   </div>
   <div class="collapsible-body">
-    <p>Panorama on GCP accepts SSH keys in a specific format: <code>admin:ssh-rsa AAAA... admin</code>. The <code>admin:</code> prefix maps the key to the PAN-OS <code>admin</code> user. A malformed key results in a deployed instance with no SSH access &mdash; the only recovery is to delete and redeploy.</p>
+    <p>Panorama on GCP accepts SSH keys in a specific format: <code>admin:ssh-rsa AAAA... admin</code>. The <code>admin:</code> prefix maps the key to the PAN-OS <code>admin</code> user. A malformed key results in a deployed instance with no SSH access; the only recovery is to delete and redeploy.</p>
 
     <div class="callout callout-danger">
       <div class="callout-title">No recovery from a bad SSH key</div>
-      <p>If the SSH key is malformed (missing <code>admin:</code> prefix, extra whitespace, wrong algorithm), the Panorama instance deploys but SSH access fails. The VPC network and firewall rules survive deletion &mdash; only the Panorama instance must be destroyed and recreated with the corrected key.</p>
+      <p>If the SSH key is malformed (missing <code>admin:</code> prefix, extra whitespace, wrong algorithm), the Panorama instance deploys but SSH access fails. The VPC network and firewall rules survive deletion; only the Panorama instance must be destroyed and recreated with the corrected key.</p>
     </div>
   </div>
 </div>
@@ -237,7 +238,7 @@
     </ol>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Run <code>gcloud projects describe YOUR_PROJECT_ID</code> &mdash; confirm <code>lifecycleState: ACTIVE</code>. Run <code>gcloud services list --enabled --project=YOUR_PROJECT_ID</code> and confirm <code>compute.googleapis.com</code> appears.</p>
+      <p>Run <code>gcloud projects describe YOUR_PROJECT_ID</code> and confirm <code>lifecycleState: ACTIVE</code>. Run <code>gcloud services list --enabled --project=YOUR_PROJECT_ID</code> and confirm <code>compute.googleapis.com</code> appears.</p>
     </div>
     <div class="callout callout-warning">
       <div class="callout-title">New projects: Compute Engine API not enabled</div>
@@ -267,8 +268,8 @@ before or it is disabled.</code></pre>
   <div class="collapsible-body">
     <p>Set up your deployment environment using one of the options below.</p>
 
-    <h4>Option A: Local Workstation or Bastion Host (Preferred)</h4>
-    <p>Install the following tools on your deployment machine. This is the recommended approach — it gives you full control over tool versions, persistent state, and IDE integration.</p>
+    <h3>Option A: Local Workstation or Bastion Host (Preferred)</h3>
+    <p>Install the following tools on your deployment machine. This is the recommended approach: it gives you full control over tool versions, persistent state, and IDE integration.</p>
     <table>
       <tr><th>Tool</th><th>Purpose</th><th>Install</th></tr>
       <tr><td><strong>Terraform CLI</strong></td><td>Infrastructure provisioning (&gt;= 1.3, &lt; 2.0)</td><td><a href="https://developer.hashicorp.com/terraform/install">developer.hashicorp.com/terraform/install</a></td></tr>
@@ -347,7 +348,7 @@ brew install hashicorp/tap/terraform</code></pre>
             </div>
           </div>
           <div class="mgmt-panel" data-plane="windows">
-            <p>Download the installer from <a href="https://git-scm.com/downloads/win" target="_blank" rel="noopener">git-scm.com/downloads/win</a> and run it. Accept the defaults &mdash; the installer includes <strong>Git Bash</strong>, which provides a Bash-compatible shell on Windows.</p>
+            <p>Download the installer from <a href="https://git-scm.com/downloads/win" target="_blank" rel="noopener">git-scm.com/downloads/win</a> and run it. Accept the defaults; the installer includes <strong>Git Bash</strong>, which provides a Bash-compatible shell on Windows.</p>
             <p>Verify the installation (open a new terminal):</p>
             <div class="code-block">
               <pre><code>git --version</code></pre>
@@ -430,7 +431,7 @@ gcloud config get-value project</code></pre>
       </div>
     </div>
 
-    <h4>Option B: Google Cloud Shell (Quick Alternative)</h4>
+    <h3>Option B: Google Cloud Shell (Quick Alternative)</h3>
     <p>Cloud Shell includes the <code>gcloud</code> CLI and automatically authenticates with the logged-in console user. Use this if you need to get started quickly without installing anything locally. Install Terraform in Cloud Shell if not already present. Cloud Shell sessions persist your home directory across sessions.</p>
     <div class="code-block">
       <pre><code>terraform -v
@@ -451,14 +452,14 @@ gcloud auth list</code></pre>
   <div class="collapsible-body">
     <p>Each Panorama instance requires a valid license. All cloud deployments use the BYOL (Bring Your Own License) model.</p>
 
-    <h4>Option A: Existing License</h4>
+    <h3>Option A: Existing License</h3>
     <ol>
       <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
       <li>Navigate to <strong>Products &gt; Assets</strong> and locate your Panorama serial numbers or auth codes.</li>
       <li>Confirm you have one license per Panorama instance (two licenses for an HA pair).</li>
     </ol>
 
-    <h4>Option B: Provision from Flex Credits</h4>
+    <h3>Option B: Provision from Flex Credits</h3>
     <p>If your organization uses a Palo Alto Networks flex credit profile, you can provision a Panorama license directly from your credit pool.</p>
     <ol>
       <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
@@ -470,7 +471,7 @@ gcloud auth list</code></pre>
 
     <div class="callout callout-note">
       <div class="callout-title">Note</div>
-      <p>License activation happens after deployment in <a href="#post-deploy">Phase 4</a>. At this stage, confirm the license exists in your support portal account &mdash; activation requires the Panorama instance to be running and have internet connectivity.</p>
+      <p>License activation happens after deployment in <a href="#post-deploy">Phase 4</a>. At this stage, confirm the license exists in your support portal account; activation requires the Panorama instance to be running and have internet connectivity.</p>
     </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
@@ -488,13 +489,13 @@ gcloud auth list</code></pre>
   <div class="collapsible-body">
     <p>An SSH key pair provides initial access to the Panorama CLI. The public key must be formatted with the <code>admin:</code> prefix for GCP to map it to the PAN-OS admin user.</p>
 
-    <h4>Generate the key pair</h4>
+    <h3>Generate the key pair</h3>
     <div class="code-block">
       <pre><code>ssh-keygen -t rsa -b 4096 -f ~/.ssh/gcp-panorama-key -C "admin" -N ""</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
-    <h4>Format for Terraform</h4>
+    <h3>Format for Terraform</h3>
     <p>The <code>ssh_keys</code> field in <code>terraform.tfvars</code> expects the format <code>admin:&lt;public-key-contents&gt;</code>. Generate the correctly formatted string:</p>
     <div class="code-block">
       <pre><code>echo "admin:$(cat ~/.ssh/gcp-panorama-key.pub)"</code></pre>
@@ -630,11 +631,11 @@ cd terraform-google-swfw-modules/examples/panorama_standalone</code></pre>
     </div>
     <div class="callout callout-note">
       <div class="callout-title">Note</div>
-      <p>The upstream <code>example.tfvars</code> is referenced in the <code>terraform apply</code> command with <code>-var-file=example.tfvars</code>. This guide uses <code>terraform.tfvars</code> instead, which Terraform loads automatically. Either approach works &mdash; choose one and be consistent.</p>
+      <p>The upstream <code>example.tfvars</code> is referenced in the <code>terraform apply</code> command with <code>-var-file=example.tfvars</code>. This guide uses <code>terraform.tfvars</code> instead, which Terraform loads automatically. Either approach works; choose one and be consistent.</p>
     </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Run <code>ls terraform.tfvars</code> &mdash; the file exists.</p>
+      <p>Run <code>ls terraform.tfvars</code> to confirm the file exists.</p>
     </div>
   </div>
 </div>
@@ -717,7 +718,7 @@ networks = {
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
-    <h4>Key fields to customize</h4>
+    <h3>Key fields to customize</h3>
     <table>
       <thead>
         <tr><th>Field</th><th>What to change</th></tr>
@@ -731,17 +732,17 @@ networks = {
 
     <div class="callout callout-warning">
       <div class="callout-title">Important: Restrict source_ranges</div>
-      <p>The <code>allow-panorama-ingress</code> rule with <code>allowed_protocol = "all"</code> permits all traffic from the specified sources. Restrict <code>source_ranges</code> to known management IPs only. Never use <code>0.0.0.0/0</code> in production &mdash; this exposes Panorama SSH and HTTPS to the entire internet.</p>
+      <p>The <code>allow-panorama-ingress</code> rule with <code>allowed_protocol = "all"</code> permits all traffic from the specified sources. Restrict <code>source_ranges</code> to known management IPs only. Never use <code>0.0.0.0/0</code> in production; this exposes Panorama SSH and HTTPS to the entire internet.</p>
     </div>
 
     <div class="callout callout-note">
       <div class="callout-title">IAP firewall rule</div>
-      <p>The <code>allow-cloudiap-ingress</code> rule allows GCP Identity-Aware Proxy to reach Panorama on ports <code>22</code> and <code>443</code>. The source range <code>35.235.240.0/20</code> is the <a href="https://cloud.google.com/iap/docs/using-tcp-forwarding">fixed GCP IAP IP range</a>. Keep this rule even if attaching a public IP &mdash; IAP provides a fallback access method.</p>
+      <p>The <code>allow-cloudiap-ingress</code> rule allows GCP Identity-Aware Proxy to reach Panorama on ports <code>22</code> and <code>443</code>. The source range <code>35.235.240.0/20</code> is the <a href="https://cloud.google.com/iap/docs/using-tcp-forwarding">fixed GCP IAP IP range</a>. Keep this rule even if attaching a public IP; IAP provides a fallback access method.</p>
     </div>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The <code>source_ranges</code> in <code>allow-panorama-ingress</code> contains only known management IPs &mdash; not <code>0.0.0.0/0</code>. The IAP rule source range is exactly <code>35.235.240.0/20</code>. The subnetwork <code>region</code> matches the top-level <code>region</code> variable.</p>
+      <p>The <code>source_ranges</code> in <code>allow-panorama-ingress</code> contains only known management IPs, not <code>0.0.0.0/0</code>. The IAP rule source range is exactly <code>35.235.240.0/20</code>. The subnetwork <code>region</code> matches the top-level <code>region</code> variable.</p>
     </div>
   </div>
 </div>
@@ -771,7 +772,7 @@ panoramas = {
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
-    <h4>Key fields to customize</h4>
+    <h3>Key fields to customize</h3>
     <table>
       <thead>
         <tr><th>Field</th><th>Description</th><th>Default</th></tr>
@@ -939,7 +940,7 @@ panorama_public_ips = {
     <p>Record both IP addresses. The public IP is used for direct SSH and web UI access. The private IP is used for IAP tunnel connections and firewall-to-Panorama connectivity.</p>
     <div class="callout callout-note">
       <div class="callout-title">No public IP</div>
-      <p>If <code>attach_public_ip = false</code>, the <code>panorama_public_ips</code> output shows an empty string. Use IAP tunneling for all access &mdash; see <a href="#post-deploy">Step 4.3</a> and <a href="#post-deploy">Step 4.5</a>.</p>
+      <p>If <code>attach_public_ip = false</code>, the <code>panorama_public_ips</code> output shows an empty string. Use IAP tunneling for all access; see <a href="#post-deploy">Step 4.3</a> and <a href="#post-deploy">Step 4.5</a>.</p>
     </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
@@ -1049,7 +1050,7 @@ panorama_public_ips = {
     <span>Step 4.4: Set Admin Password</span>
   </div>
   <div class="collapsible-body">
-    <p>Panorama deploys with SSH key authentication only &mdash; no password is set. Set an admin password to enable web UI login.</p>
+    <p>Panorama deploys with SSH key authentication only; no password is set. Set an admin password to enable web UI login.</p>
     <div class="code-block">
       <pre><code>configure
 set mgt-config users admin password
@@ -1078,7 +1079,7 @@ commit</code></pre>
   <div class="collapsible-body">
     <p>Access the Panorama web interface using a browser. The method depends on whether a public IP is attached.</p>
 
-    <h4>Direct access (public IP)</h4>
+    <h3>Direct access (public IP)</h3>
     <p>Open a browser and navigate to:</p>
     <div class="code-block">
       <pre><code>https://PUBLIC_IP</code></pre>
@@ -1086,7 +1087,7 @@ commit</code></pre>
     </div>
     <p>Log in with username <code>admin</code> and the password set in Step 4.4. Accept the self-signed certificate warning.</p>
 
-    <h4>IAP tunnel access (no public IP)</h4>
+    <h3>IAP tunnel access (no public IP)</h3>
     <p>Start an IAP TCP forwarding tunnel to port <code>443</code>:</p>
     <div class="code-block">
       <pre><code>gcloud compute start-iap-tunnel INSTANCE_NAME 443 \

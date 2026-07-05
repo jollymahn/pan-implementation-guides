@@ -43,13 +43,13 @@ Required values outside `bootstrap_options`. These don't break the FW boot if wr
 | Parameter | Source | Where used in tfvars | Example | Your value |
 |---|---|---|---|---|
 | `region` | Customer / target AWS region | `region` | `us-west-2` | _____________ |
-| `name_prefix` | Customer / project naming convention | `name_prefix` | `sj-cld-` | _____________ |
-| `ssh_key_name` | AWS Console → EC2 → Key Pairs (must already exist in target region) | `ssh_key_name` | `SJOLLY-SME-ACCT` | _____________ |
+| `name_prefix` | Customer / project naming convention | `name_prefix` | `acme-cld-` | _____________ |
+| `ssh_key_name` | AWS Console → EC2 → Key Pairs (must already exist in target region) | `ssh_key_name` | `my-keypair` | _____________ |
 | Availability Zones | 3+ AZs in your region (combined design uses 2 AZs for FWs, 3 for GWLB) | `vmseries.instances.*.az` and `vpcs.*.subnets.*.az` | `us-west-2a`, `us-west-2b`, `us-west-2c` | _____________ |
-| Admin source CIDR | Operator's mgmt network — **never `0.0.0.0/0`** | `vpcs.security_vpc.security_groups.vmseries_mgmt.rules.*.cidr_blocks` | `199.167.52.5/32` | _____________ |
+| Admin source CIDR | Operator's mgmt network — **never `0.0.0.0/0`** | `vpcs.security_vpc.security_groups.vmseries_mgmt.rules.*.cidr_blocks` | `203.0.113.10/32` | _____________ |
 | Customer prefix | 2–4 char code used in `dgname`, `tplname`, template names, license-manager name. Avoids collisions on shared Panoramas | (composed into above) | `CLD` | _____________ |
 | Panorama subnet CIDR | The subnet (or supernet) Panorama lives on. Used as the `cidr_blocks` for the TCP/3978 + TCP/28443 SG rules on `vmseries_mgmt` so Panorama can manage the firewall. **Without these rules the FW registers but Panorama config push, log fwd, and sw upgrade silently fail.** | `vpcs.security_vpc.security_groups.vmseries_mgmt.rules.panorama_mgmt.cidr_blocks` and `.panorama_device_cert.cidr_blocks` | `10.251.2.0/24` | _____________ |
-| `Owner` tag | Customer/project owner (shows up in AWS billing/cost-allocation) | `global_tags.Owner` | `sjolly` | _____________ |
+| `Owner` tag | Customer/project owner (shows up in AWS billing/cost-allocation) | `global_tags.Owner` | `operator` | _____________ |
 | `Application` tag | Customer/project application name | `global_tags.Application` | `prod-firewalls` | _____________ |
 
 ### Spoke VM instance type (environment-dependent)

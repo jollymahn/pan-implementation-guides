@@ -1,0 +1,1549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>VM-Series Deployment on OCI | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">VM-Series on OCI</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="index.html" class="active">OCI</a>
+    <a href="../bootstrap/vm-series-bootstrap.html">Bootstrap</a>
+    <a href="../../globalprotect/index.html">GlobalProtect</a>
+    <a href="../../scm-onboarding/index.html">SCM</a>
+    <a href="../cloud-identity-engine/cie-implementation.html">CIE</a>
+    <a href="../../index.html#airs">AIRS</a>
+    <a href="../portkey/index.html">AI Gateway</a>
+    <a href="../cngfw/cloud-ngfw-deployment.html">CNGFW</a>
+    <a href="../panorama-cli/panos-cli-reference.html">PanOS CLI</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<div class="sidebar-backdrop"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prerequisites</div>
+    <a href="#prerequisites" data-section="prerequisites">Tenancy &amp; Portal Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Management Platform</div>
+    <a href="#management-config" data-section="management-config">Pick Path (Panorama / SCM)</a>
+    <a href="#review-checkpoint" data-section="review-checkpoint">Review Checkpoint</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Optional tfvars</div>
+    <a href="#deployment-designs" data-section="deployment-designs">Deployment-Ready tfvars</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Terraform</div>
+    <a href="#terraform-config" data-section="terraform-config">Prepare Configuration</a>
+    <a href="#deploy-verify" data-section="deploy-verify">Deploy &amp; Verify</a>
+    <a href="#console-verification" data-section="console-verification">Console Verification</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Spoke VCNs</div>
+    <a href="#spoke-onboarding" data-section="spoke-onboarding">Verify &amp; Onboard</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Verify</div>
+    <a href="#verification" data-section="verification">Post-Deployment</a>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#ip-schema" data-section="ip-schema">IP Schema</a>
+    <a href="#reference-panorama-set" data-section="reference-panorama-set">Panorama Set Commands</a>
+    <a href="#reference-tfvars" data-section="reference-tfvars">Reference tfvars</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Appendix</div>
+    <a href="#appendix-routing" data-section="appendix-routing">How Routing Works</a>
+    <a href="#appendix-flows" data-section="appendix-flows">Traffic Flows Explained</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">OCI</a>
+  <span class="sep">|</span>
+  VM-Series Deployment
+</div>
+
+<div class="article">
+
+<h1>VM-Series Deployment on OCI</h1>
+<p class="subtitle">End-to-end guide: Panorama or SCM configuration through Oracle Cloud Infrastructure to verified traffic inspection, covering both HA models</p>
+
+<div class="cloud-links">
+  <a href="../aws/vm-series-deployment.html">AWS Guide</a>
+  <a href="../azure/index.html">Azure Guide</a>
+  <a href="../gcp/index.html">GCP Guide</a>
+  <a href="panorama-deployment.html">OCI Panorama Guide</a>
+</div>
+
+<!-- ── Phase Progress ────────────────────────────────────────── -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#management-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Mgmt Platform
+  </a>
+  <a href="#review-checkpoint" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Review
+  </a>
+  <a href="#deployment-designs" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Optional tfvars
+  </a>
+  <a href="#terraform-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Terraform Config
+  </a>
+  <a href="#deploy-verify" class="progress-phase">
+    <span class="progress-phase-label">Phase 6</span>
+    Deploy &amp; Verify
+  </a>
+  <a href="#spoke-onboarding" class="progress-phase">
+    <span class="progress-phase-label">Phase 7</span>
+    Spoke VCNs
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 8</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide follows a <strong>management-first</strong> approach. All licensing, device groups, templates or folders, and security policy are configured on your management platform (<strong>Panorama</strong> or <strong>Strata Cloud Manager</strong>) before any OCI infrastructure is built. This ensures firewalls bootstrap into a fully configured management plane on first boot.</p>
+  <p><strong>Design model:</strong> Central hub VCN holding the VM-Series firewalls, with spoke VCNs attached to a Dynamic Routing Gateway (DRG) for hub-and-spoke inspection. Phase 2 lets you pick the management platform; Phase 6 lets you pick the HA model.</p>
+  <p><strong>Deployment method:</strong> All OCI infrastructure (Phases 5 through 7) is deployed with <strong>Terraform</strong> or an <strong>Oracle Resource Manager (ORM)</strong> stack. See the callout below on how OCI tooling differs from the other clouds.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">OCI has no first-party SWFW Terraform module</div>
+  <p>On AWS, Azure, and GCP, Palo Alto Networks publishes the official <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules">SWFW Terraform modules</a>. <strong>There is no equivalent first-party <code>terraform-oci-vmseries-modules</code>.</strong> If you are arriving from the AWS guide expecting a drop-in module, adjust your expectations here. On OCI you deploy with one of the following instead:</p>
+  <ul>
+    <li><strong>oracle-quickstart/oci-palo-alto-networks</strong> &mdash; a joint Oracle and Palo Alto Networks reference stack: <a href="https://github.com/oracle-quickstart/oci-palo-alto-networks">github.com/oracle-quickstart/oci-palo-alto-networks</a></li>
+    <li><strong>Oracle Resource Manager (ORM) stack</strong> &mdash; deploy the same reference architecture from the OCI Console with a guided variable form, no local Terraform install required.</li>
+    <li><strong>PaloAltoNetworks/OracleCloud</strong> &mdash; a Palo Alto Networks sample template: <a href="https://github.com/PaloAltoNetworks/OracleCloud">github.com/PaloAltoNetworks/OracleCloud</a></li>
+  </ul>
+  <p>Because module input names differ between these projects and change over time, this guide describes variables generically (region, compartment OCID, VCN CIDR, firewall shape, image OCID, SSH key). Always confirm the exact variable names against the <code>variables.tf</code> or <code>schema.yaml</code> of the project you choose.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">No Cloud NGFW on OCI</div>
+  <p>Palo Alto Networks Cloud NGFW is a managed service on AWS, Azure, and GCP only. On Oracle Cloud Infrastructure the VM-Series firewall is the inline inspection option; there is no managed alternative for this cloud.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE OVERVIEW                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>Before deploying anything, study the target architecture. OCI has no dedicated firewall-insertion load balancer (there is no Gateway Load Balancer as on AWS and Azure). The reference pattern places VM-Series firewalls in a central <strong>hub VCN</strong> and attaches <strong>spoke VCNs</strong> to a <strong>Dynamic Routing Gateway (DRG)</strong>, which acts as the hub-and-spoke router. Traffic is steered to the firewalls through per-subnet route tables and, in the Active/Active model, a pair of OCI Flexible Network Load Balancers.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">New to OCI networking?</div>
+  <p>OCI names its objects differently from AWS and Azure. The table below maps the concepts, and the <a href="#appendix-routing">How Routing Works</a> and <a href="#appendix-flows">Traffic Flows Explained</a> appendices give a plain-language walkthrough of every leg.</p>
+</div>
+
+<h3>OCI networking objects, mapped</h3>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>OCI object</th><th>Role in this design</th><th>AWS equivalent</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Compartment</strong></td><td>IAM and billing boundary that holds all resources for this deployment</td><td>Account / OU boundary</td></tr>
+    <tr><td><strong>VCN</strong> (Virtual Cloud Network)</td><td>Regional virtual network; hub VCN holds firewalls, spokes hold apps</td><td>VPC</td></tr>
+    <tr><td><strong>Subnet</strong> + <strong>Route Table</strong></td><td>Each subnet is associated with exactly one route table that steers its egress</td><td>Subnet + route table</td></tr>
+    <tr><td><strong>Security List</strong> / <strong>NSG</strong></td><td>Stateful packet filtering; NSGs attach to VNICs, Security Lists to subnets</td><td>Security group / NACL</td></tr>
+    <tr><td><strong>Internet Gateway</strong> (IGW)</td><td>North-south internet ingress and egress for public subnets</td><td>Internet Gateway</td></tr>
+    <tr><td><strong>NAT Gateway</strong></td><td>Outbound-only internet for private subnets (source NAT to a public IP)</td><td>NAT Gateway</td></tr>
+    <tr><td><strong>Service Gateway</strong></td><td>Private access to the Oracle Services Network (OSN) without traversing the internet</td><td>VPC / Gateway endpoint</td></tr>
+    <tr><td><strong>Dynamic Routing Gateway</strong> (DRG)</td><td>The hub router: spoke VCNs, on-prem (IPSec / FastConnect) all attach here</td><td>Transit Gateway</td></tr>
+    <tr><td><strong>VNIC</strong></td><td>A firewall interface (management, untrust, trust, inbound)</td><td>ENI</td></tr>
+    <tr><td><strong>Flexible Network Load Balancer</strong> (NLB)</td><td>Layer-4 load balancer with symmetric hashing that fronts the firewalls (A/A model)</td><td>Network Load Balancer</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Deployment models</h3>
+
+<p>This guide covers two production HA models. Read both collapsibles before choosing; Phase 6 splits into a tabbed path where you build the model you pick here.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Model A &mdash; Active/Active hub-and-spoke (Flexible NLB)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The hub VCN holds two or more VM-Series firewalls, each with four VNICs: <strong>management</strong>, <strong>untrust</strong>, <strong>trust</strong>, and <strong>inbound</strong> (the DMZ-facing dataplane). Spoke VCNs attach to the DRG; backend application servers live in spoke private subnets.</p>
+    <p>Two OCI Flexible Network Load Balancers front the firewalls:</p>
+    <ul>
+      <li><strong>Inbound NLB</strong> &mdash; handles north-south inbound traffic from the Internet Gateway.</li>
+      <li><strong>Trust NLB</strong> &mdash; handles east-west and outbound traffic arriving from the DRG.</li>
+    </ul>
+    <p>Both NLBs use <strong>symmetric hashing</strong>, which sends the forward and return legs of a flow to the same firewall. Because the same firewall sees both directions, its session state stays valid with no failover API calls and no floating IP movement. Firewalls can be added to or removed from an NLB backend set without disrupting existing flows, so the model scales horizontally. This model does <strong>not</strong> require an IAM policy that lets the firewall move IPs.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Why symmetric hashing matters</div>
+      <p>A stateful firewall must see both directions of a flow. On most clouds, keeping both firewalls active would require state synchronization or a floating IP that moves on failover. OCI symmetric hashing computes the same backend for <code>(src, dst)</code> and <code>(dst, src)</code>, so the return leg deterministically lands on the same firewall. That is what makes a true Active/Active model possible here without any API-driven failover.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Model B &mdash; Active/Passive built-in PAN-OS HA</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A pair of firewalls runs native PAN-OS HA. Each firewall needs a minimum of four interfaces: <strong>management</strong>, <strong>untrust</strong>, <strong>trust</strong>, and a dedicated <strong>HA link</strong>. The data interfaces (untrust and trust) on the active peer each carry two IP addresses: a primary IP and a secondary <strong>floating</strong> IP.</p>
+    <p>On failover, the floating IPs move from the active peer to the passive peer through <strong>OCI API calls</strong>. To authorize those calls, the deployment uses three OCI constructs working together:</p>
+    <ul>
+      <li><strong>Dynamic group</strong> &mdash; both HA peer instances are members.</li>
+      <li><strong>IAM policy</strong> &mdash; grants the dynamic group permission to reassign and manage private IPs on those instances.</li>
+      <li><strong>Instance principals</strong> &mdash; PAN-OS authenticates to the OCI API as the instance itself (no stored API keys) to move the floating IP.</li>
+    </ul>
+    <p>This model is the closest match to a traditional on-prem PAN-OS HA pair and gives stateful failover. It carries more moving parts than Model A: an IAM policy is mandatory, and failover time depends on how quickly the OCI API reassigns the floating IPs.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>How to choose between the models</span>
+  </div>
+  <div class="collapsible-body">
+    <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr><th>Consideration</th><th>Model A: Active/Active NLB</th><th>Model B: Active/Passive HA</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Throughput</td><td>Both firewalls carry traffic; scales horizontally</td><td>Only the active firewall carries traffic</td></tr>
+        <tr><td>Failover mechanism</td><td>Symmetric hashing (no API calls)</td><td>Floating IP moved via OCI API</td></tr>
+        <tr><td>IAM policy required</td><td>No</td><td>Yes (manage private IPs)</td></tr>
+        <tr><td>Interfaces per firewall</td><td>4 VNICs (mgmt, untrust, trust, inbound)</td><td>4 interfaces (mgmt, untrust, trust, HA link)</td></tr>
+        <tr><td>Load balancers</td><td>2 NLBs (Inbound, Trust)</td><td>None</td></tr>
+        <tr><td>Best for</td><td>Production, high throughput, horizontal scale</td><td>Familiar PAN-OS HA, stateful failover, simpler mental model</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<p>Complete every item below before touching Terraform. Missing a compartment, an image subscription, or a licensing auth code is the most common cause of a failed first deploy.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 Create a compartment and IAM identity</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A compartment isolates the firewall resources for IAM and billing. Terraform authenticates as a user with an API signing key.</p>
+    <ol>
+      <li>In the OCI Console, go to <strong>Identity &amp; Security &gt; Compartments</strong> and click <strong>Create Compartment</strong>. Name it (for example <code>cmp-netsec-hub</code>) and record its <strong>OCID</strong>.</li>
+      <li>Create or select a user for Terraform under <strong>Identity &amp; Security &gt; Domains &gt; (your domain) &gt; Users</strong>.</li>
+      <li>Generate an <strong>API signing key</strong> for that user (<strong>User &gt; API Keys &gt; Add API Key</strong>). Download the private key and note the <strong>fingerprint</strong>.</li>
+      <li>Record the <strong>tenancy OCID</strong>, <strong>user OCID</strong>, <strong>fingerprint</strong>, <strong>private key path</strong>, and <strong>region</strong>. These five values become your OCI Terraform provider inputs.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Break-glass account hygiene</div>
+      <p>Keep the tenancy administrator credentials as a break-glass identity: use them only to create the scoped compartment and the Terraform user, then store them offline. Grant the Terraform user permissions on the target compartment only, not the tenancy root. A lockout on an over-privileged automation user can strand the whole tenancy.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>oci iam compartment get --compartment-id &lt;compartment-ocid&gt;</code> with the Terraform user's config. A JSON object with <code>"lifecycle-state": "ACTIVE"</code> confirms the identity and compartment are usable.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 Subscribe to the VM-Series Marketplace image</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The firewall boots from an Oracle Cloud Marketplace image. Subscribe once per compartment before Terraform can reference the image.</p>
+    <ol>
+      <li>In the OCI Console, open <strong>Marketplace &gt; All Applications</strong> and search for <code>Palo Alto Networks VM-Series</code>.</li>
+      <li>Select the listing, choose the PAN-OS version, and accept the terms for your compartment.</li>
+      <li>Record the resulting <strong>image OCID</strong> (or the app catalog listing OCID) for the Terraform image input.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Licensing: BYOL vs PAYG</div>
+      <p>The Marketplace listing offers two licensing paths:</p>
+      <ul>
+        <li><strong>BYOL</strong> (Bring Your Own License) &mdash; you supply an auth code from your Palo Alto Networks Customer Support Portal deployment profile.</li>
+        <li><strong>PAYG</strong> (Pay As You Go) &mdash; billed hourly through OCI, choosing <strong>Bundle 1</strong> (capacity plus threat prevention) or <strong>Bundle 2</strong> (the full suite: WildFire, URL Filtering, DNS Security, and GlobalProtect).</li>
+      </ul>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>In <strong>Marketplace &gt; Accepted Agreements</strong>, the VM-Series listing appears with your compartment listed. The image OCID is now valid as a Terraform input.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.3 Prepare licensing (BYOL auth code and registration PIN)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>For BYOL, and for auto-registration in any licensing model, gather the Palo Alto Networks side first.</p>
+    <ol>
+      <li>In the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>, create a <strong>deployment profile</strong> under your software NGFW credits and copy its <strong>auth code</strong>.</li>
+      <li>Generate a <strong>VM-Series registration PIN</strong> (<strong>Products &gt; Registration PIN</strong>). Record the <strong>PIN ID</strong> and <strong>PIN Value</strong>; both are bootstrap parameters.</li>
+      <li>If you will manage with Panorama, note that the auth code is also entered into the Panorama licensing plugin in Phase 2A.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The deployment profile shows an <strong>Active</strong> credit pool, and the registration PIN shows a future expiry date. Save the auth code, PIN ID, and PIN Value in your deployment checklist.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.4 Install local tooling</span>
+  </div>
+  <div class="collapsible-body">
+    <p>You need the OCI CLI (for verification and the API config), Terraform, and Git. Skip Terraform if you plan to deploy through an Oracle Resource Manager stack in the Console.</p>
+    <ol>
+      <li>Install the <strong>OCI CLI</strong> and run <code>oci setup config</code> to write <code>~/.oci/config</code> using the tenancy OCID, user OCID, fingerprint, private key, and region from step 1.1.</li>
+      <li>Install <strong>Terraform</strong> (1.5 or later) and <strong>Git</strong>.</li>
+      <li>Clone the deployment project you selected in the architecture callout (for example <code>git clone https://github.com/oracle-quickstart/oci-palo-alto-networks</code>).</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>oci iam region list</code> returns the region table, <code>terraform version</code> prints 1.5+, and <code>git --version</code> succeeds. Your API config is valid end to end.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: MANAGEMENT PLATFORM CONFIGURATION                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="management-config">Phase 2: Management Platform Configuration</h2>
+
+<p>VM-Series can be managed by either <strong>Panorama</strong> (the on-prem or Compute-hosted management appliance) or <strong>Strata Cloud Manager (SCM)</strong> (the SaaS management plane). Pick the path that matches your environment; your selection persists across the page, so subsequent references follow your chosen platform.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which path should I pick?</div>
+  <ul>
+    <li><strong>Panorama</strong> &mdash; choose if you already operate Panorama, need on-prem control, or use the SW Firewall License plugin for licensing. A baseline set-command script is available at <a href="#reference-panorama-set">Reference: Panorama Set Commands</a> so you can paste config into a fresh Panorama instead of clicking through the UI.</li>
+    <li><strong>SCM</strong> &mdash; choose for greenfield deployments, cloud-native operations, or consolidating onto Strata's SaaS management plane.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="Panorama">2A &middot; Panorama Path</button>
+    <button class="mgmt-tab" data-plane="SCM">2B &middot; SCM Path</button>
+  </div>
+
+  <!-- ── 2A · Panorama Path ──────────────────────────────────── -->
+  <div class="mgmt-panel active" data-plane="Panorama">
+
+<h3>2A Panorama configuration</h3>
+
+<p>Configure Panorama with the SW Firewall License plugin, device groups, templates, and policy before building any OCI infrastructure. Build from the bottom of the template stack up, then bind everything with a License Manager.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.1 Install the SW Firewall License plugin</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/use-panorama-based-software-firewall-license-management">Panorama-Based License Management</a></p>
+    <ol>
+      <li>Log in to Panorama and go to <strong>Panorama &gt; Plugins</strong>.</li>
+      <li>Click <strong>Check Now</strong>, locate <code>sw_fw_license</code>, then <strong>Download</strong> and <strong>Install</strong>.</li>
+      <li>Set the licensing API key over SSH: <code>request license api-key set key &lt;key&gt;</code> (the key comes from the CSP under <strong>Products &gt; API Key Management</strong>).</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>request license api-key show</code> confirms the key is set, and the plugin appears under <strong>Panorama &gt; SW Firewall License</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.2 Create device groups and template stacks</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-device-groups">Manage Device Groups</a> | <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-templates-and-template-stacks">Manage Templates and Template Stacks</a></p>
+    <ol>
+      <li>Under <strong>Panorama &gt; Device Groups</strong>, create a parent <code>DG-OCI</code> and a child <code>DG-OCI-HUB</code> (set <strong>Parent Device Group</strong> to <code>DG-OCI</code>).</li>
+      <li>Under <strong>Panorama &gt; Templates</strong>, create a baseline template <code>TPL-OCI-BASELINE</code> (DNS, NTP, log forwarding) and a network template <code>TPL-OCI-NETWORK</code> (interfaces, zones, logical router).</li>
+      <li>Create a template stack <code>STK-OCI-HUB</code> and add both templates in order.</li>
+      <li>Open <code>DG-OCI-HUB</code> and add <code>STK-OCI-HUB</code> as a <strong>Reference Template</strong> so zone names appear in the rule editor.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">Without a reference template, zone dropdowns are empty</div>
+      <p>Security rules in <code>DG-OCI-HUB</code> pull zone names from the templates associated with the device group. Skip the reference template and the zone dropdown is empty, so you cannot commit policy that references <code>untrust</code>, <code>trust</code>, or <code>inbound</code>.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>DG-OCI-HUB</code> lists <code>STK-OCI-HUB</code> under Reference Templates, and the parent shows as <code>DG-OCI</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.3 Configure interfaces, zones, and the logical router</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Define the dataplane so the bootstrapped firewall matches its OCI VNIC layout. Column order below follows the interface configuration tabs in the PAN-OS UI.</p>
+    <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr><th>Interface</th><th>Zone</th><th>Type</th><th>IP assignment</th><th>OCI VNIC</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>ethernet1/1</code></td><td><code>untrust</code></td><td>Layer 3</td><td>DHCP (from untrust subnet)</td><td>untrust VNIC</td></tr>
+        <tr><td><code>ethernet1/2</code></td><td><code>trust</code></td><td>Layer 3</td><td>DHCP (from trust subnet)</td><td>trust VNIC</td></tr>
+        <tr><td><code>ethernet1/3</code></td><td><code>inbound</code></td><td>Layer 3</td><td>DHCP (from inbound subnet)</td><td>inbound VNIC (Model A)</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Create a logical router and add the OCI subnet gateway as the default route next hop. Use <strong>template variables</strong> for the per-firewall gateway IPs so one stack serves the whole hub; see <a href="https://docs.paloaltonetworks.com/panorama/11-1/panorama-admin/manage-firewalls/manage-templates-and-template-stacks/configure-template-or-template-stack-variables">Configure Template Variables</a>.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">OCI uses DHCP for dataplane interfaces</div>
+      <p>OCI assigns VNIC IPs through DHCP. Set the firewall dataplane interfaces to DHCP client (unchecked "automatically create default route") rather than static IPs so the firewall receives the address OCI allocated to the VNIC.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Commit to Panorama with no validation errors. Zones <code>untrust</code>, <code>trust</code>, and <code>inbound</code> are selectable in the security rule editor.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.4 Build security policy, NAT, and a security profile group</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create policy in <code>DG-OCI-HUB</code>. At minimum: an outbound rule (trust to untrust), an inbound rule (inbound zone to trust), an east-west rule, and a final deny.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Source NAT is model-specific</div>
+      <p>In <strong>Model A (Active/Active)</strong>, the firewall performs source NAT to its untrust IP on outbound and Oracle Services flows so the return leg is symmetric before the NAT Gateway does its own SNAT. In <strong>Model B (Active/Passive)</strong>, source NAT is applied on the untrust interface as well; the difference is that the untrust address is a floating IP. Configure the outbound SNAT rule in both models.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Attach a hardened profile group</div>
+      <p>Attach a Security Profile Group (Antivirus, Anti-Spyware, Vulnerability Protection, URL Filtering, WildFire, File Blocking) to every allow rule. Start from the validated <a href="https://github.com/PaloAltoNetworks/iron-skillet/tree/panos_v11.0">Iron-Skillet</a> baseline rather than building profiles from scratch.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><strong>Policies &gt; Security</strong> shows the ordered rule set, each allow rule shows a profile-group icon, and the NAT rule appears under <strong>Policies &gt; NAT</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.5 Configure log forwarding to the default log destination</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create a Log Forwarding profile so session and threat logs reach your log collectors.</p>
+    <ol>
+      <li>In <code>DG-OCI-HUB</code>, go to <strong>Objects &gt; Log Forwarding</strong> and add a profile.</li>
+      <li>Name the profile exactly <code>default</code> (lowercase).</li>
+      <li>Add match-list entries for <strong>traffic</strong> and <strong>threat</strong> log types pointing to Panorama or your log collector group.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">The magic <code>default</code> keyword</div>
+      <p>A Log Forwarding profile named exactly <code>default</code> (lowercase) is auto-attached to every new security rule that does not specify a profile. Naming it anything else means each rule must reference the profile explicitly. Use the lowercase <code>default</code> name to guarantee logging coverage.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>New rules created afterward show <code>default</code> in the Log Forwarding column automatically.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2A.6 Create a License Manager and collect bootstrap parameters</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to <strong>Panorama &gt; SW Firewall License &gt; License Managers</strong> and click <strong>Add</strong>.</li>
+      <li>Bind the device group <code>DG-OCI-HUB</code>, the template stack <code>STK-OCI-HUB</code>, and the bootstrap definition holding your auth code. Enable auto-deactivate on delete.</li>
+      <li>Click <strong>Show Bootstrap Parameters</strong> and record <code>auth-key</code>, <code>plugin-op-commands</code>, <code>panorama-server</code>, <code>dgname</code>, and <code>tplname</code>.</li>
+      <li>Commit to Panorama.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The License Manager shows a green status, and <strong>Show Bootstrap Parameters</strong> returns a complete <code>auth-key</code> and <code>plugin-op-commands</code> string. Save these for Phase 5.</p>
+    </div>
+  </div>
+</div>
+
+  </div><!-- end 2A panel -->
+
+  <!-- ── 2B · SCM Path ───────────────────────────────────────── -->
+  <div class="mgmt-panel" data-plane="SCM">
+
+<h3>2B SCM configuration</h3>
+
+<p>SCM manages VM-Series through a folder hierarchy and configuration snippets. Build the folders, variables, zones, interfaces, and policy before deploying, then collect the simpler SCM bootstrap parameters.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2B.1 Create the deployment profile and registration PIN</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the CSP, create a deployment profile with <strong>Strata Cloud Manager</strong> selected (not Panorama). Copy its auth code.</li>
+      <li>Generate a registration PIN and record the <strong>PIN ID</strong> and <strong>PIN Value</strong>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The profile shows <strong>Strata Cloud Manager</strong> as the management type and an active credit pool.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2B.2 Build the folder hierarchy</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Folders in SCM are the configuration scope. Create a hierarchy that mirrors the deployment.</p>
+    <ol>
+      <li>In SCM, go to <strong>Workflows &gt; NGFW Setup &gt; Folder Management</strong>.</li>
+      <li>Create <code>All Firewalls &gt; OCI &gt; Hub-OCI</code>.</li>
+      <li>The <strong>folder name</strong> is the value you pass as <code>dgname</code> at bootstrap, so keep it stable and case-consistent.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>Hub-OCI</code> folder appears under <strong>OCI</strong> in the folder tree.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2B.3 Configure zones, interfaces, and routing</span>
+  </div>
+  <div class="collapsible-body">
+    <p>At the <code>Hub-OCI</code> folder, create zones and interface config that match the OCI VNIC layout.</p>
+    <ol>
+      <li>Create zones <code>untrust</code>, <code>trust</code>, and <code>inbound</code>.</li>
+      <li>Configure interfaces <code>ethernet1/1</code> (untrust), <code>ethernet1/2</code> (trust), and <code>ethernet1/3</code> (inbound) as Layer 3 DHCP client.</li>
+      <li>Create a logical router with a default route toward the untrust subnet gateway.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">SCM firewalls need outbound internet from the mgmt interface</div>
+      <p>Unlike Panorama (which can sit on a private network), an SCM-managed firewall must reach <code>*.paloaltonetworks.com</code> from its management interface to register. Ensure the hub management subnet has a route to the NAT Gateway or Internet Gateway.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The three zones and three interfaces appear in the <code>Hub-OCI</code> configuration, and a push validates green.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2B.4 Create security policy snippets and log settings</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Create security rules at the <code>Hub-OCI</code> folder: outbound, inbound, east-west, and a final deny.</li>
+      <li>Attach a Security Profile Group based on <a href="https://github.com/PaloAltoNetworks/iron-skillet/tree/panos_v11.0">Iron-Skillet</a> to each allow rule.</li>
+      <li>Enable log forwarding to <strong>Strata Logging Service</strong> on each rule.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Source NAT reminder</div>
+      <p>As in the Panorama path, configure outbound source NAT to the untrust interface so return traffic is symmetric before the OCI NAT Gateway applies its own translation. This applies to both HA models.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The rule set is ordered correctly and the configuration pushes with a green OK.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2B.5 Collect SCM bootstrap parameters</span>
+  </div>
+  <div class="collapsible-body">
+    <p>SCM bootstrap is simpler than Panorama: no <code>tplname</code> and no <code>auth-key</code>.</p>
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Parameter</th><th>Source</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td><code>panorama-server</code></td><td>Always <code>cloud</code> for SCM</td><td><code>cloud</code></td></tr>
+        <tr><td><code>dgname</code></td><td>Folder name (2B.2)</td><td><code>Hub-OCI</code></td></tr>
+        <tr><td><code>authcodes</code></td><td>Deployment profile (2B.1)</td><td><em>(from CSP)</em></td></tr>
+        <tr><td><code>vm-series-auto-registration-pin-id</code></td><td>Registration PIN (2B.1)</td><td><em>(UUID)</em></td></tr>
+        <tr><td><code>vm-series-auto-registration-pin-value</code></td><td>Registration PIN (2B.1)</td><td><em>(hex string)</em></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All five values are recorded, and <code>dgname</code> matches the folder name exactly (case-sensitive).</p>
+    </div>
+  </div>
+</div>
+
+  </div><!-- end 2B panel -->
+</div><!-- end mgmt-tabs -->
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: REVIEW CHECKPOINT                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="review-checkpoint">Phase 3: Review Checkpoint</h2>
+
+<p>Before building any OCI infrastructure, verify all management-platform configuration is complete and collect the bootstrap parameters you need for firewall launch.</p>
+
+<div class="callout callout-success mgmt-conditional" data-plane="Panorama">
+  <div class="callout-title">Panorama Readiness Checklist</div>
+  <ul>
+    <li>&#9744; Deployment profile created with auth code; credit pool active</li>
+    <li>&#9744; SW Firewall License plugin installed and licensing API key set</li>
+    <li>&#9744; Bootstrap definition created with the deployment profile auth code</li>
+    <li>&#9744; Device groups <code>DG-OCI</code> (parent) and <code>DG-OCI-HUB</code> (child) created</li>
+    <li>&#9744; Template stack <code>STK-OCI-HUB</code> created with baseline and network templates</li>
+    <li>&#9744; Interfaces (<code>ethernet1/1</code>, <code>ethernet1/2</code>, <code>ethernet1/3</code>) and zones (<code>untrust</code>, <code>trust</code>, <code>inbound</code>) configured</li>
+    <li>&#9744; Security and NAT policy created with a hardened profile group attached</li>
+    <li>&#9744; Log Forwarding profile named <code>default</code> created</li>
+    <li>&#9744; License Manager created; bootstrap parameters recorded</li>
+    <li>&#9744; Panorama committed successfully</li>
+    <li>&#9744; VM-Series Marketplace image subscribed in the target compartment</li>
+    <li>&#9744; OCI compartment, IAM user, and API key configured</li>
+    <li>&#9744; OCI CLI, Terraform, and Git installed</li>
+  </ul>
+</div>
+
+<div class="callout callout-success mgmt-conditional" data-plane="SCM">
+  <div class="callout-title">SCM Readiness Checklist</div>
+  <ul>
+    <li>&#9744; Deployment profile created with <strong>Strata Cloud Manager</strong> selected; auth code saved</li>
+    <li>&#9744; Registration PIN generated; PIN ID and PIN Value saved</li>
+    <li>&#9744; Folder hierarchy <code>All Firewalls &gt; OCI &gt; Hub-OCI</code> created</li>
+    <li>&#9744; Zones (<code>untrust</code>, <code>trust</code>, <code>inbound</code>) and interfaces configured</li>
+    <li>&#9744; Logical router with default route configured</li>
+    <li>&#9744; Security policy snippets created and ordered; profile group attached</li>
+    <li>&#9744; Log forwarding to Strata Logging Service enabled</li>
+    <li>&#9744; Configuration pushed and validated green</li>
+    <li>&#9744; VM-Series Marketplace image subscribed in the target compartment</li>
+    <li>&#9744; OCI compartment, IAM user, and API key configured</li>
+    <li>&#9744; OCI CLI, Terraform, and Git installed</li>
+  </ul>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Pre-flight before <code>terraform apply</code></div>
+  <ul>
+    <li>The <code>panorama-server</code> value is reachable from the planned firewall management subnet on TCP 3978 (Panorama), or the management subnet has outbound internet to <code>*.paloaltonetworks.com</code> (SCM).</li>
+    <li>The <code>dgname</code> and (Panorama only) <code>tplname</code> exist and are not already in use by another tenant on a shared management plane.</li>
+    <li>The auth code has not been rotated since you copied it.</li>
+  </ul>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4 (OPTIONAL): DEPLOYMENT-READY TFVARS                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="deployment-designs">Phase 4 (Optional): Deployment-Ready tfvars Files</h2>
+
+<p>This phase is optional. If you would rather start from a worked example than assemble variables by hand, use one of the two reference <code>.tfvars</code> files below. Each applies the <a href="#ip-schema">reference IP schema</a> so the only edits you need are your own compartment OCID, region, SSH key, image OCID, and bootstrap parameters.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>File</th><th>Model</th><th>What it builds</th></tr></thead>
+  <tbody>
+    <tr><td><a href="reference/oci-active-active.tfvars"><code>oci-active-active.tfvars</code></a></td><td>Model A</td><td>Hub VCN, DRG, Inbound NLB, Trust NLB, NAT Gateway, Service Gateway, 2 firewalls with 4 VNICs</td></tr>
+    <tr><td><a href="reference/oci-active-passive.tfvars"><code>oci-active-passive.tfvars</code></a></td><td>Model B</td><td>Hub VCN, DRG, HA-link subnet, dynamic group, IAM policy, NAT Gateway, 2 firewalls in PAN-OS HA</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Confirm variable names against your chosen project</div>
+  <p>Because OCI has no first-party module, the variable names in these files follow the <a href="https://github.com/oracle-quickstart/oci-palo-alto-networks">oracle-quickstart/oci-palo-alto-networks</a> project at the time of writing. If you deploy a different project, or a newer revision, reconcile every variable against that project's <code>variables.tf</code> before applying.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: PREPARE TERRAFORM CONFIGURATION                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="terraform-config">Phase 5: Prepare Terraform Configuration</h2>
+
+<p>Configure the OCI Terraform provider and the deployment variables. This phase is common to both HA models; the model-specific resources are handled by the project you selected and toggled by a variable.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 Configure the OCI provider</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The OCI provider authenticates with the five values recorded in Phase 1.1. Reference them as variables so no secrets are committed.</p>
+    <div class="code-block">
+      <pre><code>terraform {
+  required_providers {
+    oci = {
+      source  = "oracle/oci"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "oci" {
+  tenancy_ocid     = var.tenancy_ocid
+  user_ocid        = var.user_ocid
+  fingerprint      = var.fingerprint
+  private_key_path = var.private_key_path
+  region           = var.region
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>terraform init</code> downloads the <code>oracle/oci</code> provider and reports <code>Terraform has been successfully initialized</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.2 Populate the deployment variables</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Fill in a <code>terraform.tfvars</code> file. The names below are representative; confirm them against your project's <code>variables.tf</code>.</p>
+    <div class="code-block">
+      <pre><code># --- Identity (Phase 1.1) ---
+tenancy_ocid     = "ocid1.tenancy.oc1..xxxx"
+user_ocid        = "ocid1.user.oc1..xxxx"
+fingerprint      = "aa:bb:cc:dd:..."
+private_key_path = "~/.oci/oci_api_key.pem"
+region           = "us-ashburn-1"
+compartment_ocid = "ocid1.compartment.oc1..xxxx"
+
+# --- Firewall image and shape (Phase 1.2) ---
+vmseries_image_ocid = "ocid1.image.oc1..xxxx"
+vmseries_shape      = "VM.Standard2.8"   # VM-500 class; see shape table
+ssh_public_key      = "ssh-rsa AAAA..."
+
+# --- Network (see Reference: IP Schema) ---
+hub_vcn_cidr = "10.60.0.0/24"
+
+# --- HA model toggle ---
+ha_model = "active-active"   # or "active-passive"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Firewall shape sizing</div>
+      <p>OCI shapes map to VM-Series models by resource floor. Confirm current minimums in the <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/set-up-the-vm-series-firewall-on-oracle-cloud-infrastructure">VM-Series on OCI</a> docs.</p>
+      <ul>
+        <li><strong>VM-100 / VM-300</strong> &mdash; minimum <code>VM.Standard2.4</code> (4 OCPU, 60 GB).</li>
+        <li><strong>VM-500</strong> &mdash; minimum <code>VM.Standard2.8</code> (8 OCPU, 120 GB).</li>
+        <li><strong>VM-700</strong> &mdash; minimum <code>VM.Standard2.16</code> (16 OCPU, 240 GB).</li>
+        <li>Flex shapes (<code>VM.Standard3.Flex</code>, <code>VM.Optimized3.Flex</code>, AMD E-series Flex) are also supported.</li>
+      </ul>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>terraform validate</code> returns <code>Success! The configuration is valid.</code></p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.3 Inject bootstrap parameters</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The firewall reads bootstrap parameters as key=value pairs from user data (the OCI instance metadata <code>user_data</code> field, base64-encoded). Feed in the values collected in Phase 2.</p>
+    <div class="code-block">
+      <pre><code># Panorama-managed example
+bootstrap_options = "type=dhcp-client,panorama-server=10.251.2.51,tplname=STK-OCI-HUB,dgname=DG-OCI-HUB,vm-series-auto-registration-pin-id=<id>,vm-series-auto-registration-pin-value=<value>,auth-key=<auth-key>,plugin-op-commands=<commands>"
+
+# SCM-managed example
+bootstrap_options = "type=dhcp-client,panorama-server=cloud,dgname=Hub-OCI,authcodes=<authcode>,vm-series-auto-registration-pin-id=<id>,vm-series-auto-registration-pin-value=<value>"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">No spaces around the equals sign</div>
+      <p>Bootstrap parsing is strict. Write <code>dgname=DG-OCI-HUB</code>, never <code>dgname = DG-OCI-HUB</code>. A single stray space breaks the parser and the firewall reverts to factory defaults on first boot. User data is read exactly once, so a mistake means recreating the instance.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>terraform plan</code> shows the <code>user_data</code> attribute populated on the firewall instances with no interpolation errors.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 6: DEPLOY & VERIFY INFRASTRUCTURE (TABBED BY HA MODEL) -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="deploy-verify">Phase 6: Deploy &amp; Verify Infrastructure</h2>
+
+<p>This is where the two HA models diverge. Everything up to here (management config, image subscription, licensing, provider, and variables) is shared. Pick the model you designed for in the Architecture Overview; your choice persists across the page. The steps common to both models (running <code>terraform apply</code>, confirming instances boot, and confirming registration) are described inside each tab because the resources they create differ.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which model should I pick?</div>
+  <ul>
+    <li><strong>6A Active/Active</strong> &mdash; pick for production and high throughput. Two Flexible NLBs with symmetric hashing keep both firewalls active with no failover API calls and no IAM policy. Scales horizontally by adding firewalls to the NLB backend sets.</li>
+    <li><strong>6B Active/Passive HA</strong> &mdash; pick when you want a familiar PAN-OS HA pair with stateful failover. A floating secondary IP moves between peers via OCI API calls, which requires a dynamic group, an IAM policy, and instance principals.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="oci-ha-model">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="active-active">6A &middot; Active/Active</button>
+    <button class="mgmt-tab" data-plane="active-passive">6B &middot; Active/Passive HA</button>
+  </div>
+
+  <!-- ── 6A · Active/Active ───────────────────────────────────── -->
+  <div class="mgmt-panel active" data-plane="active-active">
+
+<h3>6A Active/Active with Flexible NLBs</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6A.1 Apply the Active/Active stack</span>
+  </div>
+  <div class="collapsible-body">
+    <p>With <code>ha_model = "active-active"</code>, apply the stack. This creates the hub VCN, the DRG, both NLBs, the NAT Gateway, the Service Gateway, and the firewall instances with four VNICs each.</p>
+    <div class="code-block">
+      <pre><code>terraform plan -out oci-aa.plan
+terraform apply oci-aa.plan</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Apply completes with <code>Apply complete!</code> and the outputs list two firewall instance OCIDs, the Inbound NLB IP, and the Trust NLB IP.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6A.2 Confirm symmetric hashing on both NLBs</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Symmetric hashing is the single most important setting in this model. Without it, the return leg of a flow can land on the other firewall and break session state.</p>
+    <ol>
+      <li>In the OCI Console, open <strong>Networking &gt; Load Balancers &gt; Network Load Balancer</strong>.</li>
+      <li>Open the <strong>Inbound NLB</strong>, then its backend set. Confirm the backend set is configured for <strong>symmetric</strong> flow (source and destination hashing that is order-independent) and lists both firewalls as backends.</li>
+      <li>Repeat for the <strong>Trust NLB</strong>.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Both NLBs must be symmetric</div>
+      <p>If only one NLB uses symmetric hashing, asymmetric flows appear intermittently under load and show as sessions that open but never complete. Confirm the setting on both the Inbound and Trust NLBs.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both backend sets show two healthy firewall backends and symmetric hashing enabled.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6A.3 Confirm the route tables steer traffic through the NLBs</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Traffic reaches the firewalls only if the OCI route tables point at the NLB IPs. Confirm the four key route tables.</p>
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Route table (attached to)</th><th>Destination</th><th>Next hop</th></tr></thead>
+      <tbody>
+        <tr><td>IGW ingress route table</td><td>Inbound service public range</td><td>Inbound NLB IP</td></tr>
+        <tr><td>DRG spoke attachment route table</td><td><code>0.0.0.0/0</code> (outbound)</td><td>Hub VCN / Trust NLB IP</td></tr>
+        <tr><td>DRG spoke attachment route table</td><td>Other spoke CIDRs (east-west)</td><td>Trust NLB IP</td></tr>
+        <tr><td>Firewall untrust subnet route table</td><td><code>0.0.0.0/0</code></td><td>NAT Gateway; OSN to Service Gateway</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Whitelist the hub VCN on the Service Gateway, not each spoke</div>
+      <p>For Oracle Services Network access, the firewall performs source NAT to its untrust IP before the Service Gateway. Whitelist the hub VCN address ranges on the OSN route, not the individual spoke ranges, so the symmetric return path stays inside the hub.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each route table shows the expected next hop, and a spoke test VM's default route resolves to the DRG then the Trust NLB.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6A.4 Add a firewall to the backend sets (scale-out)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Horizontal scale is a defining benefit of this model. Adding a firewall does not disrupt existing flows because symmetric hashing only rebalances new flows.</p>
+    <ol>
+      <li>Increase the firewall instance count in your tfvars and apply.</li>
+      <li>Add the new instance's trust and inbound VNIC IPs to the respective NLB backend sets (the project usually does this automatically).</li>
+      <li>Watch the backend health checks turn healthy.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The new firewall shows healthy in both backend sets, and existing sessions on the original firewalls remain established throughout.</p>
+    </div>
+  </div>
+</div>
+
+  </div><!-- end 6A panel -->
+
+  <!-- ── 6B · Active/Passive HA ───────────────────────────────── -->
+  <div class="mgmt-panel" data-plane="active-passive">
+
+<h3>6B Active/Passive built-in PAN-OS HA</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6B.1 Apply the Active/Passive stack</span>
+  </div>
+  <div class="collapsible-body">
+    <p>With <code>ha_model = "active-passive"</code>, apply the stack. This creates the hub VCN with a dedicated HA-link subnet, the DRG, the NAT Gateway, and two firewall instances each with four interfaces (management, untrust, trust, HA link).</p>
+    <div class="code-block">
+      <pre><code>terraform plan -out oci-ap.plan
+terraform apply oci-ap.plan</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Apply completes and the outputs list two firewall OCIDs and the HA-link subnet OCID.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6B.2 Create the dynamic group and IAM policy</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Failover moves the floating IPs through OCI API calls. Those calls are authorized by a dynamic group (which both firewalls belong to) plus an IAM policy that permits managing private IPs. PAN-OS authenticates as an instance principal, so no API keys are stored on the firewall.</p>
+    <ol>
+      <li>In <strong>Identity &amp; Security &gt; Domains &gt; Dynamic Groups</strong>, create a group (for example <code>dg-fw-ha</code>) whose matching rule includes both firewall instance OCIDs, or all instances in the compartment:
+        <div class="code-block">
+          <pre><code>ALL {instance.compartment.id = 'ocid1.compartment.oc1..xxxx'}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>Create an IAM policy granting that dynamic group permission to manage private IPs on those instances:
+        <div class="code-block">
+          <pre><code>Allow dynamic-group dg-fw-ha to use virtual-network-family in compartment cmp-netsec-hub
+Allow dynamic-group dg-fw-ha to manage private-ips in compartment cmp-netsec-hub
+Allow dynamic-group dg-fw-ha to manage vnic-attachments in compartment cmp-netsec-hub</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Confirm the exact policy verbs against the PAN-OS OCI HA doc</div>
+      <p>The statements above are representative. The precise resource types and verbs PAN-OS requires to reassign a floating IP can change by release. Confirm them in <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/set-up-the-vm-series-firewall-on-oracle-cloud-infrastructure">Set Up the VM-Series Firewall on OCI</a> before relying on them in production. Grant the minimum needed to reassign private IPs.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both firewall instances appear as matched members of the dynamic group, and the policy is listed in the compartment.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6B.3 Assign the secondary (floating) IPs on the active peer</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each dataplane interface on the active peer needs a secondary private IP that will float to the passive peer on failover.</p>
+    <ol>
+      <li>In the OCI Console, go to <strong>Compute &gt; Instances</strong> and open the <strong>active</strong> firewall.</li>
+      <li>Open <strong>Attached VNICs</strong>, select the <strong>untrust</strong> VNIC, then <strong>IP Addresses</strong>.</li>
+      <li>Click <strong>Assign Private IP Address</strong> and add the floating untrust IP.</li>
+      <li>Repeat for the <strong>trust</strong> VNIC, assigning the floating trust IP.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">The floating IPs are the ones PAN-OS moves</div>
+      <p>The primary IP on each VNIC stays with the instance for management and HA housekeeping. Only the secondary (floating) IPs move on failover, which is why they, not the primary IPs, are referenced as the interface addresses in the PAN-OS HA floating-IP configuration.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The untrust and trust VNICs on the active peer each list two private IPs (primary plus the assigned floating IP).</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6B.4 Configure HA1, HA2, and floating IP failover in PAN-OS</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Configure native PAN-OS HA on both peers so they form an Active/Passive pair and know which floating IPs to move.</p>
+    <ol>
+      <li>On each firewall, enable HA under <strong>Device &gt; High Availability &gt; General</strong> (Active/Passive mode; matching Group ID).</li>
+      <li>Configure the <strong>HA1 control link</strong> and <strong>HA2 data link</strong> on the dedicated HA interface.</li>
+      <li>Under the interface configuration, set the untrust and trust interface IPs to the <strong>floating IP</strong> addresses assigned in 6B.3 and enable OCI IP reassignment on failover.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><strong>Dashboard &gt; High Availability</strong> widget shows one peer <strong>Active</strong> and the other <strong>Passive</strong>, with HA1 and HA2 links green.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6B.5 Trigger a failover and watch the floating IPs move</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Validate that the floating IPs actually migrate through the OCI API and that sessions survive.</p>
+    <ol>
+      <li>Start a continuous ping or session from a spoke VM through the firewall.</li>
+      <li>On the active peer, run <code>request high-availability state suspend</code> to force a failover.</li>
+      <li>In the OCI Console, watch the floating trust and untrust IPs move from the active instance's VNICs to the passive peer's VNICs.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">If the IPs do not move, check the IAM policy</div>
+      <p>The most common failure is a missing or too-narrow IAM policy: the instance principal cannot reassign the private IP, so the floating IP stays on the old peer and the new active firewall is unreachable. Re-check the dynamic group membership and the <code>manage private-ips</code> statement from 6B.2.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The floating trust and untrust IPs now appear on the former passive peer, the ping recovers within a few seconds, and existing sessions remain established.</p>
+    </div>
+  </div>
+</div>
+
+  </div><!-- end 6B panel -->
+</div><!-- end mgmt-tabs oci-ha-model -->
+
+<!-- ── Console Verification (common) ──────────────────────────── -->
+
+<h2 id="console-verification">Phase 6 (cont.): Console Verification</h2>
+
+<p>Regardless of HA model, confirm the deployed infrastructure in the OCI Console before onboarding spokes.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Verify the VCN, subnets, and gateways</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Open <strong>Networking &gt; Virtual Cloud Networks</strong> and select the hub VCN.</li>
+      <li>Confirm the subnets (management, untrust, trust, inbound or HA link) exist with the expected CIDRs from the <a href="#ip-schema">IP schema</a>.</li>
+      <li>Confirm the Internet Gateway, NAT Gateway, Service Gateway, and DRG attachment are present.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The VCN shows all expected subnets and gateways in the <strong>ACTIVE</strong> state.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Verify the firewalls booted and registered</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Open <strong>Compute &gt; Instances</strong> and confirm both firewalls are <strong>Running</strong>.</li>
+      <li>SSH to a firewall management IP and run <code>show system info</code>; confirm the serial and PAN-OS version.</li>
+      <li>In Panorama (<strong>Panorama &gt; Managed Devices</strong>) or SCM (<strong>Firewalls</strong> inventory), confirm both firewalls appear as <strong>Connected</strong>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both firewalls are Connected on the management plane and are receiving the pushed configuration.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 7: SPOKE VCN VERIFICATION & ONBOARDING                 -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="spoke-onboarding">Phase 7: Spoke VCN Verification &amp; Onboarding</h2>
+
+<p>With the hub verified, onboard the spoke VCNs. Onboarding a spoke means attaching it to the DRG and pointing its default route at the hub so its traffic is inspected. This phase is common to both HA models.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.1 Attach the spoke VCN to the DRG</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In <strong>Networking &gt; Dynamic Routing Gateways</strong>, open the hub DRG.</li>
+      <li>Create a <strong>VCN attachment</strong> for the spoke VCN.</li>
+      <li>Associate the attachment with the DRG route table that forwards to the hub.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The spoke appears as an attached VCN on the DRG in the <strong>ATTACHED</strong> state.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.2 Point the spoke default route at the hub</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the spoke VCN, edit the route table attached to the application subnet.</li>
+      <li>Add a default route (<code>0.0.0.0/0</code>) with the <strong>DRG</strong> as the next hop.</li>
+      <li>Add routes for other spoke CIDRs (east-west) also pointing at the DRG.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">The DRG does the hub steering</div>
+      <p>The spoke only needs to send traffic to the DRG. The DRG route table (configured in Phase 6) forwards that traffic into the hub, where it reaches the firewalls (via the Trust NLB in Model A, or the active peer's trust interface in Model B).</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The spoke application subnet's route table shows <code>0.0.0.0/0</code> to the DRG.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.3 Launch a test workload and confirm the path</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Launch a small Compute instance in the spoke application subnet.</li>
+      <li>From that instance, run <code>curl -s https://ifconfig.me</code> to trigger an outbound flow.</li>
+      <li>The returned public IP should be the hub NAT Gateway's public IP, confirming the flow passed through the firewall and out the hub.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The outbound source IP is the hub NAT Gateway public IP, and the corresponding session appears in the firewall traffic log with the correct zones.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 8: POST-DEPLOYMENT VERIFICATION                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="verification">Phase 8: Post-Deployment Verification</h2>
+
+<p>Run these checks to confirm the deployment inspects traffic correctly end to end and is ready for production.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.1 Confirm outbound inspection and NAT</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>From a spoke test VM, generate outbound traffic to a known site.</li>
+      <li>On the firewall, run <code>show session all filter source &lt;spoke-vm-ip&gt;</code>.</li>
+      <li>Confirm the session shows the trust zone inbound, the untrust zone outbound, and source NAT applied.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The session table shows the flow with NAT applied and an allow action, and the traffic log records it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.2 Confirm inbound inspection (Model A)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>In Model A, inbound traffic from the Internet Gateway hits the Inbound NLB, is inspected by a firewall, and is forwarded to the application load balancer or DMZ server.</p>
+    <ol>
+      <li>From an external client, reach the public IP that fronts your inbound service.</li>
+      <li>Confirm the firewall traffic log shows the inbound flow entering the <code>inbound</code> zone.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Model B does inbound differently</div>
+      <p>In Model B there is no Inbound NLB. Inbound traffic reaches the active peer's untrust floating IP directly, is inspected, then forwarded. If you deployed Model B, verify inbound on the untrust interface rather than an Inbound NLB.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The external request succeeds and the firewall log records the inbound session with an allow action.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.3 Confirm east-west inspection</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>From a VM in spoke A, reach a VM in spoke B.</li>
+      <li>Confirm the flow appears in the firewall traffic log with both zones as <code>trust</code> (single-arm east-west in Model A) and an allow action.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Spoke-to-spoke traffic is logged and inspected; blocking a test rule stops it, confirming policy is enforced.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                              -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Firewall boots but does not register with Panorama or SCM</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The firewall parsed its bootstrap parameters but cannot reach the management plane. This is almost always networking or a bad parameter.</p>
+    <ul>
+      <li><strong>Panorama:</strong> the management subnet must reach the <code>panorama-server</code> IP on TCP 3978. Check the management subnet route table, the NSG or Security List on the management VNIC, and the DRG or peering path to Panorama.</li>
+      <li><strong>SCM:</strong> the management interface needs outbound internet to <code>*.paloaltonetworks.com</code>. Confirm the management subnet routes to the NAT Gateway or Internet Gateway.</li>
+      <li>Re-check the bootstrap string for spaces around any <code>=</code> and confirm <code>dgname</code> matches the device group or folder name exactly.</li>
+    </ul>
+    <div class="callout callout-warning">
+      <div class="callout-title">User data is read once</div>
+      <p>Bootstrap parameters are consumed at first boot. Editing user data on a running instance does nothing. Fix the tfvars and recreate the instance with <code>terraform apply</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Asymmetric traffic or sessions that never complete (Model A)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Under load, flows open but never finish, or the firewall logs show half-open sessions. This is the classic symptom of a missing symmetric-hashing setting.</p>
+    <ul>
+      <li>Confirm symmetric hashing is enabled on <strong>both</strong> the Inbound NLB and the Trust NLB backend sets.</li>
+      <li>Confirm outbound source NAT is applied on the firewall so the return leg is destined to the firewall's untrust IP, keeping the flow inside the hub.</li>
+      <li>Confirm the Service Gateway route whitelists the hub VCN ranges, not individual spokes.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Floating IPs do not move on failover (Model B)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>After a failover, the new active peer is unreachable because the floating trust and untrust IPs stayed on the old peer.</p>
+    <ul>
+      <li>Confirm both firewalls are members of the dynamic group (check the matched-instances view).</li>
+      <li>Confirm the IAM policy grants <code>manage private-ips</code> (and the related virtual-network verbs) in the correct compartment.</li>
+      <li>Confirm the PAN-OS interface config references the floating IPs and that OCI IP reassignment is enabled on failover.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Spoke traffic bypasses the firewall</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Spoke traffic reaches the internet but never appears in the firewall log.</p>
+    <ul>
+      <li>Confirm the spoke application subnet's route table sends <code>0.0.0.0/0</code> to the DRG, not to a local Internet Gateway.</li>
+      <li>Confirm the spoke VCN has no Internet Gateway or NAT Gateway of its own that would short-circuit inspection.</li>
+      <li>Confirm the DRG route table forwards spoke traffic into the hub toward the Trust NLB (Model A) or the trust interface (Model B).</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  REFERENCE: IP SCHEMA                                         -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="ip-schema">Reference: IP Schema</h2>
+
+<p>The hub VCN uses a single <code>/24</code> carved into <code>/28</code> subnet groups. A hub carries machine-to-machine traffic only, so <code>/28</code> subnets are right-sized. This schema is the source of truth for every CIDR in the reference tfvars files.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Subnet group</th><th>CIDR</th><th>Purpose</th><th>Used by</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>hub-mgmt</code></td><td><code>10.60.0.0/28</code></td><td>Firewall management VNICs</td><td>Both models</td></tr>
+    <tr><td><code>hub-untrust</code></td><td><code>10.60.0.16/28</code></td><td>Untrust dataplane VNICs; NAT/Service Gateway facing</td><td>Both models</td></tr>
+    <tr><td><code>hub-trust</code></td><td><code>10.60.0.32/28</code></td><td>Trust dataplane VNICs; Trust NLB (Model A)</td><td>Both models</td></tr>
+    <tr><td><code>hub-inbound</code></td><td><code>10.60.0.48/28</code></td><td>Inbound dataplane VNICs; Inbound NLB</td><td>Model A</td></tr>
+    <tr><td><code>hub-ha</code></td><td><code>10.60.0.64/28</code></td><td>Dedicated HA1/HA2 link</td><td>Model B</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><small>The <code>hub-inbound</code> group is only provisioned in Model A; the <code>hub-ha</code> group is only provisioned in Model B. The remaining three groups are common to both.</small></p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Spoke VCN</th><th>CIDR</th><th>App subnet</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Spoke A</td><td><code>10.61.0.0/24</code></td><td><code>10.61.0.0/24</code></td></tr>
+    <tr><td>Spoke B</td><td><code>10.62.0.0/24</code></td><td><code>10.62.0.0/24</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Representative example IPs</div>
+  <p>Inbound NLB <code>10.60.0.58</code>, Trust NLB <code>10.60.0.42</code>, firewall trust IPs <code>10.60.0.36</code> and <code>10.60.0.37</code> (Model A). In Model B, the floating untrust IP is <code>10.60.0.22</code> and the floating trust IP is <code>10.60.0.38</code>. These are illustrative; the deploying project allocates concrete IPs from the ranges above.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  REFERENCE: PANORAMA SET COMMANDS                             -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="reference-panorama-set">Reference: Panorama Set Commands</h2>
+
+<p>A representative set-command sequence that builds the device groups, template, template stack, and zones from Phase 2A. Adapt names and IPs to your environment before pasting.</p>
+
+<div class="code-block">
+  <pre><code>set device-group DG-OCI description "OCI parent DG"
+set device-group DG-OCI-HUB parent-dg DG-OCI
+
+set template TPL-OCI-NETWORK config vsys vsys1 zone untrust network layer3 ethernet1/1
+set template TPL-OCI-NETWORK config vsys vsys1 zone trust network layer3 ethernet1/2
+set template TPL-OCI-NETWORK config vsys vsys1 zone inbound network layer3 ethernet1/3
+
+set template TPL-OCI-NETWORK config network interface ethernet ethernet1/1 layer3 dhcp-client enable yes
+set template TPL-OCI-NETWORK config network interface ethernet ethernet1/2 layer3 dhcp-client enable yes
+set template TPL-OCI-NETWORK config network interface ethernet ethernet1/3 layer3 dhcp-client enable yes
+
+set template-stack STK-OCI-HUB templates [ TPL-OCI-BASELINE TPL-OCI-NETWORK ]
+set template-stack STK-OCI-HUB devices all
+
+set device-group DG-OCI-HUB reference-templates STK-OCI-HUB</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Build manually per the guide</div>
+  <ul>
+    <li><strong>AAA and certificates</strong> &mdash; set commands cannot import shared secrets or key material; configure these in the UI.</li>
+    <li><strong>Parent-DG relationship</strong> &mdash; Panorama manages this in its readonly section; confirm it in the UI after pasting.</li>
+    <li><strong>Security profile groups</strong> &mdash; start from <a href="https://github.com/PaloAltoNetworks/iron-skillet/tree/panos_v11.0">Iron-Skillet</a> rather than typing profiles by hand.</li>
+  </ul>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  REFERENCE: TFVARS                                            -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="reference-tfvars">Reference: tfvars Files</h2>
+
+<p>Pre-derived <code>.tfvars</code> files for the two HA models, applying the IP schema above. The only edits you need are your own identity values, image OCID, SSH key, and bootstrap parameters.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>File</th><th>Model</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="reference/oci-active-active.tfvars"><code>oci-active-active.tfvars</code></a></td><td>Model A</td><td>Two NLBs, symmetric hashing, four VNICs per firewall, no IAM policy</td></tr>
+    <tr><td><a href="reference/oci-active-passive.tfvars"><code>oci-active-passive.tfvars</code></a></td><td>Model B</td><td>HA-link subnet, dynamic group, IAM policy, floating IPs</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Reconcile variable names</div>
+  <p>OCI has no first-party module, so variable names track the <a href="https://github.com/oracle-quickstart/oci-palo-alto-networks">oracle-quickstart/oci-palo-alto-networks</a> project. Confirm every variable against that project's <code>variables.tf</code> or its ORM <code>schema.yaml</code> before applying.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  APPENDIX: HOW ROUTING WORKS                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="appendix-routing">Appendix: How Routing Works</h2>
+
+<p>OCI routing is per-subnet: every subnet is associated with exactly one route table, and that table decides where the subnet's egress goes. There is no single VCN-wide routing table. Getting inspection right is a matter of pointing the correct subnet and DRG route tables at the firewalls.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>The four route tables that matter</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li><strong>IGW ingress route table</strong> &mdash; attached to the Internet Gateway. For inbound (Model A), it sends the inbound public service range to the Inbound NLB IP, so internet traffic lands on a firewall before reaching the app.</li>
+      <li><strong>DRG route table</strong> &mdash; the hub router's table. It forwards spoke traffic into the hub toward the Trust NLB (Model A) or the trust interface (Model B). This is what makes east-west and outbound traffic transit the firewall.</li>
+      <li><strong>Firewall trust subnet route table</strong> &mdash; sends inspected outbound traffic back toward the DRG (for spoke destinations) or onward.</li>
+      <li><strong>Firewall untrust subnet route table</strong> &mdash; sends <code>0.0.0.0/0</code> to the NAT Gateway for internet egress, and the Oracle Services range to the Service Gateway.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Spokes stay simple</div>
+      <p>A spoke needs only a default route to the DRG. All the hub steering lives in the DRG and hub subnet route tables, so onboarding a new spoke is a two-step operation: attach to the DRG, point the default route at it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Why source NAT keeps flows symmetric</span>
+  </div>
+  <div class="collapsible-body">
+    <p>In Model A, the firewall source-NATs outbound and Oracle Services flows to its untrust IP. This guarantees the return leg is addressed to the firewall (inside the hub) rather than back to the spoke directly, so symmetric hashing on the Trust NLB can send the return leg to the same firewall that saw the forward leg. Without this SNAT, the return path could bypass the firewall and break session state.</p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  APPENDIX: TRAFFIC FLOWS EXPLAINED                            -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="appendix-flows">Appendix: Traffic Flows Explained</h2>
+
+<p>Each flow below traces a packet through the design. Model A flows reference the two NLBs; Model B flows reference the active peer's floating IPs instead.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>North-south inbound (Internet to app)</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Model A:</strong> Internet client to Internet Gateway, to Inbound NLB (symmetric hashing selects a firewall), to the firewall (policy check), to the application load balancer or DMZ server, to the DRG, to the spoke, to the web server. The application public IP associates with the DMZ resource, not the firewall.</p>
+    <p><strong>Model B:</strong> Internet client to the active peer's untrust floating IP, to the firewall (policy check), then forwarded to the app. On failover, the untrust floating IP moves to the new active peer.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>North-south outbound (OCI to Internet)</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Model A:</strong> Spoke VM to DRG (default route), to Trust NLB, to the firewall (source NAT to untrust IP), to NAT Gateway (second SNAT to a public IP), to the internet. The return leg reverses through the same firewall because of symmetric hashing.</p>
+    <p><strong>Model B:</strong> Spoke VM to DRG, to the active peer's trust floating IP, to the firewall (SNAT), to NAT Gateway, to the internet.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>East-west (spoke to spoke or on-prem to spoke)</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Model A:</strong> Source (spoke or on-prem via IPSec/FastConnect) to DRG, to Trust NLB (symmetric hashing), to the firewall in single-arm mode on the trust interface, back to the DRG, to the destination spoke. Traffic enters and leaves the same trust interface.</p>
+    <p><strong>Model B:</strong> Source to DRG, to the active peer's trust floating IP, inspected, back to the DRG, to the destination spoke.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>OCI to Oracle Services Network</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Spoke VM to DRG, to Trust NLB (Model A) or trust floating IP (Model B), to the firewall (source NAT to untrust IP), to the Service Gateway, to the Oracle Services Network over the Oracle backbone (not the internet). Whitelist the hub VCN ranges on the OSN route so the SNAT-ed return path resolves inside the hub.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Quick reference: which next hop does each flow use?</div>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Flow</th><th>Firewall entry (Model A)</th><th>Egress gateway</th></tr></thead>
+        <tbody>
+          <tr><td>Inbound</td><td>Inbound NLB</td><td>DRG to spoke</td></tr>
+          <tr><td>Outbound</td><td>Trust NLB</td><td>NAT Gateway</td></tr>
+          <tr><td>East-west</td><td>Trust NLB</td><td>DRG to spoke</td></tr>
+          <tr><td>Oracle Services</td><td>Trust NLB</td><td>Service Gateway</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="download-md-btn" id="downloadMdBtn" onclick="downloadAsMarkdown()">&#8681; Markdown</button>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>

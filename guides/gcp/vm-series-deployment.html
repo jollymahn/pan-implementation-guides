@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
 <title>VM-Series Deployment on GCP | Implementation Guides</title>
 <link rel="stylesheet" href="../../shared/css/pan-guides.css">
@@ -53,9 +54,9 @@
   <div class="sidebar-section">
     <div class="sidebar-section-title">Management Platform</div>
     <a href="#management-config" data-section="management-config">Pick Path (Panorama / SCM)</a>
-    <a href="#licensing-plugin" data-section="licensing-plugin">Licensing Plugin</a>
-    <a href="#template-config" data-section="template-config">Device-Group &amp; Template Config</a>
-    <a href="#scm-path" data-section="scm-path">2B SCM Path</a>
+    <a href="#licensing-plugin">Licensing Plugin</a>
+    <a href="#template-config">Device-Group &amp; Template Config</a>
+    <a href="#scm-path">2B SCM Path</a>
     <a href="#review-checkpoint" data-section="review-checkpoint">Review Checkpoint</a>
   </div>
   <div class="sidebar-section">
@@ -136,7 +137,7 @@
 
 <div class="callout callout-note">
   <div class="callout-title">Guide Approach</div>
-  <p>This guide follows a <strong>management-first</strong> approach. All licensing, device groups, templates, and security policy are configured on your management platform &mdash; <strong>Panorama</strong> or <strong>Strata Cloud Manager (SCM)</strong> &mdash; <em>before</em> any GCP infrastructure is built. This ensures firewalls bootstrap into a fully configured management plane on first boot.</p>
+  <p>This guide follows a <strong>management-first</strong> approach. All licensing, device groups, templates, and security policy are configured on your management platform (<strong>Panorama</strong> or <strong>Strata Cloud Manager (SCM)</strong>) <em>before</em> any GCP infrastructure is built. This ensures firewalls bootstrap into a fully configured management plane on first boot.</p>
   <p><strong>Design model:</strong> VPC Peering hub-and-spoke with ILB sandwich architecture. Two topology options are documented: <strong>common-firewall</strong> (single firewall set for all traffic) and <strong>dedicated-inbound</strong> (separate inbound and outbound/east-west firewall sets). Phase 2 lets you pick the management platform that fits your environment.</p>
   <p><strong>Deployment method:</strong> All GCP infrastructure (Phases 4&ndash;6) is deployed with <strong>Terraform</strong> using the official <a href="https://github.com/PaloAltoNetworks/terraform-google-swfw-modules">Palo Alto Networks SWFW Modules for GCP</a>. These modules encode the reference architecture and handle VPC, load balancer, VPC peering, and VM-Series provisioning with tested, production-ready code.</p>
 </div>
@@ -147,15 +148,15 @@
 
 <h2 id="architecture-overview">Architecture Overview</h2>
 
-<p>Before deploying anything, study the target architecture. GCP uses an <strong>ILB sandwich</strong> pattern for traffic inspection &mdash; fundamentally different from AWS (GWLB with Geneve encapsulation) and Azure (Gateway Load Balancer). Understanding this architecture is critical before configuring Panorama or writing Terraform.</p>
+<p>Before deploying anything, study the target architecture. GCP uses an <strong>ILB sandwich</strong> pattern for traffic inspection, fundamentally different from AWS (GWLB with Geneve encapsulation) and Azure (Gateway Load Balancer). Understanding this architecture is critical before configuring Panorama or writing Terraform.</p>
 
 <div style="text-align:center; margin:1.5rem 0;">
-<img src="diagrams/gcp-ilb-sandwich-architecture.svg" alt="GCP ILB sandwich architecture — hub VPCs (Management, Untrust, Trust) with Internal NLB and External NLB, VM-Series firewalls, and VPC Peering to spoke VPCs" loading="lazy" style="max-width:880px; width:100%;">
+<img src="diagrams/gcp-ilb-sandwich-architecture.svg" alt="GCP ILB sandwich architecture: hub VPCs (Management, Untrust, Trust) with Internal NLB and External NLB, VM-Series firewalls, and VPC Peering to spoke VPCs" loading="lazy" style="max-width:880px; width:100%;">
 </div>
 
 <div class="callout callout-warning">
   <div class="callout-title">GCP has no Gateway Load Balancer</div>
-  <p>Unlike AWS and Azure, GCP does not offer a Gateway Load Balancer. Traffic inspection uses an <strong>Internal Load Balancer (ILB) sandwich</strong>: an External NLB for inbound traffic and an Internal NLB for outbound and east-west traffic, with VM-Series firewalls as backends for both. Because the GCP ILB can only forward traffic to <strong>nic0</strong> of backend instances, <strong>management interface swap</strong> is required &mdash; nic0 becomes the dataplane interface (ethernet1/1) and nic1 becomes the management interface.</p>
+  <p>Unlike AWS and Azure, GCP does not offer a Gateway Load Balancer. Traffic inspection uses an <strong>Internal Load Balancer (ILB) sandwich</strong>: an External NLB for inbound traffic and an Internal NLB for outbound and east-west traffic, with VM-Series firewalls as backends for both. Because the GCP ILB can only forward traffic to <strong>nic0</strong> of backend instances, <strong>management interface swap</strong> is required: nic0 becomes the dataplane interface (ethernet1/1) and nic1 becomes the management interface.</p>
 </div>
 
 <h3>Topology Options</h3>
@@ -282,7 +283,7 @@
 
 <div class="callout callout-danger">
   <div class="callout-title">Minimum 2 NICs required for swap</div>
-  <p>If a VM-Series instance is launched with only 1 network interface and <code>mgmt-interface-swap</code> is enabled, the firewall boots into <strong>maintenance mode</strong>. The Terraform modules create 3 NICs by default (untrust, management, trust) &mdash; do not reduce this below 2.</p>
+  <p>If a VM-Series instance is launched with only 1 network interface and <code>mgmt-interface-swap</code> is enabled, the firewall boots into <strong>maintenance mode</strong>. The Terraform modules create 3 NICs by default (untrust, management, trust); do not reduce this below 2.</p>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════ -->
@@ -323,11 +324,11 @@ gcloud services enable compute.googleapis.com \
     </div>
     <div class="callout callout-note">
       <div class="callout-title">Project quotas</div>
-      <p>Verify sufficient quotas under <strong>IAM &amp; Admin &gt; Quotas</strong> for CPU, VPC networks (default: 5 per project &mdash; the common topology uses all 5), firewall rules, and static IPs in your target region. Request increases before deploying if needed.</p>
+      <p>Verify sufficient quotas under <strong>IAM &amp; Admin &gt; Quotas</strong> for CPU, VPC networks (default: 5 per project; the common topology uses all 5), firewall rules, and static IPs in your target region. Request increases before deploying if needed.</p>
     </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Run <code>gcloud projects describe YOUR_PROJECT_ID</code> &mdash; confirm <code>lifecycleState: ACTIVE</code>. Run <code>gcloud services list --enabled --project=YOUR_PROJECT_ID</code> and confirm all three APIs appear.</p>
+      <p>Run <code>gcloud projects describe YOUR_PROJECT_ID</code> and confirm <code>lifecycleState: ACTIVE</code>. Run <code>gcloud services list --enabled --project=YOUR_PROJECT_ID</code> and confirm all three APIs appear.</p>
     </div>
   </div>
 </div>
@@ -341,10 +342,10 @@ gcloud services enable compute.googleapis.com \
   <div class="collapsible-body">
     <p>The Terraform modules create a dedicated service account for the VM-Series instances. Verify that your deployment identity (the account running <code>terraform apply</code>) has sufficient privileges, and understand what the VM-Series service account needs.</p>
 
-    <h4>Deployment Identity (Terraform)</h4>
+    <h3>Deployment Identity (Terraform)</h3>
     <p>The account running Terraform needs <strong>Owner</strong> or equivalent privileges for the initial deployment. This scope can be reduced post-deployment.</p>
 
-    <h4>VM-Series Service Account</h4>
+    <h3>VM-Series Service Account</h3>
     <p>The Terraform modules create a service account (<code>sa-vmseries-01</code>) with these roles:</p>
     <table>
       <tr><th>Role</th><th>Purpose</th></tr>
@@ -375,13 +376,13 @@ gcloud services enable compute.googleapis.com \
   <div class="collapsible-body">
     <p>An SSH key is required for initial access to the VM-Series firewall management interface. GCP VM-Series instances accept exactly one key at deployment time.</p>
 
-    <h4>Step 1: Generate the key pair</h4>
+    <h3>Step 1: Generate the key pair</h3>
     <div class="code-block">
       <pre><code>ssh-keygen -t rsa -b 4096 -f ~/.ssh/gcp-vmseries-key -C "admin" -N ""</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
-    <h4>Step 2: Add the public key to your GCP project</h4>
+    <h3>Step 2: Add the public key to your GCP project</h3>
     <p>This makes the key available to all VM instances in the project that allow project-wide SSH keys:</p>
     <div class="code-block">
       <pre><code>gcloud compute project-info add-metadata --metadata-from-file ssh-keys=&lt;(echo "admin:$(cat ~/.ssh/gcp-vmseries-key.pub)")</code></pre>
@@ -396,7 +397,7 @@ gcloud services enable compute.googleapis.com \
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
-    <h4>Step 3: Verify the key format</h4>
+    <h3>Step 3: Verify the key format</h3>
     <p>The public key must be formatted as <code>admin:ssh-rsa AAAA... admin</code>. Both the <code>admin:</code> prefix and the trailing <code>admin</code> comment are <strong>mandatory</strong> for VM-Series.</p>
     <div class="code-block">
       <pre><code>echo "admin:$(cat ~/.ssh/gcp-vmseries-key.pub)"</code></pre>
@@ -405,7 +406,7 @@ gcloud services enable compute.googleapis.com \
 
     <div class="callout callout-danger">
       <div class="callout-title">Corrupted key = delete and redeploy</div>
-      <p>If the SSH key is malformed (extra spaces, missing prefix/suffix, wrong algorithm), the firewall will deploy but SSH access will fail. The only recovery is to <strong>delete the VM-Series instance and redeploy</strong>. The VPC networks survive deletion &mdash; only the firewall instance and firewall rules must be recreated.</p>
+      <p>If the SSH key is malformed (extra spaces, missing prefix/suffix, wrong algorithm), the firewall will deploy but SSH access will fail. The only recovery is to <strong>delete the VM-Series instance and redeploy</strong>. The VPC networks survive deletion; only the firewall instance and firewall rules must be recreated.</p>
     </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
@@ -537,7 +538,7 @@ gcloud services enable compute.googleapis.com \
     <span>1.8 VPC Network Planning</span>
   </div>
   <div class="collapsible-body">
-    <p>Plan the 5 VPC networks before deploying. Each VM-Series network interface must be in a <strong>different VPC network</strong> (GCP requirement &mdash; no two NICs can share a VPC). Subnet CIDRs must not overlap.</p>
+    <p>Plan the 5 VPC networks before deploying. Each VM-Series network interface must be in a <strong>different VPC network</strong> (GCP requirement: no two NICs can share a VPC). Subnet CIDRs must not overlap.</p>
     <table>
       <tr><th>VPC Network</th><th>Subnet Name</th><th>Default CIDR</th><th>Purpose</th></tr>
       <tr><td><code>fw-mgmt-vpc</code></td><td><code>fw-mgmt-sub</code></td><td><code>10.10.10.0/28</code></td><td>VM-Series management interface (nic1 after swap)</td></tr>
@@ -568,7 +569,7 @@ gcloud services enable compute.googleapis.com \
     <table>
       <tr><th>Port</th><th>Direction</th><th>Purpose</th></tr>
       <tr><td><code>TCP/3978</code></td><td>FW &rarr; Panorama</td><td>Device registration and management</td></tr>
-      <tr><td><code>TCP/28443</code></td><td>FW &rarr; Panorama</td><td>Log forwarding</td></tr>
+      <tr><td><code>TCP/28443</code></td><td>FW &rarr; Panorama</td><td>Software and content update retrieval (PAN-OS 8.x+)</td></tr>
     </table>
     <p>Common connectivity options:</p>
     <ul>
@@ -592,8 +593,8 @@ gcloud services enable compute.googleapis.com \
   <div class="collapsible-body">
     <p>Set up your deployment environment using one of the options below. This guide recommends deploying all GCP infrastructure with <strong>Terraform</strong> using the official Palo Alto Networks modules.</p>
 
-    <h4>Option A: Local Workstation or Bastion Host (Preferred)</h4>
-    <p>Install the following tools on your deployment machine. This is the recommended approach — it gives you full control over tool versions, persistent state, and IDE integration.</p>
+    <h3>Option A: Local Workstation or Bastion Host (Preferred)</h3>
+    <p>Install the following tools on your deployment machine. This is the recommended approach: it gives you full control over tool versions, persistent state, and IDE integration.</p>
     <table>
       <tr><th>Tool</th><th>Purpose</th><th>Install</th></tr>
       <tr><td><strong>Terraform CLI</strong></td><td>Infrastructure provisioning (&gt;= 1.3, &lt; 2.0)</td><td><a href="https://developer.hashicorp.com/terraform/install">developer.hashicorp.com/terraform/install</a></td></tr>
@@ -672,7 +673,7 @@ brew install hashicorp/tap/terraform</code></pre>
             </div>
           </div>
           <div class="mgmt-panel" data-plane="windows">
-            <p>Download the installer from <a href="https://git-scm.com/downloads/win" target="_blank" rel="noopener">git-scm.com/downloads/win</a> and run it. Accept the defaults &mdash; the installer includes <strong>Git Bash</strong>, which provides a Bash-compatible shell on Windows.</p>
+            <p>Download the installer from <a href="https://git-scm.com/downloads/win" target="_blank" rel="noopener">git-scm.com/downloads/win</a> and run it. Accept the defaults; the installer includes <strong>Git Bash</strong>, which provides a Bash-compatible shell on Windows.</p>
             <p>Verify the installation (open a new terminal):</p>
             <div class="code-block">
               <pre><code>git --version</code></pre>
@@ -779,7 +780,7 @@ icacls key.pem /grant:r "%USERNAME%:(R)"</code></pre>
       </div>
     </div>
 
-    <h4>Option B: Google Cloud Shell (Quick Alternative)</h4>
+    <h3>Option B: Google Cloud Shell (Quick Alternative)</h3>
     <p>Cloud Shell includes the <code>gcloud</code> CLI and automatically authenticates with the logged-in console user. Use this if you need to get started quickly without installing anything locally. Install Terraform in Cloud Shell if not already present. Cloud Shell sessions persist your home directory across sessions.</p>
     <div class="code-block">
       <pre><code>terraform -v
@@ -901,7 +902,7 @@ cd terraform-google-swfw-modules</code></pre>
     </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Run <code>request license api-key show</code> &mdash; confirms the key is set.</p>
+      <p>Run <code>request license api-key show</code> to confirm the key is set.</p>
     </div>
   </div>
 </div>
@@ -1166,7 +1167,7 @@ cd terraform-google-swfw-modules</code></pre>
     </ol>
     <div class="callout callout-warning">
       <div class="callout-title">Important: The magic lowercase <code>default</code> keyword</div>
-      <p>Naming the Log Forwarding Profile exactly <code>default</code> (lowercase, case-sensitive) causes PAN-OS to auto-attach it to all <strong>new</strong> security rules created in this device group. This is not retroactive &mdash; existing rules must be updated manually. The same behavior applies to Security Profile Groups named <code>default</code>.</p>
+      <p>Naming the Log Forwarding Profile exactly <code>default</code> (lowercase, case-sensitive) causes PAN-OS to auto-attach it to all <strong>new</strong> security rules created in this device group. This is not retroactive; existing rules must be updated manually. The same behavior applies to Security Profile Groups named <code>default</code>.</p>
     </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
@@ -1238,7 +1239,7 @@ cd terraform-google-swfw-modules</code></pre>
     </ol>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The command outputs a key string. Verify by running <code>request bootstrap vm-auth-key show</code> &mdash; the key should appear with its expiration date.</p>
+      <p>The command outputs a key string. Verify by running <code>request bootstrap vm-auth-key show</code>; the key should appear with its expiration date.</p>
     </div>
   </div>
 </div>
@@ -1272,7 +1273,7 @@ cd terraform-google-swfw-modules</code></pre>
 
 <h3 id="scm-path">2B SCM Path</h3>
 
-<p>For SCM-managed deployments, the GCP Terraform configuration works identically to the Panorama path &mdash; the bootstrap parameters differ but the infrastructure is the same.</p>
+<p>For SCM-managed deployments, the GCP Terraform configuration works identically to the Panorama path; the bootstrap parameters differ but the infrastructure is the same.</p>
 
 <div class="collapsible">
   <div class="collapsible-header">
@@ -1354,7 +1355,7 @@ cd terraform-google-swfw-modules</code></pre>
     <span>Collect Bootstrap Parameters</span>
   </div>
   <div class="collapsible-body">
-    <p>Record these values &mdash; they are entered into <code>terraform.tfvars</code> in <a href="#security-vpc">Phase 4</a>.</p>
+    <p>Record these values; they are entered into <code>terraform.tfvars</code> in <a href="#security-vpc">Phase 4</a>.</p>
     <table>
       <tr><th>Parameter</th><th>Source</th><th>Your Value</th></tr>
       <tr><td><code>panorama-server</code></td><td>Your Panorama IP (or <code>cloud</code> for SCM)</td><td><em>(record yours)</em></td></tr>
@@ -1478,7 +1479,7 @@ name_prefix = ""</code></pre>
     </div>
     <div class="callout callout-danger">
       <div class="callout-title">Exact format required</div>
-      <p>The key must begin with <code>admin:ssh-rsa </code> and end with <code> admin</code>. No line breaks, no extra whitespace. A malformed key renders the firewall inaccessible via SSH &mdash; the only recovery is to delete and redeploy.</p>
+      <p>The key must begin with <code>admin:ssh-rsa </code> and end with <code> admin</code>. No line breaks, no extra whitespace. A malformed key renders the firewall inaccessible via SSH; the only recovery is to delete and redeploy.</p>
     </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
@@ -1588,7 +1589,7 @@ name_prefix = ""</code></pre>
   </div>
   <div class="collapsible-body">
     <p>Review the load balancer configuration in <code>terraform.tfvars</code>. The defaults are correct for most deployments.</p>
-    <h4>Internal Load Balancer (Outbound + East-West)</h4>
+    <h3>Internal Load Balancer (Outbound + East-West)</h3>
     <div class="code-block">
       <pre><code>lbs_internal = {
   internal-lb = {
@@ -1602,7 +1603,7 @@ name_prefix = ""</code></pre>
 }</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
-    <h4>External Load Balancer (Inbound)</h4>
+    <h3>External Load Balancer (Inbound)</h3>
     <div class="code-block">
       <pre><code>lbs_external = {
   external-lb = {
@@ -1925,13 +1926,13 @@ debug show vm-series interfaces all</code></pre>
   <div class="collapsible-body">
     <p>Navigate to <strong>VPC network &gt; Routes</strong>. Filter by each VPC and verify the critical routes:</p>
 
-    <h4>Trust VPC</h4>
+    <h3>Trust VPC</h3>
     <table>
       <tr><th>Route Name</th><th>Destination</th><th>Next Hop</th></tr>
       <tr><td><code>fw-default-trust</code></td><td><code>0.0.0.0/0</code></td><td>Internal NLB (<code>10.10.12.5</code>)</td></tr>
     </table>
 
-    <h4>Spoke VPCs (imported via peering)</h4>
+    <h3>Spoke VPCs (imported via peering)</h3>
     <table>
       <tr><th>Route</th><th>Destination</th><th>Next Hop</th></tr>
       <tr><td>Peering route</td><td><code>0.0.0.0/0</code></td><td>Imported from trust VPC (ILB next-hop)</td></tr>
@@ -2011,7 +2012,7 @@ debug show vm-series interfaces all</code></pre>
     <span>6.1 Verify Spoke VMs</span>
   </div>
   <div class="collapsible-body">
-    <p>The Terraform modules deploy test Linux VMs in each spoke VPC. Connect via GCP IAP (Identity-Aware Proxy) tunneling &mdash; the spoke VMs have no public IPs.</p>
+    <p>The Terraform modules deploy test Linux VMs in each spoke VPC. Connect via GCP IAP (Identity-Aware Proxy) tunneling; the spoke VMs have no public IPs.</p>
     <div class="code-block">
       <pre><code># SSH to spoke-1 VM via IAP
 gcloud compute ssh spoke1-vm --zone=us-east1-b --tunnel-through-iap
@@ -2380,7 +2381,7 @@ debug logview component bts_details</code></pre>
 
 <h2 id="reference-tfvars">Reference: tfvars Files</h2>
 
-<p>The upstream Terraform modules include complete <code>example.tfvars</code> files for each topology. These files serve as the starting point &mdash; copy to <code>terraform.tfvars</code> and customize with your values.</p>
+<p>The upstream Terraform modules include complete <code>example.tfvars</code> files for each topology. These files serve as the starting point: copy to <code>terraform.tfvars</code> and customize with your values.</p>
 
 <table>
   <tr><th>SWFW Example</th><th>Topology</th><th>When to Use</th></tr>

@@ -136,7 +136,7 @@
       if (!doc) continue;
       var snippet = makeSnippet(doc.body, query);
       html +=
-        '<a class="search-result" href="' + resolveHref(hit.ref) + '" data-idx="' + i + '">' +
+        '<a class="search-result" href="' + escapeHtml(resolveHref(hit.ref)) + '" data-idx="' + i + '">' +
           '<div class="search-result-title">' + escapeHtml(doc.title) + '</div>' +
           '<div class="search-result-breadcrumb">' + escapeHtml(doc.breadcrumb) + '</div>' +
           (snippet ? '<div class="search-result-snippet">' + snippet + '</div>' : '') +
@@ -175,10 +175,18 @@
     return text;
   }
 
+  var HTML_ESCAPES = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  };
+
   function escapeHtml(s) {
-    var div = document.createElement('div');
-    div.textContent = s;
-    return div.innerHTML;
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return HTML_ESCAPES[c];
+    });
   }
 
   function escapeRegex(s) {
