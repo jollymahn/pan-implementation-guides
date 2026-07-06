@@ -74,6 +74,13 @@
   <div class="sidebar-section">
     <div class="sidebar-section-title">Verify</div>
     <a href="#post-deploy" data-section="post-deploy">Post-Deployment</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Identity</div>
+    <a href="#user-id" data-section="user-id">User-ID Configuration</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
     <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
   </div>
 </aside>
@@ -2397,6 +2404,512 @@ global_tags = {
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
       <p>The Strata Logging Service <code>Inventory</code> &gt; <code>Cloud NGFW</code> tab lists the Cloud NGFW resource with a connected status. The <code>Explore</code> query returns traffic log entries matching the test sessions from Steps 7.1&ndash;7.3. If the resource does not appear in the inventory, wait 5 minutes and refresh; initial registration propagation can take several minutes after the management platform link in Phase 2.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 8: USER-ID CONFIGURATION                              -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="user-id">Phase 8: User-ID Configuration</h2>
+<p class="section-subtitle">Enable identity-based security policy by mapping IP addresses to Active Directory users and groups on Cloud NGFW for AWS.</p>
+
+<p>User-ID gives Cloud NGFW the ability to enforce security policy based on who is generating traffic, not just which IP address is involved. This lets you write rules like "allow Finance to reach the payments portal" or "deny Contractors from internal file servers." Cloud NGFW for AWS supports four mapping methods &mdash; choose the one that fits your directory and infrastructure.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Cloud NGFW User-ID Limitations</div>
+  <ul>
+    <li>Cloud NGFW can only act as a redistribution <strong>client</strong> (consumer). It cannot act as a redistribution agent or source.</li>
+    <li>Authentication Policy and Authorization Policy are not supported on Cloud NGFW.</li>
+    <li>The XML-API User-ID mapping method is not supported.</li>
+    <li>The Panorama-based methods (Integrated Agent, Windows Agent, Redistribution) require Panorama-managed Cloud NGFW. The CIE method is also supported with SCM-managed Cloud NGFW.</li>
+  </ul>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">AWS Loopback Interface</div>
+  <p>Several steps below reference the loopback interface used for Cloud NGFW management-plane service routes (LDAP, AD probing, User-ID Agent communication). On Cloud NGFW for AWS, verify the correct loopback interface designation in Panorama under <strong>Network</strong> &gt; <strong>Interfaces</strong> for your template. The interface name varies by deployment &mdash; common designations include <code>loopback.1</code> or <code>loopback.3</code>. Wherever this guide references <code>loopback.X</code>, substitute the name that appears in your Panorama template.</p>
+</div>
+
+<!-- Step 8.1 — Enable User-ID on Zones -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 8.1: Enable User-ID on the Private and Public Zones</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Enable User-ID on both the <code>private</code> zone (internal east-west and spoke VPC traffic) and the <code>public</code> zone (outbound internet-destined traffic). Complete this step before configuring any mapping method below. On Panorama-managed Cloud NGFW, zones are configured at the device group level.</p>
+    <ol>
+      <li>In Panorama, select your Cloud NGFW device group from the <strong>Device Group</strong> dropdown.</li>
+      <li>Navigate to <strong>Network</strong> &gt; <strong>Zones</strong>.</li>
+      <li>Select the <strong>private</strong> zone and click <strong>Override</strong> (device group override) or <strong>Edit</strong>.</li>
+      <li>Check <strong>Enable User Identification</strong>.</li>
+      <li>Under <strong>Include List</strong>, click <strong>Add</strong> and enter your internal corporate VPC subnets (for example, <code>10.0.0.0/8</code> or the specific RFC-1918 ranges where user workloads reside). User-ID probing only occurs for IPs within these ranges.</li>
+      <li>Under <strong>Exclude List</strong>, add subnets that must not be probed: AWS load balancer health check addresses, VPC reserved addresses, TGW attachment subnets, and any ranges containing ephemeral or shared IPs.</li>
+      <li>Click <strong>OK</strong>.</li>
+      <li>Repeat for the <strong>public</strong> zone if you want identity-aware policy on outbound internet-destined traffic from identified users.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Always Define Include and Exclude Lists</div>
+      <p>Enabling User-ID on a zone without scoping the include/exclude lists causes Cloud NGFW to attempt WMI probing against every IP address it sees, including AWS metadata endpoints (169.254.169.254), VPC reserved addresses, and external destinations. Scope User-ID strictly to subnets where authenticated user sessions originate.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After the commit and push in your chosen method below, navigate to <strong>Monitor</strong> &gt; <strong>User-ID</strong> &gt; <strong>IP-User Mapping</strong> in Panorama. Once User-ID mapping data is flowing, this view lists active user-to-IP entries for the included subnets.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 8.2 — Method selection -->
+<p>Select the User-ID mapping method for your environment, complete its steps, then continue to Step 8.3 to configure group-based security policy.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which method should I use?</div>
+  <ul>
+    <li><strong>Cloud Identity Engine (CIE)</strong> &mdash; Recommended for cloud deployments. No Windows server in the firewall data path. Works with Entra ID, Okta, Google Workspace, and on-premises AD through the CIE connector agent.</li>
+    <li><strong>PAN-OS Integrated Agent</strong> &mdash; The firewall directly monitors AD event logs over WinRM-HTTPS. Agentless on the Windows side but requires a service account with AD event log read access and WinRM configured on each DC.</li>
+    <li><strong>Windows User-ID Agent</strong> &mdash; A dedicated Windows service polls AD and forwards mappings to Cloud NGFW via Panorama. Best for large-scale environments, VDI, or Terminal Server deployments.</li>
+    <li><strong>Panorama Redistribution</strong> &mdash; Panorama collects User-ID from other firewalls or agents in your estate and redistributes to Cloud NGFW. Use when User-ID is already operational on other managed firewalls.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="user-id-method">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="cie">8A &middot; Cloud Identity Engine</button>
+    <button class="mgmt-tab" data-plane="integrated">8B &middot; PAN-OS Integrated Agent</button>
+    <button class="mgmt-tab" data-plane="windows-agent">8C &middot; Windows User-ID Agent</button>
+    <button class="mgmt-tab" data-plane="panorama-redist">8D &middot; Panorama Redistribution</button>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- 8A: CLOUD IDENTITY ENGINE                                        -->
+  <!-- ================================================================ -->
+  <div class="mgmt-panel active" data-plane="cie">
+
+    <div class="callout callout-note">
+      <div class="callout-title">Prerequisites</div>
+      <ul>
+        <li>CIE deployed and connected to your directory. See the <a href="../cloud-identity-engine/cie-implementation.html">Cloud Identity Engine Implementation Guide</a> for full setup steps.</li>
+        <li>Active Directory (or Entra ID / Okta / Google Workspace) environment with users and groups.</li>
+        <li>Cloud NGFW managed via Panorama or SCM.</li>
+        <li>The Cloud NGFW device must be associated with the CIE tenant in the CIE portal (<strong>Settings</strong> &gt; <strong>Device Associations</strong>).</li>
+      </ul>
+    </div>
+
+    <!-- Step 8A.1 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8A.1: Configure CIE as the User-ID Source on Panorama</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Add the CIE instance as a User-ID redistribution source on Panorama so managed Cloud NGFW instances receive user-to-IP mappings. For CNGFW, this is configured under <strong>User Redistribution</strong>, not the standalone User Identification panel.</p>
+        <ol>
+          <li>In Panorama, navigate to <strong>Device</strong> &gt; <strong>User Redistribution</strong>.</li>
+          <li>Click <strong>Add</strong>, select <strong>Cloud Identity Engine</strong> as the type, and choose your CIE tenant from the dropdown.</li>
+          <li>Click <strong>OK</strong>.</li>
+          <li>To enable group mapping for <em>Panorama admin accounts</em>: navigate to the <strong>Panorama</strong> tab within <strong>User Redistribution</strong> and configure the Cloud Identity Engine instance there as well.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The CIE instance should display <strong>Status: Connected</strong>. If disconnected, confirm that Panorama has outbound HTTPS (443) access to the CIE service endpoint and that the CIE tenant is associated with this Panorama device in the CIE portal under <strong>Settings</strong> &gt; <strong>Device Associations</strong>.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 8A.2 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8A.2: Configure Group Mapping</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Group mapping for managed firewalls is configured through the same User Redistribution panel used in Step 8A.1.</p>
+        <ol>
+          <li>In Panorama, navigate to <strong>Device</strong> &gt; <strong>User Redistribution</strong>.</li>
+          <li>Select the CIE instance added in Step 8A.1 and configure the group mapping options, including which directory groups to include.</li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Step 8A.3 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8A.3: Enable CIE in the Cloud NGFW Device Group</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In Panorama, select your Cloud NGFW device group from the <strong>Device Group</strong> dropdown.</li>
+          <li>Navigate to <strong>Device</strong> &gt; <strong>User Identification</strong>.</li>
+          <li>Enable the <strong>Cloud Identity Engine</strong> toggle and select the CIE instance from Step 8A.1.</li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Step 8A.4 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8A.4: Set the User-ID Master Device</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Cloud NGFW runs multiple backend instances in a managed pool. Designate one instance as the <strong>User-ID Master Device</strong>. This instance performs the CIE polling and redistributes mappings to the other backend instances.</p>
+        <ol>
+          <li>In Panorama, within your Cloud NGFW device group, navigate to <strong>Device</strong> &gt; <strong>User Identification</strong>.</li>
+          <li>Under <strong>User-ID Master Device</strong>, select one Cloud NGFW backend serial number from the dropdown.</li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+        <div class="callout callout-note">
+          <div class="callout-title">Master Device Maintenance</div>
+          <p>Cloud NGFW backend instances may be replaced during scaling or maintenance events. If the selected master is decommissioned, User-ID mapping will stop until a new master is designated. Monitor the master device status in Panorama periodically.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 8A.5 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8A.5: Commit and Push</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In Panorama, click <strong>Commit</strong> &gt; <strong>Commit and Push</strong>.</li>
+          <li>Select the Cloud NGFW device group and click <strong>Commit and Push</strong>.</li>
+          <li>Wait for the push to complete and verify there are no errors in the push summary.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Navigate to <strong>Monitor</strong> &gt; <strong>User-ID</strong> &gt; <strong>IP-User Mapping</strong> in Panorama and select the Cloud NGFW device group. Within a few minutes of the push, active user-to-IP mappings sourced from CIE should appear. If no mappings appear after 5 minutes, confirm that user sessions are active in your directory and that the Cloud NGFW device is listed as a consumer in the CIE segment configuration.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- 8B: PAN-OS INTEGRATED AGENT                                      -->
+  <!-- ================================================================ -->
+  <div class="mgmt-panel" data-plane="integrated">
+
+    <div class="callout callout-note">
+      <div class="callout-title">Prerequisites</div>
+      <ul>
+        <li>Active Directory environment with users and groups.</li>
+        <li>Cloud NGFW deployed and managed via Panorama.</li>
+        <li>Dedicated AD service account with <strong>Remote Management User</strong> and <strong>CIMV2 WMI</strong> privileges. See <a href="https://docs.paloaltonetworks.com/pan-os/11-1/pan-os-admin/user-id/map-ip-addresses-to-users/create-a-dedicated-service-account-for-the-user-id-agent" target="_blank" rel="noopener noreferrer">Create a Dedicated Service Account</a>.</li>
+        <li>Windows AD server configured for WinRM over HTTPS with Basic Authentication. See <a href="https://docs.paloaltonetworks.com/pan-os/11-1/pan-os-admin/user-id/map-ip-addresses-to-users/configure-server-monitoring-using-winrm" target="_blank" rel="noopener noreferrer">Configure Server Monitoring Using WinRM</a>.</li>
+        <li>Cloud NGFW security policy allowing traffic from the CNGFW loopback interface to the AD server on TCP 5986 (WinRM-HTTPS) and TCP 389/636 (LDAP/LDAPS). The AD server must be reachable from the Cloud NGFW private VPC via VPC peering, Direct Connect, or a transit VPC routing path.</li>
+      </ul>
+    </div>
+
+    <!-- Step 8B.1 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8B.1: Import Root Certificate and Create Certificate Profile</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In Panorama, navigate to <strong>Device</strong> &gt; <strong>Certificate Management</strong> &gt; <strong>Certificates</strong>.</li>
+          <li>Click <strong>Import</strong> and import the root CA certificate that signed the AD server's WinRM certificate.</li>
+          <li>Navigate to <strong>Device</strong> &gt; <strong>Certificate Management</strong> &gt; <strong>Certificate Profile</strong>.</li>
+          <li>Click <strong>Add</strong>. Enter a name (e.g., <code>uid-winrm-profile</code>). Under <strong>CA Certificates</strong>, add the imported root CA.</li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Step 8B.2 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8B.2: Configure User-ID Connection Security</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In Panorama, navigate to <strong>Device</strong> &gt; <strong>User Identification</strong> &gt; <strong>User Mapping</strong>.</li>
+          <li>Click <strong>Edit</strong> on the <strong>Palo Alto Networks User-ID Agent Setup</strong>.</li>
+          <li>On the <strong>Connection Security</strong> tab, set <strong>Certificate Profile</strong> to the profile created in Step 8B.1.</li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Step 8B.3 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8B.3: Configure Server Monitor Account and AD Server Monitoring</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In Panorama, navigate to <strong>Device</strong> &gt; <strong>User Identification</strong> &gt; <strong>User Mapping</strong>.</li>
+          <li>Under <strong>Server Monitor Account</strong>, click <strong>Edit</strong> and enter the service account credentials.</li>
+          <li>Under <strong>Server Monitoring</strong>, click <strong>Add</strong> and configure:
+            <table>
+              <thead><tr><th>Field</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Name</td><td>e.g., <code>corp-dc01</code></td></tr>
+                <tr><td>Network Address</td><td>IP address of the AD domain controller</td></tr>
+                <tr><td>Type</td><td>Microsoft Active Directory</td></tr>
+                <tr><td>Transport Protocol</td><td>WinRM-HTTPS</td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Step 8B.4 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8B.4: Configure Service Route to the AD/LDAP Server</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Set the service route so Cloud NGFW routes LDAP and AD probing traffic through the correct loopback interface. Verify the loopback interface name in your Panorama template (see the AWS loopback note at the top of this section).</p>
+        <ol>
+          <li>In Panorama, navigate to <strong>Device</strong> &gt; <strong>Setup</strong> &gt; <strong>Services</strong> &gt; <strong>Service Route Configuration</strong>.</li>
+          <li>Click <strong>Add</strong> and configure:
+            <table>
+              <thead><tr><th>Field</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Service</td><td>LDAP</td></tr>
+                <tr><td>Source Interface</td><td><code>loopback.X</code> (verify the unit number in your Panorama template under Network &gt; Interfaces)</td></tr>
+                <tr><td>Source Address</td><td>IP address of your Active Directory server</td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Click <strong>OK</strong>.</li>
+          <li>Add a Cloud NGFW security policy rule allowing traffic from the private zone (loopback source) to the AD server on TCP 5986 and TCP 389/636.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Step 8B.5 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8B.5: Configure LDAP Server Profile and Group Mapping</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In Panorama, navigate to <strong>Device</strong> &gt; <strong>Server Profiles</strong> &gt; <strong>LDAP</strong>.</li>
+          <li>Click <strong>Add</strong> and configure:
+            <table>
+              <thead><tr><th>Field</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Name</td><td>e.g., <code>corp-ldap</code></td></tr>
+                <tr><td>Server</td><td>AD DC IP, port <code>389</code> (or <code>636</code> for LDAPS)</td></tr>
+                <tr><td>Type</td><td>Active Directory</td></tr>
+                <tr><td>Base DN</td><td>e.g., <code>DC=corp,DC=example,DC=com</code></td></tr>
+                <tr><td>Bind DN</td><td>Service account UPN</td></tr>
+                <tr><td>Password</td><td>Service account password</td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Click <strong>OK</strong>.</li>
+          <li>Navigate to <strong>Device</strong> &gt; <strong>User Identification</strong> &gt; <strong>Group Mapping Settings</strong>, click <strong>Add</strong>, and select the LDAP profile above.</li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Step 8B.6 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8B.6: Set User-ID Master Device and Commit</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In Panorama, select your Cloud NGFW device group.</li>
+          <li>Navigate to <strong>Device</strong> &gt; <strong>User Identification</strong>.</li>
+          <li>Under <strong>User-ID Master Device</strong>, select one Cloud NGFW backend instance serial number.</li>
+          <li>Click <strong>OK</strong>.</li>
+          <li>Click <strong>Commit</strong> &gt; <strong>Commit and Push</strong> to the Cloud NGFW device group.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Navigate to <strong>Monitor</strong> &gt; <strong>User-ID</strong> &gt; <strong>Server Monitor</strong> in Panorama. The AD server entry should show <strong>Status: Connected</strong>. User-to-IP mappings appear under <strong>IP-User Mapping</strong> as users authenticate against Active Directory.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- 8C: WINDOWS USER-ID AGENT                                        -->
+  <!-- ================================================================ -->
+  <div class="mgmt-panel" data-plane="windows-agent">
+
+    <div class="callout callout-note">
+      <div class="callout-title">Prerequisites</div>
+      <ul>
+        <li>Active Directory environment with users and groups.</li>
+        <li>Cloud NGFW deployed and managed via Panorama.</li>
+        <li>Windows server (EC2 instance or on-premises host reachable via Direct Connect/VPN) with the <a href="https://docs.paloaltonetworks.com/pan-os/11-1/pan-os-admin/user-id/map-ip-addresses-to-users/configure-user-mapping-using-the-windows-user-id-agent/install-the-windows-based-user-id-agent" target="_blank" rel="noopener noreferrer">Windows-based User-ID Agent</a> installed.</li>
+        <li>Cloud NGFW security policy allowing traffic from the CNGFW loopback interface to the Windows server on TCP 5007.</li>
+      </ul>
+    </div>
+
+    <!-- Step 8C.1 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8C.1: Configure the Windows User-ID Agent</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>On the Windows server, open the <strong>Palo Alto Networks User-ID Agent</strong> application and click <strong>Edit</strong>.</li>
+          <li>On the <strong>Credentials</strong> tab, enter the service account <strong>Username</strong> and <strong>Password</strong>.</li>
+          <li>On the <strong>Discovery</strong> tab, enable <strong>Auto Discover</strong> if the AD DC is on the same server, or add the AD server IP manually.</li>
+          <li>Confirm the <strong>Listening Port</strong> is <code>5007</code>.</li>
+          <li>Click <strong>Start</strong>. The agent should show <strong>Running</strong> and the AD server should appear in the Servers list.</li>
+        </ol>
+        <div class="callout callout-warning">
+          <div class="callout-title">Security Group and Windows Firewall</div>
+          <p>Both the AWS security group attached to the Windows server EC2 instance and the Windows Firewall must allow inbound TCP 5007 from the Cloud NGFW private zone IP range. Without both rules, the agent will be unreachable from CNGFW.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 8C.2 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8C.2: Configure the Agent as a Data Redistribution Agent in Panorama</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In Panorama, navigate to <strong>Device</strong> &gt; <strong>Data Redistribution</strong>.</li>
+          <li>Click <strong>Add</strong> and configure:
+            <table>
+              <thead><tr><th>Field</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Name</td><td>e.g., <code>uid-agent-01</code></td></tr>
+                <tr><td>Host</td><td>IP address of the Windows User-ID Agent server</td></tr>
+                <tr><td>Port</td><td><code>5007</code></td></tr>
+                <tr><td>Collects Data From</td><td>User-ID Agent</td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Step 8C.3 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8C.3: Configure Service Route and LDAP / Group Mapping</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In Panorama, navigate to <strong>Device</strong> &gt; <strong>Setup</strong> &gt; <strong>Services</strong> &gt; <strong>Service Route Configuration</strong>.</li>
+          <li>Click <strong>Add</strong>. Set <strong>Service</strong> to <strong>User-ID Agent</strong> and <strong>Source Interface</strong> to your loopback interface (verify name in your Panorama template).</li>
+          <li>Click <strong>OK</strong>.</li>
+          <li>Configure the LDAP Server Profile and Group Mapping as described in the PAN-OS Integrated Agent method (Step 8B.5).</li>
+          <li>In your Cloud NGFW device group, set the <strong>User-ID Master Device</strong> to one backend instance serial number.</li>
+          <li>Click <strong>Commit</strong> &gt; <strong>Commit and Push</strong>.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>In Panorama, navigate to <strong>Monitor</strong> &gt; <strong>User-ID</strong> &gt; <strong>IP-User Mapping</strong> and confirm user-to-IP entries appear. On the Windows server, the User-ID Agent console should show <strong>Running</strong> with a populated user count.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- 8D: PANORAMA REDISTRIBUTION                                      -->
+  <!-- ================================================================ -->
+  <div class="mgmt-panel" data-plane="panorama-redist">
+
+    <div class="callout callout-note">
+      <div class="callout-title">Prerequisites</div>
+      <ul>
+        <li>Active Directory environment with users and groups.</li>
+        <li>Cloud NGFW deployed and managed via Panorama.</li>
+        <li>An existing User-ID data source already managed by Panorama: a Windows-based User-ID Agent or another firewall collecting mappings.</li>
+        <li>Cloud NGFW security policy allowing communication with the redistribution source.</li>
+      </ul>
+    </div>
+
+    <!-- Step 8D.1 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8D.1: Configure Redistribution Agent on Panorama</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In Panorama, navigate to <strong>Panorama</strong> &gt; <strong>Data Redistribution</strong>.</li>
+          <li>Click <strong>Add</strong> and configure a redistribution agent pointing to your existing User-ID source (VM-Series firewall or Windows agent). Set <strong>Agent Type</strong>, <strong>Host</strong>, and any applicable <strong>Port</strong> values.</li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Step 8D.2 -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 8D.2: Configure Data Redistribution on the Cloud NGFW Device Group</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In Panorama, select your Cloud NGFW device group.</li>
+          <li>Navigate to <strong>Device</strong> &gt; <strong>Data Redistribution</strong>.</li>
+          <li>Click <strong>Add</strong> and configure a <strong>Data Redistribution Agent</strong> pointing to Panorama as the redistribution hub.</li>
+          <li>Click <strong>OK</strong>.</li>
+          <li>Configure LDAP Server Profile and Group Mapping (Step 8B.5), set the <strong>User-ID Master Device</strong>, and click <strong>Commit</strong> &gt; <strong>Commit and Push</strong>.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Navigate to <strong>Monitor</strong> &gt; <strong>User-ID</strong> &gt; <strong>IP-User Mapping</strong> in Panorama. After the push, mappings redistributed from Panorama to Cloud NGFW should appear when the Cloud NGFW device group is selected.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Step 8.3 — Group-based security policy -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 8.3: Define User- and Group-Based Security Policy</span>
+  </div>
+  <div class="collapsible-body">
+    <p>With User-ID mappings active and group data imported, you can reference users and AD groups in Cloud NGFW security policy rules to enforce identity-aware access control.</p>
+    <ol>
+      <li>In Panorama, navigate to <strong>Policies</strong> &gt; <strong>Security</strong> for the Cloud NGFW device group.</li>
+      <li>Create a new rule or edit an existing one.</li>
+      <li>On the <strong>Source</strong> tab, under <strong>Source User</strong>, click <strong>Add</strong>.</li>
+      <li>Enter the AD group name or browse the group list:
+        <ul>
+          <li><code>domain\Finance-Users</code> &mdash; all members of the Finance AD group</li>
+          <li><code>domain\Contractors</code> &mdash; contractor accounts</li>
+          <li><code>any</code> &mdash; all authenticated users regardless of group</li>
+        </ul>
+      </li>
+      <li>Complete the remaining rule fields and click <strong>OK</strong>.</li>
+      <li>Commit and push to the Cloud NGFW device group.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Generate traffic from a machine logged in as a known AD user. In Panorama, navigate to <strong>Monitor</strong> &gt; <strong>Logs</strong> &gt; <strong>Traffic</strong> and confirm the <strong>Source User</strong> column shows the username for matching sessions. If it shows an IP address instead, the mapping for that host IP has not yet been received &mdash; check <strong>Monitor</strong> &gt; <strong>User-ID</strong> &gt; <strong>IP-User Mapping</strong>.</p>
     </div>
   </div>
 </div>
