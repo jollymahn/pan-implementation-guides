@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>SCM Administrator SSO with Okta &mdash; Palo Alto Networks</title>
+<link rel="stylesheet" href="../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="document.querySelector('.sidebar').classList.toggle('open')" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES <span style="font-weight:400;font-size:0.85rem;margin-left:0.5rem;">SCM Onboarding</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../index.html">Home</a>
+    <a href="../guides/aws/index.html">AWS</a>
+    <a href="../guides/azure/index.html">Azure</a>
+    <a href="../guides/gcp/index.html">GCP</a>
+    <a href="../guides/oci/index.html">OCI</a>
+    <a href="../guides/bootstrap/vm-series-bootstrap.html">Bootstrap</a>
+    <a href="../globalprotect/index.html">GlobalProtect</a>
+    <a href="index.html" class="active">SCM</a>
+    <a href="../guides/cloud-identity-engine/cie-implementation.html">CIE</a>
+    <a href="../index.html#airs">AIRS</a>
+    <a href="../guides/portkey/index.html">AI Gateway</a>
+    <a href="../guides/cngfw/cloud-ngfw-deployment.html">CNGFW</a>
+    <a href="../guides/panorama-cli/panos-cli-reference.html">PanOS CLI</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>⌘K</kbd>
+    </button>
+  </nav>
+</header>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#overview" data-section="overview">About This Guide</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configuration</div>
+    <a href="#step-permissions" data-section="step-permissions">1. Verify Permissions</a>
+    <a href="#step-federation" data-section="step-federation">2. Add Identity Federation</a>
+    <a href="#step-sp-metadata" data-section="step-sp-metadata">3. Download SP Metadata</a>
+    <a href="#step-okta-app" data-section="step-okta-app">4. Create Okta App</a>
+    <a href="#step-idp-metadata" data-section="step-idp-metadata">5. Get IdP Metadata</a>
+    <a href="#step-configure-pan" data-section="step-configure-pan">6. Configure PAN &amp; Enable</a>
+    <a href="#step-tenant-mapping" data-section="step-tenant-mapping">7. Map Tenants</a>
+    <a href="#step-role-mapping" data-section="step-role-mapping">8. Configure Role Mapping</a>
+    <a href="#step-verify" data-section="step-verify">9. Test SSO Login</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+  </div>
+</aside>
+
+<!-- ── Main content ───────────────────────────────────────────── -->
+<main class="content">
+
+<nav class="breadcrumbs">
+  <a href="../index.html">Home</a> | <a href="index.html">SCM Onboarding</a> | Okta SSO Authentication
+</nav>
+
+<h1>SCM Administrator SSO with Okta</h1>
+<p class="subtitle" style="border-bottom: 3px solid var(--pan-gold); padding-bottom: 0.75rem; margin-bottom: 1.5rem;">Configure SAML 2.0 federation so your administrators log in to Strata Cloud Manager through Okta</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">&#8592; SCM Onboarding Guide</a>
+  <a href="../guides/cloud-identity-engine/cie-implementation.html" class="cloud-link">CIE Implementation Guide</a>
+</div>
+
+<!-- ── Overview ───────────────────────────────────────────────── -->
+<h2 id="overview">About This Guide</h2>
+
+<p>This guide covers federating Strata Cloud Manager (SCM) administrator login to Okta using SAML 2.0. Once configured, administrators authenticate through your Okta tenant instead of a Palo Alto Networks account, allowing you to enforce MFA, apply Okta access policies, and centralize identity management for PAN products alongside the rest of your enterprise tooling.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">This Is Not Cloud Identity Engine</div>
+  <p>Cloud Identity Engine (CIE) authenticates <strong>end users</strong> through firewalls and Prisma Access. This guide covers <strong>administrator login</strong> to the SCM portal itself. These are separate products with separate configurations. If you need Okta for firewall user authentication, see the <a href="../guides/cloud-identity-engine/cie-implementation.html">CIE Implementation Guide</a>.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">SP-Initiated Flow Only</div>
+  <p>SCM does not support IdP-initiated SAML login. Administrators must navigate to <a href="https://apps.paloaltonetworks.com">apps.paloaltonetworks.com</a> and be redirected to Okta from there. The Okta app tile cannot be used to launch a session directly.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul>
+  <li>An active SCM or Common Services subscription (Essentials or Pro).</li>
+  <li>Your account holds the <strong>IAM Administrator</strong> or <strong>Superuser</strong> role in Common Services. This is typically the account that activated your subscription.</li>
+  <li>Admin access to your Okta tenant with permission to create SAML applications.</li>
+  <li>The ability to add a DNS TXT record to your public domain (for domain ownership verification).</li>
+  <li>At least one non-federated Superuser account kept active throughout this process as a fallback. If SSO becomes misconfigured or unavailable, this account is your recovery path.</li>
+</ul>
+
+<!-- ── Configuration steps ────────────────────────────────────── -->
+<h2 id="step-permissions">Step 1: Verify Permissions</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Confirm your IAM role in Common Services</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Log in to <a href="https://apps.paloaltonetworks.com">apps.paloaltonetworks.com</a>.</li>
+      <li>Navigate to <strong>Common Services &gt; Identity &amp; Access &gt; Access Management &gt; Roles</strong>.</li>
+      <li>Confirm your account holds <strong>IAM Administrator</strong> or <strong>Superuser</strong>.</li>
+    </ol>
+    <p>If your account does not hold one of these roles, have a Superuser assign you the IAM Administrator role before continuing. Without it, the Identity Federations configuration is inaccessible.</p>
+  </div>
+</div>
+
+<h2 id="step-federation">Step 2: Add an Identity Federation and Verify Your Domain</h2>
+
+<p>PAN requires proof of domain ownership before federating any email domain. You add a DNS TXT record to your public DNS provider to verify control of the domain.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Add federation and complete DNS verification</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <strong>Common Services &gt; Identity &amp; Access &gt; Access Management &gt; Identity Federations</strong>.</li>
+      <li>Click <strong>Add Identity Federation</strong>.</li>
+      <li>Enter the email domain to federate (for example, <code>company.com</code>). Only letters, numbers, hyphens, and dots are allowed; maximum 50 characters.</li>
+      <li>PAN generates a DNS TXT record. Copy the full record value.</li>
+      <li>In your DNS provider, create a new TXT record for the domain using the copied value. If your current TTL is high, reduce it temporarily to speed propagation.</li>
+      <li>Return to Identity Federations and click <strong>Verify Now</strong>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>DNS propagation can take minutes to hours. If <strong>Verify Now</strong> fails, wait and retry. Once verification is confirmed, restore your DNS TTL to its original value. The TXT record can be removed after verification.</p>
+    </div>
+  </div>
+</div>
+
+<h2 id="step-sp-metadata">Step 3: Download the PAN Service Provider Metadata</h2>
+
+<p>PAN generates tenant-specific SAML Service Provider (SP) metadata containing the values Okta needs: the Entity ID, Assertion Consumer Service (ACS) URL, and SP certificate.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Download the SP metadata XML file</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In <strong>Identity Federations</strong>, locate your verified domain.</li>
+      <li>Click <strong>Download SP Metadata</strong>.</li>
+      <li>Save the XML file. You will upload it to Okta in Step 4.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Note</div>
+      <p>The SP metadata values are tenant-specific and not published by PAN. Keep this file within your organization.</p>
+    </div>
+  </div>
+</div>
+
+<h2 id="step-okta-app">Step 4: Create a Custom SAML 2.0 App in Okta</h2>
+
+<p>There is no pre-built Okta gallery app for SCM administrator SSO. Create a custom SAML 2.0 application and configure it with the PAN SP metadata from Step 3.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Create the Okta SAML app and configure attributes</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the Okta Admin Console, navigate to <strong>Applications &gt; Applications &gt; Create App Integration</strong>.</li>
+      <li>Select <strong>SAML 2.0</strong> as the sign-on method and click <strong>Next</strong>.</li>
+      <li>Enter an app name (for example, <code>Palo Alto Networks SCM</code>) and click <strong>Next</strong>.</li>
+      <li>In the SAML Settings section, enter the values from your SP metadata XML file:
+        <ul>
+          <li><strong>Single Sign-On URL</strong>: the ACS URL from the SP metadata</li>
+          <li><strong>Audience URI (SP Entity ID)</strong>: the Entity ID from the SP metadata</li>
+        </ul>
+      </li>
+      <li>Set <strong>Name ID format</strong> to <code>EmailAddress</code>.</li>
+      <li>Under <strong>Attribute Statements</strong>, add these three required attributes exactly as shown:
+        <table>
+          <tr><th>Name</th><th>Value</th></tr>
+          <tr><td><code>firstName</code></td><td><code>user.firstName</code></td></tr>
+          <tr><td><code>lastName</code></td><td><code>user.lastName</code></td></tr>
+          <tr><td><code>email</code></td><td><code>user.email</code></td></tr>
+        </table>
+      </li>
+      <li>Under <strong>Group Attribute Statements</strong>, add a group attribute for role mapping:
+        <table>
+          <tr><th>Name</th><th>Filter</th></tr>
+          <tr><td><code>groups</code></td><td>Matches regex <code>.*</code> (or a specific prefix to scope which groups are sent)</td></tr>
+        </table>
+      </li>
+      <li>In the App Visibility settings, <strong>uncheck</strong> any option that displays the app icon to users in the Okta portal. PAN does not support IdP-initiated login, and clicking the tile will not work.</li>
+      <li>Click <strong>Finish</strong>, then assign the app to the relevant users or groups.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Missing Attributes Cause Blank Display Names</div>
+      <p>If <code>firstName</code>, <code>lastName</code>, or <code>email</code> are absent from the SAML assertion, users authenticate successfully but appear with blank names in the SCM interface. Verify all three attribute statements are configured exactly as shown.</p>
+    </div>
+  </div>
+</div>
+
+<h2 id="step-idp-metadata">Step 5: Get the Okta IdP Metadata</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Retrieve the Okta IdP metadata file or URL</span>
+  </div>
+  <div class="collapsible-body">
+    <p>After saving the Okta app, retrieve the Identity Provider metadata to upload to PAN. Two options are available:</p>
+    <ul>
+      <li><strong>Metadata file:</strong> In the Okta app, go to the <strong>Sign On</strong> tab and click <strong>Identity Provider metadata</strong> to download the XML file.</li>
+      <li><strong>Metadata URL:</strong> The URL follows the pattern <code>https://&lt;your-domain&gt;.okta.com/app/&lt;appId&gt;/sso/saml/metadata</code>. Copy it from the Sign On tab.</li>
+    </ul>
+    <p>Keep the file or URL ready for the next step. The metadata URL approach is simpler because it stays current if Okta rotates its certificate.</p>
+  </div>
+</div>
+
+<h2 id="step-configure-pan">Step 6: Configure Okta as a SAML Provider in PAN and Enable the Login URL</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Upload Okta metadata and activate the Login URL</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Return to <strong>Common Services &gt; Identity &amp; Access &gt; Access Management &gt; Identity Federations</strong>.</li>
+      <li>Locate your verified domain and click <strong>Configure Identity Provider</strong>.</li>
+      <li>Choose one method to provide the Okta IdP metadata:
+        <ul>
+          <li><strong>Upload metadata file:</strong> Upload the XML file from Step 5. All fields populate automatically. Click <strong>Finish</strong>.</li>
+          <li><strong>Enter metadata URL:</strong> Paste the Okta metadata URL. Fields populate automatically. Click <strong>Finish</strong>.</li>
+          <li><strong>Manual entry:</strong> Upload the Okta signing certificate (<code>.crt</code> format only), enter the IdP Entity ID/Issuer, and enter the IdP SSO URL. Click <strong>Next</strong>, then <strong>Finish</strong>.</li>
+        </ul>
+      </li>
+      <li>After saving, the <strong>Configure Identity Provider</strong> button is replaced by a <strong>Login URL</strong>. This URL is <strong>disabled by default</strong>.</li>
+      <li>Click <strong>Actions &gt; Enable</strong> to activate the Login URL.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">Enable the Login URL</div>
+      <p>The Login URL is disabled after initial setup. Federation will not work until you explicitly enable it via Actions &gt; Enable. This is the most common reason SSO appears fully configured but fails at login.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Certificate Format for Manual Entry</div>
+      <p>If using the manual entry method, the Okta certificate must be in <code>.crt</code> format. PEM and CER formats are not accepted. Use the metadata file or URL methods to avoid this restriction.</p>
+    </div>
+  </div>
+</div>
+
+<h2 id="step-tenant-mapping">Step 7: Map Tenants for Authorization</h2>
+
+<p>Authentication and authorization are separate in PAN's identity federation. After establishing the SAML trust, you must explicitly map the federation to the tenants (TSGs) that federated users can access. Without this step, users authenticate successfully but have no access to any tenant.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Map federation to SCM tenants</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In <strong>Identity Federations</strong>, locate your federation and click <strong>Edit Tenant Mapping for Authorization</strong>.</li>
+      <li>Select which Tenant Service Groups (TSGs) the federation is authorized to access.</li>
+      <li>Click <strong>Save</strong>.</li>
+    </ol>
+    <p>Child tenants automatically inherit mappings from parent tenants. The Federated Role Mapping UI in Step 8 only shows tenants that have been mapped here.</p>
+  </div>
+</div>
+
+<h2 id="step-role-mapping">Step 8: Configure Federated Role Mapping</h2>
+
+<p>Map Okta groups to SCM roles so users receive the correct permissions on login. PAN evaluates three SAML attributes and assigns roles on the first match: <code>memberOf</code>, <code>strataCloudManagerRoles</code>, and <code>groups</code>. The <code>groups</code> attribute configured in Step 4 satisfies this requirement.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Map Okta groups to SCM roles</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <strong>System Settings &gt; Identity Federation &gt; Federated Role Mapping</strong>.</li>
+      <li>Select the target tenant from the dropdown. Only tenants mapped in Step 7 appear here.</li>
+      <li>Click <strong>Add Role Mapping</strong>.</li>
+      <li>Enter the <strong>Attribute Value</strong>: the Okta group name exactly as it appears in the SAML assertion (for example, <code>SCM-Network-Admins</code>).</li>
+      <li>Select the <strong>Role</strong> to assign.</li>
+      <li>Define the <strong>Scope</strong> within the tenant hierarchy.</li>
+      <li>Click <strong>Save</strong>. Repeat for each group and role combination needed.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Available SCM Roles</div>
+      <p>Common roles include: Superuser, IAM Administrator, Security Administrator, Network Administrator, and Multitenant Administrator. Assign the minimum role required for each group.</p>
+    </div>
+  </div>
+</div>
+
+<h2 id="step-verify">Step 9: Test and Verify SSO Login</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Run an end-to-end SSO test</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Open a private or incognito browser window to avoid cached session state.</li>
+      <li>Navigate to <a href="https://apps.paloaltonetworks.com">apps.paloaltonetworks.com</a>.</li>
+      <li>Enter a federated user's email address at the login screen.</li>
+      <li>Confirm the browser redirects to your Okta login page.</li>
+      <li>Authenticate with Okta credentials (and MFA if enforced by your Okta policy).</li>
+      <li>After Okta authentication, confirm the user lands in SCM with the expected role and tenant access.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Success Indicators</div>
+      <ul>
+        <li>User lands in SCM after Okta authentication without being prompted for a PAN password</li>
+        <li>Display name shows first and last name (not blank)</li>
+        <li>Tenant access and role match the mapping configured in Step 8</li>
+      </ul>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Keep a Fallback Admin Account</div>
+      <p>Before rolling out SSO to all administrators, confirm that at least one non-federated Superuser account remains active. Use this account to regain access if SSO breaks or is misconfigured.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Troubleshooting ─────────────────────────────────────────── -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>SSO configured but login still fails or redirects to PAN login</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Most likely cause:</strong> The Login URL is disabled. This is the default state after configuring the SAML provider.</p>
+    <p><strong>Fix:</strong> Go to Common Services &gt; Identity &amp; Access &gt; Access Management &gt; Identity Federations, locate your federation, click <strong>Actions &gt; Enable</strong>.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>User authenticates but displays a blank name in SCM</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Cause:</strong> The <code>firstName</code>, <code>lastName</code>, or <code>email</code> attribute statements are missing or incorrectly named in the Okta SAML app.</p>
+    <p><strong>Fix:</strong> In the Okta app, go to <strong>Sign On &gt; SAML Settings &gt; Edit</strong> and verify all three attribute statements match these exact names and values:</p>
+    <table>
+      <tr><th>Name</th><th>Value</th></tr>
+      <tr><td><code>firstName</code></td><td><code>user.firstName</code></td></tr>
+      <tr><td><code>lastName</code></td><td><code>user.lastName</code></td></tr>
+      <tr><td><code>email</code></td><td><code>user.email</code></td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>User authenticates but has no access to any tenant</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Cause:</strong> Tenant mapping for authorization was not completed (Step 7). Authentication and authorization are separate in PAN's identity federation.</p>
+    <p><strong>Fix:</strong> In Identity Federations, click <strong>Edit Tenant Mapping for Authorization</strong> for your federation and select the relevant tenants.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>DNS TXT verification fails</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Cause:</strong> The TXT record has not propagated yet, or was entered incorrectly.</p>
+    <p><strong>Fix:</strong> Verify the record is correct with <code>dig TXT yourdomain.com</code> or a public DNS lookup tool. If the record is present but verification still fails, wait for propagation and retry. DNS TTL delays are the most common cause.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Certificate upload fails during manual SAML configuration</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Cause:</strong> PAN's manual entry method only accepts <code>.crt</code> format certificates. PEM, CER, and other formats are rejected.</p>
+    <p><strong>Fix:</strong> Convert the Okta certificate to <code>.crt</code> format, or switch to the metadata file or URL methods (Steps 5 and 6), which do not have this restriction.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Federated Role Mapping dropdown shows no tenants</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Cause:</strong> No tenants have been mapped for authorization in Step 7. The Role Mapping UI only shows tenants that are explicitly mapped.</p>
+    <p><strong>Fix:</strong> Complete Step 7 first (Edit Tenant Mapping for Authorization in Identity Federations), then return to Federated Role Mapping.</p>
+  </div>
+</div>
+
+</main>
+</div>
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#8679;</button>
+<script src="../shared/js/pan-guides.js"></script>
+<script src="../shared/js/lunr.min.js"></script>
+<script src="../shared/js/search.js"></script>
+</body>
+</html>
