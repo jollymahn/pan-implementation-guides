@@ -11,6 +11,122 @@
 > **Part A** is completed once per customer. **Part B** once per engagement. **Part C** is repeated for each target or target group.
 
 > **Cross-reference:** This TRD feeds the [AI Red Teaming Deployment Guide](../../guides/airs-red/airs-red-teaming.html). Each section below notes which guide step consumes its data.
+>
+> **Fast-start version:** If this is a standard deployment with no custom attack development or SIEM integration, use the [Deployment Readiness Checklist](trd-redteaming-fast-start.md) instead — it contains only the fields that directly block deployment.
+
+---
+
+## Prerequisites
+
+Complete all items in this section before the deployment call begins. Each missing item is a potential session-stopper. Use this as a pre-engagement gate — if items remain unresolved one week before the call, reschedule.
+
+---
+
+### Licensing and Credits
+
+AI Red Teaming is licensed through Software NGFW Credits, not as a standalone SKU. Credits are allocated from the Customer Support Portal (CSP) and consumed as scans run.
+
+**What can block you:** The CSP admin role required to allocate credits is separate from SCM admin access. A standard SCM admin cannot view or allocate credits. If the correct CSP admin is not identified and available for the deployment call, activation cannot proceed. This is the most common day-of blocker.
+
+| Requirement | Status |
+|---|---|
+| Active Palo Alto Networks Customer Support Portal account | ☐ Confirmed |
+| AIRS credits available (Software/Cloud NGFW Credits) | ☐ Confirmed |
+| CSP admin with credit allocation role: identified and available for the call | ☐ Confirmed |
+
+---
+
+### Strata Logging Service (SLS)
+
+SLS is a **mandatory prerequisite** for AIRS. It must be enabled on the tenant before AIRS activation begins. If SLS is not enabled, the activation flow fails mid-process and cannot be recovered without starting over. SLS cannot be added after the deployment profile is created.
+
+**Do not schedule the deployment call until SLS is confirmed active on the target tenant.**
+
+| Requirement | Status |
+|---|---|
+| SLS enabled on the target tenant (verify in Common Services before the call) | ☐ Confirmed |
+
+---
+
+### Tenant Service Group (TSG) and Region
+
+AIRS is provisioned inside a Tenant Service Group (TSG) in the Palo Alto Networks hub. The TSG and region are selected when the deployment profile is created and **cannot be changed after activation**.
+
+**What can block you:**
+- Choosing the wrong region requires full re-activation. Confirm Americas, EU-Netherlands, or Singapore based on data residency requirements before the call.
+- An existing AIOps for NGFW subscription on the same tenant can cause licensing conflicts during AIRS onboarding. Identify and resolve before the call.
+- A new TSG takes 15–20 minutes to provision; a new deployment profile can take up to 2 hours to activate. Build this into the call timeline — start activation early.
+
+| Requirement | Status |
+|---|---|
+| TSG identified: existing TSG ID confirmed, or decision to create new | ☐ Confirmed |
+| Region confirmed: Americas / EU-Netherlands / Singapore | ☐ Confirmed |
+| AIOps for NGFW subscription status confirmed on this tenant | ☐ Confirmed |
+
+---
+
+### IAM and Permissions
+
+**What can block you:**
+- Standard SCM roles do not include AI Red Teaming access. A custom role must explicitly enable the "AI Red Teaming" permission, or users must be assigned the Superuser role. Users with standard roles will see the SCM dashboard but not the AI Red Teaming module.
+- The Client Secret for a service account is displayed only once at creation. If it is not recorded immediately, the account must be deleted and recreated — which can disrupt pipeline configurations if it has already been used.
+- SSO provisioning (Okta, Entra ID, Ping) may require an IT ticket with a multi-day lead time. Start provisioning at least one week before the call.
+
+| Requirement | Status |
+|---|---|
+| SCM accounts created for all engagement participants | ☐ Confirmed |
+| Role assigned: Superuser OR custom role with AI Red Teaming explicitly enabled | ☐ Confirmed |
+| Service account created and Client Secret stored securely (if API or CI/CD access needed) | ☐ Confirmed |
+| SSO/IdP provisioning complete for all users (if SSO in use) | ☐ Confirmed |
+
+---
+
+### Network Readiness
+
+Whether the target AI endpoints are publicly accessible or private determines whether Phase 5 (Network Channel deployment) is required. This is the single most important connectivity question — answer it before scheduling.
+
+**Public endpoints (internet-accessible):** No Network Channel needed. Confirm endpoint reachability and WAF strategy before the call.
+
+**Private endpoints (behind firewall, VPN, or VPC):** A Network Channel must be deployed inside the customer's Kubernetes cluster before scanning can begin. All connectivity is outbound from the cluster — no inbound rules are needed — but the cluster must have outbound internet access to three specific FQDNs.
+
+**What can block you for private endpoints:**
+- No Kubernetes cluster is the most common blocker. There is no alternative for the Network Channel. If K8s is unavailable, private targets cannot be scanned. Reschedule and resolve before the call.
+- Outbound internet blocked from K8s to the AIRS FQDNs. These must be allowlisted before the call — they cannot be opened in real time during deployment.
+- Helm not installed. Budget time to install it if missing.
+
+**If public:**
+| Requirement | Status |
+|---|---|
+| Endpoint URL reachable from the internet (test with curl) | ☐ Confirmed |
+| WAF/API gateway allowlisting completed, or test-through-WAF strategy agreed | ☐ Confirmed |
+
+**If private:**
+| Requirement | Status |
+|---|---|
+| Kubernetes cluster available (EKS / AKS / GKE / self-managed) | ☐ Confirmed |
+| Cluster has network access to the private AI endpoint | ☐ Confirmed |
+| Helm 3.x installed | ☐ Confirmed |
+| kubectl configured for the cluster | ☐ Confirmed |
+| Outbound access to `api.sase.paloaltonetworks.com` | ☐ Confirmed |
+| Outbound access to `auth.apps.paloaltonetworks.com` | ☐ Confirmed |
+| Outbound access to `registry.ai-red-teaming.paloaltonetworks.com` | ☐ Confirmed |
+| K8s operator or admin confirmed available for the call | ☐ Confirmed |
+
+---
+
+### Target Endpoint Readiness
+
+Complete for each AI target before the call. A target that fails validation on the day of the call adds 30–60 minutes of unplanned troubleshooting.
+
+| Requirement | Status |
+|---|---|
+| Endpoint URL confirmed and reachable | ☐ Confirmed |
+| Auth credentials valid and not expiring within 6 hours (or static key confirmed) | ☐ Confirmed |
+| Rate limits confirmed: minimum 20 RPM and 20,000 TPM (dedicated test API key recommended) | ☐ Confirmed |
+| Guardrail response captured: send a known-harmful prompt and record HTTP status + response body | ☐ Confirmed |
+| Request template drafted with `{{prompt}}` placeholder | ☐ Confirmed |
+| Response body path confirmed against a real API response | ☐ Confirmed |
+| Test environment confirmed (production scanning requires explicit risk acceptance) | ☐ Confirmed |
 
 ---
 
@@ -92,6 +208,10 @@ _Asked once per engagement. Covers licensing, tenant setup, network topology, an
 
 _Feeds: Guide Step 3.1 — Create a Deployment Profile_
 
+> **Why this matters:** AIRS AI Red Teaming is activated using credits from the Customer Support Portal (CSP). Without allocated credits, no deployment profile can be created and the engagement cannot start.
+>
+> **Potential blockers:** The CSP admin role is distinct from a standard SCM admin. A user with only SCM access cannot allocate or verify credits. If the deployment call begins and the right CSP admin is not available, activation will stall. Identify and confirm this person before scheduling the call. Deployment profile activation itself takes up to 2 hours — factor this into the call schedule.
+
 | Question | Format | Response / Notes |
 |---|---|---|
 | `*` CSP admin email (with credit allocation permissions) | email | |
@@ -106,6 +226,10 @@ _Feeds: Guide Step 3.1 — Create a Deployment Profile_
 ### 6. Tenant & TSG `ESSENTIAL`
 
 _Feeds: Guide Step 3.1 — Create a Deployment Profile_
+
+> **Why this matters:** The deployment profile binds AIRS to a specific tenant (TSG) in a specific region. These settings are permanent — they cannot be changed after activation. Getting region wrong means full re-activation.
+>
+> **Potential blockers:** Strata Logging Service (SLS) is a hard prerequisite for AIRS. If SLS is not enabled before activation begins, the activation flow fails and cannot be completed during the same call. An existing AIOps for NGFW subscription on the same tenant can also create conflicts during AIRS onboarding. Both must be verified — and SLS enabled — before the deployment call. A new TSG takes 15–20 minutes to provision, adding wait time during the call.
 
 | Question | Format | Response / Notes |
 |---|---|---|
@@ -123,6 +247,10 @@ _Feeds: Guide Step 3.1 — Create a Deployment Profile_
 
 _Feeds: Guide Step 3.2 — Configure IAM_
 
+> **Why this matters:** Activating the AIRS subscription does not automatically grant users access. RBAC roles must be assigned, and for API or CI/CD access, a service account with credentials must be created.
+>
+> **Potential blockers:** Standard SCM roles do not include AI Red Teaming access. A custom role must explicitly enable the "AI Red Teaming" permission — without it, users can log into SCM but cannot see the module. The Client Secret for a service account is shown only once at creation. If not recorded immediately, the account must be recreated. If the customer uses SSO, new user accounts may require an IT provisioning process that takes days — surface this in advance.
+
 | Question | Format | Response / Notes |
 |---|---|---|
 | `*` Which RBAC roles are needed? | multi-select | Superuser / Custom role with "AI Red Teaming" enabled / Read-only for stakeholders |
@@ -138,15 +266,51 @@ _Feeds: Guide Step 3.2 — Configure IAM_
 
 _Feeds: Guide Phase 5 — Network Channels (skip or deploy)_
 
+> **Why this matters:** This is the single most impactful question in the entire TRD. Whether the AI target is publicly accessible or behind a private network determines whether Phase 5 is skipped entirely or adds 1–2 hours and a separate infrastructure deployment. Discovering this late — or getting the answer wrong — is the most common cause of incomplete deployment calls.
+
+#### Public vs. Private Endpoints
+
+**Public endpoint** — the target API is accessible from the internet. AIRS can reach it directly. No additional network infrastructure is needed. After creating the target, scanning can begin immediately.
+
+- Common examples: OpenAI API, Azure OpenAI with a public endpoint, Bedrock with public API access, any application deployed on a public cloud URL without IP restrictions.
+- Set endpoint type to `PUBLIC` in the target configuration.
+- WAF note: if an API gateway or WAF sits in front of the endpoint, it may block AIRS scan payloads. Decide before the call whether to test through the WAF (realistic) or around it (isolates AI behavior).
+- IP allowlisting: if the endpoint restricts by source IP, add AIRS egress IPs to the allowlist before scanning begins.
+
+**Private endpoint** — the target API is not accessible from the internet. It sits behind a firewall, VPN, private VPC, or is restricted to internal IP ranges.
+
+- To scan a private endpoint, AIRS deploys a **Network Channel** — a lightweight Kubernetes-based client that runs inside the customer's infrastructure and creates an outbound tunnel to the AIRS cloud service. No inbound firewall rules are required; all connectivity is outbound from the K8s cluster.
+- Set endpoint type to `PRIVATE` or `NETWORK_BROKER` in the target configuration. (`NETWORK_BROKER` is the API-only value; the SCM UI shows "Private.")
+- Network Channel prerequisites that must be in place before the deployment call:
+  - A Kubernetes cluster (EKS, AKS, GKE, or self-managed) with network access to the private AI endpoint
+  - Helm 3.x installed in the deployment environment
+  - Outbound internet access from the K8s cluster to three FQDNs:
+    - `api.sase.paloaltonetworks.com`
+    - `auth.apps.paloaltonetworks.com`
+    - `registry.ai-red-teaming.paloaltonetworks.com`
+  - An SCM service account token for the Network Channel deployment script
+
+| | Public | Private |
+|---|---|---|
+| Network Channel needed? | No | Yes |
+| Additional deployment time | None | +1–2 hours |
+| K8s required? | No | Yes |
+| Endpoint type value | `PUBLIC` | `PRIVATE` / `NETWORK_BROKER` |
+| Primary blocker | WAF blocking payloads | K8s unavailable or FQDNs blocked |
+
 | Question | Format | Response / Notes |
 |---|---|---|
 | `*` Are the target endpoints publicly accessible from the internet? | select | All public / All private / Mix of public and private |
 | `†` If private: is a Kubernetes cluster available for the Network Channel client? | select | Yes — managed K8s (EKS/AKS/GKE) / Yes — self-managed / No K8s available |
 | `†` If K8s: does the cluster have outbound internet access? | select | Yes / No — air-gapped / Restricted (proxy/allowlist) |
+| `†` If restricted: are the 3 AIRS FQDNs allowlisted? | select | Yes / No / Unknown |
+| `†` If K8s: is Helm 3.x installed? | select | Yes / No |
 | Is there a WAF or API gateway in the request path? | select | Yes / No / Unknown |
 | `†` If WAF: desired testing strategy? | select | Whitelist AIRS IPs / Bypass WAF / Test full stack including WAF |
 
-> **Consultant Notes:** Single most impactful scoping question. Public = skip Phase 5. Private = deploy Network Channel (adds 1–2 hours + K8s prereqs). WAFs block attack payloads by design — clarify whether they're testing through it (realistic) or around it (isolates AI vulnerabilities).
+> **Potential blockers for private endpoints:** No Kubernetes cluster is the most common blocker — the Network Channel has no alternative hosting option in the standard product. The call must be rescheduled if K8s is unavailable. Second most common: outbound internet blocked from K8s to the three AIRS FQDNs. These must be allowlisted in advance; they cannot be opened during the deployment call. Third: Helm not installed — budget time to install it if missing.
+>
+> **Consultant Notes:** Single most impactful scoping question. Public = skip Phase 5 entirely. Private = deploy Network Channel (adds 1–2 hours + K8s prereqs). WAFs block attack payloads by design — clarify whether they're testing through it (realistic, surfaces WAF bypass issues) or around it (isolates AI vulnerabilities). For mixed environments, deploy the Network Channel first, then configure all targets.
 
 ---
 
@@ -271,6 +435,10 @@ _Feeds: Guide Step 6.2 — Configure Scan Categories. N/A excludes the category.
 
 _Feeds: Guide Step 4.2 — Add a Target_
 
+> **Why this matters:** Every field in this section is required to create the target in AIRS. A single wrong value — wrong URL, expired credential, mismatched auth format — causes target validation to fail and blocks scanning from starting.
+>
+> **Potential blockers:** Token expiry is the most insidious problem. An Attack Library scan runs approximately 5 hours. If the auth token expires mid-scan, all remaining scan tasks fail with authentication errors. Static API keys are strongly preferred for test environments. For OAuth2, verify the token lifetime exceeds 6 hours or that auto-refresh is configured. Azure OpenAI requires the deployment name in the URL (`/openai/deployments/{deployment-name}/chat/completions`) — the base resource URL without the deployment name fails validation. Non-REST protocols (WebSocket, gRPC, Socket.IO, GraphQL) require a REST wrapper to be developed and deployed before scanning can begin.
+
 | Question | Format | Response / Notes |
 |---|---|---|
 | `*` Connection type | select | OPENAI / AZURE_OPENAI / BEDROCK / VERTEX / HUGGINGFACE / REST |
@@ -289,10 +457,14 @@ _Feeds: Guide Step 4.2 — Add a Target_
 
 _Feeds: Guide Step 4.3 + scan execution. #1 cause of scan failures._
 
+> **Why this matters:** Rate limits control how fast AIRS can send attack prompts. If the limits are too low, the target starts returning rate-limit errors and the scan fails or produces incomplete results. This is the single most common cause of scan failures across all deployments.
+>
+> **Potential blockers:** Attack Library scans require 10–20 RPM sustained over approximately 5 hours. An API key on OpenAI's free tier (Tier 0) is limited to 3 RPM — this will fail. Customers should provision a dedicated test API key with elevated limits and confirm the limits before the scan starts. A shared API key used by the production application competes with live traffic for the same rate limit budget and will cause intermittent failures during scans. Tokens per minute below 10,000 will cause frequent throttling with verbose attack payloads.
+
 | Question | Format | Response / Notes |
 |---|---|---|
-| `*` Requests per minute (RPM) | number | |
-| `*` Tokens per minute (TPM) | number | |
+| `*` Requests per minute (RPM) | number | Minimum 20 recommended for Attack Library |
+| `*` Tokens per minute (TPM) | number | Minimum 20,000 recommended |
 | Tokens per day (TPD) | number | |
 | Maximum concurrent requests? | number | |
 | Maximum input tokens per request? | number | |
@@ -305,6 +477,10 @@ _Feeds: Guide Step 4.3 + scan execution. #1 cause of scan failures._
 ### 14. Guardrail Detection `ESSENTIAL`
 
 _Feeds: Guide Step 4.3. Without this, reports can't distinguish "blocked by guardrail" from "model refused."_
+
+> **Why this matters:** Most AI applications have safety guardrails that block harmful inputs. AIRS needs to know what a blocked response looks like so it can correctly score attack effectiveness. Without this configuration, the scan cannot distinguish between "the guardrail blocked this" and "the model responded but declined" — producing inaccurate results.
+>
+> **Potential blockers:** Azure OpenAI and OpenAI return different HTTP status codes for guardrail blocks: OpenAI returns HTTP 400, Azure OpenAI returns HTTP 200 with `"finish_reason": "content_filter"` in the body. If AIRS is configured for the wrong status code, every blocked response is misclassified. If the customer does not know what a blocked response looks like, the fastest resolution is to send a known-harmful prompt (e.g., a request for instructions to cause harm) before the call and capture the exact HTTP status code and response body. This takes 2 minutes and resolves the uncertainty.
 
 | Question | Format | Response / Notes |
 |---|---|---|
@@ -388,6 +564,10 @@ _Feeds: Guide Steps 6.3–6.5 — Start Scans_
 ### 18. Target Specification `ESSENTIAL`
 
 _Feeds: Guide Step 4.2 — API payload (`POST /v1/target`). This section IS the API request body._
+
+> **Why this matters:** This section is the direct input to the AIRS API call that creates the target. Every value here maps to a specific field in the request body. Errors here — wrong URL, malformed JSON, wrong body path — are the most common cause of target creation failures and scan results that appear to run but produce no meaningful output.
+>
+> **Potential blockers:** The `{{prompt}}` placeholder in the request template is the most critical single field in the TRD. If it is missing, mistyped, or placed in the wrong location in the JSON, scans run to completion but every attack string is sent as a literal `{{prompt}}` string — the target receives nonsense, produces benign responses, and every attack appears to fail (or succeed, depending on how the target responds to unexpected input). Validate the template with a test request before starting any scan. The response body path must also be validated — if the path does not match the actual API response structure, AIRS cannot extract model text and all results are empty.
 
 **Target Specification:**
 

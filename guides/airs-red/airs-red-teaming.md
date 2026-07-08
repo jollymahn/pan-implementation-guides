@@ -134,51 +134,107 @@ Scans consume quota tracked per scan type (static, dynamic, custom). Each quota 
 
 ## Prerequisites
 
+Complete every item in this section before the deployment call begins. Missing any item is a potential session-stopper. Use this as a pre-engagement gate — unresolved items one week before the call warrant rescheduling.
+
+---
+
 ### License & Subscription
 
-AI Red Teaming is licensed through **NGFW credits**, not as a standalone SKU.
+AI Red Teaming is licensed through **NGFW credits**, not as a standalone SKU. Credits are allocated from the Customer Support Portal (CSP) before the deployment profile is created.
 
 | Requirement | Details |
 |---|---|
 | License type | Software/Cloud NGFW Credits -> Deployment Profile -> Prisma AIRS -> AI Red Teaming |
-| CSP portal | Active Palo Alto Networks Customer Support Portal account with credit allocation |
+| CSP portal | Active Palo Alto Networks Customer Support Portal account |
+| Credit allocation | CSP admin with **credit allocation role** must be available for the call |
 | Deployment profile | Created in CSP and associated with a Tenant Service Group (TSG) in Hub |
 
-### Account & Access
+> **Blocker:** The credit allocation role is a CSP-level permission, separate from SCM admin access. A standard SCM admin cannot view or allocate credits. Identify this person before scheduling the call.
+
+---
+
+### Strata Logging Service (SLS)
+
+SLS is a **mandatory prerequisite** for AIRS. It must be enabled on the tenant before AIRS activation begins. If SLS is not enabled, the activation flow fails mid-process and cannot recover without starting over.
 
 | Requirement | Details |
 |---|---|
-| SCM account | Strata Cloud Manager account with tenant access |
-| SCM role (UI access) | `Superuser for all apps and services` OR a custom role with **AI Red Teaming** permissions enabled |
-| Service account (API) | For API-driven workflows. Minimum: custom role with AI Red Teaming enabled |
-| IAM path | `Common Services` -> `Identity & Access` |
+| SLS enabled | Must be active on the target tenant before the deployment call |
 
-> **Warning:** Store the Client Secret immediately after creating a service account. It **cannot be retrieved later** -- only regenerated.
+> **Blocker:** Do not schedule the deployment call until SLS is confirmed active. Verify in Common Services. Enabling SLS may require a separate CSP activation step and provisioning time.
+
+---
+
+### Tenant Service Group (TSG) and Region
+
+AIRS is provisioned inside a Tenant Service Group (TSG) in the Palo Alto Networks hub. The TSG and region are selected when the deployment profile is created and **cannot be changed after activation**.
+
+| Requirement | Details |
+|---|---|
+| TSG | Identify an existing TSG or plan to create one |
+| Region | Americas (default) / EU-Netherlands (GDPR) / Singapore (APAC) -- permanent after activation |
+| AIOps conflict | An existing AIOps for NGFW subscription on the same tenant can cause onboarding conflicts |
+
+> **Blocker:** Choosing the wrong region requires full re-activation. Confirm region based on data residency requirements. A new TSG takes 15--20 minutes to provision; a new deployment profile can take up to 2 hours to activate fully. Start activation early in the deployment call.
+
+---
+
+### Account & Access (IAM)
+
+| Requirement | Details |
+|---|---|
+| SCM account | Strata Cloud Manager account with tenant access for all engagement participants |
+| SCM role (UI access) | `Superuser for all apps and services` OR a custom role with **AI Red Teaming** permissions explicitly enabled |
+| Service account (API) | For API-driven or CI/CD workflows. Minimum: custom role with AI Red Teaming enabled |
+| IAM path | `Common Services` -> `Identity & Access` |
+| SSO/IdP | If in use, user provisioning must be complete before the call |
+
+> **Blocker:** Standard SCM roles do not grant AI Red Teaming access even when the subscription is active. A custom role must explicitly enable the AI Red Teaming permission -- without it, users see the SCM dashboard but not the module.
+
+> **Warning:** Store the Client Secret immediately after creating a service account. It **cannot be retrieved later** -- only regenerated. Have a secure storage location ready before creating the account.
+
+> **Blocker:** SSO provisioning (Okta, Entra ID, Ping) may require an IT ticket with multi-day lead time. Start provisioning at least one week before the deployment call.
+
+---
 
 ### Target Endpoint Requirements
 
-The AI system you want to test must meet these requirements:
+The AI system under test must meet these requirements before the deployment call:
 
 | Requirement | Details |
 |---|---|
 | Reachability | Public internet endpoint OR private endpoint with a Network Channel deployed |
-| Rate limits | Note any rate limits on the target -- they affect scan execution speed and may cause errors |
-| IP allowlisting | If the endpoint restricts by source IP, allowlist AI Red Teaming's egress IPs |
-| Trace header | All outbound requests from AI Red Teaming include `x-airs-red-teaming-trace-id` for audit logging |
+| Rate limits | Minimum 20 RPM and 20,000 TPM -- the #1 cause of scan failures |
+| Auth token expiry | Must not expire during scanning. Attack Library scans run ~5 hours. Use a static API key or OAuth2 token with >6-hour lifetime |
+| IP allowlisting | If the endpoint restricts by source IP, allowlist AIRS egress IPs before the call |
+| Trace header | All outbound requests from AI Red Teaming include `x-airs-red-teaming-trace-id` |
 | Request timeout | Default 110 seconds -- ensure the target responds within this window |
+| Test environment | Strongly recommended over production. Agent targets with tool access can trigger real side effects |
+| Guardrail response | Capture the HTTP status code and error body from a known-harmful test prompt before the call |
 
-### Network Channel Requirements (Private Endpoints)
+> **Blocker:** Rate limits below 10 RPM will cause Attack Library scans to fail consistently. If the customer's API key has low limits (e.g., OpenAI free tier = 3 RPM), a dedicated higher-tier key must be provisioned before scanning begins.
 
-Only needed if the target AI system is on a private network. Skip this section for public endpoints.
+---
+
+### Network Channel Requirements (Private Endpoints Only)
+
+Only needed if any target AI system is on a private network. Skip this section if all targets are publicly accessible.
+
+**What the Network Channel is:** A lightweight Helm-deployed client that runs inside the customer's Kubernetes cluster and creates an outbound tunnel to the AIRS cloud service. No inbound firewall rules are required -- all connectivity is outbound from the cluster.
 
 | Requirement | Details |
 |---|---|
 | Kubernetes cluster | Any K8s cluster with network access to the private AI endpoint |
 | kubectl | Configured for the target cluster |
 | Helm 3.x | For deploying the Network Channel client |
-| Service account | Needs `airt.network_channels_client` permission |
+| SCM service account | Needs `airt.network_channels_client` permission |
+| K8s admin on call | Operator with permissions to run Helm must be available during the deployment session |
 
-#### Outbound Connectivity (from K8s cluster)
+> **Blocker:** No Kubernetes cluster = no Network Channel = private targets cannot be scanned. There is no alternative hosting option for the Network Channel in the standard product. Identify this before scheduling the call.
+
+#### Outbound Connectivity Required (from K8s cluster)
+
+All three FQDNs must be reachable before the call. They cannot be opened in real time during deployment.
 
 | Destination | Purpose |
 |---|---|
@@ -186,12 +242,16 @@ Only needed if the target AI system is on a private network. Skip this section f
 | `auth.apps.paloaltonetworks.com` | Authentication |
 | `registry.ai-red-teaming.paloaltonetworks.com` | Container registry (initial image pull) |
 
+> **Blocker:** If the K8s cluster is in a restricted or air-gapped network, these FQDNs must be allowlisted in the egress policy before the deployment call. Test reachability with curl from inside the cluster before the session.
+
 #### Client Resource Requirements
 
 | Resource | Request | Limit |
 |---|---|---|
 | CPU | 100m | 200m |
 | Memory | 128Mi | 256Mi |
+
+---
 
 ### Supported Regions
 
@@ -201,7 +261,7 @@ Only needed if the target AI system is on a private network. Skip this section f
 | EU-Netherlands | GDPR-aligned |
 | Singapore | APAC |
 
-The region is selected when creating the deployment profile in CSP and cannot be changed after activation.
+The region is selected when creating the deployment profile in CSP and **cannot be changed after activation**. Confirm the correct region based on data residency requirements before the deployment call.
 
 ---
 
