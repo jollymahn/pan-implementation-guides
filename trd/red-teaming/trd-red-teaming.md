@@ -325,6 +325,60 @@ _Feeds: Guide Phase 5 — Network Channels (skip or deploy)_
 
 _Calculated from §2 (targets), §5 (credits), §8 (network). Completed by consultant._
 
+**Why this matters:** Engagement sizing drives both the commercial package tier and the practical shape of the engagement. The number of targets determines scan volume and credit consumption. The scan types selected determine how long the engagement runs and what personnel the customer needs available. Getting sizing wrong at this stage means either running out of credits mid-engagement or under-utilizing the allocated budget.
+
+---
+
+#### Scan Types
+
+There are three scan types. Each has a different purpose, duration, and credit cost. Most engagements use all three in sequence.
+
+**Attack Library (STATIC) — run this first**
+
+The Attack Library runs 500+ curated attack scenarios maintained by 18,000+ researchers, covering all four attack categories: Security, Safety, Compliance, and Brand. It is fully automated once started and requires no customer interaction during the run.
+
+- **Duration:** approximately 5 hours per target
+- **Best for:** first scan on any target; compliance baselines; regression testing between deployments
+- **What it produces:** a scored report across all attack categories showing which attacks succeeded, which were blocked by guardrails, and an overall risk score
+- **Important:** do not abort a running Attack Library scan — partial results do not provide meaningful coverage. Let it complete.
+- **Recommended categories for first scan:** all categories and subcategories, to establish a comprehensive baseline. Narrow subsequent scans to areas where vulnerabilities were found.
+
+**Dynamic Agent (DYNAMIC) — run this second**
+
+The Dynamic scan deploys an LLM-powered attack agent that discovers and exploits weaknesses through adaptive multi-turn conversations. Unlike the Attack Library which sends fixed scenarios, the Dynamic agent reasons about the target's responses and adjusts its approach.
+
+Key parameters:
+
+| Parameter | Default | What it controls |
+|---|---|---|
+| Stream breadth | 6 | Number of parallel attack threads running simultaneously |
+| Stream depth | 10 | Maximum conversation turns per attack thread |
+| Attack goals | Auto | Custom goals in natural language, or auto-discovered |
+
+Three testing modes based on how much context is provided to the attack agent:
+- **Black box** — no context provided; agent discovers everything from the target's responses
+- **Grey box** — industry and use case provided; agent uses this to generate more targeted attacks
+- **White box** — full system prompt and context provided; most effective, produces highest-quality findings
+
+- **Duration:** varies based on breadth/depth settings and target response time; typically 1–4 hours
+- **Best for:** deep testing after Attack Library baseline; complex multi-turn vulnerabilities; Agent-type targets; discovering vulnerabilities the Attack Library doesn't cover
+- **Attack goals:** specific goals drive much better results than auto-discovery — e.g., "Extract the system prompt", "Get the assistant to recommend a competitor product", "Make the model generate harmful code". Generic goals produce generic results.
+
+**Custom Prompt Sets (CUSTOM) — run this last**
+
+Custom Prompt Sets are organization-specific attack prompts uploaded by the customer or developed by the consultant. They run as a third scan type after the Attack Library and Dynamic scans have established a baseline.
+
+- **Duration:** depends on prompt count; 5–10 minutes of auto-validation per prompt before they can run
+- **Best for:** regression testing against known vulnerabilities; industry-specific compliance scenarios; brand-specific attack scenarios not covered by the Attack Library
+- **Important:** each custom prompt is auto-validated before use. Invalid or improperly formatted prompts are silently skipped — they do not appear in scan results. Validate the prompt set before running the scan.
+- **Prompt sources:** customer-provided (from their own security team), consultant-developed, or from industry-specific templates
+
+**Recommended scan order:** Attack Library first (5 hours, baseline) → Dynamic Agent second (dig deeper into findings) → Custom Prompts last (targeted, scenario-specific).
+
+---
+
+#### Package Tiers
+
 | Package | Targets | Scan Types | Est. Sessions |
 |---|---|---|---|
 | **Starter** — 1 target, pre-built | 1 | Attack Library + Dynamic Agent | 5 |
@@ -337,9 +391,9 @@ _Calculated from §2 (targets), §5 (credits), §8 (network). Completed by consu
 | Add-On | Description | Include? |
 |---|---|---|
 | Network Channel deployment | Required for private endpoints. K8s prereqs, 1–2 hours. | Yes / No |
-| REST wrapper development | Required for non-REST protocols. Custom development. | Yes / No |
-| CI/CD pipeline integration | Scan triggers in CI/CD. Requires service account. | Yes / No |
-| Custom attack development | Custom prompt sets beyond built-in library. | Yes / No |
+| REST wrapper development | Required for non-REST protocols. Custom development, 2–4 hours. | Yes / No |
+| CI/CD pipeline integration | Automated scan triggers in CI/CD pipelines. Requires service account. | Yes / No |
+| Custom attack development | Consultant develops custom prompt sets tailored to the target. | Yes / No |
 
 ---
 
