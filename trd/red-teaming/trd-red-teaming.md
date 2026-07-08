@@ -90,7 +90,7 @@ Whether the target AI endpoints are publicly accessible or private determines wh
 **Private endpoints (behind firewall, VPN, or VPC):** A Network Channel must be deployed inside the customer's Kubernetes cluster before scanning can begin. All connectivity is outbound from the cluster — no inbound rules are needed — but the cluster must have outbound internet access to three specific FQDNs.
 
 **What can block you for private endpoints:**
-- No Kubernetes cluster is the most common blocker. There is no alternative for the Network Channel. If K8s is unavailable, private targets cannot be scanned. Reschedule and resolve before the call.
+- Kubernetes is required for the Network Channel, but it does not have to be a managed cloud cluster. A lightweight single-node distribution (Minikube, k3s, or Kind) running on any VM or on-premises server is sufficient. If no K8s exists at all, the customer can install k3s or Minikube on any machine that has access to the private AI endpoint and outbound internet — budget 30–60 minutes. Only if no form of K8s is available or installable should the call be rescheduled.
 - Outbound internet blocked from K8s to the AIRS FQDNs. These must be allowlisted before the call — they cannot be opened in real time during deployment.
 - Helm not installed. Budget time to install it if missing.
 
@@ -103,7 +103,7 @@ Whether the target AI endpoints are publicly accessible or private determines wh
 **If private:**
 | Requirement | Status |
 |---|---|
-| Kubernetes cluster available (EKS / AKS / GKE / self-managed) | ☐ Confirmed |
+| Kubernetes available: managed (EKS/AKS/GKE), self-managed, or lightweight (Minikube/k3s/Kind on VM or on-prem server) | ☐ Confirmed |
 | Cluster has network access to the private AI endpoint | ☐ Confirmed |
 | Helm 3.x installed | ☐ Confirmed |
 | kubectl configured for the cluster | ☐ Confirmed |
@@ -282,7 +282,7 @@ _Feeds: Guide Phase 5 — Network Channels (skip or deploy)_
 - To scan a private endpoint, AIRS deploys a **Network Channel** — a lightweight Kubernetes-based client that runs inside the customer's infrastructure and creates an outbound tunnel to the AIRS cloud service. No inbound firewall rules are required; all connectivity is outbound from the K8s cluster.
 - Set endpoint type to `PRIVATE` or `NETWORK_BROKER` in the target configuration. (`NETWORK_BROKER` is the API-only value; the SCM UI shows "Private.")
 - Network Channel prerequisites that must be in place before the deployment call:
-  - A Kubernetes cluster (EKS, AKS, GKE, or self-managed) with network access to the private AI endpoint
+  - A Kubernetes cluster with network access to the private AI endpoint. Managed cloud (EKS/AKS/GKE), self-managed, or a lightweight distribution (Minikube, k3s, Kind) on any VM or on-prem server are all valid.
   - Helm 3.x installed in the deployment environment
   - Outbound internet access from the K8s cluster to three FQDNs:
     - `api.sase.paloaltonetworks.com`
@@ -301,14 +301,14 @@ _Feeds: Guide Phase 5 — Network Channels (skip or deploy)_
 | Question | Format | Response / Notes |
 |---|---|---|
 | `*` Are the target endpoints publicly accessible from the internet? | select | All public / All private / Mix of public and private |
-| `†` If private: is a Kubernetes cluster available for the Network Channel client? | select | Yes — managed K8s (EKS/AKS/GKE) / Yes — self-managed / No K8s available |
+| `†` If private: is Kubernetes available for the Network Channel client? | select | Yes — managed (EKS/AKS/GKE) / Yes — self-managed / Yes — lightweight K8s on VM (Minikube/k3s/Kind) / No |
 | `†` If K8s: does the cluster have outbound internet access? | select | Yes / No — air-gapped / Restricted (proxy/allowlist) |
 | `†` If restricted: are the 3 AIRS FQDNs allowlisted? | select | Yes / No / Unknown |
 | `†` If K8s: is Helm 3.x installed? | select | Yes / No |
 | Is there a WAF or API gateway in the request path? | select | Yes / No / Unknown |
 | `†` If WAF: desired testing strategy? | select | Whitelist AIRS IPs / Bypass WAF / Test full stack including WAF |
 
-> **Potential blockers for private endpoints:** No Kubernetes cluster is the most common blocker — the Network Channel has no alternative hosting option in the standard product. The call must be rescheduled if K8s is unavailable. Second most common: outbound internet blocked from K8s to the three AIRS FQDNs. These must be allowlisted in advance; they cannot be opened during the deployment call. Third: Helm not installed — budget time to install it if missing.
+> **Potential blockers for private endpoints:** Kubernetes is required for the Network Channel, but a managed cloud cluster is not — Minikube, k3s, or Kind on any VM or on-prem server qualifies. The host just needs access to the private AI endpoint and outbound internet to the three AIRS FQDNs. Only reschedule if no form of K8s can be made available. Second most common: outbound internet blocked from K8s to the three AIRS FQDNs. These must be allowlisted in advance; they cannot be opened during the deployment call. Third: Helm not installed — budget time to install it if missing.
 >
 > **Consultant Notes:** Single most impactful scoping question. Public = skip Phase 5 entirely. Private = deploy Network Channel (adds 1–2 hours + K8s prereqs). WAFs block attack payloads by design — clarify whether they're testing through it (realistic, surfaces WAF bypass issues) or around it (isolates AI vulnerabilities). For mixed environments, deploy the Network Channel first, then configure all targets.
 

@@ -105,7 +105,7 @@ A Network Channel must be deployed. This is a Helm-deployed client in the custom
 
 | Confirm | Item |
 |---|---|
-| ☐ | Kubernetes cluster available (EKS / AKS / GKE / self-managed) |
+| ☐ | Kubernetes available: managed (EKS/AKS/GKE), self-managed, or lightweight (Minikube/k3s/Kind on a VM or on-prem server) |
 | ☐ | Cluster has network access to the private AI endpoint |
 | ☐ | Helm 3.x installed |
 | ☐ | kubectl configured for the cluster |
@@ -216,7 +216,7 @@ A private endpoint is an API that is not accessible from the internet. This incl
 
 **What blocks most private endpoint deployments:**
 
-- **No Kubernetes cluster.** The Network Channel requires a running K8s cluster (EKS, AKS, GKE, or self-managed) with network access to the private AI endpoint. If the customer has no K8s, the Network Channel cannot be deployed. An alternative hosting option must be arranged before the call.
+- **No Kubernetes.** The Network Channel is deployed as a Helm chart and requires Kubernetes. However, it does not require a managed cloud cluster — a lightweight single-node K8s distribution (Minikube, k3s, or Kind) running on any VM or on-premises server is sufficient. If the customer has no existing K8s cluster, they can install Minikube or k3s on any machine that has network access to the private AI endpoint and outbound internet access to the three AIRS FQDNs. Budget 30–60 minutes for this setup if K8s is not already present.
 - **Outbound internet blocked from K8s.** The K8s cluster must be able to reach three FQDNs outbound. If the cluster is in an air-gapped or restricted network, these domains must be allowlisted before deployment:
   - `api.sase.paloaltonetworks.com` (API communication)
   - `auth.apps.paloaltonetworks.com` (authentication)
@@ -227,14 +227,14 @@ A private endpoint is an API that is not accessible from the internet. This incl
 
 | Question | `*` Required | Response |
 |---|---|---|
-| `*` Is a Kubernetes cluster available? | Yes (if private) | Yes — managed (EKS/AKS/GKE) / Yes — self-managed / No |
+| `*` Is a Kubernetes cluster available? | Yes (if private) | Yes — managed (EKS/AKS/GKE) / Yes — self-managed / Yes — lightweight (Minikube/k3s on VM) / No |
 | `*` Does the K8s cluster have outbound internet access? | Yes (if private) | Yes / No — air-gapped / Restricted (proxy/allowlist) |
 | `†` If restricted: are the 3 AIRS FQDNs allowlisted? | If restricted | Yes / No / Unknown |
 | `*` Is Helm 3.x installed in the deployment environment? | Yes (if private) | Yes / No |
 | `*` Who will run the Helm deployment? | Yes (if private) | Name / Role |
 | Does the K8s cluster have network access to the private AI endpoint? | No | Yes / No / Unknown |
 
-> **If no K8s cluster is available:** The deployment call must be rescheduled or the customer must identify an alternative hosting location (VM, serverless) for the Network Channel before proceeding. This cannot be resolved during the deployment call.
+> **If no managed K8s cluster is available:** A lightweight distribution (Minikube, k3s, or Kind) can be installed on any VM or on-premises server. The host only needs network access to the private AI endpoint and outbound internet access to the three AIRS FQDNs. If none of these options are viable, reschedule the call — the Network Channel cannot be deployed without some form of Kubernetes.
 
 > **NETWORK_BROKER endpoint type:** When using the Network Channel, set the endpoint type to `NETWORK_BROKER` in the target configuration API call. This value is API-only and does not appear in the SCM UI — set it via the SCM web interface by selecting "Private" and the system maps it correctly.
 
@@ -400,7 +400,7 @@ Use this checklist at the start of the deployment call. Any unchecked item is a 
 - [ ] WAF/API gateway allowlisting completed (if applicable)
 
 **If private endpoints:**
-- [ ] Kubernetes cluster is available and has network access to the private AI endpoint
+- [ ] Kubernetes available: managed cluster (EKS/AKS/GKE), self-managed cluster, or lightweight K8s (Minikube/k3s/Kind) on a VM or on-prem server — with network access to the private AI endpoint
 - [ ] Helm 3.x is installed
 - [ ] All three AIRS FQDNs are reachable outbound from the K8s cluster:
   - [ ] `api.sase.paloaltonetworks.com`

@@ -224,13 +224,13 @@ Only needed if any target AI system is on a private network. Skip this section i
 
 | Requirement | Details |
 |---|---|
-| Kubernetes cluster | Any K8s cluster with network access to the private AI endpoint |
+| Kubernetes cluster | Any K8s with network access to the private AI endpoint: managed (EKS/AKS/GKE), self-managed, or lightweight (Minikube/k3s/Kind on a VM or on-prem server) |
 | kubectl | Configured for the target cluster |
 | Helm 3.x | For deploying the Network Channel client |
 | SCM service account | Needs `airt.network_channels_client` permission |
 | K8s admin on call | Operator with permissions to run Helm must be available during the deployment session |
 
-> **Blocker:** No Kubernetes cluster = no Network Channel = private targets cannot be scanned. There is no alternative hosting option for the Network Channel in the standard product. Identify this before scheduling the call.
+> **Important:** Kubernetes is required for the Network Channel, but a managed cloud cluster is not mandatory. A lightweight single-node distribution (Minikube, k3s, or Kind) running on any VM or on-premises server is fully supported. PAN's own docs list Minikube/Kind as valid options. If no K8s exists, the customer can install k3s or Minikube on any machine that has access to both the private AI endpoint and the internet — budget 30–60 minutes for setup. Only if no form of Kubernetes can be made available should the call be rescheduled.
 
 #### Outbound Connectivity Required (from K8s cluster)
 
