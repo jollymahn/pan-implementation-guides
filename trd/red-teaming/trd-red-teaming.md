@@ -405,9 +405,21 @@ _Repeated for each target or target group. Captures the technical spec needed to
 
 ### Target Index
 
+List every AI system to be tested. Each row maps to a Part C (sections 10–18) block. The Type, Priority, and Connection columns are filled in after Part C is completed for each target.
+
+**Example (completed):**
+
 | # | Name | Type | Priority | Connection | Status |
 |---|---|---|---|---|---|
-| 1 | _______________ | | | | Not started / In progress / Complete |
+| 1 | Customer Support Bot | APPLICATION | High | OPENAI / PUBLIC | Complete |
+| 2 | Internal HR Assistant | APPLICATION | Medium | AZURE_OPENAI / PRIVATE | In progress |
+| 3 | Claims Processing Agent | AGENT | High | REST / PRIVATE | Not started |
+
+**Blank (fill in):**
+
+| # | Name | Type | Priority | Connection | Status |
+|---|---|---|---|---|---|
+| 1 | _______________ | MODEL / APPLICATION / AGENT | High / Medium / Low | Provider / PUBLIC or PRIVATE | Not started / In progress / Complete |
 | 2 | _______________ | | | | Not started / In progress / Complete |
 | 3 | _______________ | | | | Not started / In progress / Complete |
 
