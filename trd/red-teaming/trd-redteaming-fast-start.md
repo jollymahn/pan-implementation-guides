@@ -118,6 +118,13 @@ A Network Channel must be deployed. This is a Helm-deployed client in the custom
 
 ### Target Endpoint Readiness
 
+**What is a target?** A target is the AI system being tested. Examples include:
+- **Raw model API** — a direct connection to a model endpoint: GPT-4o at `api.openai.com`, Claude at `api.anthropic.com`, a self-hosted Llama instance, or any foundation model API. No application layer, no enforced system prompt.
+- **AI-powered application** — a model wrapped with a system prompt, business logic, and guardrails: a customer service chatbot for an insurance company, an HR policy assistant, a legal document summarizer, a financial advisor application, a retail shopping assistant.
+- **AI agent** — an autonomous system with tool access that can take multi-step actions: a code review agent with repository access, a data analysis agent that writes and runs SQL, a research assistant that browses the web, an IT support agent that can open and close tickets.
+
+**Understanding rate limits:** RPM (Requests Per Minute) controls how many API calls AIRS can send to the target per minute. TPM (Tokens Per Minute) controls how many total tokens — input plus output combined — the API allows per minute. AIRS sends attack prompts one at a time; the rate limits cap how fast those prompts can flow. An Attack Library scan runs hundreds of prompts over approximately 5 hours — at 20 RPM that is roughly 6,000 total requests, enough for a complete scan. Below 10 RPM the scan cannot finish in a reasonable time window and will produce incomplete results. TPM matters separately because attack payloads are often verbose, particularly when a long system prompt is included in every request body. A TPM limit below 10,000 causes throttling even when RPM is adequate.
+
 Complete for each AI target before the call:
 
 | Confirm | Item |

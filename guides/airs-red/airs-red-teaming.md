@@ -199,12 +199,20 @@ AIRS is provisioned inside a Tenant Service Group (TSG) in the Palo Alto Network
 
 ### Target Endpoint Requirements
 
+**What is a target?** A target is the AI system being tested. Three types are supported:
+
+- **Model** — a direct API connection to a foundation model with no application layer: GPT-4o at `api.openai.com`, Claude at `api.anthropic.com`, a Bedrock-hosted model, a self-hosted Llama or Mistral instance. Simplest to configure.
+- **Application** — a model wrapped with a system prompt, business logic, and safety guardrails. Most enterprise targets are Applications: a customer service chatbot, an HR policy assistant, a legal document summarizer, a financial advisor application, a retail shopping assistant. Industry and use case are required fields for Applications.
+- **Agent** — an autonomous system with tool access that can take multi-step actions: a code review agent with repository access, a data analysis agent that writes and executes SQL, a research assistant that browses the web, an IT support agent that manages tickets. Agents carry the highest risk due to tool misuse potential and require tool schema documentation.
+
+**Understanding rate limits:** RPM (Requests Per Minute) controls how many API calls AIRS can send to the target each minute. TPM (Tokens Per Minute) controls the total token throughput — input plus output combined — allowed per minute. AIRS sends attack prompts sequentially; rate limits determine how fast. An Attack Library scan contains hundreds of prompts run over approximately 5 hours. At 20 RPM that is roughly 6,000 total requests, sufficient for a full scan. Below 10 RPM the scan cannot complete in a reasonable time window and produces incomplete results. TPM is a separate constraint: attack payloads are verbose, especially when a full system prompt is included in every request body, and a TPM limit below 10,000 causes throttling even when RPM is adequate.
+
 The AI system under test must meet these requirements before the deployment call:
 
 | Requirement | Details |
 |---|---|
 | Reachability | Public internet endpoint OR private endpoint with a Network Channel deployed |
-| Rate limits | Minimum 20 RPM and 20,000 TPM -- the #1 cause of scan failures |
+| Rate limits | Minimum 20 RPM and 20,000 TPM -- the #1 cause of scan failures (see explanation above) |
 | Auth token expiry | Must not expire during scanning. Attack Library scans run ~5 hours. Use a static API key or OAuth2 token with >6-hour lifetime |
 | IP allowlisting | If the endpoint restricts by source IP, allowlist AIRS egress IPs before the call |
 | Trace header | All outbound requests from AI Red Teaming include `x-airs-red-teaming-trace-id` |
@@ -212,7 +220,7 @@ The AI system under test must meet these requirements before the deployment call
 | Test environment | Strongly recommended over production. Agent targets with tool access can trigger real side effects |
 | Guardrail response | Capture the HTTP status code and error body from a known-harmful test prompt before the call |
 
-> **Blocker:** Rate limits below 10 RPM will cause Attack Library scans to fail consistently. If the customer's API key has low limits (e.g., OpenAI free tier = 3 RPM), a dedicated higher-tier key must be provisioned before scanning begins.
+> **Blocker:** Rate limits below 10 RPM will cause Attack Library scans to fail consistently. OpenAI's free tier (Tier 0) allows only 3 RPM. A dedicated higher-tier API key must be provisioned before scanning begins. Common provider tiers: OpenAI Tier 1 = 500 RPM (fine), Azure OpenAI default = varies by deployment (check deployment limits in Azure portal), AWS Bedrock = per-model throttle (check service quotas).
 
 ---
 

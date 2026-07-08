@@ -116,6 +116,13 @@ Whether the target AI endpoints are publicly accessible or private determines wh
 
 ### Target Endpoint Readiness
 
+**What is a target?** A target is the AI system being tested. It falls into one of three types:
+- **Raw model API** — a direct connection to a foundation model endpoint with no application layer: GPT-4o at `api.openai.com`, Claude at `api.anthropic.com`, a Bedrock-hosted model, a self-hosted Llama instance.
+- **AI-powered application** — a model wrapped with a system prompt, business logic, and safety guardrails: a customer service chatbot, an HR policy assistant, a legal document summarizer, a financial advisor application, a retail shopping assistant. Most enterprise targets fall into this category.
+- **AI agent** — an autonomous system with tool access that can take multi-step actions: a code review agent with repository access, a data analysis agent that writes and executes SQL, a research assistant that browses the web, an IT support agent that opens and closes tickets. These carry the highest risk due to tool misuse potential.
+
+**Understanding rate limits:** RPM (Requests Per Minute) is how many API calls AIRS can make to the target per minute. TPM (Tokens Per Minute) is how many total tokens — input plus output combined — the API allows per minute. AIRS sends attack prompts sequentially; rate limits cap how fast those prompts can flow. An Attack Library scan contains hundreds of prompts spread over approximately 5 hours — at 20 RPM that is roughly 6,000 total requests, sufficient for a complete scan. Below 10 RPM the scan cannot complete in a reasonable window. TPM is a separate constraint: attack payloads are often verbose, especially when a full system prompt is included in every request body, and a TPM limit below 10,000 will cause throttling even when RPM is acceptable.
+
 Complete for each AI target before the call. A target that fails validation on the day of the call adds 30–60 minutes of unplanned troubleshooting.
 
 | Requirement | Status |
