@@ -151,6 +151,25 @@ AI Red Teaming is licensed through **NGFW credits**, not as a standalone SKU. Cr
 
 > **Blocker:** The credit allocation role is a CSP-level permission, separate from SCM admin access. A standard SCM admin cannot view or allocate credits. Identify this person before scheduling the call.
 
+#### Create a Deployment Profile
+
+The deployment profile allocates NGFW credits to AI Red Teaming and provisions the service on the selected tenant. Complete this before the deployment call — activation can take up to 2 hours.
+
+1. Log in to the [Customer Support Portal (CSP)](https://support.paloaltonetworks.com).
+2. Navigate to `Products` -> `Software/Cloud NGFW Credits`.
+3. Locate the credit pool and click `Create Deployment Profile`.
+4. Select `Prisma AIRS` -> `AI Red Teaming`.
+5. Choose a region: **Americas**, **EU-Netherlands**, or **Singapore**. This cannot be changed after activation.
+6. Enter a profile name (e.g., `AI Red Teaming - Production`) and click `Create Deployment Profile`.
+7. Click `Finish Setup` to redirect to the Hub.
+8. Select the CSP account and select or create a tenant.
+9. Associate the deployment profile with the target Tenant Service Group (TSG).
+10. Agree to the terms and click `Activate`.
+
+> **Warning:** Activation can take up to 2 hours. If creating a new tenant, allow an additional 15--20 minutes for tenant provisioning before activation begins. Start this step early and proceed with other prerequisites while it completes.
+
+> **Verification:** Navigate to `Common Services` -> `Tenant Management` -> `Deployment Profiles` in the Hub. Confirm the AI Red Teaming profile shows **Status: Complete**.
+
 ---
 
 ### Strata Logging Service (SLS)
