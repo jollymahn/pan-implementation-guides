@@ -546,6 +546,39 @@
       <div class="callout-title">SSO Provisioning Lead Time</div>
       <p>SSO provisioning (Okta, Entra ID, Ping) may require an IT ticket with a multi-day lead time. Start provisioning at least one week before the deployment call.</p>
     </div>
+
+    <h3 style="margin-top:1.25rem; border-top:1px solid var(--border); padding-top:1rem;">Okta OAuth Token Expiry: Confirming and Addressing the 1-Hour Window</h3>
+    <p>If the target AI endpoint authenticates using Okta OAuth, the access token AIRS uses to send attack prompts will expire during a scan. Okta access tokens default to a 1-hour lifetime. Attack Library scans run approximately 5 hours. Without a strategy in place, scans fail mid-run when the token expires.</p>
+    <p><strong>Step 1: Confirm the Okta token lifetime</strong></p>
+    <p>Ask the customer's Okta administrator to check the token lifetime for the OAuth application used to access the AI target:</p>
+    <ol>
+      <li>Log in to the Okta Admin Console.</li>
+      <li>Navigate to <strong>Security &rarr; API &rarr; Authorization Servers</strong>.</li>
+      <li>Select the authorization server used by the AI target application.</li>
+      <li>Click <strong>Access Policies</strong> and expand the relevant policy rule.</li>
+      <li>Check the <strong>Access Token Lifetime</strong> field. The default is 1 hour (3600 seconds).</li>
+    </ol>
+    <p>If the lifetime is under 6 hours, one of the three strategies below must be applied before scanning begins.</p>
+
+    <p><strong>Strategy A (Preferred): Provision a long-lived service account API key</strong></p>
+    <p>Ask the customer's Okta admin to create a dedicated service account in Okta for red teaming with an extended access token lifetime (minimum 6 hours, ideally 24 hours or no expiry if supported by the authorization server policy). Use this service account's credentials in the AIRS target configuration instead of a user-scoped token. This eliminates the expiry problem entirely and is the lowest-effort fix.</p>
+
+    <p><strong>Strategy B: Run scans in category-focused batches under 1 hour</strong></p>
+    <p>Divide the Attack Library scan into shorter runs, each covering a subset of categories that completes within the token lifetime. Refresh the Okta token between batches and update the AIRS target configuration with the new token before starting the next batch. Example batching for a 1-hour token:</p>
+    <ul>
+      <li>Batch 1: SECURITY subcategories (Prompt Injection, System Prompt Leak, Evasion)</li>
+      <li>Batch 2: SECURITY remaining (Jailbreak, Multi-Turn, Adversarial Suffix, RCE, Tool Leak)</li>
+      <li>Batch 3: SAFETY and COMPLIANCE subcategories</li>
+    </ul>
+    <p>This extends the engagement timeline but works within the token constraint. Coordinate batch timing with the customer's team.</p>
+
+    <p><strong>Strategy C: Token-refresh proxy (advanced)</strong></p>
+    <p>Deploy a lightweight proxy sidecar alongside the target that intercepts AIRS requests, refreshes the Okta token using a refresh token or client credentials flow before the access token expires, and forwards the request to the actual target with a fresh token. This requires engineering effort from the customer's platform team but is transparent to AIRS. Budget 2-4 hours for implementation. This strategy is best suited for engagements with many targets all using Okta OAuth.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Agree on a Strategy Before the Deployment Call</div>
+      <p>Token expiry is the most common cause of mid-scan failures for Okta-authenticated targets. Do not leave this as a day-of decision. Confirm the token lifetime and the chosen strategy during pre-engagement discovery so the customer's team has time to implement it before the call.</p>
+    </div>
   </div>
 </div>
 
