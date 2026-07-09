@@ -90,7 +90,12 @@ AI Red Teaming organizes attacks into four top-level categories, each with subca
 
 #### Brand (4 subcategories)
 
-Brand category attacks test for reputational risks including off-brand responses, competitor endorsement, misinformation about products, and tone inconsistency.
+| Subcategory | Description |
+|---|---|
+| Competitor Endorsements | AI system endorses or recommends competitor products or services |
+| Brand Tarnishing / Self Criticism | AI system generates content that damages or criticizes the brand |
+| Discriminating Claims | AI system makes discriminatory statements associated with the brand |
+| Political Endorsements | AI system makes political endorsements or statements on behalf of the brand |
 
 ### Scan Types
 
@@ -159,12 +164,13 @@ The deployment profile allocates NGFW credits to AI Red Teaming and provisions t
 2. Navigate to `Products` -> `Software/Cloud NGFW Credits`.
 3. Locate the credit pool and click `Create Deployment Profile`.
 4. Select `Prisma AIRS` -> `AI Red Teaming`.
-5. Choose a region: **Americas**, **EU-Netherlands**, or **Singapore**. This cannot be changed after activation.
-6. Enter a profile name (e.g., `AI Red Teaming - Production`) and click `Create Deployment Profile`.
-7. Click `Finish Setup` to redirect to the Hub.
-8. Select the CSP account and select or create a tenant.
+5. Enter a profile name (e.g., `AI Red Teaming - Production`) and click `Create Deployment Profile`.
+6. Click `Finish Setup` to redirect to the Hub.
+7. Select the CSP account and select or create a tenant.
+8. If creating a new tenant, select the **region**: Americas, EU-Netherlands, or Singapore. The region cannot be changed after the tenant is created.
 9. Associate the deployment profile with the target Tenant Service Group (TSG).
-10. Agree to the terms and click `Activate`.
+10. Select **None** in Additional Services.
+11. Agree to the terms and click `Activate`.
 
 > **Warning:** Activation can take up to 2 hours. If creating a new tenant, allow an additional 15--20 minutes for tenant provisioning before activation begins. Start this step early and proceed with other prerequisites while it completes.
 
@@ -302,12 +308,13 @@ The deployment profile allocates NGFW credits to AI Red Teaming and provisions t
 2. Navigate to `Products` -> `Software/Cloud NGFW Credits`.
 3. Locate the credit pool and click `Create Deployment Profile`.
 4. Select `Prisma AIRS` -> `AI Red Teaming`.
-5. Choose a region: **Americas**, **EU-Netherlands**, or **Singapore**.
-6. Enter a profile name (e.g., `AI Red Teaming - Production`) and click `Create Deployment Profile`.
-7. Click `Finish Setup` to redirect to the Hub.
-8. Select the CSP account and select or create a tenant.
+5. Enter a profile name (e.g., `AI Red Teaming - Production`) and click `Create Deployment Profile`.
+6. Click `Finish Setup` to redirect to the Hub.
+7. Select the CSP account and select or create a tenant.
+8. If creating a new tenant, select the **region**: Americas, EU-Netherlands, or Singapore. The region cannot be changed after the tenant is created.
 9. Associate the deployment profile with the target Tenant Service Group (TSG).
-10. Agree to the terms and click `Activate`.
+10. Select **None** in Additional Services.
+11. Agree to the terms and click `Activate`.
 
 > **Warning:** Deployment profile activation can take up to **2 hours**. If creating a new tenant, allow an additional 15-20 minutes for tenant provisioning before activation begins.
 
@@ -324,7 +331,7 @@ Confirm the signed-in user has the correct role to access AI Red Teaming in SCM.
 
 #### Option B: Create a Custom Role
 
-1. Navigate to `Common Services` -> `Identity & Access` -> `Roles` -> `Custom Roles`.
+1. Navigate to `Common Services` -> `Identity & Access` -> `Access Management` -> `Roles` -> `Custom Roles`.
 2. Click `Add Role`.
 3. Enable the `AI Red Teaming` application.
 4. Click `Save`.
@@ -431,7 +438,9 @@ The response includes the `target_uuid`. Record this value for scan configuratio
 | `CUSTOM` | App / Agent | Headers, Basic, OAuth2 | Endpoint URL, auth config |
 | `REST` | App / Agent | Headers, Basic, OAuth2 | Endpoint URL, request/response mapping |
 | `STREAMING` | App / Agent | Headers, Basic, OAuth2 | Endpoint URL, SSE configuration |
-| `WEBSOCKET` | App / Agent | Headers, Basic, OAuth2 | WebSocket URL, message format |
+| `WEBSOCKET` | App / Agent | Headers, Basic, OAuth2 | WebSocket URL, message format — natively supported, no wrapper required |
+
+> **Warning: WebSocket Limitations** — WebSocket targets do not support session management or multi-turn configuration. Attack sequences run as independent prompts — stateful multi-turn attacks cannot be chained across a WebSocket connection.
 
 #### Authentication Types
 
@@ -653,10 +662,11 @@ The response includes `docker_registry`, `helm_chart`, and `docker_image` refere
 
 ```bash
 # Deploy the Network Channel client
-helm install airs-channel \
-  oci://registry-proxy.prod.ai-red-teaming.paloaltonetworks.com/${HELM_CHART} \
-  --set channelId=${CHANNEL_UUID} \
-  --set token=${SERVICE_ACCOUNT_TOKEN} \
+helm install panw-network-client \
+  oci://registry.ai-red-teaming.paloaltonetworks.com/pairs-redteam-prd-fckx/red-teaming-onprem/charts/panw-network-client:1.0.5 \
+  --set config.clientId=<CLIENT_ID> \
+  --set config.clientSecret=<CLIENT_SECRET> \
+  --set config.channelId=<CHANNEL_UUID> \
   --namespace airs-red-teaming \
   --create-namespace
 ```
@@ -669,6 +679,7 @@ helm install airs-channel \
 |---|---|---|
 | Custom SSL certificates | v1.0.4+ | Mount custom CA certs for internal PKI |
 | Proxy support | v1.0.5+ | HTTP/HTTPS proxy configuration for outbound connections |
+| WebSocket targets via Network Channel | v1.3.0+ | Required when a WebSocket target is accessed through a Network Channel (private endpoint) |
 
 > **Verification:** Run `kubectl get pods -n airs-red-teaming`. The channel client pod is in `Running` state. The channel status in SCM changes to `ONLINE`.
 
