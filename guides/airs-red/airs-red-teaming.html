@@ -582,6 +582,56 @@
       <div class="callout-title">Blocker: Rate Limits Too Low</div>
       <p>Rate limits below 10 RPM will cause Attack Library scans to fail consistently. OpenAI's free tier (Tier 0) allows only 3 RPM. A dedicated higher-tier API key must be provisioned before scanning begins. Common provider tiers: OpenAI Tier 1 = 500 RPM (fine), Azure OpenAI = varies by deployment (check Azure portal), AWS Bedrock = per-model service quota.</p>
     </div>
+
+    <h3 style="margin-top:1.25rem; border-top:1px solid var(--border); padding-top:1rem;">Validating Target Endpoint Accessibility Before the Call</h3>
+    <p>Run these checks before the deployment call to confirm each target is reachable. A target that cannot be reached from AIRS cannot be configured, and discovering this during the call adds significant unplanned troubleshooting time.</p>
+
+    <p><strong>Public endpoints (internet-accessible)</strong></p>
+    <p>Send a test request directly to the endpoint using curl. The goal is to confirm the URL resolves, TLS completes, and the API returns a valid response with your credentials. Use the same request format you will enter into the AIRS target configuration.</p>
+    <div class="code-block">
+      <pre><code># Test a public endpoint — substitute your actual URL, token, and model
+curl -v -X POST "https://api.openai.com/v1/chat/completions" \
+  -H "Authorization: Bearer sk-..." \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}'
+
+# Expected: HTTP 200 with a response in choices[0].message.content
+# If you receive 401: credentials are wrong
+# If you receive 000 (no response): URL is unreachable or TLS failed</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>If the endpoint uses IP allowlisting, confirm AIRS egress IPs are added before running this test from your machine — the test only confirms the endpoint itself is accessible; AIRS may still be blocked if source IP restrictions are in place.</p>
+
+    <p><strong>Private endpoints (behind firewall, VPN, or private VPC)</strong></p>
+    <p>Private endpoints are not reachable from the public internet. You must test reachability from inside the same network — specifically from inside the Kubernetes cluster that will host the Network Channel. Run a test pod inside the cluster and curl the private endpoint from there.</p>
+    <div class="code-block">
+      <pre><code># Test a private endpoint from inside the K8s cluster
+kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
+  curl -v -X POST "https://internal.company.com/api/ai/chat" \
+  -H "Authorization: Bearer ..." \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Hello"}'
+
+# If the request succeeds: the Network Channel will be able to reach this target
+# If you get a connection refused or DNS failure: the cluster cannot see the endpoint
+# — check network policy, DNS resolution, and VPN/peering configuration</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Also verify the three AIRS FQDNs are reachable outbound from the cluster before the deployment call — the Network Channel cannot establish its tunnel if these are blocked:</p>
+    <div class="code-block">
+      <pre><code>kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
+  sh -c "curl -sv https://api.sase.paloaltonetworks.com 2>&1 | grep -E 'Connected|SSL|TLS|failed'; \
+         curl -sv https://auth.apps.paloaltonetworks.com 2>&1 | grep -E 'Connected|SSL|TLS|failed'; \
+         curl -sv https://registry.ai-red-teaming.paloaltonetworks.com 2>&1 | grep -E 'Connected|SSL|TLS|failed'"
+
+# Any "Connected" response (even if HTTP 403/404) confirms the FQDN is reachable
+# A timeout or "Connection refused" means egress to that domain is blocked</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>Formal validation during the deployment call</strong></p>
+    <p>After the target is created in AIRS during the deployment call, AIRS performs its own connectivity validation. See <a href="#targets">Configure Targets — Step 4.4: Validate Target Connection</a> for the formal validation step, which sends an authenticated probe and confirms the response body path extracts model text correctly. For private endpoints, also see <a href="#network-channels">Network Channels — Step 5.4: Verify Channel Connectivity</a> to confirm the Network Channel tunnel is online before attempting target validation.</p>
+
   </div>
 </div>
 
