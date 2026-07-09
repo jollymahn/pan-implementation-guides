@@ -720,6 +720,97 @@ kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
         <tr><td>Memory</td><td>128Mi</td><td>256Mi</td></tr>
       </tbody>
     </table>
+
+    <h3 style="margin-top:1.25rem; border-top:1px solid var(--border); padding-top:1rem;">How to Confirm Each Requirement Before the Call</h3>
+    <p>Run these checks before the deployment call. Each one maps to a specific blocker if unresolved on the day.</p>
+
+    <p><strong>1. Kubernetes cluster is available and can reach the private AI endpoint</strong></p>
+    <p>Confirm a cluster exists and that kubectl is connected to it:</p>
+    <div class="code-block">
+      <pre><code># Confirm kubectl is connected and the cluster is healthy
+kubectl get nodes
+
+# Expected: one or more nodes in Ready state
+# If this fails: kubectl is not configured, or the cluster is not reachable from your machine</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Then confirm the cluster can reach the private AI endpoint (run from inside the cluster, not from your local machine):</p>
+    <div class="code-block">
+      <pre><code>kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
+  curl -v "https://internal.ai-endpoint.company.com/health"
+
+# Expected: any HTTP response (200, 401, 403) confirms DNS resolves and network path exists
+# A timeout or "connection refused" means the cluster cannot reach the endpoint</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>If the cluster cannot reach the endpoint, the Network Channel will be OFFLINE after deployment. Resolve network policy, DNS, or VPN/peering configuration before the call. See <a href="#network-channels">Network Channels — Step 5.4: Verify Channel Connectivity</a> for the post-deployment verification step.</p>
+
+    <p><strong>2. kubectl is installed and configured for the correct cluster</strong></p>
+    <div class="code-block">
+      <pre><code># Confirm kubectl version and current cluster context
+kubectl version --client
+kubectl config current-context
+
+# Expected: client version 1.20+ and the context name matching the target cluster
+# If context is wrong: run  kubectl config use-context <cluster-name></code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>3. Helm 3.x is installed</strong></p>
+    <div class="code-block">
+      <pre><code>helm version
+
+# Expected: version.BuildInfo{Version:"v3.x.x", ...}
+# If Helm is not installed: https://helm.sh/docs/intro/install/
+# Helm 2.x is not supported — must be Helm 3</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>4. SCM service account with <code>airt.network_channels_client</code> permission</strong></p>
+    <p>The Network Channel Helm deployment requires a service account token. Confirm one exists with the correct permission before the call:</p>
+    <ol>
+      <li>Log in to <strong>Strata Cloud Manager</strong>.</li>
+      <li>Navigate to <strong>Common Services &rarr; Identity &amp; Access &rarr; Access Management &rarr; Service Accounts</strong>.</li>
+      <li>Locate the service account intended for Network Channel use.</li>
+      <li>Confirm its assigned role includes the <code>airt.network_channels_client</code> permission. If not, edit the role or create a new custom role with this permission and assign it.</li>
+      <li>Generate a new token for this service account. The token is used as the <code>--set config.clientSecret</code> value in the Helm install command during <a href="#network-channels">Step 5.3: Deploy the Channel Client</a>.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Generate the Token Before the Call</div>
+      <p>Service account tokens are generated on demand and expire. Generate the token immediately before the deployment call and have it ready to paste into the Helm command. Do not generate it days in advance.</p>
+    </div>
+
+    <p><strong>5. Three outbound FQDNs are reachable from the K8s cluster</strong></p>
+    <p>Run this from inside the cluster to confirm all three AIRS FQDNs are accessible. If any fail, they must be allowlisted in the cluster's egress network policy before the deployment call:</p>
+    <div class="code-block">
+      <pre><code>for fqdn in \
+  api.sase.paloaltonetworks.com \
+  auth.apps.paloaltonetworks.com \
+  registry.ai-red-teaming.paloaltonetworks.com; do
+  echo -n "Testing $fqdn: "
+  kubectl run curl-test-$RANDOM --image=curlimages/curl --rm -it --restart=Never \
+    --quiet -- curl -sv --max-time 10 "https://$fqdn" 2>&1 | \
+    grep -qE "Connected|SSL handshake" && echo "REACHABLE" || echo "BLOCKED"
+done
+
+# All three should show REACHABLE
+# Any BLOCKED result must be resolved before the deployment call</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>6. K8s admin is confirmed available for the call</strong></p>
+    <p>The person who runs the Helm install during the deployment call must have permission to create namespaces and deploy workloads. Confirm this before scheduling:</p>
+    <div class="code-block">
+      <pre><code># Confirm the admin has permission to create namespaces and deploy
+kubectl auth can-i create namespace
+kubectl auth can-i create deployment --namespace airs-red-teaming
+
+# Expected: "yes" for both
+# If "no": the user does not have sufficient RBAC permissions to run the Helm install</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The full Network Channel deployment steps are covered in <a href="#network-channels">Network Channels: Steps 5.2 through 5.4</a>. These run during the deployment call itself — the pre-call checks above confirm the prerequisites so the deployment steps proceed without interruption.</p>
+
   </div>
 </div>
 
