@@ -132,6 +132,7 @@
     <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
     <a href="#reference" data-section="reference">Reference</a>
     <a href="#deployment-checklist" data-section="deployment-checklist">Deployment Checklist</a>
+    <a href="#wrappers-appendix" data-section="wrappers-appendix">Wrappers &amp; Proxy Services</a>
     <a href="#trd-appendix" data-section="trd-appendix">TRD — Customer Intake</a>
   </div>
 </aside>
@@ -2187,44 +2188,67 @@ kubectl auth can-i create deployment --namespace airs-red-teaming
                   </tbody>
                 </table>
 
-                <h3>Pattern A Example (AWS SigV4 Signing)</h3>
+                <div class="callout callout-note">
+                  <div class="callout-title">Typed Return Objects — No Import Needed</div>
+                  <p>The result types (<code>PreProcessResult</code>, <code>PostProcessResult</code>, <code>CallTargetResult</code>, <code>AuthResult</code>, <code>SessionPreProcessResult</code>) and error signals (<code>raise_rate_limited</code>, <code>raise_auth_error</code>) are injected by the AIRS runtime. Do not import them; use them directly. Access the incoming prompt via <code>inference_input.prompt</code>, and access response body fields via <code>raw_response.json_body</code> (a property, not a method).</p>
+                </div>
+
+                <h3>Pattern A Example (OAuth2 Token Exchange + REST Call)</h3>
                 <div class="code-block">
-                  <pre><code>import hashlib, hmac, datetime
-
+                  <pre><code># authenticate() fetches a token once; AIRS caches it in context.auth
 def authenticate(context):
-    return {
-        "access_key": context.secrets["aws_access_key"],
-        "secret_key": context.secrets["aws_secret_key"],
-        "region":     context.vars["aws_region"],
-    }
+    resp = context.http.post(
+        context.vars["token_url"],
+        data={
+            "grant_type":    "client_credentials",
+            "client_id":     context.secrets["client_id"],
+            "client_secret": context.secrets["client_secret"],
+        },
+    )
+    body = resp.json()
+    return AuthResult(ttl=body.get("expires_in", 3600), data={"token": body["access_token"]})
 
+# pre_process() builds the HTTP request descriptor — the platform fires the actual call
 def pre_process(context, inference_input):
-    endpoint = context.vars["endpoint_url"]
-    body = json.dumps({"prompt": inference_input, "max_tokens": 500})
-    # Sign with SigV4 using context.auth credentials
-    signed_headers = _sigv4_sign(context.auth, endpoint, body)
-    return context.http.build_request(
-        "POST", endpoint, content=body, headers=signed_headers
+    return PreProcessResult(
+        url=context.vars["endpoint_url"],
+        headers={"Authorization": f"Bearer {context.auth['token']}"},
+        json_body={"messages": [{"role": "user", "content": inference_input.prompt}]},
     )
 
+# post_process() extracts the reply text from the raw HTTP response
 def post_process(context, raw_response):
-    data = raw_response.json()
-    return data["completion"]  # adjust path to your response structure</code></pre>
+    if raw_response.status_code == 429:
+        raise_rate_limited(retry_after=30)
+    if raw_response.status_code == 401:
+        raise_auth_error("Token rejected by agent")
+    return PostProcessResult(output=raw_response.json_body["choices"][0]["message"]["content"])</code></pre>
                   <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                 </div>
 
-                <h3>Pattern B Example (gRPC via subprocess)</h3>
+                <h3>Pattern B Example (WebSocket Agent)</h3>
                 <div class="code-block">
-                  <pre><code>import subprocess, json
+                  <pre><code>import json
+import websockets.sync.client as ws
 
+# call_target() manages the full transport — use for WebSocket, gRPC, or proprietary SDKs
 def call_target(context, inference_input):
-    endpoint = context.vars["grpc_endpoint"]
-    result = subprocess.run(
-        ["grpc_client", "--endpoint", endpoint, "--prompt", inference_input],
-        capture_output=True, text=True, timeout=90
+    conn = ws.connect(
+        context.vars["ws_url"],
+        additional_headers={"Authorization": f"Bearer {context.auth['token']}"},
     )
-    response = json.loads(result.stdout)
-    return response["reply"]</code></pre>
+    try:
+        conn.send(json.dumps({"message": inference_input.prompt}))
+        reply = ""
+        for frame in conn:
+            event = json.loads(frame)
+            if event.get("type") == "chunk":
+                reply += event["text"]
+            elif event.get("type") == "done":
+                break
+        return CallTargetResult(output=reply)
+    finally:
+        conn.close()</code></pre>
                   <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                 </div>
 
@@ -4220,6 +4244,720 @@ curl -X GET "https://api.sase.paloaltonetworks.com/ai-red-teaming/mgmt-plane/v1/
   <label><input type="checkbox"> Quota consumption tracked and within allocation</label>
   <label><input type="checkbox"> Escalation path defined for critical vulnerability findings</label>
   <label><input type="checkbox"> Custom attack library plan documented for organization-specific testing</label>
+</div>
+
+<!-- ── Appendix: Wrappers and Proxy Services ──────────────────── -->
+
+<h2 id="wrappers-appendix">Appendix: Wrappers and Proxy Services</h2>
+
+<p>A <strong>wrapper</strong> is an intermediate HTTP service you deploy between AIRS and your target AI system. It accepts REST POST requests from AIRS, translates them into whatever protocol, authentication scheme, or SDK call your agent requires, and returns standard JSON that AIRS can parse. From AIRS's perspective, the wrapper looks identical to any other REST endpoint. The wrapper handles everything the AIRS native connection methods cannot.</p>
+
+<p>Palo Alto Networks' own documentation acknowledges the pattern: native WebSocket support "eliminates the need to create custom wrapper APIs or proxy services to translate between REST API and WebSocket communications." That sentence confirms wrappers are a real, recognized solution class — and that they remain necessary in scenarios where native AIRS connection methods have documented limitations.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Concept — What a Wrapper Is and When It Exists</span></div>
+  <div class="collapsible-body">
+    <p>Three analogies help frame the pattern for different audiences:</p>
+    <table>
+      <thead><tr><th>Analogy</th><th>Wrapper role</th><th>Best for explaining</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Hotel concierge</strong></td>
+          <td>AIRS speaks only to the concierge (the wrapper), never directly to the service (the agent). The concierge accepts requests in one format, knows how to reach the agent via its native protocol, and brings back a response in the format AIRS expects. The concierge also handles credential renewal and retries transparently.</td>
+          <td>Non-technical stakeholders; explaining why a separate service is needed</td>
+        </tr>
+        <tr>
+          <td><strong>Travel plug adapter</strong></td>
+          <td>AIRS speaks one socket standard (REST + JSON). Your agent may speak a different standard (gRPC, WebSocket, proprietary SDK). The wrapper is the plug adapter that converts the connection interface at the point of contact. AIRS provides the power; the adapter changes the shape.</td>
+          <td>Protocol differences (gRPC, SOAP, WebSocket)</td>
+        </tr>
+        <tr>
+          <td><strong>Mailroom franking machine</strong></td>
+          <td>The signing proxy sits at the mailroom between AIRS and the agent. AIRS drops unsigned requests in the outbox. The proxy stamps each one with the required authentication material (SigV4 signature, HMAC, fresh OAuth token) before forwarding. The agent only ever receives properly authenticated requests.</td>
+          <td>Auth signing and token refresh scenarios</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Wrappers are always built and maintained by the customer's development team. This is not a Palo Alto Networks or Professional Services deliverable. PS's role is to identify during pre-engagement discovery whether a wrapper is needed, explain the interface contract, and test the final result — not to build the wrapper itself.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Decision — Do I Need a Wrapper?</span></div>
+  <div class="collapsible-body">
+    <p>Work through this table top to bottom. Stop at the first row that matches your situation.</p>
+    <table>
+      <thead><tr><th>Your situation</th><th>AIRS native solution</th><th>Wrapper required?</th><th>Wrapper type if yes</th></tr></thead>
+      <tbody>
+        <tr><td>Agent exposes a standard HTTPS POST endpoint with JSON in and JSON out</td><td>REST API connection method</td><td>No</td><td>—</td></tr>
+        <tr><td>Agent streams responses via SSE (<code>text/event-stream</code> or <code>application/x-ndjson</code>)</td><td>Streaming connection method</td><td>No</td><td>—</td></tr>
+        <tr><td>Agent is WebSocket-only, each prompt is stateless, no OAuth 2.0 needed</td><td>WebSocket connection method (Beta)</td><td>No</td><td>—</td></tr>
+        <tr><td>Agent is WebSocket-only AND needs multi-turn stateful testing</td><td>None — AIRS closes WS after each prompt</td><td><strong>Yes</strong></td><td>Type 2: REST-to-WebSocket</td></tr>
+        <tr><td>Agent is WebSocket-only AND requires OAuth 2.0 token injection</td><td>None — AIRS WebSocket does not support OAuth 2.0</td><td><strong>Yes</strong></td><td>Type 2: REST-to-WebSocket</td></tr>
+        <tr><td>Agent has no HTTP API; only a Python or Java SDK</td><td>None — AIRS requires an HTTP endpoint</td><td><strong>Yes</strong></td><td>Type 1: REST shim</td></tr>
+        <tr><td>Agent uses gRPC, SOAP, or AMQP; Kubernetes is available for a Network Channel</td><td>Custom Target Adapter (preferred over a wrapper)</td><td>No — use adapter instead</td><td>—</td></tr>
+        <tr><td>Agent uses gRPC, SOAP, or AMQP; no Kubernetes available</td><td>None — Custom Adapter requires K8s</td><td><strong>Yes</strong></td><td>Type 1: REST shim to gRPC/SOAP</td></tr>
+        <tr><td>Agent requires AWS SigV4, HMAC, or mTLS; Kubernetes is available</td><td>Custom Adapter <code>pre_process()</code> can handle signing</td><td>No — use adapter instead</td><td>—</td></tr>
+        <tr><td>Agent requires AWS SigV4, HMAC, or mTLS; no Kubernetes available</td><td>None</td><td><strong>Yes</strong></td><td>Type 3: Signing proxy</td></tr>
+        <tr><td>Agent uses Okta; token lifetime is short; Strategy A/B not feasible</td><td>None — AIRS OAuth 2.0 requires the customer to manage token refresh separately</td><td><strong>Yes</strong></td><td>Type 3: Token-refresh proxy</td></tr>
+        <tr><td>Agent is deployed in Microsoft Copilot Studio</td><td>Copilot Studio connection method (Agent targets only)</td><td>No</td><td>—</td></tr>
+        <tr><td>Agent uses a non-standard protocol not covered above; Kubernetes available</td><td>Custom Target Adapter, Pattern B (<code>call_target</code>)</td><td>No — use adapter instead</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Custom Target Adapter vs Standalone Wrapper</div>
+      <p>The Custom Target Adapter is PAN's native mechanism for non-standard protocol bridging. It runs inside the Network Channel pod in the customer's Kubernetes cluster, with access to the private network. It is the preferred solution over a standalone wrapper when Kubernetes is available, because AIRS manages its execution lifecycle and there is no additional service to deploy, monitor, or secure. See the <strong>Wrapper vs Custom Target Adapter</strong> section below for the trade-off analysis.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>The Four Scenarios Where a Wrapper Is Absolutely Required</span></div>
+  <div class="collapsible-body">
+    <p>These are not "nice to have" scenarios. In each case, the AIRS native connection methods have a documented, hard limitation that cannot be worked around without a wrapper or adapter.</p>
+
+    <h3>Scenario 1 — SDK-Only Agent (No HTTP API)</h3>
+    <p>AIRS can only communicate with agents via HTTP. If the agent is only callable through a Python or Java SDK, there is no HTTP endpoint for AIRS to reach. A REST shim exposes the SDK as an HTTPS POST endpoint. The shim runs in the same environment as the SDK (same container, same VPC, same host) so it has access to the agent's runtime.</p>
+    <p><strong>Wrapper type:</strong> Type 1 — REST shim. <strong>Estimated build time:</strong> 2 to 4 hours for a simple single-method SDK.</p>
+
+    <h3>Scenario 2 — WebSocket Agent with Multi-Turn or OAuth 2.0 Requirements</h3>
+    <p>AIRS's native WebSocket connection method has two hard limitations: it closes the WebSocket connection after each individual prompt (so session state does not accumulate across turns in a conversation), and it does not support OAuth 2.0 authentication. If either of these is required, the native WebSocket method cannot be used.</p>
+    <p>A REST-to-WebSocket wrapper accepts a REST POST from AIRS, manages a persistent WebSocket connection internally (handling multi-turn session state), and performs OAuth 2.0 token exchange and refresh before sending each request to the agent. From AIRS's perspective, this is an ordinary REST endpoint.</p>
+    <p><strong>Wrapper type:</strong> Type 2 — REST-to-WebSocket adapter. <strong>Estimated build time:</strong> 4 to 8 hours; longer if stateful session history must be maintained across prompts.</p>
+
+    <h3>Scenario 3 — gRPC or SOAP Agent, No Kubernetes Available</h3>
+    <p>Agents using gRPC, SOAP, or AMQP cannot be expressed as a standard HTTP cURL. The preferred solution is the Custom Target Adapter (Pattern B using <code>call_target</code>), which runs inside the Network Channel pod and has direct network access to the agent. However, Custom Adapter requires Kubernetes (for the Network Channel client) at version 1.4.0 or higher with the adapter sidecar explicitly enabled.</p>
+    <p>If Kubernetes is not available in the environment, a standalone REST shim is the alternative. The shim accepts AIRS REST requests and translates them to gRPC calls, SOAP envelopes, or AMQP messages before forwarding to the agent.</p>
+    <p><strong>Wrapper type:</strong> Type 1 — REST shim (to gRPC/SOAP). <strong>Estimated build time:</strong> 4 to 8 hours; gRPC stub generation adds complexity.</p>
+
+    <h3>Scenario 4 — Request Signing Required, No Kubernetes Available</h3>
+    <p>Agents that require AWS SigV4, HMAC-SHA256, or mutual TLS (mTLS) for every request use authentication schemes that AIRS native connection methods cannot generate. The preferred solution is Custom Adapter's <code>pre_process()</code> function, which can compute per-request signatures using <code>context.secrets</code> credentials before AIRS sends the request. This requires Kubernetes.</p>
+    <p>Without Kubernetes, a signing proxy sits between AIRS and the agent. It accepts unsigned requests from AIRS, computes the required signature or presents the client certificate, and forwards the signed request to the agent. Note that per-request signing cannot use <code>authenticate()</code> in a Custom Adapter because the request body is not available at authentication time; signing must happen in <code>pre_process()</code>.</p>
+    <p><strong>Wrapper type:</strong> Type 3 — signing proxy. <strong>Estimated build time:</strong> 2 to 4 hours for SigV4; longer for mTLS certificate management.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Type 1 — REST Shim: Exposing an SDK or Protocol Over HTTPS</span></div>
+  <div class="collapsible-body">
+    <p>A REST shim is a thin FastAPI or Flask application with a single POST route. It accepts AIRS's JSON request, calls the agent using the SDK or protocol the agent natively supports, and returns a JSON response in a shape AIRS can map with the <code>{RESPONSE}</code> template.</p>
+
+    <h3>Interface Contract</h3>
+    <p>AIRS sends a POST request with the body structure you defined in the Verify &amp; Edit JSON wizard step. The shim must return HTTP 200 with a JSON body containing the response text at the path you mapped. Any non-200 response causes AIRS to log the attack as an error.</p>
+
+    <h3>Python FastAPI Example (SDK-Only Agent)</h3>
+    <div class="code-block">
+      <pre><code>"""
+REST shim for an SDK-only agent.
+Install: pip install fastapi uvicorn
+Run: uvicorn shim:app --host 0.0.0.0 --port 8080 --ssl-keyfile key.pem --ssl-certfile cert.pem
+"""
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+import your_agent_sdk as agent_sdk  # replace with actual import
+
+API_TOKEN = "your-secret-token"  # load from environment in production
+app = FastAPI()
+security = HTTPBearer()
+
+class Message(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: list[Message]
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if credentials.credentials != API_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.post("/chat")
+async def chat(request: ChatRequest, _=Depends(verify_token)):
+    # Extract the last user message — this is where {INPUT} lands
+    user_message = next(
+        (m.content for m in reversed(request.messages) if m.role == "user"),
+        ""
+    )
+    system_prompt = next(
+        (m.content for m in request.messages if m.role == "system"),
+        ""
+    )
+
+    # Call the SDK — replace with your agent's actual SDK call
+    response = agent_sdk.chat(
+        system=system_prompt,
+        user=user_message,
+    )
+
+    # Return in OpenAI-compatible format so AIRS can map choices[0].message.content
+    return {
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": response.text  # adjust to your SDK's response field
+            },
+            "finish_reason": "stop"
+        }]
+    }</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h3>Python FastAPI Example (gRPC Agent)</h3>
+    <div class="code-block">
+      <pre><code>"""
+REST shim for a gRPC agent.
+Install: pip install fastapi uvicorn grpcio grpcio-tools
+Generate stubs: python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. agent.proto
+"""
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+import grpc
+import agent_pb2, agent_pb2_grpc  # generated from your .proto file
+
+API_TOKEN = "your-secret-token"
+GRPC_ENDPOINT = "internal-agent.company.com:50051"
+
+app = FastAPI()
+security = HTTPBearer()
+channel = grpc.insecure_channel(GRPC_ENDPOINT)  # use grpc.secure_channel() for TLS
+stub = agent_pb2_grpc.AgentStub(channel)
+
+class Message(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: list[Message]
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if credentials.credentials != API_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.post("/chat")
+async def chat(request: ChatRequest, _=Depends(verify_token)):
+    user_message = next(
+        (m.content for m in reversed(request.messages) if m.role == "user"), ""
+    )
+    grpc_request = agent_pb2.InferRequest(prompt=user_message)
+    grpc_response = stub.Infer(grpc_request, timeout=90)
+    return {
+        "choices": [{"message": {"role": "assistant", "content": grpc_response.reply}}]
+    }</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h3>AIRS Wizard Values for a REST Shim</h3>
+    <table>
+      <thead><tr><th>Wizard field</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Connection Method</td><td>REST API</td></tr>
+        <tr><td>Endpoint URL</td><td><code>https://&lt;shim-host&gt;:8080/chat</code></td></tr>
+        <tr><td>Authorization header</td><td><code>Bearer your-secret-token</code></td></tr>
+        <tr><td>Request body (<code>{INPUT}</code> placement)</td><td><code>{"messages":[{"role":"system","content":"..."},{"role":"user","content":"{INPUT}"}]}</code></td></tr>
+        <tr><td>Response JSON path</td><td><code>choices[0].message.content</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Type 2 — REST-to-WebSocket Adapter: Multi-Turn and OAuth 2.0 for WebSocket Agents</span></div>
+  <div class="collapsible-body">
+    <p>A REST-to-WebSocket adapter accepts a stateless REST POST from AIRS and manages a WebSocket connection (including session state and token refresh) entirely inside the adapter. This is the only way to achieve multi-turn stateful testing or OAuth 2.0 authentication for WebSocket-only agents, because AIRS's native WebSocket connection method supports neither.</p>
+
+    <h3>Stateless Single-Turn Example</h3>
+    <p>Each AIRS request opens a new WebSocket connection, sends the prompt, collects the response, and closes. No session state is maintained. Use this when the agent is WebSocket-only but multi-turn context is not required.</p>
+    <div class="code-block">
+      <pre><code>"""
+REST-to-WebSocket adapter (stateless, single-turn).
+Install: pip install fastapi uvicorn websockets
+"""
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+import asyncio, json, websockets
+
+API_TOKEN = "your-secret-token"
+WS_ENDPOINT = "wss://agent.company.com/ws/chat"
+
+app = FastAPI()
+security = HTTPBearer()
+
+class Message(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: list[Message]
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if credentials.credentials != API_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.post("/chat")
+async def chat(request: ChatRequest, _=Depends(verify_token)):
+    user_message = next(
+        (m.content for m in reversed(request.messages) if m.role == "user"), ""
+    )
+    async with websockets.connect(WS_ENDPOINT) as ws:
+        await ws.send(json.dumps({"message": user_message}))
+        raw = await asyncio.wait_for(ws.recv(), timeout=90)
+        data = json.loads(raw)
+    return {
+        "choices": [{"message": {"role": "assistant", "content": data["reply"]}}]
+    }</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h3>Stateful Multi-Turn Example</h3>
+    <p>A persistent WebSocket connection is held open in a session store keyed by a conversation ID. AIRS passes the conversation ID (or a stable identifier derived from the session) so the adapter can route follow-up prompts to the correct open connection. This allows context to accumulate across turns — the agent "remembers" earlier prompts in the conversation.</p>
+    <div class="code-block">
+      <pre><code>"""
+REST-to-WebSocket adapter (stateful multi-turn).
+Sessions are stored in memory — use Redis for multi-process deployments.
+"""
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+import asyncio, json, websockets
+
+API_TOKEN = "your-secret-token"
+WS_ENDPOINT = "wss://agent.company.com/ws/chat"
+
+app = FastAPI()
+security = HTTPBearer()
+sessions: dict = {}  # session_id -> open websockets connection
+
+class Message(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: list[Message]
+    session_id: str = "default"
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if credentials.credentials != API_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.post("/chat")
+async def chat(request: ChatRequest, _=Depends(verify_token)):
+    user_message = next(
+        (m.content for m in reversed(request.messages) if m.role == "user"), ""
+    )
+    sid = request.session_id
+    if sid not in sessions:
+        sessions[sid] = await websockets.connect(WS_ENDPOINT)
+    ws = sessions[sid]
+    try:
+        await ws.send(json.dumps({"message": user_message}))
+        raw = await asyncio.wait_for(ws.recv(), timeout=90)
+        data = json.loads(raw)
+        return {"choices": [{"message": {"role": "assistant", "content": data["reply"]}}]}
+    except Exception:
+        # Connection dropped — clean up and let caller retry
+        del sessions[sid]
+        raise HTTPException(status_code=503, detail="WebSocket connection lost; retry request")
+
+@app.delete("/session/{session_id}")
+async def end_session(session_id: str, _=Depends(verify_token)):
+    if session_id in sessions:
+        await sessions[session_id].close()
+        del sessions[session_id]
+    return {"status": "closed"}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">In-Memory Session Store Is Single-Process Only</div>
+      <p>The <code>sessions</code> dict in the example above lives in the process's memory. If you run multiple adapter replicas (for redundancy or load balancing), each process has its own session map and requests from the same conversation may land on different replicas. Use Redis or another shared store to key sessions when running more than one adapter process.</p>
+    </div>
+
+    <h3>Adding OAuth 2.0 Token Exchange</h3>
+    <p>Fetch a token before opening the WebSocket connection and inject it into the handshake headers. Refresh the token before it expires by checking the expiry on each request.</p>
+    <div class="code-block">
+      <pre><code">import time, httpx
+
+token_cache = {"value": None, "expires_at": 0}
+
+def get_token():
+    if token_cache["value"] and time.time() < token_cache["expires_at"] - 60:
+        return token_cache["value"]
+    resp = httpx.post(
+        "https://auth.company.com/oauth2/token",
+        data={"grant_type": "client_credentials",
+              "client_id": "YOUR_CLIENT_ID",
+              "client_secret": "YOUR_CLIENT_SECRET"},
+    )
+    body = resp.json()
+    token_cache["value"] = body["access_token"]
+    token_cache["expires_at"] = time.time() + body.get("expires_in", 3600)
+    return token_cache["value"]
+
+# In your chat() handler, replace:
+#   async with websockets.connect(WS_ENDPOINT) as ws:
+# with:
+#   token = get_token()
+#   async with websockets.connect(WS_ENDPOINT,
+#       additional_headers={"Authorization": f"Bearer {token}"}) as ws:</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Type 3 — Signing and Auth Proxy: SigV4, HMAC, and Okta Token Refresh</span></div>
+  <div class="collapsible-body">
+    <h3>SigV4 Signing Proxy</h3>
+    <p>AWS SigV4 requires a canonical request string that includes the exact request body, timestamp, and computed HMAC-SHA256 digest. AIRS cannot compute this because it does not have access to AWS credentials and does not sign requests. A signing proxy receives the unsigned request from AIRS, computes the SigV4 signature, adds the required headers (<code>Authorization</code>, <code>x-amz-date</code>, <code>x-amz-content-sha256</code>), and forwards the signed request to the agent.</p>
+    <div class="code-block">
+      <pre><code>"""
+SigV4 signing proxy using the aws-requests-auth library.
+Install: pip install fastapi uvicorn httpx aws-requests-auth
+"""
+from fastapi import FastAPI, Request, Response
+from aws_requests_auth.aws_auth import AWSRequestsAuth
+import httpx, os
+
+AWS_ACCESS_KEY = os.environ["AWS_ACCESS_KEY_ID"]
+AWS_SECRET_KEY = os.environ["AWS_SECRET_ACCESS_KEY"]
+AWS_REGION     = os.environ.get("AWS_REGION", "us-east-1")
+AWS_SERVICE    = "execute-api"  # or "bedrock" etc.
+AGENT_HOST     = "api.agent.us-east-1.amazonaws.com"
+AGENT_URL      = f"https://{AGENT_HOST}/prod/chat"
+
+app = FastAPI()
+
+auth = AWSRequestsAuth(
+    aws_access_key=AWS_ACCESS_KEY,
+    aws_secret_access_key=AWS_SECRET_KEY,
+    aws_host=AGENT_HOST,
+    aws_region=AWS_REGION,
+    aws_service=AWS_SERVICE,
+)
+
+@app.post("/chat")
+async def proxy(request: Request):
+    body = await request.body()
+    resp = httpx.post(
+        AGENT_URL,
+        content=body,
+        headers={"Content-Type": "application/json"},
+        auth=auth,
+        timeout=90,
+    )
+    return Response(content=resp.content, status_code=resp.status_code,
+                    media_type="application/json")</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h3>Okta Token-Refresh Proxy (Strategy C)</h3>
+    <p>Use this when the agent requires Okta access tokens and the token lifetime is shorter than the scan duration (Attack Library scans run approximately 5 hours). The proxy holds a refresh token, exchanges it for a fresh access token before expiry, injects the token into each forwarded request, and forwards the rest of the request body unchanged.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Try Strategy A and B First</div>
+      <p>Before building this proxy, exhaust the lower-effort Okta strategies documented in the IAM &amp; Permissions prerequisites section: <strong>Strategy A</strong> (provision a long-lived service account with a non-expiring token) and <strong>Strategy B</strong> (schedule scans under the token lifetime and accept manual restarts). Strategy C adds operational complexity and requires the proxy to handle Okta's rate limits on token exchange requests.</p>
+    </div>
+    <div class="code-block">
+      <pre><code>"""
+Okta token-refresh proxy.
+Install: pip install fastapi uvicorn httpx
+"""
+from fastapi import FastAPI, Request, Response
+import httpx, os, time
+
+OKTA_TOKEN_URL   = os.environ["OKTA_TOKEN_URL"]   # https://your-org.okta.com/oauth2/v1/token
+CLIENT_ID        = os.environ["OKTA_CLIENT_ID"]
+CLIENT_SECRET    = os.environ["OKTA_CLIENT_SECRET"]
+REFRESH_TOKEN    = os.environ["OKTA_REFRESH_TOKEN"]  # long-lived refresh token
+AGENT_URL        = os.environ["AGENT_URL"]           # target agent HTTPS endpoint
+
+app = FastAPI()
+_token_cache = {"access_token": None, "expires_at": 0}
+
+def get_access_token() -> str:
+    if _token_cache["access_token"] and time.time() < _token_cache["expires_at"] - 120:
+        return _token_cache["access_token"]
+    resp = httpx.post(OKTA_TOKEN_URL, data={
+        "grant_type":    "refresh_token",
+        "refresh_token": REFRESH_TOKEN,
+        "client_id":     CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+    })
+    body = resp.json()
+    _token_cache["access_token"] = body["access_token"]
+    _token_cache["expires_at"]   = time.time() + body.get("expires_in", 3600)
+    return _token_cache["access_token"]
+
+@app.post("/chat")
+async def proxy(request: Request):
+    body = await request.body()
+    token = get_access_token()
+    resp = httpx.post(
+        AGENT_URL,
+        content=body,
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Bearer {token}"},
+        timeout=90,
+    )
+    return Response(content=resp.content, status_code=resp.status_code,
+                    media_type="application/json")</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Wrapper vs Custom Target Adapter — Which to Build</span></div>
+  <div class="collapsible-body">
+    <p>The Custom Target Adapter is Palo Alto Networks' native mechanism for protocol bridging. It runs inside the Network Channel pod in the customer's Kubernetes cluster. In most cases where Kubernetes is available, the Custom Adapter is the right choice. A standalone wrapper is the alternative when it is not.</p>
+    <table>
+      <thead><tr><th>Factor</th><th>Custom Target Adapter</th><th>Standalone Wrapper</th></tr></thead>
+      <tbody>
+        <tr><td>Kubernetes required</td><td>Yes — Network Channel + v1.4.0+, adapter sidecar enabled</td><td>No — runs anywhere HTTPS is accessible</td></tr>
+        <tr><td>Who manages execution</td><td>AIRS platform manages adapter sidecar lifecycle</td><td>Customer team deploys, monitors, and scales the wrapper service</td></tr>
+        <tr><td>Network access to agent</td><td>Direct — runs inside the same private network as the agent</td><td>Wrapper must be reachable from AIRS AND able to reach the agent</td></tr>
+        <tr><td>Auth credential storage</td><td><code>context.secrets</code> — masked in UI, scrubbed from logs</td><td>Customer manages secrets (env vars, Secrets Manager, Vault)</td></tr>
+        <tr><td>Available packages</td><td>stdlib, httpx, websockets only (additional: support request)</td><td>Any package installable via pip</td></tr>
+        <tr><td>Per-request signing (SigV4)</td><td>Supported in <code>pre_process()</code></td><td>Supported (any signing library)</td></tr>
+        <tr><td>Multi-turn support</td><td>Supported via <code>session_pre_process()</code></td><td>Supported (custom session management)</td></tr>
+        <tr><td>Execution time limit</td><td>110 seconds total per turn</td><td>No platform limit — set your own timeout</td></tr>
+        <tr><td>Build time estimate</td><td>1 to 3 days (adapter code + K8s setup)</td><td>2 to 8 hours depending on type</td></tr>
+        <tr><td>Official PAN docs</td><td>Yes — see links below</td><td>No — build from first principles</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Official Custom Target Adapter Documentation</h3>
+    <ul>
+      <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/build-a-custom-target-adapter" target="_blank" rel="noopener">Build a Custom Target Adapter</a> — official build guide with Pattern A and B code examples</li>
+      <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/adapter-contract/adapter-contract-functions" target="_blank" rel="noopener">Adapter Contract Functions</a> — authoritative function signatures, context object, and typed return objects</li>
+      <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/attach-a-custom-target-adapter-to-a-target" target="_blank" rel="noopener">Attach a Custom Target Adapter to a Target</a> — upload, validate, activate, and attach workflow</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Deploying Your Wrapper</span></div>
+  <div class="collapsible-body">
+    <p>AIRS requires an HTTPS endpoint. Plain HTTP is rejected. Choose a deployment pattern based on where the target agent lives and whether the wrapper needs to reach a private network.</p>
+
+    <h3>Option A — Docker on an EC2 Instance or VM (Recommended for Private Agents)</h3>
+    <p>Deploy the wrapper on a host that has network access to the private agent. TLS is terminated with a self-signed or Let's Encrypt certificate. AIRS reaches the wrapper via the host's public or private IP; the wrapper reaches the agent via the internal network.</p>
+    <div class="code-block">
+      <pre><code># Dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY shim.py .
+EXPOSE 8080
+CMD ["uvicorn", "shim:app", "--host", "0.0.0.0", "--port", "8080",
+     "--ssl-keyfile", "/certs/key.pem", "--ssl-certfile", "/certs/cert.pem"]</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="code-block">
+      <pre><code># Build and run
+docker build -t airs-wrapper .
+docker run -d -p 8080:8080 \
+  -v /path/to/certs:/certs:ro \
+  -e API_TOKEN="your-secret-token" \
+  -e AGENT_URL="https://internal-agent.company.com/api/chat" \
+  airs-wrapper</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h3>Option B — AWS Lambda + API Gateway (Recommended for Public Agents)</h3>
+    <p>Lambda gives you a fully managed HTTPS endpoint with no server to maintain. API Gateway terminates TLS automatically. The wrapper code runs as a Lambda function handler. Best for wrappers that reach public-internet agents or agents in the same AWS account. Not suitable for wrappers requiring persistent in-memory session state across invocations.</p>
+    <div class="code-block">
+      <pre><code>"""
+Lambda handler wrapper (handler.py).
+API Gateway translates the API GW event into the format below.
+Use HTTP API (payload format version 2.0) for lowest latency.
+"""
+import json, os
+
+API_TOKEN  = os.environ["API_TOKEN"]
+AGENT_URL  = os.environ["AGENT_URL"]
+
+def lambda_handler(event, context):
+    auth = event.get("headers", {}).get("authorization", "")
+    if auth != f"Bearer {API_TOKEN}":
+        return {"statusCode": 401, "body": json.dumps({"error": "Unauthorized"})}
+
+    body = json.loads(event.get("body") or "{}")
+    messages = body.get("messages", [])
+    user_msg = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+
+    # Call the agent — replace with your actual invocation logic
+    import urllib.request
+    req_body = json.dumps({"prompt": user_msg}).encode()
+    req = urllib.request.Request(AGENT_URL, data=req_body,
+          headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=90) as r:
+        agent_resp = json.loads(r.read())
+
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps({
+            "choices": [{"message": {"role": "assistant",
+                                     "content": agent_resp["reply"]}}]
+        })
+    }</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h3>Option C — Local (ngrok Tunnel) for Testing Only</h3>
+    <p>Run the wrapper on localhost and expose it via ngrok for rapid testing during development. The ngrok URL is temporary and changes on each restart. Never use this for production AIRS scans; use it only to confirm the wrapper logic is correct before moving to a persistent deployment.</p>
+    <div class="code-block">
+      <pre><code>uvicorn shim:app --host 0.0.0.0 --port 8080
+# In a second terminal:
+ngrok http 8080
+# Copy the https://xxxx.ngrok.io URL — use this as the AIRS endpoint URL during testing</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Testing Your Wrapper Before Connecting to AIRS</span></div>
+  <div class="collapsible-body">
+    <p>Validate the wrapper independently before entering its URL into the AIRS wizard. A wrapper that fails outside AIRS will fail inside AIRS with harder-to-read error messages.</p>
+
+    <h3>Step 1 — Confirm the Wrapper Returns HTTP 200 with Valid JSON</h3>
+    <div class="code-block">
+      <pre><code>curl -v -X POST "https://your-wrapper-host:8080/chat" \
+  -H "Authorization: Bearer your-secret-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Hello, who are you?"}
+    ]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Expected result: HTTP 200 with a JSON body containing the reply text at the path you intend to map in the AIRS wizard (e.g., <code>choices[0].message.content</code>). Any non-200 status means the wrapper failed before reaching the agent.</p>
+
+    <h3>Step 2 — Confirm the {INPUT} Placeholder Maps Correctly</h3>
+    <p>Replace the user content with a recognizable test phrase and verify the agent's reply reflects it. This confirms the wrapper is correctly extracting the user message and forwarding it to the agent.</p>
+    <div class="code-block">
+      <pre><code>curl -s -X POST "https://your-wrapper-host:8080/chat" \
+  -H "Authorization: Bearer your-secret-token" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"AIRS_CANARY_TEST_12345"}]}' | python3 -m json.tool</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h3>Step 3 — Test Authentication Rejection</h3>
+    <p>Confirm the wrapper rejects requests with an invalid token. This prevents the wrapper from being an open relay.</p>
+    <div class="code-block">
+      <pre><code>curl -o /dev/null -w "%{http_code}" -X POST "https://your-wrapper-host:8080/chat" \
+  -H "Authorization: Bearer wrong-token" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"test"}]}'
+# Expected: 401</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h3>Step 4 — Probe via AIRS After Target Creation</h3>
+    <p>After creating the AIRS target that points to your wrapper, use the management plane probe API to send a single test request through AIRS's full request path. This confirms AIRS can reach the wrapper and the response JSON maps correctly.</p>
+    <div class="code-block">
+      <pre><code>curl -X POST "https://api.sase.paloaltonetworks.com/ai-red-teaming/mgmt-plane/v1/target/probe" \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  -H "Prisma-Tenant: ${TSG_ID}" \
+  -H "Content-Type: application/json" \
+  -d '{"target_uuid": "${TARGET_UUID}", "probe_message": "Hello from AIRS probe"}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>A successful probe returns the agent's reply text. A failure returns an error code and message that identifies whether the problem is connectivity, authentication, or response parsing.</p>
+
+    <h3>Step 5 — Confirm Response Time Is Within AIRS Limits</h3>
+    <p>AIRS has a per-request timeout. If the wrapper + agent combined take longer than the timeout, AIRS logs the attack as an error. Measure the round-trip time from AIRS's perspective by running several probe requests and checking the latency. If latency is consistently above 60 seconds, optimize the agent or wrapper before scanning.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Troubleshooting</span></div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>AIRS validation fails: "Connection refused" or timeout</td>
+          <td>Wrapper is not reachable from AIRS. Either the host is not publicly accessible, TLS is misconfigured, or the port is blocked by a firewall.</td>
+          <td>Verify the wrapper responds to an external curl from outside its host network. Confirm the AIRS static egress IP is allowlisted if the wrapper's host has source IP restrictions. Confirm the port is open in the security group / firewall rules. Confirm TLS certificate is valid (not self-signed without trust; use Let's Encrypt or a CA-signed cert).</td>
+        </tr>
+        <tr>
+          <td>AIRS validation passes but scan attacks all return ERROR</td>
+          <td>The wrapper returns HTTP 200 for the validation probe but fails or returns unexpected JSON for attack-shaped inputs.</td>
+          <td>Run Step 2 (canary test) with a long or adversarial string as the user content. Check if the wrapper crashes, truncates, or mis-parses unusual inputs. Add error handling and return HTTP 500 with a JSON error body instead of letting exceptions bubble up as unstructured responses.</td>
+        </tr>
+        <tr>
+          <td>Response JSON path returns empty string</td>
+          <td>The agent's response structure differs from what was mapped in the AIRS Verify &amp; Edit JSON wizard step.</td>
+          <td>Curl the wrapper directly and inspect the actual response JSON. Update the <code>{RESPONSE}</code> template in the target configuration to match the actual structure. Common mismatch: agent returns <code>output</code> but template maps <code>choices[0].message.content</code>.</td>
+        </tr>
+        <tr>
+          <td>All attacks log as CONTENT_FILTER instead of the expected attack category</td>
+          <td>The wrapper strips or transforms the agent's guardrail error response before returning it to AIRS. AIRS cannot classify the error correctly without the original error code.</td>
+          <td>Pass the agent's HTTP status code and response body through the wrapper unchanged when the agent returns a non-200 status. Configure the AIRS target's Advanced Configurations with the correct guardrail error code and a sample exception JSON so AIRS can classify the error.</td>
+        </tr>
+        <tr>
+          <td>401 errors mid-scan (auth was working at validation)</td>
+          <td>An OAuth 2.0 or API token expired during the scan. Attack Library scans run approximately 5 hours.</td>
+          <td>For OAuth 2.0: add token refresh logic to the wrapper (check expiry before each request; refresh proactively 2 minutes before expiry). For static API tokens: check if the token has an expiry policy on the agent side. Request a non-expiring token or rotate the token in the wrapper's environment and restart the wrapper.</td>
+        </tr>
+        <tr>
+          <td>WebSocket adapter returns 503 "connection lost" intermittently</td>
+          <td>The agent closes idle WebSocket connections after a timeout. The adapter's stored connection is stale.</td>
+          <td>Add a reconnect loop in the adapter: if a send or recv raises an exception, remove the session from the store, reconnect, and retry the request once before returning 503. Alternatively, add a WebSocket ping/keepalive on a background interval to prevent the agent from closing idle connections.</td>
+        </tr>
+        <tr>
+          <td>RATE_LIMIT errors in scan results</td>
+          <td>AIRS is sending requests faster than the agent (or the wrapper) can handle.</td>
+          <td>Configure the Endpoint Rate Limit in the target's Advanced Configurations (requests per minute). This causes AIRS to pace requests. Also confirm the wrapper is not the bottleneck: if the wrapper serially calls the agent (one request at a time), add async concurrency or increase worker count.</td>
+        </tr>
+        <tr>
+          <td>SigV4 signing fails: "Signature does not match"</td>
+          <td>The signature is computed over a different request body than what is forwarded to the agent. Any middleware that modifies the body after signing (e.g., re-encoding JSON) will invalidate the signature.</td>
+          <td>Sign the raw bytes of the request body, not a re-serialized version. Read the body once, sign it, and forward the exact same bytes. Do not parse and re-serialize the JSON between signing and forwarding.</td>
+        </tr>
+        <tr>
+          <td>gRPC shim: "StatusCode.UNAVAILABLE" or "Connection reset"</td>
+          <td>The gRPC channel is created at import time but the agent service is not available when the shim starts, or the channel enters a bad state after the agent restarts.</td>
+          <td>Create the gRPC channel and stub inside the request handler (not at module level), or implement channel reconnection logic. Use <code>grpc.channel_ready_future(channel).result(timeout=5)</code> to verify connectivity before sending the RPC.</td>
+        </tr>
+        <tr>
+          <td>Wrapper works locally but fails in Docker or Lambda</td>
+          <td>DNS resolution for the agent hostname fails in the container/Lambda execution environment. The agent is on a private network not reachable from the container's network.</td>
+          <td>For Docker: run the container with <code>--network host</code> (Linux only) or add the container to a custom Docker network with access to the agent. For Lambda: deploy the function inside the same VPC as the agent and configure the Lambda's subnet and security group to allow outbound traffic to the agent's port.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Pre-Scan Wrapper Checklist</span></div>
+  <div class="collapsible-body">
+    <p>Complete this checklist before attaching the wrapper to an AIRS target and starting a scan.</p>
+    <div class="checklist-section">
+      <label><input type="checkbox"> Wrapper responds to an external curl with HTTP 200 and valid JSON</label>
+      <label><input type="checkbox"> Response JSON path (<code>choices[0].message.content</code> or equivalent) is non-empty</label>
+      <label><input type="checkbox"> Invalid Bearer token returns HTTP 401 (wrapper rejects unauthenticated requests)</label>
+      <label><input type="checkbox"> Long or adversarial input strings do not crash or hang the wrapper</label>
+      <label><input type="checkbox"> TLS certificate is CA-signed or explicitly trusted (AIRS rejects self-signed certs by default)</label>
+      <label><input type="checkbox"> AIRS static egress IP is allowlisted if the wrapper enforces source IP restrictions</label>
+      <label><input type="checkbox"> Round-trip time (curl to wrapper and back) is consistently under 60 seconds</label>
+      <label><input type="checkbox"> OAuth 2.0 token refresh logic tested across a simulated 6-hour window (if applicable)</label>
+      <label><input type="checkbox"> Guardrail error codes pass through the wrapper unchanged (agent 4xx responses are forwarded, not swallowed)</label>
+      <label><input type="checkbox"> AIRS probe API returns the agent's reply text (Step 4 of the testing sequence above)</label>
+      <label><input type="checkbox"> Wrapper is running and reachable in a persistent deployment (not a local/ngrok session)</label>
+      <label><input type="checkbox"> API token stored in environment variable or secrets manager, not hardcoded in source</label>
+    </div>
+  </div>
 </div>
 
 <!-- ── Appendix: Technical Requirements Document ──────────────── -->
