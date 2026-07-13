@@ -1623,20 +1623,141 @@ kubectl auth can-i create deployment --namespace airs-red-teaming
 
           <!-- ════════════════ STREAMING ════════════════ -->
           <div class="mgmt-panel" data-plane="streaming">
-            <p>The Streaming connection method is for agents that return responses via Server-Sent Events (SSE): a unidirectional stream of tokens delivered incrementally over a single HTTP connection. Configuration is nearly identical to REST API. Follow all REST API wizard steps with the differences noted below.</p>
+            <p>The Streaming connection method is for agents that return responses via Server-Sent Events (SSE): a unidirectional stream of tokens delivered incrementally over a single HTTP connection. The wizard flow is identical to REST API. Follow all seven wizard steps with the SSE-specific notes embedded below at each step.</p>
 
             <div class="callout callout-note">
-              <div class="callout-title">Streaming vs REST API &mdash; Key Differences</div>
+              <div class="callout-title">Streaming vs REST API &mdash; Where They Differ</div>
               <ul>
-                <li><strong>Response handling:</strong> AIRS reassembles the SSE token stream into a complete response before applying the <code>{RESPONSE}</code> JSON template. The placeholder and dot-notation path work identically to REST API.</li>
-                <li><strong>cURL string format:</strong> Include the SSE Accept header in your cURL string: <code>-H "Accept: text/event-stream"</code>. Some agents use <code>application/x-ndjson</code> instead. Check your agent's API docs.</li>
-                <li><strong>Response capture in DevTools:</strong> SSE responses appear as EventStream entries in the Network tab (not as a standard Response). In Chrome/Edge, click the request and select the <strong>EventStream</strong> tab to see individual token events. Each event has a <code>data:</code> field with a JSON chunk. To get the full assembled response for the AIRS template, either ask the agent team for a sample of the complete response JSON, or capture it from a non-streaming fallback endpoint if the agent offers one.</li>
-                <li><strong>Multi-turn and sessions:</strong> Fully supported. Configuration is identical to REST API.</li>
-                <li><strong>SSE is not WebSocket:</strong> SSE is unidirectional HTTP streaming. If your agent uses a persistent bidirectional WebSocket connection, select the WebSocket connection method instead.</li>
+                <li><strong>Step 1 — Connection Method selector:</strong> choose <strong>Streaming</strong>, not REST API.</li>
+                <li><strong>Step 3 — cURL string:</strong> add <code>-H "Accept: text/event-stream"</code>. Some agents use <code>application/x-ndjson</code> — check the agent's API docs first.</li>
+                <li><strong>Step 5 — Response JSON template:</strong> paste the <em>assembled</em> response (not an individual SSE chunk). AIRS reassembles the token stream internally before applying the <code>{RESPONSE}</code> template.</li>
+                <li><strong>DevTools capture:</strong> use the <strong>EventStream</strong> tab, not the Response tab.</li>
+                <li><strong>Everything else</strong> — OAuth 2.0, sessions, multi-turn, rate limits, guardrails — is identical to REST API and fully supported.</li>
               </ul>
             </div>
 
-            <p>All other wizard steps are identical to the REST API path above. Follow Steps 1 through 7 with the SSE-specific notes in mind.</p>
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Wizard Step 1 &mdash; Target Details</span>
+              </div>
+              <div class="collapsible-body">
+                <ol>
+                  <li>Navigate to <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <code>Targets</code>.</li>
+                  <li>Click <code>Add Target</code>.</li>
+                  <li>Enter a <strong>Target Name</strong> (e.g., <code>hr-agent-streaming-prod</code>).</li>
+                  <li>Under <strong>Target Type</strong>, select <strong>Agent</strong> or <strong>Application</strong>.</li>
+                  <li>Under <strong>Connection Method</strong>, select <strong>Streaming</strong>.</li>
+                  <li>Under <strong>Endpoint Accessibility</strong>, select <strong>Public</strong> or <strong>Private</strong>.</li>
+                  <li>Click <strong>Next</strong>.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Wizard Step 2 &mdash; Endpoint Accessibility</span>
+              </div>
+              <div class="collapsible-body">
+                <p>Identical to the REST API path. See <strong>Wizard Step 2</strong> in the REST API tab for full Public vs Private guidance, IP allowlist lead times, and Network Channel requirements for private targets.</p>
+              </div>
+            </div>
+
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Wizard Step 3 &mdash; cURL Import</span>
+              </div>
+              <div class="collapsible-body">
+                <p>The cURL string for a Streaming target requires one additional header compared to REST API. A correctly formatted example:</p>
+                <div class="code-block">
+                  <pre><code>curl -X POST "https://agent.company.com/api/chat" \
+  -H "Authorization: Bearer YOUR_API_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "{INPUT}"}
+    ],
+    "stream": true
+  }'</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                </div>
+
+                <div class="callout callout-warning">
+                  <div class="callout-title">Capturing the Response JSON for a Streaming Agent</div>
+                  <p>SSE responses do not appear in the DevTools Response tab. In Chrome/Edge, select the streaming request in the Network tab and click the <strong>EventStream</strong> tab to see individual token events. Each event has a <code>data:</code> field containing a JSON chunk. To get the complete assembled response you will paste into Wizard Step 5, use one of these approaches:</p>
+                  <ul>
+                    <li>Ask the agent team to provide a sample of the final assembled response JSON</li>
+                    <li>Pass <code>"stream": false</code> in the request body if the agent supports a non-streaming fallback</li>
+                    <li>Concatenate the <code>data:</code> chunk payloads manually, discarding the <code>[DONE]</code> sentinel if present</li>
+                  </ul>
+                </div>
+
+                <p>All other cURL requirements ({INPUT} placeholder, agent-provided cURL string, credentials warning) are identical to the REST API path. See <strong>Wizard Step 3</strong> in the REST API tab for full guidance.</p>
+              </div>
+            </div>
+
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Wizard Step 4 &mdash; Add / Verify Parameters</span>
+              </div>
+              <div class="collapsible-body">
+                <p>Identical to the REST API path. Endpoint URL, HTTP headers, authentication mode (Using Headers / Using Payload / OAuth 2.0), sessions, and multi-turn configuration are all fully supported and work identically. See <strong>Wizard Step 4</strong> in the REST API tab for field-level guidance.</p>
+              </div>
+            </div>
+
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Wizard Step 5 &mdash; Verify &amp; Edit JSON</span>
+              </div>
+              <div class="collapsible-body">
+                <p>Paste the <strong>assembled</strong> response JSON (not a raw SSE chunk) and replace the reply text value with <code>{RESPONSE}</code>. AIRS handles SSE stream reassembly internally before applying the template. If the agent uses OpenAI-compatible streaming, the assembled response has the same structure as a non-streaming response:</p>
+                <div class="code-block">
+                  <pre><code>{
+  "choices": [
+    {
+      "message": {
+        "content": "{RESPONSE}"
+      }
+    }
+  ]
+}</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                </div>
+                <p>See <strong>Wizard Step 5</strong> in the REST API tab for full JSON template guidance.</p>
+              </div>
+            </div>
+
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Wizard Step 6 &mdash; Advanced Configurations &amp; Validate</span>
+              </div>
+              <div class="collapsible-body">
+                <p>Identical to the REST API path. The full Advanced Configurations feature set is available for Streaming targets:</p>
+                <ul>
+                  <li><strong>Rate Limits</strong> — RPM limit, rate limit error code, sample exception JSON: all supported</li>
+                  <li><strong>Guardrails / Content Filters</strong> — guardrail error code and sample exception JSON: supported</li>
+                  <li><strong>Successful Connection Message</strong> — test prompt AIRS sends to confirm connectivity before unlocking Target Background</li>
+                </ul>
+                <p>Click <strong>Validate Target</strong>. AIRS sends the test prompt via SSE, reassembles the stream, and confirms a valid response is returned. Target Background unlocks after successful validation.</p>
+              </div>
+            </div>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">Streaming Gotchas</div>
+              <ul>
+                <li><strong>DevTools EventStream tab:</strong> Users routinely check the Response tab and see empty or partial content for SSE requests. Always use the EventStream tab.</li>
+                <li><strong>ndjson vs event-stream:</strong> Some agents return <code>application/x-ndjson</code> instead of <code>text/event-stream</code>. Using the wrong Accept header causes the agent to return an error or fall back to a non-streaming response. Verify the MIME type in the agent's API docs before configuring the cURL string.</li>
+                <li><strong>Do not paste SSE chunks into Wizard Step 5:</strong> A raw SSE chunk (<code>data: {"delta":{"content":"Hello"}}</code>) is not valid input for the Response JSON template. AIRS expects the complete assembled response structure.</li>
+                <li><strong>Streaming connection method vs streaming at the application layer:</strong> A REST API target whose body includes <code>"stream": true</code> is technically making an SSE request, but it was configured as REST API. If you or the customer has already done this, it may work — but selecting the Streaming connection method is the correct configuration when the endpoint natively returns SSE.</li>
+              </ul>
+            </div>
           </div><!-- end streaming panel -->
 
           <!-- ════════════════ WEBSOCKET ════════════════ -->
@@ -1646,147 +1767,521 @@ kubectl auth can-i create deployment --namespace airs-red-teaming
               <p>WebSocket support is in Beta. Contact your Palo Alto Networks Account Manager or TME for assistance before configuring a WebSocket target. Some limitations documented here may change as the feature matures.</p>
             </div>
 
-            <p>The WebSocket connection method is for agents that communicate over a persistent bidirectional WebSocket connection using <code>wss://</code> URLs. For each attack prompt, AIRS opens a fresh WebSocket connection, sends the prompt, waits for the complete response, then closes the connection. There is no persistent session maintained between prompts.</p>
+            <p>The WebSocket connection method is for agents that communicate over a persistent bidirectional WebSocket connection using <code>wss://</code> URLs. For each attack prompt, AIRS opens a fresh WebSocket connection, sends the prompt, waits for the complete response, then closes the connection. No session state is maintained between prompts.</p>
 
-            <h3>Key Differences from REST API</h3>
+            <h3>Limitations vs REST API</h3>
             <table>
               <thead>
                 <tr><th>Feature</th><th>REST API</th><th>WebSocket</th></tr>
               </thead>
               <tbody>
                 <tr><td>URL scheme</td><td><code>https://</code></td><td><code>wss://</code> (or <code>ws://</code> for development only)</td></tr>
-                <tr><td>Connection model</td><td>One HTTP request per prompt</td><td>New WebSocket connection opened per prompt, closed after response</td></tr>
-                <tr><td>Sessions</td><td>Supported (stateful and stateless)</td><td>Not supported</td></tr>
+                <tr><td>Connection model</td><td>One HTTP request per prompt</td><td>New WebSocket opened per prompt, closed after response</td></tr>
+                <tr><td>cURL import</td><td>Supported</td><td>Not applicable — endpoint URL and message format entered manually</td></tr>
+                <tr><td>Sessions</td><td>Supported</td><td>Not supported</td></tr>
                 <tr><td>Multi-turn configuration</td><td>Supported</td><td>Not supported</td></tr>
                 <tr><td>OAuth 2.0 authentication</td><td>Supported</td><td>Not supported</td></tr>
                 <tr><td>Guardrail error codes</td><td>Supported</td><td>Not supported</td></tr>
                 <tr><td>Rate limit error codes</td><td>Supported</td><td>Not supported (RPM limit only)</td></tr>
-                <tr><td>Streaming toggle</td><td>N/A</td><td>Available for OpenAI-standard token streaming over WebSocket</td></tr>
-                <tr><td>cURL import</td><td>Supported</td><td>Not applicable &mdash; enter endpoint URL and message format manually</td></tr>
+                <tr><td>Supports Streaming toggle</td><td>N/A</td><td>Available — for OpenAI-format token streaming over WebSocket</td></tr>
                 <tr><td>Network Channel minimum version</td><td>Any</td><td>v1.3.0+</td></tr>
               </tbody>
             </table>
 
             <h3>When to Use Native WebSocket vs a REST Wrapper</h3>
-            <p>AIRS's native WebSocket support eliminates the need for a REST-to-WebSocket wrapper in many cases:</p>
             <ul>
-              <li><strong>Use native WebSocket when:</strong> the agent is WebSocket-only, multi-turn testing is not required, and each prompt is independent (stateless).</li>
-              <li><strong>Build a REST wrapper instead when:</strong> you need multi-turn or stateful session attacks, OAuth 2.0 token management, or guardrail error code classification in the scan report. A REST wrapper accepts REST calls from AIRS, manages the WebSocket session internally, and returns a standard JSON response.</li>
+              <li><strong>Use native WebSocket when:</strong> the agent is WebSocket-only, multi-turn testing is not required, and each prompt-response pair is independent.</li>
+              <li><strong>Build a REST wrapper instead when:</strong> you need multi-turn or stateful session attacks, OAuth 2.0 token management, guardrail error code classification, or response mode streaming. A REST wrapper accepts REST calls from AIRS, manages the WebSocket session internally, and returns a standard JSON response.</li>
             </ul>
 
-            <h3>Configuration Notes</h3>
-            <ul>
-              <li>The endpoint URL must begin with <code>wss://</code> for TLS-secured connections (required for production). Use <code>ws://</code> only for local development targets.</li>
-              <li>Enable the <strong>Supports Streaming</strong> toggle in Add/Verify Parameters if the agent sends token-by-token streaming chunks in OpenAI format over the WebSocket.</li>
-              <li>There is no cURL import step. Enter the endpoint URL, headers, and message format manually.</li>
-              <li>For private endpoints via Network Channel: the channel client must be version 1.3.0 or higher. Check your deployed version with <code>helm list -n airs-red-teaming</code> and upgrade if needed before validating this target.</li>
-            </ul>
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Wizard Step 1 &mdash; Target Details</span>
+              </div>
+              <div class="collapsible-body">
+                <ol>
+                  <li>Navigate to <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <code>Targets</code>.</li>
+                  <li>Click <code>Add Target</code>.</li>
+                  <li>Enter a <strong>Target Name</strong> (e.g., <code>support-agent-ws-prod</code>).</li>
+                  <li>Under <strong>Target Type</strong>, select <strong>Agent</strong> or <strong>Application</strong>.</li>
+                  <li>Under <strong>Connection Method</strong>, select <strong>WebSocket</strong>.</li>
+                  <li>Under <strong>Endpoint Accessibility</strong>, select <strong>Public</strong> or <strong>Private</strong>. For private endpoints, a Network Channel at version 1.3.0 or higher must be ONLINE before validating this target.</li>
+                  <li>Click <strong>Next</strong>.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Wizard Step 2 &mdash; Endpoint Accessibility</span>
+              </div>
+              <div class="collapsible-body">
+                <p>Identical to the REST API path for Public and Private IP Allowlist options. For Private via Network Channel, verify the deployed client version before proceeding:</p>
+                <div class="code-block">
+                  <pre><code>helm list -n airs-red-teaming</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                </div>
+                <p>The CHART column shows the installed version. If it is below 1.3.0, upgrade the Helm release before continuing. See <a href="#network-channels">Phase 5: Network Channels</a> for the upgrade command.</p>
+              </div>
+            </div>
+
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Wizard Step 3 &mdash; Add / Verify Parameters (Manual Entry)</span>
+              </div>
+              <div class="collapsible-body">
+                <p>There is no cURL import for WebSocket targets. Enter all fields manually.</p>
+
+                <h3>Endpoint URL</h3>
+                <p>Must begin with <code>wss://</code> for production (TLS-secured). Use <code>ws://</code> only for local development targets. Plain <code>ws://</code> is rejected for non-localhost endpoints.</p>
+                <div class="code-block">
+                  <pre><code>wss://agent.company.com/ws/chat</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                </div>
+
+                <h3>HTTP Headers</h3>
+                <p>Add static headers required for the initial WebSocket handshake (the HTTP Upgrade request). Common examples:</p>
+                <table>
+                  <thead>
+                    <tr><th>Header</th><th>Example value</th><th>Notes</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>Authorization</code></td><td><code>Bearer YOUR_API_TOKEN</code></td><td>Static Bearer tokens only — OAuth 2.0 not supported</td></tr>
+                    <tr><td><code>X-API-Key</code></td><td><code>your-key-here</code></td><td>For API key-based auth sent as a header</td></tr>
+                  </tbody>
+                </table>
+
+                <h3>Authentication</h3>
+                <p>Select <strong>Using Headers</strong>. OAuth 2.0 and Using Payload are not supported for WebSocket targets. If the agent requires OAuth token injection, build a REST-to-WebSocket wrapper and configure the target as REST API instead.</p>
+
+                <h3>Supports Streaming Toggle</h3>
+                <p>Enable this toggle if the agent sends token-by-token chunks in OpenAI streaming format over the WebSocket. Leave it off if the agent sends the complete response in a single WebSocket message. When in doubt, leave it off and enable it only if validation fails with a partial-response error.</p>
+
+                <h3>Message Format</h3>
+                <p>Enter the JSON message structure AIRS sends over the WebSocket connection per prompt. Include the <code>{INPUT}</code> placeholder where the attack prompt text goes:</p>
+                <div class="code-block">
+                  <pre><code>{
+  "type": "message",
+  "content": "{INPUT}"
+}</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                </div>
+                <p>The exact structure depends on your agent's WebSocket protocol. Check the agent's API documentation or capture a real message from the browser using the DevTools WebSocket inspector (Network tab &rarr; WS filter &rarr; Messages sub-tab).</p>
+              </div>
+            </div>
+
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Wizard Step 4 &mdash; Verify &amp; Edit JSON</span>
+              </div>
+              <div class="collapsible-body">
+                <p>The Request JSON and Response JSON templates work identically to the REST API path. The Request JSON should show the message format you entered in Step 3 with <code>{INPUT}</code> in the correct position. The Response JSON template needs the structure of a single complete WebSocket response message from the agent, with <code>{RESPONSE}</code> replacing the reply text value.</p>
+                <p>To capture a real response message for the template, use the DevTools WebSocket inspector: in Chrome/Edge, filter the Network tab to <strong>WS</strong>, select your agent's WebSocket connection, and click the <strong>Messages</strong> sub-tab. Send a test message in the agent's UI and observe the response frame.</p>
+                <div class="callout callout-note">
+                  <div class="callout-title">WebSocket Response Is a Single Message</div>
+                  <p>Unlike SSE, a WebSocket response is a single message frame (or a final frame if streaming is enabled). AIRS reads the last received frame before closing the connection as the complete response. If the agent sends multiple frames for a single response, only the last frame is used unless Supports Streaming is enabled.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Wizard Step 5 &mdash; Advanced Configurations &amp; Validate</span>
+              </div>
+              <div class="collapsible-body">
+                <p>Advanced Configurations for WebSocket targets are a reduced subset compared to REST API:</p>
+                <table>
+                  <thead>
+                    <tr><th>Configuration</th><th>Available for WebSocket</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>Rate Limit (RPM)</td><td>Yes</td></tr>
+                    <tr><td>Rate limit error code</td><td>No</td></tr>
+                    <tr><td>Guardrails / Content Filters error code</td><td>No</td></tr>
+                    <tr><td>Successful Connection Message</td><td>Yes</td></tr>
+                  </tbody>
+                </table>
+                <p>Click <strong>Validate Target</strong>. AIRS opens a WebSocket connection, sends the Successful Connection Message, waits for a response, and closes the connection. A green validation confirms connectivity. Target Background unlocks after validation succeeds.</p>
+              </div>
+            </div>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">WebSocket Gotchas</div>
+              <ul>
+                <li><strong>No cURL import:</strong> Users experienced with REST API will look for the cURL import field and not find it. All parameters for WebSocket must be entered manually.</li>
+                <li><strong>wss:// vs ws://:</strong> AIRS rejects <code>ws://</code> for non-localhost endpoints. If the agent team provides an <code>http://</code> or <code>ws://</code> URL for a non-local target, ask them to enable TLS before the deployment call.</li>
+                <li><strong>Network Channel version gate:</strong> Operators who deployed the Network Channel client for non-WebSocket targets may have a version below 1.3.0. Run <code>helm list -n airs-red-teaming</code> to confirm the version before the deployment call — a Helm upgrade on the day of a scan adds 30 minutes of unplanned work.</li>
+                <li><strong>OAuth 2.0 not supported:</strong> If the target agent requires OAuth token injection, the only option is a REST-to-WebSocket wrapper deployed by the customer's dev team. Identify this during pre-engagement discovery.</li>
+                <li><strong>Multi-turn limitations:</strong> AIRS closes the WebSocket connection after each prompt. Agents that require a persistent session for context to accumulate across turns cannot be accurately tested with native WebSocket. Use a REST wrapper with session management for those agents.</li>
+                <li><strong>Supports Streaming toggle:</strong> This controls whether AIRS reads the WebSocket stream as OpenAI-format token chunks. Enabling it incorrectly (when the agent sends full JSON in one frame) causes AIRS to concatenate fragment strings and produce malformed output. Only enable it when the agent sends OpenAI-compatible streaming chunks over the WebSocket.</li>
+              </ul>
+            </div>
           </div><!-- end websocket panel -->
 
           <!-- ════════════════ COPILOT STUDIO ════════════════ -->
           <div class="mgmt-panel" data-plane="copilot-studio">
-            <p>The Microsoft Copilot Studio connection method connects AIRS directly to an agent deployed in Microsoft Copilot Studio using Power Platform APIs. This method is available for Agent targets only. AIRS replicates end-user interactions, sending conversational inputs and observing agent responses and tool invocations through the same channel a human user would use.</p>
+            <p>The Microsoft Copilot Studio connection method connects AIRS directly to an agent deployed in Microsoft Copilot Studio using Power Platform APIs. Available for Agent targets only. AIRS replicates end-user interactions through the same channel a human would use, sending conversational inputs and observing responses and tool invocations.</p>
 
             <div class="callout callout-danger">
               <div class="callout-title">Delegated Permissions Only &mdash; Human Login Required</div>
-              <p>Copilot Studio integration uses delegated authentication only. Service-to-service (application permission) authentication is not supported by Microsoft for this API. A human must physically log in through Microsoft's authentication portal to grant consent. This is a Microsoft platform constraint, not an AIRS limitation. Ensure the person completing AIRS target setup has access to the Copilot Studio environment and the Entra ID app registration at the time of configuration.</p>
+              <p>Copilot Studio integration uses delegated authentication only. Service-to-service (application permission) authentication is not supported by Microsoft for this API. A human must physically log in through Microsoft's authentication portal to grant consent. This is a Microsoft platform constraint, not an AIRS limitation. The person completing AIRS target setup must have access to the Copilot Studio environment and the Entra ID app registration at the time of configuration; this cannot be done as an unattended or automated setup.</p>
             </div>
 
-            <h3>Prerequisites</h3>
-            <ol>
-              <li><strong>Entra ID App Registration:</strong> An application must be registered in Microsoft Entra ID (Azure Active Directory) in the same tenant as the Copilot Studio agent. This registration provides the Client ID and Secret that AIRS uses to initiate authentication.</li>
-              <li><strong>Published Copilot Studio agent:</strong> The agent must be published and accessible in the target Copilot Studio environment.</li>
-              <li><strong>Same-tenant requirement:</strong> The Entra ID app registration and the Copilot Studio agent must be in the same Microsoft Entra tenant.</li>
-            </ol>
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Pre-work &mdash; Create the Entra ID App Registration</span>
+              </div>
+              <div class="collapsible-body">
+                <p>Complete this before starting the AIRS wizard. The app registration provides the Client ID and Secret that AIRS uses to initiate delegated authentication.</p>
+                <ol>
+                  <li>Sign in to the <a href="https://portal.azure.com" target="_blank" rel="noopener">Azure Portal</a> with an account that has permission to create app registrations in the tenant where the Copilot Studio agent is deployed.</li>
+                  <li>Navigate to <strong>Microsoft Entra ID</strong> &rarr; <strong>App registrations</strong> &rarr; <strong>+ New registration</strong>.</li>
+                  <li>Enter a name (e.g., <code>AIRS Red Teaming - Copilot Studio</code>).</li>
+                  <li>Under <strong>Supported account types</strong>, select <strong>Accounts in this organizational directory only</strong> (single tenant). Cross-tenant configurations are not supported.</li>
+                  <li>Under <strong>Redirect URI</strong>, select <strong>Web</strong> and enter <code>https://login.microsoftonline.com/common/oauth2/nativeclient</code>.</li>
+                  <li>Click <strong>Register</strong>. Copy the <strong>Application (client) ID</strong> from the Overview page.</li>
+                  <li>Navigate to <strong>Certificates &amp; secrets</strong> &rarr; <strong>Client secrets</strong> &rarr; <strong>+ New client secret</strong>.</li>
+                  <li>Enter a description and choose an expiry (12 months recommended). Click <strong>Add</strong>.</li>
+                  <li>Copy the secret <strong>Value</strong> immediately. It is shown only once. If you navigate away before copying it, you must delete it and create a new one.</li>
+                  <li>Navigate to <strong>API permissions</strong> &rarr; <strong>+ Add a permission</strong> &rarr; <strong>APIs my organization uses</strong>. Search for <strong>Power Platform API</strong> and add the delegated permission <code>Copilot</code> (or equivalent permission listed for your tenant).</li>
+                </ol>
+                <div class="callout callout-note">
+                  <div class="callout-title">Tenant Alignment Is Mandatory</div>
+                  <p>The Entra ID app registration and the Copilot Studio agent must be in the same Microsoft Entra tenant. Verify the Tenant ID matches between the app registration (Azure Portal &rarr; Entra ID &rarr; Overview &rarr; Tenant ID) and the Copilot Studio environment before proceeding.</p>
+                </div>
+              </div>
+            </div>
 
-            <h3>Required Fields and Where to Find Them</h3>
-            <table>
-              <thead>
-                <tr><th>Field</th><th>Where to find it</th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><strong>Client ID</strong></td>
-                  <td>Azure Portal &rarr; Microsoft Entra ID &rarr; App registrations &rarr; [your app] &rarr; Overview &rarr; Application (client) ID</td>
-                </tr>
-                <tr>
-                  <td><strong>Client Secret</strong></td>
-                  <td>Azure Portal &rarr; App registrations &rarr; [your app] &rarr; Certificates &amp; secrets &rarr; Client secrets. Create a new secret if one does not exist. Copy the value immediately &mdash; it is shown only once after creation.</td>
-                </tr>
-                <tr>
-                  <td><strong>Tenant ID</strong></td>
-                  <td>Azure Portal &rarr; Microsoft Entra ID &rarr; Overview &rarr; Tenant ID (also called Directory ID)</td>
-                </tr>
-                <tr>
-                  <td><strong>Schema Name</strong></td>
-                  <td>Copilot Studio &rarr; [your agent] &rarr; Settings &rarr; Advanced &rarr; Metadata &rarr; Schema name</td>
-                </tr>
-                <tr>
-                  <td><strong>Environment ID</strong></td>
-                  <td>Copilot Studio &rarr; [your agent] &rarr; Settings &rarr; Advanced &rarr; Metadata &rarr; Environment ID</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Pre-work &mdash; Collect the Five Required Field Values</span>
+              </div>
+              <div class="collapsible-body">
+                <p>Gather all five values before starting the AIRS wizard. Having them in a text file or password manager during the configuration session prevents mid-wizard interruptions.</p>
+                <table>
+                  <thead>
+                    <tr><th>Field</th><th>Where to find it</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><strong>Client ID</strong></td>
+                      <td>Azure Portal &rarr; Microsoft Entra ID &rarr; App registrations &rarr; [your app] &rarr; Overview &rarr; Application (client) ID</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Client Secret</strong></td>
+                      <td>Azure Portal &rarr; App registrations &rarr; [your app] &rarr; Certificates &amp; secrets &rarr; Client secrets. Shown only once at creation.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Tenant ID</strong></td>
+                      <td>Azure Portal &rarr; Microsoft Entra ID &rarr; Overview &rarr; Tenant ID (also called Directory ID)</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Schema Name</strong></td>
+                      <td>copilotstudio.microsoft.com &rarr; [your agent] &rarr; Settings &rarr; Advanced &rarr; Metadata &rarr; Schema name</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Environment ID</strong></td>
+                      <td>copilotstudio.microsoft.com &rarr; [your agent] &rarr; Settings &rarr; Advanced &rarr; Metadata &rarr; Environment ID</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div class="callout callout-warning">
+                  <div class="callout-title">Agent Must Be Published Before Target Setup</div>
+                  <p>The Copilot Studio agent must be published to the target environment before AIRS can connect to it. An unpublished or draft agent is not accessible via the Power Platform API and validation will fail. Confirm the agent is published and accessible to end users before the deployment call.</p>
+                </div>
+              </div>
+            </div>
 
-            <h3>Setup Flow</h3>
-            <ol>
-              <li>Collect all five field values from the table above before starting the AIRS wizard.</li>
-              <li>In the wizard: enter the Target Name, select <strong>Agent</strong>, select <strong>Microsoft Copilot Studio</strong>.</li>
-              <li>Select the authentication mode: <strong>No Authentication</strong> (for publicly published agents without auth) or <strong>Authenticate using Microsoft</strong>.</li>
-              <li>If authenticating: enter the Client ID, Client Secret, Tenant ID, Schema Name, and Environment ID.</li>
-              <li>The wizard presents a Microsoft login prompt. The person configuring the target must log in with an account that has access to the Copilot Studio environment to grant delegated consent.</li>
-              <li>Complete Target Background (mandatory) and click Submit.</li>
-            </ol>
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Wizard Steps &mdash; Full Configuration Flow</span>
+              </div>
+              <div class="collapsible-body">
+                <div class="callout callout-note">
+                  <div class="callout-title">Wizard Steps Skipped for Copilot Studio</div>
+                  <p>The Choose Method (cURL import) and Verify &amp; Edit JSON wizard steps do not appear for Copilot Studio targets. AIRS handles the Power Platform API request and response format natively. You do not need to capture or configure JSON templates.</p>
+                </div>
+                <ol>
+                  <li>Navigate to <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <code>Targets</code> &rarr; <code>Add Target</code>.</li>
+                  <li>Enter a <strong>Target Name</strong> (e.g., <code>customer-support-copilot-prod</code>).</li>
+                  <li>Under <strong>Target Type</strong>, select <strong>Agent</strong>. Copilot Studio is not available for Application or Model target types.</li>
+                  <li>Under <strong>Connection Method</strong>, select <strong>Microsoft Copilot Studio</strong>.</li>
+                  <li>Under <strong>Endpoint Accessibility</strong>, select <strong>Public</strong> (Copilot Studio agents are accessible via Microsoft's public API endpoint; no Network Channel is required).</li>
+                  <li>Click <strong>Next</strong>.</li>
+                  <li>In the <strong>Authentication</strong> section, select <strong>Authenticate using Microsoft</strong>. Select <strong>No Authentication</strong> only for publicly published agents that require no login.</li>
+                  <li>Enter the five field values collected in the pre-work step: Client ID, Client Secret, Tenant ID, Schema Name, Environment ID.</li>
+                  <li>A Microsoft login prompt appears. The person configuring the target must log in with an account that has access to the Copilot Studio environment to grant delegated consent. This step cannot be skipped or automated.</li>
+                  <li>After successful authentication, an "Authentication confirmed" message is displayed. Click <strong>Next</strong>.</li>
+                  <li>In <strong>Advanced Configurations</strong>: configure Rate Limits (RPM, rate limit error code, sample exception JSON) and Guardrails/Content Filters (error code, sample exception JSON) if applicable. Both are fully supported for Copilot Studio unlike WebSocket.</li>
+                  <li>Click <strong>Validate Target</strong>. AIRS sends a test prompt through the Power Platform API and confirms a response is received.</li>
+                  <li>Complete <strong>Target Background</strong>: Industry and Use Case are mandatory. Agentic Profiling is available and recommended for Copilot Studio agents.</li>
+                  <li>Click <strong>Submit</strong>.</li>
+                </ol>
+              </div>
+            </div>
 
-            <div class="callout callout-note">
-              <div class="callout-title">No cURL String or JSON Steps Required</div>
-              <p>The Copilot Studio connection method skips the Choose Method (cURL import) and Verify &amp; Edit JSON wizard steps entirely. AIRS handles the Power Platform API request and response format natively. You do not need to capture or configure JSON templates for this connection method.</p>
+            <div class="callout callout-warning">
+              <div class="callout-title">Copilot Studio Gotchas</div>
+              <ul>
+                <li><strong>Human presence required during setup:</strong> The Microsoft delegated auth flow requires an interactive login. Schedule the deployment call with the person who has access to both the Copilot Studio environment and the Entra ID tenant. Do not attempt unattended or automated target creation for this method.</li>
+                <li><strong>Client Secret shown only once:</strong> If the secret was created before the deployment call and the value was not saved, it cannot be retrieved. Delete the old secret in Azure Portal &rarr; Certificates &amp; secrets and create a new one before the call.</li>
+                <li><strong>Cross-tenant configurations not supported:</strong> If the Entra ID app registration and Copilot Studio agent are in different tenants, AIRS will fail at the authentication step. There is no workaround — the app registration must be in the same tenant as the agent.</li>
+                <li><strong>Schema Name vs Display Name:</strong> The Schema Name field expects the internal schema identifier, not the display name shown in the Copilot Studio UI. Go to Settings &rarr; Advanced &rarr; Metadata to find the correct value. Using the display name causes a validation failure.</li>
+                <li><strong>Advanced Configurations are available:</strong> Users familiar with REST API may assume Advanced Configurations are unavailable since there is no cURL/JSON step. Rate Limits and Guardrails/Content Filters are fully supported for Copilot Studio and should be configured if the agent has known guardrails or rate limits.</li>
+                <li><strong>Agent must be published:</strong> Draft or test agents not yet published to the environment are not reachable. Confirm publication status before the deployment call.</li>
+              </ul>
             </div>
           </div><!-- end copilot-studio panel -->
 
           <!-- ════════════════ CUSTOM ADAPTER ════════════════ -->
           <div class="mgmt-panel" data-plane="custom-adapter">
-            <p>The Custom Adapter method is for agents that use a non-standard protocol, proprietary SDK, or integration pattern that cannot be expressed as a REST or WebSocket cURL. The customer writes and uploads Python adapter functions that AIRS executes via a sidecar process, bridging between AIRS's request format and the agent's native interface.</p>
+            <p>The Custom Adapter method is for agents that use a non-standard protocol, proprietary SDK, or integration pattern that cannot be expressed as a REST or WebSocket cURL. The customer writes Python adapter functions that AIRS executes via a sidecar process inside the Network Channel pod, bridging between AIRS's request format and the agent's native interface.</p>
 
             <div class="callout callout-danger">
               <div class="callout-title">Customer Responsibility &mdash; PAN Does Not Build Adapters</div>
-              <p>Custom adapters are written and maintained by the customer's development team. This is not a Palo Alto Networks or Professional Services deliverable. The customer must write, test, and activate the adapter before it can be attached to a target in AIRS. Budget at minimum one full development sprint for non-trivial protocol adapters. Identify this requirement during pre-engagement discovery and factor it into the project timeline accordingly.</p>
+              <p>Custom adapters are written and maintained by the customer's development team. This is not a Palo Alto Networks or Professional Services deliverable. The customer must write, test, and activate the adapter before it can be attached to a target in AIRS. Budget at minimum one full development sprint for non-trivial protocol adapters. Identify this requirement during pre-engagement discovery and factor it into the project timeline.</p>
             </div>
 
             <h3>When to Use the Custom Adapter</h3>
             <ul>
               <li>The agent is accessible only via a proprietary SDK with no HTTP API exposed</li>
               <li>The agent uses gRPC, SOAP, AMQP, or another non-HTTP protocol</li>
+              <li>Authentication requires HMAC, AWS SigV4, or mutual TLS that AIRS does not natively support</li>
               <li>The agent's request or response format is too unusual for the <code>{INPUT}</code>/<code>{RESPONSE}</code> JSON templates to map correctly</li>
-              <li>Authentication requires a signing scheme (HMAC, AWS SigV4) or mutual TLS that AIRS does not natively support</li>
-              <li>The agent is accessible only within a private network and no REST shim is available or feasible</li>
+              <li>The agent is on a private network and no REST shim is available or feasible</li>
             </ul>
 
-            <h3>Requirements</h3>
+            <h3>Hard Requirements</h3>
             <table>
               <thead>
                 <tr><th>Requirement</th><th>Detail</th></tr>
               </thead>
               <tbody>
                 <tr><td>Network Channel client version</td><td>v1.4.0 or higher (higher minimum than WebSocket's 1.3.0 requirement)</td></tr>
-                <tr><td>Adapter sidecar</td><td>Must be enabled in the Network Channel Helm configuration during install or upgrade</td></tr>
+                <tr><td>Adapter sidecar</td><td>Must be explicitly enabled in the Helm chart during install or upgrade — it is not on by default</td></tr>
                 <tr><td>Active Network Channel</td><td>A deployed and ONLINE Network Channel in the same network as the target agent. See <a href="#network-channels">Phase 5: Network Channels</a>.</td></tr>
                 <tr><td>Adapter code</td><td>Python functions implementing the AIRS adapter interface, uploaded and activated in SCM before attaching to a target</td></tr>
+                <tr><td>Available Python packages</td><td>stdlib, httpx, websockets only. Additional packages require a request to AI Red Teaming support — plan for this lead time.</td></tr>
               </tbody>
             </table>
 
-            <h3>High-Level Setup Flow</h3>
-            <ol>
-              <li>Deploy or upgrade the Network Channel client to v1.4.0+ with the adapter sidecar enabled in the Helm values.</li>
-              <li>Write the Python adapter functions following the AIRS adapter interface specification (available in the Palo Alto Networks developer portal).</li>
-              <li>Upload and activate the adapter in SCM: <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <code>Adapters</code>.</li>
-              <li>In the "Add a target" wizard: select Agent, select Custom Adapter, select the active adapter from the dropdown, and configure any per-target variable overrides (such as endpoint URL or API key that differ between targets sharing the same adapter).</li>
-              <li>Complete Advanced Configurations and Target Background, then submit.</li>
-            </ol>
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Step 1 &mdash; Deploy or Upgrade the Network Channel with the Adapter Sidecar</span>
+              </div>
+              <div class="collapsible-body">
+                <p>The adapter sidecar is the execution environment for your Python adapter code. It runs as a process inside the Network Channel pod. It must be enabled at Helm install or upgrade time; it cannot be toggled without a Helm operation.</p>
+                <p>First, check your current Network Channel client version:</p>
+                <div class="code-block">
+                  <pre><code>helm list -n airs-red-teaming</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                </div>
+                <p>If the version is below 1.4.0, upgrade the Helm release to a 1.4.0+ chart and enable the adapter sidecar. The exact Helm flag for enabling the sidecar is version-specific: refer to the Helm chart's <code>values.yaml</code> or contact PAN support for the correct parameter name for your chart version. A general upgrade looks like:</p>
+                <div class="code-block">
+                  <pre><code>helm upgrade panw-network-client \
+  oci://registry.ai-red-teaming.paloaltonetworks.com/pairs-redteam-prd-fckx/red-teaming-onprem/charts/panw-network-client:&lt;1.4.0+ version&gt; \
+  --set config.clientId=&lt;CLIENT_ID&gt; \
+  --set config.clientSecret=&lt;CLIENT_SECRET&gt; \
+  --set config.channelId=&lt;CHANNEL_ID&gt; \
+  --set &lt;sidecar-enable-flag&gt;=true</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                </div>
+                <div class="callout callout-warning">
+                  <div class="callout-title">Upgrading the Network Channel Affects All Targets Using It</div>
+                  <p>A Helm upgrade restarts the Network Channel pod. Any scans running through this channel at upgrade time will be interrupted. Schedule upgrades during a maintenance window or before scanning begins. After the upgrade, verify the channel status returns to ONLINE in <code>AI Security &rarr; AI Red Teaming &rarr; Network Channels</code> before proceeding.</p>
+                </div>
+              </div>
+            </div>
 
-            <div class="callout callout-note">
-              <div class="callout-title">Adapter Versioning and Scan Behavior</div>
-              <p>AIRS uses the adapter version that was active when a scan starts. Updating the adapter mid-scan has no effect on the running scan. Subsequent scans pick up the updated version automatically. Multiple targets can share a single adapter, each with their own per-target variable overrides for values like endpoint URL or credentials.</p>
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Step 2 &mdash; Write the Python Adapter</span>
+              </div>
+              <div class="collapsible-body">
+                <p>The adapter is a Python script implementing one or more of the AIRS adapter interface functions. Choose the implementation pattern that fits your agent's interface.</p>
+
+                <h3>Pattern A &mdash; Standard HTTP Targets</h3>
+                <p>Implement <code>pre_process</code> and <code>post_process</code>. Use this when your agent has an HTTP API but requires custom authentication, signing, or request/response transformation that AIRS cannot handle natively.</p>
+                <table>
+                  <thead>
+                    <tr><th>Function</th><th>Arguments</th><th>Purpose</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>pre_process(context, inference_input)</code></td><td>context object, attack prompt string</td><td>Build the HTTP request: construct the URL, headers, and request body. Return the prepared request.</td></tr>
+                    <tr><td><code>post_process(context, raw_response)</code></td><td>context object, raw HTTP response</td><td>Extract the reply text string from the agent's response. Return a plain string.</td></tr>
+                  </tbody>
+                </table>
+
+                <h3>Pattern B &mdash; Non-HTTP, SDK-Only, or Complex Protocols</h3>
+                <p>Implement <code>call_target</code>. Use this for gRPC, SOAP, proprietary SDKs, or any protocol that cannot be expressed as a standard HTTP call. If <code>call_target</code> is defined, it takes precedence over <code>pre_process</code>/<code>post_process</code>. Do not define both patterns in the same adapter.</p>
+                <table>
+                  <thead>
+                    <tr><th>Function</th><th>Arguments</th><th>Purpose</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>call_target(context, inference_input)</code></td><td>context object, attack prompt string</td><td>Full control: make the call to the agent using any method available (SDK, subprocess, HTTP, gRPC). Return the reply as a plain string.</td></tr>
+                  </tbody>
+                </table>
+
+                <h3>Optional Functions (Both Patterns)</h3>
+                <table>
+                  <thead>
+                    <tr><th>Function</th><th>When it runs</th><th>Purpose</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>authenticate(context)</code></td><td>On demand; result cached in <code>context.auth</code></td><td>Obtain auth credentials (token, signed header, session cookie). AIRS calls this once and caches the result — use for tokens that must be fetched before the first request.</td></tr>
+                    <tr><td><code>session_pre_process(context)</code></td><td>First turn of each conversation</td><td>Initialize a server-side session. Result available as <code>context.session</code> for all subsequent turns in the conversation.</td></tr>
+                  </tbody>
+                </table>
+
+                <h3>The Context Object</h3>
+                <table>
+                  <thead>
+                    <tr><th>Attribute</th><th>Type</th><th>Description</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>context.vars["key"]</code></td><td>dict</td><td>Non-sensitive runtime variables (base URLs, model names, resource IDs). Visible in the SCM UI.</td></tr>
+                    <tr><td><code>context.secrets["key"]</code></td><td>dict</td><td>Sensitive values (API keys, passwords). Masked in the SCM UI and scrubbed from logs.</td></tr>
+                    <tr><td><code>context.auth</code></td><td>any</td><td>Cached result from <code>authenticate()</code>. Persists across turns within a scan.</td></tr>
+                    <tr><td><code>context.session</code></td><td>any</td><td>Per-conversation state from <code>session_pre_process()</code>. Resets between conversations.</td></tr>
+                    <tr><td><code>context.http</code></td><td>httpx client</td><td>Pre-configured HTTP client with a 100-second timeout. Use this instead of creating your own httpx or requests client.</td></tr>
+                  </tbody>
+                </table>
+
+                <h3>Runtime Limits</h3>
+                <table>
+                  <thead>
+                    <tr><th>Limit</th><th>Value</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>Total execution time per turn</td><td>110 seconds</td></tr>
+                    <tr><td>HTTP timeout via <code>context.http</code></td><td>100 seconds</td></tr>
+                    <tr><td>Combined auth + session state size</td><td>64 KB serialized</td></tr>
+                    <tr><td>Available Python packages</td><td>stdlib, httpx, websockets</td></tr>
+                  </tbody>
+                </table>
+
+                <h3>Pattern A Example (AWS SigV4 Signing)</h3>
+                <div class="code-block">
+                  <pre><code>import hashlib, hmac, datetime
+
+def authenticate(context):
+    return {
+        "access_key": context.secrets["aws_access_key"],
+        "secret_key": context.secrets["aws_secret_key"],
+        "region":     context.vars["aws_region"],
+    }
+
+def pre_process(context, inference_input):
+    endpoint = context.vars["endpoint_url"]
+    body = json.dumps({"prompt": inference_input, "max_tokens": 500})
+    # Sign with SigV4 using context.auth credentials
+    signed_headers = _sigv4_sign(context.auth, endpoint, body)
+    return context.http.build_request(
+        "POST", endpoint, content=body, headers=signed_headers
+    )
+
+def post_process(context, raw_response):
+    data = raw_response.json()
+    return data["completion"]  # adjust path to your response structure</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                </div>
+
+                <h3>Pattern B Example (gRPC via subprocess)</h3>
+                <div class="code-block">
+                  <pre><code>import subprocess, json
+
+def call_target(context, inference_input):
+    endpoint = context.vars["grpc_endpoint"]
+    result = subprocess.run(
+        ["grpc_client", "--endpoint", endpoint, "--prompt", inference_input],
+        capture_output=True, text=True, timeout=90
+    )
+    response = json.loads(result.stdout)
+    return response["reply"]</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                </div>
+
+                <div class="callout callout-warning">
+                  <div class="callout-title">Script Is Stateless Between Turns</div>
+                  <p>The adapter script is reloaded fresh on each turn. Module-level variables do not persist. Only <code>context.auth</code> and <code>context.session</code> survive across turns within a conversation. Do not rely on module-level globals for per-conversation state.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Step 3 &mdash; Upload and Activate the Adapter in SCM</span>
+              </div>
+              <div class="collapsible-body">
+                <p>The adapter must be uploaded, validated, and activated before it appears in the target wizard dropdown. Uploading alone is not enough.</p>
+                <ol>
+                  <li>Navigate to <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <strong>Custom Adapters</strong>. This is a separate section from Targets.</li>
+                  <li>Click <strong>+ New Adapter</strong>.</li>
+                  <li>Enter an adapter name and optional description.</li>
+                  <li>Upload the Python script file. The file must contain at least one of: <code>call_target</code>, or both <code>pre_process</code> and <code>post_process</code>.</li>
+                  <li>Define <strong>Variables</strong> (non-sensitive) and <strong>Secrets</strong> (sensitive) that the script accesses via <code>context.vars</code> and <code>context.secrets</code>. These are the adapter-level defaults; individual targets can override them.</li>
+                  <li>Click <strong>Validate</strong>. AIRS runs a syntax check and a dry-run invocation against a mock input. Fix any reported errors.</li>
+                  <li>Click <strong>Create Adapter</strong> (activates it). The adapter status changes to <strong>Active</strong> and it becomes available in the target wizard dropdown.</li>
+                </ol>
+                <div class="callout callout-note">
+                  <div class="callout-title">Adapter Updates and Running Scans</div>
+                  <p>AIRS uses the adapter version that was active when a scan starts. Updating an adapter mid-scan has no effect on the running scan. Subsequent scans automatically pick up the updated version. Multiple targets can share a single adapter, each with their own per-target variable overrides.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Step 4 &mdash; Configure the Target in the AIRS Wizard</span>
+              </div>
+              <div class="collapsible-body">
+                <div class="callout callout-note">
+                  <div class="callout-title">Wizard Steps Skipped for Custom Adapter</div>
+                  <p>The Choose Method (cURL import), Add/Verify Parameters, and Verify &amp; Edit JSON wizard steps do not appear for Custom Adapter targets. They are replaced by the Custom Adapter Configuration section described below.</p>
+                </div>
+                <ol>
+                  <li>Navigate to <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <code>Targets</code> &rarr; <code>Add Target</code>.</li>
+                  <li>Enter a <strong>Target Name</strong> (e.g., <code>grpc-inference-agent-prod</code>).</li>
+                  <li>Under <strong>Target Type</strong>, select <strong>Agent</strong> or <strong>Application</strong>.</li>
+                  <li>Under <strong>Connection Method</strong>, select <strong>Custom Adapter</strong>.</li>
+                  <li>Under <strong>Endpoint Accessibility</strong>, select <strong>Private</strong> and then select the ONLINE Network Channel that has the adapter sidecar enabled.</li>
+                  <li>Click <strong>Next</strong>. The <strong>Custom Adapter Configuration</strong> section appears.</li>
+                  <li>Select the activated adapter from the <strong>Adapter</strong> dropdown.</li>
+                  <li>Under <strong>Variable Overrides</strong>: enter per-target values for any Variables or Secrets that differ from the adapter's defaults (e.g., a target-specific endpoint URL or API key). Leave blank to inherit adapter defaults.</li>
+                  <li>Enable <strong>Supports Multi-Turn</strong> if the adapter implements <code>session_pre_process</code> and your agent supports session state across prompts.</li>
+                  <li>Click <strong>Next</strong>.</li>
+                  <li>Configure <strong>Advanced Configurations</strong>: Rate Limits and Guardrails/Content Filters are both available for Custom Adapter targets.</li>
+                  <li>Click <strong>Validate Target</strong>. AIRS routes a test prompt through the Network Channel to the adapter sidecar and confirms a reply is returned.</li>
+                  <li>Complete <strong>Target Background</strong> and click <strong>Submit</strong>.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">Custom Adapter Gotchas</div>
+              <ul>
+                <li><strong>Adapter sidecar not enabled by default:</strong> A Helm upgrade to v1.4.0+ alone is not enough. The adapter sidecar must be explicitly enabled via a Helm flag in the chart's values. Check the chart's <code>values.yaml</code> for the correct parameter. Forgetting this results in the adapter dropdown being empty in the wizard.</li>
+                <li><strong>Upload is not the same as activation:</strong> An adapter that has been uploaded but not yet validated and created shows in the Custom Adapters list but does not appear in the target wizard dropdown. Run Validate then Create Adapter to make it available.</li>
+                <li><strong><code>call_target</code> overrides Pattern A:</strong> If you define both <code>call_target</code> and <code>pre_process</code>/<code>post_process</code> in the same script, AIRS uses only <code>call_target</code> and ignores the other functions. This is a silent override with no warning.</li>
+                <li><strong>Module-level state is lost between turns:</strong> Variables set at module scope persist within a single turn execution but are discarded when the script reloads for the next turn. Store any cross-turn state exclusively in <code>context.auth</code> or <code>context.session</code>.</li>
+                <li><strong>64 KB state limit:</strong> <code>context.auth</code> and <code>context.session</code> combined must serialize to under 64 KB. Large session objects (full conversation history, large embedding vectors) will exceed this limit and cause runtime failures. Store only the minimum state needed.</li>
+                <li><strong>Package availability:</strong> Only stdlib, httpx, and websockets are available. If the adapter requires an additional package (e.g., <code>grpcio</code>, <code>boto3</code>, a proprietary SDK), submit a support request to AI Red Teaming before the engagement. Package installation lead time is unpredictable — do not assume this will be resolved on the day of the scan.</li>
+                <li><strong>Helm upgrade restarts the channel:</strong> Upgrading the Network Channel to enable the adapter sidecar interrupts any scans running through that channel. Plan the upgrade before scanning begins.</li>
+                <li><strong>Per-target overrides apply at scan time:</strong> Variable and Secret overrides are not evaluated at adapter activation. They are applied when a scan starts. Confirm override values are correct by reviewing the target configuration before initiating a scan.</li>
+              </ul>
             </div>
           </div><!-- end custom-adapter panel -->
 
