@@ -2060,7 +2060,7 @@ kubectl auth can-i create deployment --namespace airs-red-teaming
 
           <!-- ════════════════ CUSTOM ADAPTER ════════════════ -->
           <div class="mgmt-panel" data-plane="custom-adapter">
-            <p>The Custom Adapter method is for agents that use a non-standard protocol, proprietary SDK, or integration pattern that cannot be expressed as a REST or WebSocket cURL. The customer writes Python adapter functions that AIRS executes via a sidecar process inside the Network Channel pod, bridging between AIRS's request format and the agent's native interface.</p>
+            <p>The Custom Adapter method lets you write a Python script that AI Red Teaming executes for every attack prompt. The script runs inside an adapter sidecar bundled with the Network Channel Helm chart on your own infrastructure — your code and credentials never execute in PAN's cloud. Use it when built-in connection methods cannot reach or communicate with your target.</p>
 
             <div class="callout callout-danger">
               <div class="callout-title">Customer Responsibility &mdash; PAN Does Not Build Adapters</div>
@@ -2068,170 +2068,143 @@ kubectl auth can-i create deployment --namespace airs-red-teaming
             </div>
 
             <h3>When to Use the Custom Adapter</h3>
-            <ul>
-              <li>The agent is accessible only via a proprietary SDK with no HTTP API exposed</li>
-              <li>The agent uses gRPC, SOAP, AMQP, or another non-HTTP protocol</li>
-              <li>Authentication requires HMAC, AWS SigV4, or mutual TLS that AIRS does not natively support</li>
-              <li>The agent's request or response format is too unusual for the <code>{INPUT}</code>/<code>{RESPONSE}</code> JSON templates to map correctly</li>
-              <li>The agent is on a private network and no REST shim is available or feasible</li>
-            </ul>
+            <p>Use a custom adapter when the target requires one of the following. If none apply, use a built-in connection method instead.</p>
+            <table>
+              <thead><tr><th>Use case</th><th>Examples</th></tr></thead>
+              <tbody>
+                <tr><td>Custom request or response format</td><td>Non-standard JSON structure, multi-step API calls, cryptographically signed request bodies</td></tr>
+                <tr><td>Fresh per-request generated values</td><td>UUID nonce in the body, timestamp-based HMAC signature, rotating session tokens</td></tr>
+                <tr><td>Pre-conversation server-side session</td><td>Agent requires a session ID obtained before the first message and carried across all turns</td></tr>
+                <tr><td>Non-standard authentication</td><td>Custom token exchange, signed requests, multi-step login flows. Note: standard OAuth 2.0 does NOT require a custom adapter — use the OAuth 2.0 option in Add/Verify Parameters instead.</td></tr>
+                <tr><td>Unsupported transport protocol</td><td>GraphQL, non-standard WebSocket framing, multi-call REST flows, proprietary SDK, custom streaming</td></tr>
+              </tbody>
+            </table>
 
             <h3>Hard Requirements</h3>
             <table>
-              <thead>
-                <tr><th>Requirement</th><th>Detail</th></tr>
-              </thead>
+              <thead><tr><th>Requirement</th><th>Detail</th></tr></thead>
               <tbody>
-                <tr><td>Network Channel client version</td><td>v1.4.0 or higher (higher minimum than WebSocket's 1.3.0 requirement)</td></tr>
-                <tr><td>Adapter sidecar</td><td>Must be explicitly enabled in the Helm chart during install or upgrade — it is not on by default</td></tr>
-                <tr><td>Active Network Channel</td><td>A deployed and ONLINE Network Channel in the same network as the target agent. See <a href="#network-channels">Phase 5: Network Channels</a>.</td></tr>
-                <tr><td>Adapter code</td><td>Python functions implementing the AIRS adapter interface, uploaded and activated in SCM before attaching to a target</td></tr>
-                <tr><td>Available Python packages</td><td>stdlib, httpx, websockets only. Additional packages require a request to AI Red Teaming support — plan for this lead time.</td></tr>
+                <tr><td>Network Channel client version</td><td>v1.4.0 or higher (higher minimum than WebSocket's v1.3.0 requirement)</td></tr>
+                <tr><td>Adapter sidecar</td><td>Must be explicitly enabled in Helm values — not on by default. Adds a container listening on <code>localhost:8010</code> inside the Network Channel pod.</td></tr>
+                <tr><td>Active Network Channel</td><td>A deployed and ONLINE Network Channel in the same network as the target agent. Required for validation and scanning. See <a href="#network-channels">Phase 5: Network Channels</a>.</td></tr>
+                <tr><td>Adapter code</td><td>Python script uploaded, validated, and activated in SCM before attaching to a target</td></tr>
+                <tr><td>Available Python packages</td><td>stdlib, httpx, websockets only. Additional packages require a request to AI Red Teaming support — plan for this lead time before the engagement.</td></tr>
               </tbody>
             </table>
 
             <div class="collapsible">
               <div class="collapsible-header">
                 <span class="chevron">&#9654;</span>
-                <span>Step 1 &mdash; Deploy or Upgrade the Network Channel with the Adapter Sidecar</span>
+                <span>Step 1 &mdash; Set Up Prerequisites: Network Channel v1.4.0+ with Adapter Sidecar</span>
               </div>
               <div class="collapsible-body">
-                <p>The adapter sidecar is the execution environment for your Python adapter code. It runs as a process inside the Network Channel pod. It must be enabled at Helm install or upgrade time; it cannot be toggled without a Helm operation.</p>
-                <p>First, check your current Network Channel client version:</p>
+                <p>The adapter sidecar is a container bundled with the Network Channel Helm chart. It is the runtime environment for your adapter script. It must be enabled explicitly in Helm values during install or upgrade.</p>
+
+                <p>Check your currently installed chart version:</p>
                 <div class="code-block">
                   <pre><code>helm list -n airs-red-teaming</code></pre>
                   <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                 </div>
-                <p>If the version is below 1.4.0, upgrade the Helm release to a 1.4.0+ chart and enable the adapter sidecar. The exact Helm flag for enabling the sidecar is version-specific: refer to the Helm chart's <code>values.yaml</code> or contact PAN support for the correct parameter name for your chart version. A general upgrade looks like:</p>
+
+                <p>If the chart version is below 1.4.0, or if the sidecar is not yet enabled, upgrade using one of these two methods:</p>
+
+                <h3>Method A &mdash; via values.yaml (Recommended)</h3>
+                <p>Add the following to your <code>values.yaml</code> file before running <code>helm upgrade</code>:</p>
                 <div class="code-block">
-                  <pre><code>helm upgrade panw-network-client \
-  oci://registry.ai-red-teaming.paloaltonetworks.com/pairs-redteam-prd-fckx/red-teaming-onprem/charts/panw-network-client:&lt;1.4.0+ version&gt; \
+                  <pre><code>adapterSidecar:
+  enabled: true</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                </div>
+                <p>Then apply the upgrade:</p>
+                <div class="code-block">
+                  <pre><code>helm upgrade --install panw-network-client \
+  oci://registry.ai-red-teaming.paloaltonetworks.com/pairs-redteam-prd-fckx/red-teaming-onprem/charts/panw-network-client:&lt;version&gt; \
   --set config.clientId=&lt;CLIENT_ID&gt; \
   --set config.clientSecret=&lt;CLIENT_SECRET&gt; \
   --set config.channelId=&lt;CHANNEL_ID&gt; \
-  --set &lt;sidecar-enable-flag&gt;=true</code></pre>
+  -f values.yaml</code></pre>
                   <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                 </div>
-                <div class="callout callout-warning">
-                  <div class="callout-title">Upgrading the Network Channel Affects All Targets Using It</div>
-                  <p>A Helm upgrade restarts the Network Channel pod. Any scans running through this channel at upgrade time will be interrupted. Schedule upgrades during a maintenance window or before scanning begins. After the upgrade, verify the channel status returns to ONLINE in <code>AI Security &rarr; AI Red Teaming &rarr; Network Channels</code> before proceeding.</p>
+
+                <h3>Method B &mdash; via --set flag</h3>
+                <div class="code-block">
+                  <pre><code>helm upgrade --install panw-network-client \
+  oci://registry.ai-red-teaming.paloaltonetworks.com/pairs-redteam-prd-fckx/red-teaming-onprem/charts/panw-network-client:&lt;version&gt; \
+  --set config.clientId=&lt;CLIENT_ID&gt; \
+  --set config.clientSecret=&lt;CLIENT_SECRET&gt; \
+  --set config.channelId=&lt;CHANNEL_ID&gt; \
+  --set adapterSidecar.enabled=true</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                 </div>
+
+                <p>After the upgrade, verify the Network Channel status returns to <strong>ONLINE</strong> in <code>AI Security &rarr; AI Red Teaming &rarr; Network Channels</code> before continuing.</p>
+
+                <div class="callout callout-warning">
+                  <div class="callout-title">Helm Upgrade Restarts the Pod and Interrupts Running Scans</div>
+                  <p>Any scans running through this Network Channel at upgrade time will be interrupted. Schedule the upgrade during a maintenance window or before scanning begins for the engagement.</p>
+                </div>
+
+                <p>For full prerequisites documentation, see the official PAN guide: <a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/set-up-prerequisites-for-custom-target-adapters" target="_blank" rel="noopener">Set Up Prerequisites for Custom Target Adapters</a>.</p>
               </div>
             </div>
 
             <div class="collapsible">
               <div class="collapsible-header">
                 <span class="chevron">&#9654;</span>
-                <span>Step 2 &mdash; Write the Python Adapter</span>
+                <span>Step 2 &mdash; Write the Python Adapter Script</span>
               </div>
               <div class="collapsible-body">
-                <p>The adapter is a Python script implementing one or more of the AIRS adapter interface functions. Choose the implementation pattern that fits your agent's interface.</p>
-
-                <h3>Pattern A &mdash; Standard HTTP Targets</h3>
-                <p>Implement <code>pre_process</code> and <code>post_process</code>. Use this when your agent has an HTTP API but requires custom authentication, signing, or request/response transformation that AIRS cannot handle natively.</p>
-                <table>
-                  <thead>
-                    <tr><th>Function</th><th>Arguments</th><th>Purpose</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr><td><code>pre_process(context, inference_input)</code></td><td>context object, attack prompt string</td><td>Build the HTTP request: construct the URL, headers, and request body. Return the prepared request.</td></tr>
-                    <tr><td><code>post_process(context, raw_response)</code></td><td>context object, raw HTTP response</td><td>Extract the reply text string from the agent's response. Return a plain string.</td></tr>
-                  </tbody>
-                </table>
-
-                <h3>Pattern B &mdash; Non-HTTP, SDK-Only, or Complex Protocols</h3>
-                <p>Implement <code>call_target</code>. Use this for gRPC, SOAP, proprietary SDKs, or any protocol that cannot be expressed as a standard HTTP call. If <code>call_target</code> is defined, it takes precedence over <code>pre_process</code>/<code>post_process</code>. Do not define both patterns in the same adapter.</p>
-                <table>
-                  <thead>
-                    <tr><th>Function</th><th>Arguments</th><th>Purpose</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr><td><code>call_target(context, inference_input)</code></td><td>context object, attack prompt string</td><td>Full control: make the call to the agent using any method available (SDK, subprocess, HTTP, gRPC). Return the reply as a plain string.</td></tr>
-                  </tbody>
-                </table>
-
-                <h3>Optional Functions (Both Patterns)</h3>
-                <table>
-                  <thead>
-                    <tr><th>Function</th><th>When it runs</th><th>Purpose</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr><td><code>authenticate(context)</code></td><td>On demand; result cached in <code>context.auth</code></td><td>Obtain auth credentials (token, signed header, session cookie). AIRS calls this once and caches the result — use for tokens that must be fetched before the first request.</td></tr>
-                    <tr><td><code>session_pre_process(context)</code></td><td>First turn of each conversation</td><td>Initialize a server-side session. Result available as <code>context.session</code> for all subsequent turns in the conversation.</td></tr>
-                  </tbody>
-                </table>
-
-                <h3>The Context Object</h3>
-                <table>
-                  <thead>
-                    <tr><th>Attribute</th><th>Type</th><th>Description</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr><td><code>context.vars["key"]</code></td><td>dict</td><td>Non-sensitive runtime variables (base URLs, model names, resource IDs). Visible in the SCM UI.</td></tr>
-                    <tr><td><code>context.secrets["key"]</code></td><td>dict</td><td>Sensitive values (API keys, passwords). Masked in the SCM UI and scrubbed from logs.</td></tr>
-                    <tr><td><code>context.auth</code></td><td>any</td><td>Cached result from <code>authenticate()</code>. Persists across turns within a scan.</td></tr>
-                    <tr><td><code>context.session</code></td><td>any</td><td>Per-conversation state from <code>session_pre_process()</code>. Resets between conversations.</td></tr>
-                    <tr><td><code>context.http</code></td><td>httpx client</td><td>Pre-configured HTTP client with a 100-second timeout. Use this instead of creating your own httpx or requests client.</td></tr>
-                  </tbody>
-                </table>
-
-                <h3>Runtime Limits</h3>
-                <table>
-                  <thead>
-                    <tr><th>Limit</th><th>Value</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr><td>Total execution time per turn</td><td>110 seconds</td></tr>
-                    <tr><td>HTTP timeout via <code>context.http</code></td><td>100 seconds</td></tr>
-                    <tr><td>Combined auth + session state size</td><td>64 KB serialized</td></tr>
-                    <tr><td>Available Python packages</td><td>stdlib, httpx, websockets</td></tr>
-                  </tbody>
-                </table>
+                <p>The adapter is a Python script implementing one or more interface functions. The AIRS runtime injects all result types and error signals — do not import them. All five functions are optional except the core pattern pair.</p>
 
                 <div class="callout callout-note">
-                  <div class="callout-title">Typed Return Objects — No Import Needed</div>
-                  <p>The result types (<code>PreProcessResult</code>, <code>PostProcessResult</code>, <code>CallTargetResult</code>, <code>AuthResult</code>, <code>SessionPreProcessResult</code>) and error signals (<code>raise_rate_limited</code>, <code>raise_auth_error</code>) are injected by the AIRS runtime. Do not import them; use them directly. Access the incoming prompt via <code>inference_input.prompt</code>, and access response body fields via <code>raw_response.json_body</code> (a property, not a method).</p>
+                  <div class="callout-title">Typed Return Objects and Error Signals &mdash; No Import Needed</div>
+                  <p>Use <code>PreProcessResult</code>, <code>PostProcessResult</code>, <code>CallTargetResult</code>, <code>AuthResult</code>, and <code>SessionPreProcessResult</code> directly. Error signals <code>raise_rate_limited(retry_after=&lt;seconds&gt;)</code> and <code>raise_auth_error(&lt;message&gt;)</code> are also injected. Access the prompt via <code>inference_input.prompt</code>; access the response body via <code>raw_response.json_body</code> (a property, not a method call).</p>
                 </div>
 
-                <h3>Pattern A Example (OAuth2 Token Exchange + REST Call)</h3>
+                <h3>Pattern A &mdash; HTTP Targets (Platform Makes the Call)</h3>
+                <p>Implement <code>pre_process</code> and <code>post_process</code> together. The platform executes the HTTP request using the descriptor you return from <code>pre_process</code>. Use this for HTTP targets that need custom request construction, response parsing, or signing. If the target requires multiple HTTP calls per turn, make the additional calls using <code>context.http</code> inside <code>pre_process()</code>.</p>
+
+                <table>
+                  <thead><tr><th>Function</th><th>When it runs</th><th>Returns</th></tr></thead>
+                  <tbody>
+                    <tr><td><code>pre_process(context, inference_input)</code></td><td>Every turn, before the HTTP call</td><td><code>PreProcessResult(url, headers, json_body)</code> — platform fires this request</td></tr>
+                    <tr><td><code>post_process(context, raw_response)</code></td><td>Every turn, after the HTTP response arrives</td><td><code>PostProcessResult(output=&lt;reply text&gt;)</code></td></tr>
+                  </tbody>
+                </table>
+
+                <h4>Minimal Pattern A Example</h4>
                 <div class="code-block">
-                  <pre><code># authenticate() fetches a token once; AIRS caches it in context.auth
-def authenticate(context):
-    resp = context.http.post(
-        context.vars["token_url"],
-        data={
-            "grant_type":    "client_credentials",
-            "client_id":     context.secrets["client_id"],
-            "client_secret": context.secrets["client_secret"],
-        },
-    )
-    body = resp.json()
-    return AuthResult(ttl=body.get("expires_in", 3600), data={"token": body["access_token"]})
-
-# pre_process() builds the HTTP request descriptor — the platform fires the actual call
-def pre_process(context, inference_input):
+                  <pre><code>def pre_process(context, inference_input):
     return PreProcessResult(
-        url=context.vars["endpoint_url"],
-        headers={"Authorization": f"Bearer {context.auth['token']}"},
-        json_body={"messages": [{"role": "user", "content": inference_input.prompt}]},
+        url=context.vars["endpoint"],
+        headers={"Authorization": f"Bearer {context.secrets['api_key']}"},
+        json_body={"message": inference_input.prompt},
     )
 
-# post_process() extracts the reply text from the raw HTTP response
 def post_process(context, raw_response):
     if raw_response.status_code == 429:
         raise_rate_limited(retry_after=30)
     if raw_response.status_code == 401:
-        raise_auth_error("Token rejected by agent")
-    return PostProcessResult(output=raw_response.json_body["choices"][0]["message"]["content"])</code></pre>
+        raise_auth_error(f"Token rejected: {raw_response.status_code}")
+    return PostProcessResult(output=raw_response.json_body["reply"])</code></pre>
                   <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                 </div>
 
-                <h3>Pattern B Example (WebSocket Agent)</h3>
+                <h3>Pattern B &mdash; Non-HTTP Transports (You Make the Call)</h3>
+                <p>Implement <code>call_target</code> alone. Use this for WebSocket, GraphQL, SDK-based clients, and custom framing or streaming protocols. If <code>call_target</code> is defined, the platform does not call <code>pre_process</code> or <code>post_process</code> — they are silently ignored even if present in the same script. For standard HTTP targets that need multiple calls, use <code>context.http</code> inside <code>pre_process()</code> instead of switching to Pattern B.</p>
+
+                <table>
+                  <thead><tr><th>Function</th><th>When it runs</th><th>Returns</th></tr></thead>
+                  <tbody>
+                    <tr><td><code>call_target(context, inference_input)</code></td><td>Every turn; you control the full request/response cycle</td><td><code>CallTargetResult(output=&lt;reply text&gt;)</code></td></tr>
+                  </tbody>
+                </table>
+
+                <h4>Pattern B Example (WebSocket)</h4>
                 <div class="code-block">
                   <pre><code>import json
 import websockets.sync.client as ws
 
-# call_target() manages the full transport — use for WebSocket, gRPC, or proprietary SDKs
 def call_target(context, inference_input):
     conn = ws.connect(
         context.vars["ws_url"],
@@ -2252,75 +2225,241 @@ def call_target(context, inference_input):
                   <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                 </div>
 
-                <div class="callout callout-warning">
-                  <div class="callout-title">Script Is Stateless Between Turns</div>
-                  <p>The adapter script is reloaded fresh on each turn. Module-level variables do not persist. Only <code>context.auth</code> and <code>context.session</code> survive across turns within a conversation. Do not rely on module-level globals for per-conversation state.</p>
+                <h3>Optional: authenticate()</h3>
+                <p>Works with both patterns. Called by the platform on demand; the result is cached for the TTL you specify and re-fetched automatically on expiry or auth error. Use for OAuth2, API token exchange, or any credential that must be obtained before the first request. Per-request signing (HMAC, SigV4) goes in <code>pre_process()</code> or <code>call_target()</code> instead — the request body is not available in <code>authenticate()</code>.</p>
+                <div class="code-block">
+                  <pre><code>def authenticate(context):
+    resp = context.http.post(
+        context.vars["token_url"],
+        data={
+            "grant_type":    "client_credentials",
+            "client_id":     context.secrets["client_id"],
+            "client_secret": context.secrets["client_secret"],
+        },
+    )
+    if resp.status_code != 200:
+        raise_auth_error(f"Token endpoint returned {resp.status_code}")
+    body = resp.json()
+    return AuthResult(ttl=body["expires_in"], data={"token": body["access_token"]})
+
+# In pre_process(), access the token via context.auth["token"]
+def pre_process(context, inference_input):
+    return PreProcessResult(
+        url=context.vars["endpoint"],
+        headers={"Authorization": f"Bearer {context.auth['token']}"},
+        json_body={"message": inference_input.prompt},
+    )
+
+def post_process(context, raw_response):
+    return PostProcessResult(output=raw_response.json_body["reply"])</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                 </div>
+
+                <h3>Optional: session_pre_process()</h3>
+                <p>Works with both patterns. Runs once on the first turn of every conversation — including single-turn Attack Library scans, independent of the multi-turn toggle. Use for one-time setup like creating a server-side session. The return value is available as <code>context.session</code> on every subsequent turn.</p>
+                <div class="code-block">
+                  <pre><code>def session_pre_process(context):
+    resp = context.http.post(
+        context.vars["base_url"] + "/sessions",
+        headers={"Authorization": f"Bearer {context.auth['token']}"},
+    )
+    return SessionPreProcessResult(session_state={"session_id": resp.json()["id"]})
+
+def pre_process(context, inference_input):
+    return PreProcessResult(
+        url=context.vars["base_url"] + "/chat",
+        headers={"Authorization": f"Bearer {context.auth['token']}"},
+        json_body={
+            "session_id": context.session["session_id"],
+            "message":    inference_input.prompt,
+        },
+    )
+
+def post_process(context, raw_response):
+    return PostProcessResult(output=raw_response.json_body["reply"])</code></pre>
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                </div>
+
+                <h3>Context Object Reference</h3>
+                <table>
+                  <thead><tr><th>Attribute</th><th>Type</th><th>Description</th></tr></thead>
+                  <tbody>
+                    <tr><td><code>context.vars["key"]</code></td><td>dict</td><td>Non-sensitive config values (endpoint URLs, model names). Visible in the SCM UI.</td></tr>
+                    <tr><td><code>context.secrets["key"]</code></td><td>dict</td><td>Sensitive values (API keys, passwords). Masked in UI; scrubbed from logs.</td></tr>
+                    <tr><td><code>context.auth["key"]</code></td><td>dict</td><td>Cached credential dict from <code>authenticate().data</code>. Persists across turns within a conversation.</td></tr>
+                    <tr><td><code>context.session["key"]</code></td><td>dict</td><td>Per-conversation state from <code>session_pre_process().session_state</code>. Resets between conversations.</td></tr>
+                    <tr><td><code>context.http</code></td><td>httpx client</td><td>Platform-provided HTTP client. Supports <code>.post()</code>, <code>.get()</code>, etc. 100-second timeout.</td></tr>
+                  </tbody>
+                </table>
+
+                <h3>Runtime Limits</h3>
+                <table>
+                  <thead><tr><th>Limit</th><th>Value</th></tr></thead>
+                  <tbody>
+                    <tr><td>Total execution time per turn (all functions combined)</td><td>110 seconds</td></tr>
+                    <tr><td>HTTP timeout via <code>context.http</code></td><td>100 seconds</td></tr>
+                    <tr><td><code>context.auth</code> + <code>context.session</code> combined (serialized)</td><td>64 KB</td></tr>
+                    <tr><td>Script state between turns</td><td>Stateless — module-level globals are discarded. Only <code>context.auth</code> and <code>context.session</code> persist.</td></tr>
+                    <tr><td>Available Python packages</td><td>stdlib, httpx, websockets. Others require a support request.</td></tr>
+                    <tr><td>Cold start overhead</td><td>~50–200 ms per turn (script loaded fresh each time)</td></tr>
+                  </tbody>
+                </table>
+
+                <p>Official adapter build guide: <a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/build-a-custom-target-adapter" target="_blank" rel="noopener">Build a Custom Target Adapter</a> | <a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/adapter-contract/adapter-contract-functions" target="_blank" rel="noopener">Adapter Contract Functions Reference</a></p>
               </div>
             </div>
 
             <div class="collapsible">
               <div class="collapsible-header">
                 <span class="chevron">&#9654;</span>
-                <span>Step 3 &mdash; Upload and Activate the Adapter in SCM</span>
+                <span>Step 3 &mdash; Test and Validate in the Adapter Editor</span>
               </div>
               <div class="collapsible-body">
-                <p>The adapter must be uploaded, validated, and activated before it appears in the target wizard dropdown. Uploading alone is not enough.</p>
+                <p>The adapter editor lets you author, debug, and validate your script before attaching it to any target. Validation runs an end-to-end test: it loads your code and routes a real test prompt through the Network Channel to your target, exactly as a scan would.</p>
+
                 <ol>
-                  <li>Navigate to <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <strong>Custom Adapters</strong>. This is a separate section from Targets.</li>
-                  <li>Click <strong>+ New Adapter</strong>.</li>
-                  <li>Enter an adapter name and optional description.</li>
-                  <li>Upload the Python script file. The file must contain at least one of: <code>call_target</code>, or both <code>pre_process</code> and <code>post_process</code>.</li>
-                  <li>Define <strong>Variables</strong> (non-sensitive) and <strong>Secrets</strong> (sensitive) that the script accesses via <code>context.vars</code> and <code>context.secrets</code>. These are the adapter-level defaults; individual targets can override them.</li>
-                  <li>Click <strong>Validate</strong>. AIRS runs a syntax check and a dry-run invocation against a mock input. Fix any reported errors.</li>
-                  <li>Click <strong>Create Adapter</strong> (activates it). The adapter status changes to <strong>Active</strong> and it becomes available in the target wizard dropdown.</li>
+                  <li>Navigate to <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <strong>Custom Adapters</strong> &rarr; <strong>Create Adapter</strong>. The editor opens with a built-in Python template.</li>
+                  <li>Enter your <strong>Adapter Name</strong>.</li>
+                  <li>Write or paste your adapter code in the Adapter Code editor.</li>
+                  <li>Configure adapter-level <strong>Variables</strong> and <strong>Secrets</strong>:
+                    <ul>
+                      <li>Variables: key/value pairs accessed via <code>context.vars</code> — mark as <strong>Variable</strong> (visible in UI)</li>
+                      <li>Secrets: key/value pairs accessed via <code>context.secrets</code> — mark as <strong>Secret</strong> (masked in UI, scrubbed from logs)</li>
+                    </ul>
+                  </li>
+                  <li>Select a <strong>Network Channel</strong> to use for the validation test run.</li>
+                  <li>Click <strong>Validate Adapter</strong>. The platform loads your script, sends a real test prompt through the selected Network Channel to your target, and displays the result and any <code>print()</code> output.</li>
+                  <li>Iterate: edit code and re-run <strong>Validate Adapter</strong> until output matches expectations.</li>
+                  <li><em>Optional:</em> Click <strong>Save as Draft</strong> to preserve work without activating. A Network Channel is not required for draft saves.</li>
+                  <li>When the adapter is ready, click <strong>Create Adapter</strong>. This runs one final end-to-end validation and, on success, marks the adapter <strong>Active</strong> and makes it available in the target wizard dropdown. A Network Channel is required for this step.</li>
                 </ol>
+
+                <div class="callout callout-warning">
+                  <div class="callout-title">Validate Runs Do Not Save</div>
+                  <p>Clicking <strong>Validate Adapter</strong> tests your code but does not save your script or settings. Use <strong>Save as Draft</strong> to preserve in-progress work, or <strong>Create Adapter</strong> to finalize.</p>
+                </div>
+
+                <div class="callout callout-note">
+                  <div class="callout-title">Debugging: print() vs Sidecar Logs</div>
+                  <p>During Validate runs, <code>print()</code> output appears in the editor results panel — use this for iterative debugging. During actual scans, <code>print()</code> output is not surfaced in the UI; check the adapter sidecar container logs on your Kubernetes cluster instead.</p>
+                </div>
+
                 <div class="callout callout-note">
                   <div class="callout-title">Adapter Updates and Running Scans</div>
-                  <p>AIRS uses the adapter version that was active when a scan starts. Updating an adapter mid-scan has no effect on the running scan. Subsequent scans automatically pick up the updated version. Multiple targets can share a single adapter, each with their own per-target variable overrides.</p>
+                  <p>AIRS uses the adapter version that was active when a scan starts. Updating and reactivating an adapter mid-scan has no effect on the running scan. Subsequent scans automatically pick up the new version. Multiple targets can share one adapter, each with their own per-target variable overrides.</p>
                 </div>
+
+                <p>Official testing guide: <a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/test-and-validate-a-custom-target-adapter" target="_blank" rel="noopener">Test and Validate a Custom Target Adapter</a></p>
               </div>
             </div>
 
             <div class="collapsible">
               <div class="collapsible-header">
                 <span class="chevron">&#9654;</span>
-                <span>Step 4 &mdash; Configure the Target in the AIRS Wizard</span>
+                <span>Step 4 &mdash; Attach the Adapter to a Target</span>
               </div>
               <div class="collapsible-body">
                 <div class="callout callout-note">
                   <div class="callout-title">Wizard Steps Skipped for Custom Adapter</div>
-                  <p>The Choose Method (cURL import), Add/Verify Parameters, and Verify &amp; Edit JSON wizard steps do not appear for Custom Adapter targets. They are replaced by the Custom Adapter Configuration section described below.</p>
+                  <p>The Choose Method (cURL import), Add/Verify Parameters, and Verify &amp; Edit JSON wizard steps do not appear for Custom Adapter targets. They are replaced by the Custom Adapter Configuration section in Step 4 below.</p>
                 </div>
                 <ol>
-                  <li>Navigate to <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <code>Targets</code> &rarr; <code>Add Target</code>.</li>
-                  <li>Enter a <strong>Target Name</strong> (e.g., <code>grpc-inference-agent-prod</code>).</li>
+                  <li>In AI Red Teaming, create a new target or open an existing one for editing.</li>
+                  <li>Enter a <strong>Target Name</strong> (e.g., <code>graphql-agent-prod</code>).</li>
                   <li>Under <strong>Target Type</strong>, select <strong>Agent</strong> or <strong>Application</strong>.</li>
                   <li>Under <strong>Connection Method</strong>, select <strong>Custom Adapter</strong>.</li>
-                  <li>Under <strong>Endpoint Accessibility</strong>, select <strong>Private</strong> and then select the ONLINE Network Channel that has the adapter sidecar enabled.</li>
-                  <li>Click <strong>Next</strong>. The <strong>Custom Adapter Configuration</strong> section appears.</li>
-                  <li>Select the activated adapter from the <strong>Adapter</strong> dropdown.</li>
-                  <li>Under <strong>Variable Overrides</strong>: enter per-target values for any Variables or Secrets that differ from the adapter's defaults (e.g., a target-specific endpoint URL or API key). Leave blank to inherit adapter defaults.</li>
-                  <li>Enable <strong>Supports Multi-Turn</strong> if the adapter implements <code>session_pre_process</code> and your agent supports session state across prompts.</li>
-                  <li>Click <strong>Next</strong>.</li>
-                  <li>Configure <strong>Advanced Configurations</strong>: Rate Limits and Guardrails/Content Filters are both available for Custom Adapter targets.</li>
-                  <li>Click <strong>Validate Target</strong>. AIRS routes a test prompt through the Network Channel to the adapter sidecar and confirms a reply is returned.</li>
-                  <li>Complete <strong>Target Background</strong> and click <strong>Submit</strong>.</li>
+                  <li>Under <strong>Endpoint Accessibility</strong>, specify whether the target is <strong>Public</strong> or <strong>Private</strong>:
+                    <ul>
+                      <li>IP Allowlist: allow the region-specific AIRS egress IP shown in the tooltip</li>
+                      <li>Network Channels: select the configured channel from the dropdown (this selection is automatically applied to the adapter configuration in the next step)</li>
+                    </ul>
+                  </li>
+                  <li>In <strong>Custom Adapter Configuration</strong>:
+                    <ul>
+                      <li><strong>Custom Adapter</strong>: select the active adapter from the dropdown</li>
+                      <li><strong>Network Channel</strong>: confirm or select the channel for this target's network</li>
+                      <li><strong>Variable Overrides</strong> (optional): enter per-target values for any Variables or Secrets that differ from adapter defaults (e.g., a different <code>base_url</code> for staging, a different <code>api_key</code> for a separate account). Unoverridden keys inherit adapter defaults.</li>
+                      <li><strong>Supports Multi-Turn</strong> (optional, disabled by default): enable only if both the target and adapter support multi-turn conversations</li>
+                    </ul>
+                  </li>
+                  <li>In <strong>Advanced Configurations</strong> (optional):
+                    <ul>
+                      <li><strong>Successful Connection Message</strong>: test prompt sent during Validate Target</li>
+                      <li><strong>Rate Limits</strong>: max requests per minute for this endpoint</li>
+                      <li><strong>Guardrails / Content Filters</strong>: error code and sample exception JSON</li>
+                    </ul>
+                  </li>
+                  <li>Click <strong>Validate Target</strong>. The target must validate successfully before Target Background is unlocked.</li>
+                  <li>Complete <strong>Target Background</strong> (mandatory):
+                    <ul>
+                      <li><strong>Industry</strong></li>
+                      <li><strong>Use Case</strong> (e.g., customer service)</li>
+                      <li><strong>Competitors</strong> (optional)</li>
+                      <li><strong>Agentic Profiling</strong> (optional): autonomous probe to discover capabilities, business use case, and technical architecture</li>
+                    </ul>
+                  </li>
+                  <li>Click <strong>Submit</strong>. The target is now connected through the adapter and available for scanning.</li>
                 </ol>
+                <p>Official attach guide: <a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/attach-a-custom-target-adapter-to-a-target" target="_blank" rel="noopener">Attach a Custom Target Adapter to a Target</a></p>
               </div>
             </div>
 
-            <div class="callout callout-warning">
-              <div class="callout-title">Custom Adapter Gotchas</div>
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span class="chevron">&#9654;</span>
+                <span>Troubleshooting</span>
+              </div>
+              <div class="collapsible-body">
+                <p>Use <strong>Validate Adapter</strong> in the adapter editor to view <code>print()</code> output during iteration. For scan-time issues, inspect the adapter sidecar container logs on your Kubernetes cluster.</p>
+                <table>
+                  <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+                  <tbody>
+                    <tr>
+                      <td>Validation fails: "must define call_target or both pre_process and post_process"</td>
+                      <td>Script lacks a complete function pattern. Only one of the pre/post pair is defined, or neither pattern is present.</td>
+                      <td>Implement either <code>call_target()</code> alone, or both <code>pre_process()</code> and <code>post_process()</code> together. Never define only one of the pre/post pair.</td>
+                    </tr>
+                    <tr>
+                      <td>Scan results show <code>adapter_error</code></td>
+                      <td>Unhandled exception in the script, or a function returns the wrong type.</td>
+                      <td>Run Validate Adapter in the editor and inspect the traceback and stdout. Ensure all functions return the correct typed result object (<code>PreProcessResult</code>, <code>PostProcessResult</code>, <code>CallTargetResult</code>, <code>AuthResult</code>, or <code>SessionPreProcessResult</code>).</td>
+                    </tr>
+                    <tr>
+                      <td>Repeated authentication failures mid-scan</td>
+                      <td><code>authenticate()</code> returns a bad or short-lived token, or the target is rejecting it.</td>
+                      <td>Verify values in <code>context.secrets</code> are correct for the adapter or target's overrides. Set a realistic <code>ttl</code> in <code>AuthResult</code> slightly below the token's actual expiry to handle clock skew. Call <code>raise_auth_error</code> on 401 responses so re-authentication is triggered automatically.</td>
+                    </tr>
+                    <tr>
+                      <td>Adapter shows as "unreachable" or Network Channel errors appear</td>
+                      <td>Adapter sidecar not enabled, or Network Channel client is outdated or offline.</td>
+                      <td>Confirm <code>adapterSidecar.enabled: true</code> is set in chart values and the pod has restarted with the sidecar container running. Verify the Network Channel client is v1.4.0 or later; upgrade the chart if not. Check Network Channel status in AI Red Teaming to confirm it is ONLINE.</td>
+                    </tr>
+                    <tr>
+                      <td>Blank reply in scan results</td>
+                      <td>Response output is not being extracted correctly from the response body.</td>
+                      <td>Add <code>print(raw_response.json_body)</code> inside <code>post_process()</code>, then run Validate Adapter. Inspect the actual response structure and correct the extraction path to match the key the target actually returns.</td>
+                    </tr>
+                    <tr>
+                      <td>Required library is unavailable (ImportError)</td>
+                      <td>The adapter runtime only bundles stdlib, httpx, and websockets. Any other import fails.</td>
+                      <td>Use <code>context.http</code> and standard library capabilities where possible. Contact AI Red Teaming support to request additional packages. Lead time is unpredictable; identify this need during pre-engagement discovery, not on the day of the scan.</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p>Official troubleshooting guide: <a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/troubleshoot-a-custom-target-adapter" target="_blank" rel="noopener">Troubleshoot a Custom Target Adapter</a></p>
+              </div>
+            </div>
+
+            <div class="callout callout-note">
+              <div class="callout-title">Official Custom Target Adapter Documentation</div>
               <ul>
-                <li><strong>Adapter sidecar not enabled by default:</strong> A Helm upgrade to v1.4.0+ alone is not enough. The adapter sidecar must be explicitly enabled via a Helm flag in the chart's values. Check the chart's <code>values.yaml</code> for the correct parameter. Forgetting this results in the adapter dropdown being empty in the wizard.</li>
-                <li><strong>Upload is not the same as activation:</strong> An adapter that has been uploaded but not yet validated and created shows in the Custom Adapters list but does not appear in the target wizard dropdown. Run Validate then Create Adapter to make it available.</li>
-                <li><strong><code>call_target</code> overrides Pattern A:</strong> If you define both <code>call_target</code> and <code>pre_process</code>/<code>post_process</code> in the same script, AIRS uses only <code>call_target</code> and ignores the other functions. This is a silent override with no warning.</li>
-                <li><strong>Module-level state is lost between turns:</strong> Variables set at module scope persist within a single turn execution but are discarded when the script reloads for the next turn. Store any cross-turn state exclusively in <code>context.auth</code> or <code>context.session</code>.</li>
-                <li><strong>64 KB state limit:</strong> <code>context.auth</code> and <code>context.session</code> combined must serialize to under 64 KB. Large session objects (full conversation history, large embedding vectors) will exceed this limit and cause runtime failures. Store only the minimum state needed.</li>
-                <li><strong>Package availability:</strong> Only stdlib, httpx, and websockets are available. If the adapter requires an additional package (e.g., <code>grpcio</code>, <code>boto3</code>, a proprietary SDK), submit a support request to AI Red Teaming before the engagement. Package installation lead time is unpredictable — do not assume this will be resolved on the day of the scan.</li>
-                <li><strong>Helm upgrade restarts the channel:</strong> Upgrading the Network Channel to enable the adapter sidecar interrupts any scans running through that channel. Plan the upgrade before scanning begins.</li>
-                <li><strong>Per-target overrides apply at scan time:</strong> Variable and Secret overrides are not evaluated at adapter activation. They are applied when a scan starts. Confirm override values are correct by reviewing the target configuration before initiating a scan.</li>
+                <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters" target="_blank" rel="noopener">Custom Target Adapters Overview</a> — concept, comparison with bespoke proxies, when to use</li>
+                <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/set-up-prerequisites-for-custom-target-adapters" target="_blank" rel="noopener">Set Up Prerequisites</a> — Helm chart v1.4.0+, sidecar enablement, Network Channel setup</li>
+                <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/build-a-custom-target-adapter" target="_blank" rel="noopener">Build a Custom Target Adapter</a> — all patterns with official code examples</li>
+                <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/adapter-contract/adapter-contract-functions" target="_blank" rel="noopener">Adapter Contract Functions Reference</a> — authoritative function signatures, parameters, return types</li>
+                <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/test-and-validate-a-custom-target-adapter" target="_blank" rel="noopener">Test and Validate a Custom Target Adapter</a> — adapter editor, validation flow, debugging</li>
+                <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/attach-a-custom-target-adapter-to-a-target" target="_blank" rel="noopener">Attach a Custom Target Adapter to a Target</a> — full wizard walkthrough</li>
+                <li><a href="https://docs.paloaltonetworks.com/ai-runtime-security/ai-red-teaming/identify-ai-system-risks-with-ai-red-teaming/get-started-with-prisma-airs-ai-red-teaming/targets/custom-target-adapters/troubleshoot-a-custom-target-adapter" target="_blank" rel="noopener">Troubleshoot a Custom Target Adapter</a> — 6 official troubleshooting scenarios</li>
               </ul>
             </div>
           </div><!-- end custom-adapter panel -->
