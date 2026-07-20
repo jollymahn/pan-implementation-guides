@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Prisma AIRS AI Gateway Deployment | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+<style>
+/* Page-scoped: tighten the gap where deployment tabs meet a shared step below,
+   so a step outside the tabs reads as a continuation, not a separate block. */
+.article .mgmt-tabs { margin-bottom: 0; }
+.article .mgmt-panel { padding-bottom: 0; }
+.article .mgmt-panel > .collapsible:last-child { margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="../oci/index.html">OCI</a>
+    <a href="../bootstrap/vm-series-bootstrap.html">Bootstrap</a>
+    <a href="../../globalprotect/index.html">GlobalProtect</a>
+    <a href="../../scm-onboarding/index.html">SCM</a>
+    <a href="../cloud-identity-engine/cie-implementation.html">CIE</a>
+    <a href="../../index.html#airs">AIRS</a>
+    <a href="index.html" class="active">AI Gateway</a>
+    <a href="../cngfw/cloud-ngfw-deployment.html">CNGFW</a>
+    <a href="../panorama-cli/panos-cli-reference.html">PanOS CLI</a>
+  </nav>
+</header>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<!-- ── Sidebar Backdrop (mobile) ──────────────────────────────── -->
+<div class="sidebar-backdrop"></div>
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+    <a href="#deployment-model" data-section="deployment-model">Choose Deployment Model</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Deploy</div>
+    <a href="#license-activate" data-section="license-activate">License &amp; Activate</a>
+    <a href="#enable-gateway" data-section="enable-gateway">Enable the Gateway</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configure</div>
+    <a href="#llm-integration" data-section="llm-integration">LLM Integration</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Operate</div>
+    <a href="#guardrails-logging" data-section="guardrails-logging">Guardrails &amp; Logging</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#reference" data-section="reference">Reference</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  Deployment Guide
+</div>
+
+<div class="article">
+
+<h1>Prisma AIRS AI Gateway Deployment</h1>
+<p class="subtitle">Stand up the Prisma AIRS AI Gateway as your centralized security and observability layer for AI traffic (LLM prompts, MCP interactions, and agent-to-agent communication), license it with flex credits, and configure LLM integrations with workspace provisioning, budgets, rate limits, and model allowlists in Strata Cloud Manager</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Newly released feature</div>
+  <p>AI Gateway is a new Prisma AIRS capability and this guide tracks the <a href="https://docs.paloaltonetworks.com/ai-runtime-security/administration/configure-ai-gateway" target="_blank" rel="noopener">initial official documentation release</a>. Screenshots are pending capture from a live tenant, and a few operational details (such as the Hybrid data plane Helm charts) have not yet been published by Palo Alto Networks. Those gaps are flagged inline where they occur.</p>
+</div>
+
+<div class="cloud-links">
+  <a href="../../index.html#airs">Prisma AIRS</a>
+  <a href="../airs/airs-api-intercept.html">AIRS API Intercept</a>
+  <a href="../airs-integrations/index.html">AIRS Integrations</a>
+</div>
+
+<!-- ── Phase Progress ────────────────────────────────────────── -->
+<div class="progress-phases">
+  <a href="#license-activate" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    License &amp; Activate
+  </a>
+  <a href="#enable-gateway" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Enable Gateway
+  </a>
+  <a href="#llm-integration" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    LLM Integration
+  </a>
+  <a href="#guardrails-logging" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Guardrails &amp; Logging
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide deploys the <strong>Prisma AIRS AI Gateway</strong>, the Palo Alto Networks native gateway managed through <strong>Strata Cloud Manager (SCM)</strong>. You pick <strong>how the data plane runs</strong> once (<strong>SaaS</strong>, hosted by Palo Alto Networks, or <strong>Hybrid</strong>, hosted in your own Kubernetes cluster), and the guide tailors the enablement phase to that choice. The selector is sticky: choose it in any section and the whole page follows.</p>
+  <p><strong>Design model:</strong> every AI interaction in your organization (LLM prompts, Model Context Protocol traffic, and agent-to-agent communication) routes through the gateway, which applies guardrails, budgets, rate limits, and model allowlists while logging everything to a single dashboard.</p>
+  <p><strong>Deployment method:</strong> configuration-driven. The SaaS gateway needs no infrastructure at all; the Hybrid data plane is a containerized deployment installed with Helm charts and still managed centrally from SCM. No infrastructure-as-code is required for the SCM configuration itself.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE OVERVIEW                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>AI Gateway provides a centralized security and observability layer for all AI traffic in your organization. It sits between your applications, agents, and MCP clients on one side and your LLM providers, MCP servers, and privately hosted models on the other. Strata Cloud Manager is the control plane: licensing, configuration, access control, and dashboards all live there.</p>
+
+<p><em>High-level architecture, showing where each component sits:</em></p>
+<img src="diagrams/aigw-architecture-overview.svg" alt="Architecture overview showing AI applications and agents routing through the Prisma AIRS AI Gateway, which applies guardrails, budgets, rate limits, and model allowlists before reaching LLM providers and MCP servers, with Strata Cloud Manager as the control plane and logs flowing to the AI Gateway dashboard, Strata Logging Service, and OpenTelemetry endpoints" loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>What the gateway secures &mdash; prompts, MCP, and A2A</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The gateway monitors and audits three classes of AI traffic from a single dashboard:</p>
+    <ul>
+      <li><strong>LLM prompts</strong> &mdash; requests and responses between your applications and model providers.</li>
+      <li><strong>MCP interactions</strong> &mdash; Model Context Protocol traffic between agents and MCP servers, including servers authenticated with API keys or static tokens via custom headers.</li>
+      <li><strong>Agent-to-agent (A2A) communication</strong> &mdash; traffic exchanged directly between AI agents.</li>
+    </ul>
+    <p>All three classes are metered by token consumption against your flex credit allocation, and all three appear in the unified AI Gateway dashboard.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You can name the three traffic classes the gateway secures and know that all of them are metered and logged the same way.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Key capabilities in this release</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li><strong>Unified AI traffic visibility</strong> &mdash; monitor and audit all AI interactions across prompts, MCP, and A2A traffic from a single dashboard.</li>
+      <li><strong>Flexible logging</strong> &mdash; event logs stream to SIEM and SOAR tools via OpenTelemetry-compatible endpoints; prompt logs are stored natively with 1-year retention and, on Hybrid deployments, can be exported to a customer-owned S3 bucket.</li>
+      <li><strong>Guardrails</strong> &mdash; Basic and third-party guardrails are supported out of the box; Check Language and Detect Gibberish are included in the Basic tier.</li>
+      <li><strong>Flex credit licensing</strong> &mdash; metered by token consumption (1 token equals 4 characters), with identical pricing across both deployment models.</li>
+      <li><strong>SCM-managed</strong> &mdash; full lifecycle management through Strata Cloud Manager with role-based access control via SBAC.</li>
+    </ul>
+    <p>Each tenant starts with a single default workspace. Multiple workspaces are supported, as is Strata Logging Service (SLS) integration for Threat Logs.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You understand the five capability pillars: visibility, logging, guardrails, flex credit licensing, and SCM management.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>How AI Gateway concepts map to Strata Cloud Manager</span>
+  </div>
+  <div class="collapsible-body">
+    <p>AI Gateway reuses the SCM tenancy and access model rather than inventing its own. Two mappings matter for everything that follows:</p>
+    <table>
+      <thead>
+        <tr><th>AI Gateway Concept</th><th>Strata Cloud Manager Equivalent</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Organization</td><td>TSG (Tenant Service Group)</td></tr>
+        <tr><td>Workspace</td><td>SCM Workspace (role-based access via SBAC)</td></tr>
+      </tbody>
+    </table>
+    <p>When Phase 3 talks about provisioning an integration to a workspace, that workspace is an SCM workspace, and who can touch it is governed by SBAC roles. When Phase 1 maps your deployment profile to a TSG, that TSG is your AI Gateway organization boundary.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You can state where an "organization" and a "workspace" live in SCM terms before configuring either.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Where AI Gateway ends and AI Runtime begins</span>
+  </div>
+  <div class="collapsible-body">
+    <p>AI Gateway is one pillar of Prisma AIRS, and its guardrails are intentionally scoped. Two detection families are <strong>not</strong> part of the gateway guardrail set:</p>
+    <ul>
+      <li><strong>PII detection</strong> &mdash; handled by AI Runtime, which provides advanced DLP.</li>
+      <li><strong>Moderation</strong> &mdash; handled by AI Runtime, which provides advanced threat detection.</li>
+    </ul>
+    <p>Palo Alto Networks routes those to AI Runtime because it provides more comprehensive threat detection and DLP capabilities than guardrails cover. If you need inline scanning for prompt injection, data leaks, or malicious content, pair the gateway with the <a href="../airs/airs-api-intercept.html">AIRS API Intercept</a> pillar.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You know which detections the gateway guardrails supply and which belong to AI Runtime, so nothing is assumed covered that is not.</p>
+    </div>
+  </div>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Region availability</div>
+  <p>AI Gateway is initially available in the <strong>Americas</strong> region for both SaaS and Hybrid deployments. Check the <a href="https://docs.paloaltonetworks.com/ai-runtime-security/administration/configure-ai-gateway" target="_blank" rel="noopener">official documentation</a> for region expansion before planning a deployment elsewhere.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  DEPLOYMENT MODEL SELECTOR (master switch)                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="deployment-model">Choose Your Deployment Model</h2>
+
+<p>AI Gateway ships in two deployment models. The control plane is always SCM; the choice is where the <strong>data plane</strong> (the component your AI traffic actually flows through) runs. Pick once here and the rest of the guide follows your choice; the selection persists across the page and between visits.</p>
+
+<p><em>The two models side by side:</em></p>
+<img src="diagrams/aigw-deployment-models.svg" alt="Deployment models comparison: SaaS with a Palo Alto Networks hosted data plane requiring no setup, and Hybrid with the data plane running as containers in a customer Kubernetes cluster deployed via Helm charts, both managed by Strata Cloud Manager" loading="lazy">
+
+<div class="callout callout-note">
+  <div class="callout-title">Which path should I pick?</div>
+  <ul>
+    <li><strong>SaaS</strong> &mdash; the default. Choose it when you want zero infrastructure work, automatic scaling, and built-in high availability. It is enabled as soon as licensing completes.</li>
+    <li><strong>Hybrid</strong> &mdash; choose it when AI traffic must stay inside your own environment (any public cloud, private cloud, or on-premises Kubernetes cluster), or when you need local prompt-log export to your own S3 bucket. You operate the data plane; SCM still manages it.</li>
+  </ul>
+  <p>Pricing is identical for both models. There is no cost penalty for choosing one over the other, and no additional cost for using multiple gateways or distributing the data plane.</p>
+</div>
+
+<div class="fork-banner">
+  <div class="fork-icon"><svg viewBox="0 0 24 24"><path d="M12 3v6"/><path d="M12 9l-4 4"/><path d="M12 9l4 4"/><path d="M8 13v5"/><path d="M16 13v5"/></svg></div>
+  <div class="fork-text">
+    <span class="fork-label">Choose your path</span>
+    <span class="fork-desc">Deployment Model</span>
+    <span class="fork-hint">Pick where the data plane runs. The selection is sticky and tailors the enablement phase below.</span>
+  </div>
+</div>
+<div class="mgmt-tabs" data-tab-group="deployment">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="saas">SaaS (Default)</button>
+    <button class="mgmt-tab" data-plane="hybrid">Hybrid</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="saas">
+    <p>The SaaS data plane is hosted and operated by Palo Alto Networks.</p>
+    <table>
+      <thead>
+        <tr><th>Attribute</th><th>Details</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Setup required</td><td>None</td></tr>
+        <tr><td>Scale</td><td>Unlimited &mdash; cloud-hosted</td></tr>
+        <tr><td>High availability</td><td>Built-in</td></tr>
+        <tr><td>Management</td><td>Strata Cloud Manager (SCM)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mgmt-panel" data-plane="hybrid">
+    <p>The Hybrid data plane ships as a container image with Helm charts and runs in your own Kubernetes cluster while SCM manages it centrally.</p>
+    <table>
+      <thead>
+        <tr><th>Attribute</th><th>Details</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Setup required</td><td>Deploy container using Helm charts</td></tr>
+        <tr><td>Scale</td><td>Dependent on CPU and memory allocated to the Data Plane</td></tr>
+        <tr><td>High availability</td><td>Multi-zone Kubernetes &mdash; pods auto-distributed across Availability Zones</td></tr>
+        <tr><td>Management</td><td>Strata Cloud Manager (SCM)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: LICENSE & ACTIVATE                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="license-activate">Phase 1: License &amp; Activate</h2>
+
+<p>AI Gateway is licensed with <strong>flex credits</strong> and activated through a deployment profile in Strata Cloud Manager. This phase confirms your prerequisites, sizes your license, creates the deployment profile, and maps it to your tenant so the gateway lights up.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1: Confirm prerequisites</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two things must already be true before the AI Gateway tile will do anything useful:</p>
+    <ol>
+      <li>An <strong>activated AI Runtime Security license</strong>. If your organization has not activated Prisma AIRS yet, complete <a href="https://docs.paloaltonetworks.com/ai-runtime-security/activation-and-onboarding/activate-your-ai-runtime-security-license" target="_blank" rel="noopener">Activate Your AI Runtime Security License</a> first.</li>
+      <li>A <strong>cloud account onboarded and activated in Strata Cloud Manager</strong>, per <a href="https://docs.paloaltonetworks.com/ai-runtime-security/activation-and-onboarding/onboard-and-activate-cloud-account-in-scm" target="_blank" rel="noopener">Onboard and Activate a Cloud Account in SCM</a>.</li>
+    </ol>
+    <p>You also need <strong>flex credits</strong> available to allocate, and an SCM user with sufficient role-based (SBAC) permissions to create deployment profiles and manage the AI Security section.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You can log into <a href="https://stratacloudmanager.paloaltonetworks.com/" target="_blank" rel="noopener">Strata Cloud Manager</a>, your AIRS license shows as active, and your cloud account appears as onboarded.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2: Size your license by monthly token consumption</span>
+  </div>
+  <div class="collapsible-body">
+    <p>All AI Gateway metering is token-based. Every AI transaction through the gateway (prompts, MCP interactions, and A2A traffic) draws down flex credits by token usage, and you license the instance against your <strong>maximum expected monthly token consumption</strong>.</p>
+    <p>The token conversion is the industry standard:</p>
+    <div class="code-block">
+      <pre><code>1 token = 4 characters of text
+
+estimated monthly tokens = total characters sent and received per month / 4</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>To build the estimate, inventory the applications, agents, and MCP servers that will route through the gateway, and for each one approximate: requests per month, average prompt size (including system prompts and context), and average response size. Sum the character counts, divide by 4, and add headroom for growth.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Both directions count</div>
+      <p>Metering covers the full transaction, not just what you send. Long model responses and large context windows (retrieved documents, tool schemas, conversation history) dominate token counts in most real workloads.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You have a monthly token number (with growth headroom) to size the flex credit allocation in the next step.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3: Create the deployment profile and allocate flex credits</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The deployment profile is the licensing object that funds AI Gateway. Creating it and mapping it (next step) is what activates the gateway for your tenant.</p>
+    <ol>
+      <li>Create a <strong>Deployment Profile (DP)</strong> in Strata Cloud Manager.</li>
+      <li>Allocate <strong>flex credits</strong> to <strong>AI Gateway</strong>, sized from your Step 1.2 estimate.</li>
+      <li>Indicate your preferred <strong>deployment mode</strong> (SaaS or Hybrid) when prompted.</li>
+    </ol>
+    <!-- TODO(screenshot): SCM deployment profile creation showing flex credit allocation to AI Gateway -->
+    <div class="callout callout-note">
+      <div class="callout-title">Deployment mode preference is tracking only</div>
+      <p>The SaaS or Hybrid selection on the deployment profile is recorded for tracking purposes and is <strong>not enforced</strong>. Choosing SaaS here does not block you from standing up a Hybrid data plane later, and pricing is identical either way.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The deployment profile exists with a flex credit allocation assigned to AI Gateway and a recorded deployment mode preference.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4: Map the deployment profile to a Tenant Service Group</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Mapping the deployment profile to a <strong>Tenant Service Group (TSG)</strong> is the link that connects Strata Cloud Manager and the Strata Logging Service to your AI Gateway. The TSG you map becomes the AI Gateway <em>organization</em> (see the concept mapping in the Architecture Overview).</p>
+    <ol>
+      <li>Map the deployment profile you created in Step 1.3 to the <strong>TSG</strong> that owns this gateway.</li>
+      <li>Confirm the mapping so SCM and SLS are linked to AI Gateway.</li>
+    </ol>
+    <!-- TODO(screenshot): SCM deployment profile to TSG mapping confirmation -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The deployment profile shows as mapped to your TSG. SCM and SLS are now linked to the gateway, which also enables Threat Log visibility in the SLS dashboard later.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.5: Open the AI Gateway in Strata Cloud Manager</span>
+  </div>
+  <div class="collapsible-body">
+    <p>With licensing in place, complete setup from inside SCM:</p>
+    <ol>
+      <li>Log into <a href="https://stratacloudmanager.paloaltonetworks.com/" target="_blank" rel="noopener">Strata Cloud Manager</a>.</li>
+      <li>Navigate to <strong>AI Security</strong>.</li>
+      <li>Select the <strong>AI Gateway</strong> tile. This is your centralized plane for AI agents, and every configuration task in Phase 3 starts here.</li>
+    </ol>
+    <!-- TODO(screenshot): SCM AI Security section showing the AI Gateway tile -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The AI Gateway tile opens without a licensing prompt, confirming the deployment profile and TSG mapping took effect. If the tile is missing or locked, recheck Steps 1.3 and 1.4.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: ENABLE THE GATEWAY                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="enable-gateway">Phase 2: Enable the Gateway</h2>
+
+<p>This phase brings the data plane online. What that means depends entirely on the deployment model you selected above: SaaS is already running, while Hybrid requires a Kubernetes deployment. The selector below mirrors your earlier choice.</p>
+
+<div class="fork-banner">
+  <div class="fork-icon"><svg viewBox="0 0 24 24"><path d="M12 3v6"/><path d="M12 9l-4 4"/><path d="M12 9l4 4"/><path d="M8 13v5"/><path d="M16 13v5"/></svg></div>
+  <div class="fork-text">
+    <span class="fork-label">Choose your path</span>
+    <span class="fork-desc">Deployment Model</span>
+    <span class="fork-hint">Mirrors your selection from Choose Your Deployment Model. SaaS confirms the default gateway; Hybrid walks the Kubernetes deployment.</span>
+  </div>
+</div>
+<div class="mgmt-tabs" data-tab-group="deployment">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="saas">SaaS (Default)</button>
+    <button class="mgmt-tab" data-plane="hybrid">Hybrid</button>
+  </div>
+
+  <!-- ── SaaS panel ── -->
+  <div class="mgmt-panel active" data-plane="saas">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2.1 (SaaS): Confirm the gateway is enabled</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The SaaS gateway is <strong>enabled by default</strong>. After licensing activation there is no infrastructure work: you can start routing AI traffic through the gateway immediately. Scaling is automatic and high availability is built in.</p>
+        <ol>
+          <li>Open <strong>AI Security &rarr; AI Gateway</strong> in SCM (as in Step 1.5).</li>
+          <li>Confirm the gateway dashboard loads and shows the gateway as active for your tenant.</li>
+        </ol>
+        <!-- TODO(screenshot): AI Gateway dashboard on a fresh SaaS tenant showing the gateway active with no traffic yet -->
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The AI Gateway dashboard is reachable and active. Nothing else needs to be deployed; continue to Phase 3 to add your first LLM integration.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Hybrid panel ── -->
+  <div class="mgmt-panel" data-plane="hybrid">
+    <div class="callout callout-warning">
+      <div class="callout-title">Pending from Palo Alto Networks &mdash; Helm chart specifics</div>
+      <p>The initial documentation release describes the Hybrid onboarding flow but does not yet publish the container registry location, Helm chart values, or install commands. Obtain the Data Plane container image and Helm charts through your Palo Alto Networks account team, and treat the steps below as the documented sequence rather than a command-level runbook. This section will be expanded when Palo Alto Networks publishes the artifacts.</p>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2.1 (Hybrid): Obtain the Data Plane image and Helm charts</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The Hybrid data plane ships as a <strong>container image with Helm charts</strong>. It can run in any public cloud, private cloud, or on-premises Kubernetes cluster.</p>
+        <ol>
+          <li>Obtain the Data Plane container image and Helm charts from Palo Alto Networks.</li>
+          <li>Stage them where your cluster can pull them (your registry mirror or the location Palo Alto Networks provides).</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The image and charts are accessible from the cluster that will host the data plane.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2.2 (Hybrid): Deploy the container into your Kubernetes cluster</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Install the data plane with the provided Helm charts into the target cluster. Size the deployment deliberately: gateway <strong>scale is dependent on the CPU and memory allocated to the Data Plane</strong>, so the resources you give the pods set your throughput ceiling.</p>
+        <ol>
+          <li>Deploy the container into your Kubernetes cluster using the Helm charts.</li>
+          <li>Allocate CPU and memory according to your expected AI traffic volume from Step 1.2.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The data plane pods are running in the cluster with the resource allocations you intended.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2.3 (Hybrid): Configure multi-zone high availability</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Hybrid high availability comes from <strong>multi-zone Kubernetes</strong>: pods are auto-distributed across Availability Zones. Configure the deployment to span multiple zones for maximum resiliency.</p>
+        <ol>
+          <li>Confirm the target cluster has nodes in more than one Availability Zone.</li>
+          <li>Configure the multi-zone deployment so data plane pods distribute across those zones.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Data plane pods are spread across at least two Availability Zones, so the loss of a single zone does not take the gateway down.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2.4 (Hybrid): Register the Data Plane in SCM</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The data plane runs in your environment, but its lifecycle is managed centrally. Register it so SCM can see and manage it.</p>
+        <ol>
+          <li>In SCM, open <strong>AI Security &rarr; AI Gateway</strong>.</li>
+          <li>Register the Data Plane you deployed, then manage it through SCM from this point on.</li>
+        </ol>
+        <!-- TODO(screenshot): SCM AI Gateway showing a registered Hybrid data plane -->
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The Hybrid data plane appears in SCM as registered and healthy. Configuration from Phase 3 onward applies to it exactly as it would to the SaaS gateway.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: CONFIGURE AN LLM INTEGRATION                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="llm-integration">Phase 3: Configure an LLM Integration</h2>
+
+<p>An <strong>Integration</strong> is the unit of configuration in AI Gateway: one provider connection with its credentials, cost model, workspace access, budgets, rate limits, and model allowlist. This phase walks the full SCM wizard, from selecting a provider to clicking <strong>Create Integration</strong>. The wizard has four stages: select a provider, set integration details, provision the workspace, and configure model provisioning.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Save for Later</div>
+  <p>At any point during the configuration process you can save your selections and return by clicking <strong>Save for Later</strong>. You do not need to finish the wizard in one sitting.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.1: Select the LLM provider</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>From <strong>AI Security &rarr; AI Gateway</strong>, start adding an LLM integration.</li>
+      <li>The <strong>Select the LLM Provider</strong> page displays the total number of available providers. Choose the provider or providers you want to connect.</li>
+      <li>Click <strong>Next: Set Details</strong>.</li>
+    </ol>
+    <!-- TODO(screenshot): AI Gateway Select the LLM Provider page showing the provider catalog -->
+    <div class="callout callout-note">
+      <div class="callout-title">Provider list is tenant-dependent</div>
+      <p>The official documentation does not publish a fixed provider list; the page itself shows the count of providers available to your tenant. Privately hosted and local models are also reachable later through the <strong>Custom Host</strong> option in Step 3.3.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Your chosen provider is selected and the wizard has advanced to the integration details stage.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.2: Enter basic information &mdash; name, slug, and API key</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <strong>Configure Integration Details</strong> stage opens with basic information:</p>
+    <ol>
+      <li>Provide a <strong>name</strong> for the integration.</li>
+      <li>Optionally provide a <strong>description</strong>.</li>
+      <li>Enter the <strong>Slug</strong>.</li>
+      <li>Include the provider <strong>API Key</strong>.</li>
+    </ol>
+    <!-- TODO(screenshot): Integration details basic information form with name, description, slug, and API key fields -->
+    <div class="callout callout-note">
+      <div class="callout-title">What is a slug?</div>
+      <p>A slug is an identifier for a provider or integration within the AI Gateway. Provider slugs appear in the Model Catalog and are used in API calls to specify a particular provider, so pick a slug your developers will recognize in request paths and configs.</p>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Handle provider keys carefully</div>
+      <p>The API key you enter here becomes shared infrastructure: every workspace you later provision consumes the provider through this credential without ever seeing it. Use a dedicated key from the provider (not a personal one), and rotate it at the provider if you suspect exposure.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Name, slug, and API key are filled in, and the optional description says what this integration is for.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.3: Optional fields and advanced options &mdash; custom hosts and headers</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Optional fields:</strong></p>
+    <ol>
+      <li>Optionally provide the <strong>project ID</strong>.</li>
+      <li>Optionally specify the <strong>organization</strong>.</li>
+    </ol>
+    <p><strong>Advanced options</strong> cover two routing features:</p>
+    <ul>
+      <li><strong>Custom Host</strong> &mdash; routes requests to privately hosted or local models using custom host URLs. Review the host validation and security rules when you set one.</li>
+      <li><strong>Custom Headers</strong> &mdash; for MCP servers that authenticate with API keys or static tokens. These headers are included with every request, and all users share the same credentials.</li>
+    </ul>
+    <ol>
+      <li>Enter the <strong>Custom Host</strong> URL if this integration targets a privately hosted or local model.</li>
+      <li>Click <strong>Add Header</strong> to include a new custom host and custom header pair as needed.</li>
+    </ol>
+    <!-- TODO(screenshot): Advanced options showing custom host field and Add Header control -->
+    <div class="callout callout-warning">
+      <div class="callout-title">Custom headers are shared credentials</div>
+      <p>A custom header rides on <em>every</em> request through the integration and is shared by all users. Treat any token you place in one as an organization-wide credential: scope it minimally at the MCP server and rotate it on personnel or scope changes.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Optional and advanced fields reflect your topology: cloud provider integrations leave them empty, while private model or MCP server integrations have their custom host and headers set.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.4: Configure a Pricing Adjust Multiplier</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Pricing Adjustments apply a discount or markup multiplier to the integration so cost tracking reflects your effective rate with the provider. A multiplier of <code>1</code> leaves pricing unchanged, <code>0.8</code> applies a 20% discount, and <code>1.2</code> applies a 20% markup.</p>
+    <ol>
+      <li>Use the <strong>toggle</strong> to enable the pricing adjust multiplier.</li>
+      <li>Select the mode: <strong>Form</strong> (the default) for the most common token types, or <strong>JSON</strong> for the full multiplier shape, including reasoning, audio, image, and additional units.</li>
+      <li>Enter the multiplier values for each token type you want to adjust.</li>
+    </ol>
+    <!-- TODO(screenshot): Pricing adjust multiplier in Form mode showing per-token-type multipliers -->
+    <!-- TODO(screenshot): Pricing adjust multiplier JSON editor showing the full multiplier shape -->
+    <p>This is especially useful for:</p>
+    <ul>
+      <li><strong>Negotiated Discounts</strong> &mdash; reflect enterprise contracts or committed-use rates from a provider on the corresponding integration.</li>
+      <li><strong>Internal Cost Showback</strong> &mdash; apply a markup so the cost reported to internal teams or workspaces includes your platform overhead.</li>
+      <li><strong>Custom Per-Integration Rates</strong> &mdash; maintain different effective pricing across multiple integrations of the same provider (for example, a discounted production integration alongside a standard-rate sandbox).</li>
+    </ul>
+    <p>For a discount, convert the percentage to a multiplier:</p>
+    <div class="code-block">
+      <pre><code>multiplier = 1 - (discount% / 100)
+
+Example: 10% discount on Default, 15% discount on Request Tokens
+  Default        = 1 - (10 / 100) = 0.90
+  Request Tokens = 1 - (15 / 100) = 0.85
+
+Request Tokens use 0.85; Response Tokens, Cache Read Tokens,
+and Cache Write Tokens inherit 0.90 from Default.</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>If your provider contract has negotiated rates, the multiplier matches the contract math (a 10% discount shows as <code>0.90</code>). If not, the toggle stays off and reported costs use list pricing.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.5: Set up workspace provisioning</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Workspace provisioning determines which teams and projects can access this integration. This is crucial for maintaining security boundaries and ensuring teams only access approved AI resources. Sharing credentials with a workspace means:</p>
+    <ul>
+      <li>That workspace sees the integration as an <strong>AI Provider</strong> in their Model Catalog.</li>
+      <li>They can use it immediately; there is no need to enter credentials again.</li>
+      <li>You can set different budgets and rate limits for each workspace.</li>
+      <li>You can revoke access at any time.</li>
+    </ul>
+    <ol>
+      <li>Select which workspaces get access:
+        <ul>
+          <li><strong>All workspaces</strong> &mdash; grants access to every workspace in your organization.</li>
+          <li><strong>Specific workspace</strong> &mdash; choose individual workspaces that need access.</li>
+        </ul>
+      </li>
+      <li>For each workspace, use the <strong>Set Value</strong> option to configure budget and rate limits (detailed in Steps 3.6 and 3.7).</li>
+    </ol>
+    <!-- TODO(screenshot): Workspace provisioning stage showing all workspaces versus specific workspace selection -->
+    <!-- TODO(screenshot): Set Value dialog for a workspace showing budget and rate limit options -->
+    <div class="callout callout-note">
+      <div class="callout-title">Default workspace</div>
+      <p>Each tenant starts with a single default workspace, so a first deployment provisions that one. As you add SCM workspaces for more teams, return here to grant or deny each one access with its own limits.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The intended workspaces are selected, and every provisioned workspace has an intentional budget and rate limit decision recorded (even if that decision is "no limit").</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.6: Add budget limits</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Budget limits on integrations manage your spending on AI providers and LLMs, acting as financial guardrails that prevent unexpected AI costs across your organization. These limits <strong>cascade down to all AI Providers created from this integration</strong>.</p>
+    <ol>
+      <li>Use the <strong>toggle</strong> to enable a budget for the integration.</li>
+      <li>Choose the limit type:
+        <ul>
+          <li><strong>Cost-based (USD)</strong> &mdash; a budget in dollars that, once reached, automatically expires the key to prevent further usage and overspending.</li>
+          <li><strong>Token-based</strong> &mdash; a maximum number of tokens that can be consumed, controlling usage independent of cost fluctuations.</li>
+        </ul>
+      </li>
+      <li>Set the <strong>Reset Cadence</strong>:
+        <ul>
+          <li><strong>No Periodic Reset</strong> &mdash; the budget limit applies until exhausted, with no automatic renewal.</li>
+          <li><strong>Reset Weekly</strong> &mdash; resets at the beginning of each week (Sunday at 12 AM UTC).</li>
+          <li><strong>Reset Monthly</strong> &mdash; resets on the 1st calendar day of the month at 12 AM UTC, irrespective of when the budget limit was set.</li>
+        </ul>
+      </li>
+    </ol>
+    <!-- TODO(screenshot): Budget limit configuration showing cost versus token type and reset cadence options -->
+    <p>Key considerations for budget limits:</p>
+    <ul>
+      <li>The minimum cost limit is <strong>$1</strong>; the minimum token limit is <strong>100 tokens</strong>.</li>
+      <li>Limits apply only to requests made <em>after</em> the limit is set; they do not apply retroactively.</li>
+      <li>Limits apply until exhausted or reset.</li>
+      <li>Budget limits work for all AI Providers created from this integration.</li>
+    </ul>
+    <div class="callout callout-danger">
+      <div class="callout-title">Budget limits cannot be edited once set</div>
+      <p>Once set, budget limits cannot be edited by any organization member. Decide the amount, type, and reset cadence deliberately before saving.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each provisioned workspace has the intended budget type, amount (at or above the $1 or 100-token minimums), and reset cadence, and you accepted the values knowing they are not editable afterward.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.7: Add rate limits</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Rate limits control the velocity of API usage, protecting against runaway processes and ensuring fair resource distribution across teams.</p>
+    <ol>
+      <li>Use the <strong>toggle</strong> to enable rate limits for the integration.</li>
+      <li>Choose the limit type:
+        <ul>
+          <li><strong>Request-based</strong> &mdash; limit the number of API calls (for example, 1000 requests per minute).</li>
+          <li><strong>Token-based</strong> &mdash; limit the token consumption rate (for example, 1M tokens per hour).</li>
+        </ul>
+      </li>
+      <li>Choose the time window:
+        <ul>
+          <li><strong>Per Minute</strong> &mdash; limits reset every minute, ideal for fine-grained control.</li>
+          <li><strong>Per Hour</strong> &mdash; limits reset hourly, providing balanced usage control.</li>
+          <li><strong>Per Day</strong> &mdash; limits reset daily, suitable for broader usage patterns.</li>
+        </ul>
+      </li>
+    </ol>
+    <!-- TODO(screenshot): Rate limit configuration showing request versus token type and time window options -->
+    <p>Key considerations for rate limits:</p>
+    <ul>
+      <li>Setting the limit to <strong>0 disables the provider</strong>.</li>
+      <li>Rate limits apply <strong>immediately</strong> after being set.</li>
+      <li>Rate limits work for all providers available on AI Gateway and apply to all organization members who use the provider.</li>
+      <li>After a rate limit is reached, requests are rejected with a specific error code until the time period resets; error messages clearly indicate that the rate limit has been exceeded.</li>
+    </ul>
+    <p>Common use cases:</p>
+    <ul>
+      <li><strong>Cost Control</strong> &mdash; prevent unexpected usage spikes that could lead to high costs.</li>
+      <li><strong>Performance Management</strong> &mdash; ensure your application maintains consistent performance.</li>
+      <li><strong>Fairness</strong> &mdash; distribute API access fairly across teams or users.</li>
+      <li><strong>Security</strong> &mdash; mitigate potential abuse or denial-of-service behavior.</li>
+      <li><strong>Provider Compliance</strong> &mdash; stay within the rate limits imposed by underlying AI providers.</li>
+    </ul>
+    <div class="callout callout-danger">
+      <div class="callout-title">Rate limits cannot be edited once set</div>
+      <p>Once set, rate limits cannot be edited by any organization member. Model your peak legitimate traffic before committing a value, and remember that 0 turns the provider off entirely.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Rate limits reflect measured or expected peak usage per workspace, and nothing is unintentionally set to 0.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.8: Configure model provisioning and create the integration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Model lists are tied to integrations. When you create an integration, you control which models are available: all AI Providers created from it will only have access to the models you enable. This is essential for:</p>
+    <ul>
+      <li><strong>Controlling costs</strong> &mdash; restrict access to expensive models.</li>
+      <li><strong>Ensuring compliance</strong> &mdash; limit models to approved ones.</li>
+      <li><strong>Maintaining consistency</strong> &mdash; standardize model usage across teams.</li>
+    </ul>
+    <ol>
+      <li>Either select <strong>all models</strong> offered by the provider, or select <strong>specific models</strong> to create an allowlist of approved models.</li>
+      <li>Use the <strong>Set Price</strong> action to configure additional pricing elements per model where needed.</li>
+      <li>Click <strong>Create Integration</strong>.</li>
+    </ol>
+    <!-- TODO(screenshot): Model provisioning stage showing the model allowlist selection and Set Price action -->
+    <!-- TODO(screenshot): Completed integration confirmation after clicking Create Integration -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration is created. In a provisioned workspace, the provider now appears in the <strong>Model Catalog</strong> exposing only the models you allowed, without workspace members handling any provider credentials. That catalog entry is the end-to-end proof that provider, credentials, workspace access, limits, and model list are all wired together.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: GUARDRAILS & LOGGING                                -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="guardrails-logging">Phase 4: Guardrails &amp; Logging</h2>
+
+<p>With traffic flowing, two operational layers remain: the guardrails the gateway applies to AI interactions, and the two-tier logging pipeline that feeds dashboards, SIEM tooling, and compliance storage.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1: Understand guardrail coverage</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The current release supports the following guardrail categories:</p>
+    <table>
+      <thead>
+        <tr><th>Guardrail</th><th>Status</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Basic guardrails</td><td>Supported</td><td>Fully available</td></tr>
+        <tr><td>Third-party guardrails</td><td>Supported</td><td>Fully available</td></tr>
+        <tr><td>Check Language (formerly Pro)</td><td>Reclassified to Basic</td><td>Available under Basic tier</td></tr>
+        <tr><td>Detect Gibberish (formerly Pro)</td><td>Reclassified to Basic</td><td>Available under Basic tier</td></tr>
+        <tr><td>PII detection</td><td>Not included</td><td>Handled by AI Runtime (advanced DLP)</td></tr>
+        <tr><td>Moderation</td><td>Not included</td><td>Handled by AI Runtime (advanced threat detection)</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Why PII and Moderation are elsewhere</div>
+      <p>PII and Moderation are intentionally handled by AI Runtime, which provides more comprehensive threat detection and DLP capabilities beyond what guardrails cover. Pair the gateway with <a href="../airs/airs-api-intercept.html">AIRS API Intercept</a> when you need those detections inline.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Your security requirements are mapped: each needed detection is either covered by a gateway guardrail (Basic or third-party) or explicitly assigned to AI Runtime, with no silent gaps.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.2: Route event logs to your SIEM and dashboards</span>
+  </div>
+  <div class="collapsible-body">
+    <p>AI Gateway separates logs into two categories with different storage and routing strategies. The first category, <strong>event logs</strong>, are small, structured logs built for real-time SIEM and SOAR ingestion. They include audit events, authentication events, traffic logs, and metrics and analytics.</p>
+    <table>
+      <thead>
+        <tr><th>Attribute</th><th>Event Logs</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Storage</td><td>AI Gateway native; SLS (Threat Logs)</td></tr>
+        <tr><td>Retention</td><td>1 year</td></tr>
+        <tr><td>Dashboards</td><td>AI Gateway dashboard; Strata Logging Service dashboard (Threat Logs)</td></tr>
+        <tr><td>Export</td><td>OpenTelemetry-compatible endpoints; export from SLS (Hybrid and SaaS)</td></tr>
+      </tbody>
+    </table>
+    <ol>
+      <li>Open the <strong>AI Gateway dashboard</strong> and confirm audit, authentication, and traffic events are appearing.</li>
+      <li>Check the <strong>SLS dashboard</strong> for Threat Logs (this is what the TSG mapping in Step 1.4 enabled).</li>
+      <li>If you use a SIEM or SOAR platform, point it at the gateway's <strong>OpenTelemetry-compatible endpoints</strong>, or export from SLS.</li>
+    </ol>
+    <!-- TODO(screenshot): AI Gateway dashboard showing event log entries for gateway traffic -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Events generated by test traffic show up in the AI Gateway dashboard, Threat Logs land in SLS, and your SIEM receives the OpenTelemetry stream if configured.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.3: Manage prompt logs and compliance export</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The second category, <strong>prompt logs</strong>, are large, text-heavy logs capturing full LLM context windows. They are routed to observability tooling for performance analysis, cost tracking, and compliance storage.</p>
+    <table>
+      <thead>
+        <tr><th>Attribute</th><th>Prompt Logs</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Storage</td><td>AI Gateway native</td></tr>
+        <tr><td>Retention</td><td>1 year</td></tr>
+        <tr><td>Dashboards</td><td>AI Gateway dashboard</td></tr>
+        <tr><td>Export</td><td>Local export to customer-owned S3 bucket (Hybrid only)</td></tr>
+      </tbody>
+    </table>
+    <ol>
+      <li>Review prompt logs in the <strong>AI Gateway dashboard</strong> and confirm full request and response context is captured for test traffic.</li>
+      <li><strong>Hybrid deployments only:</strong> configure local export to your customer-owned S3 bucket if compliance requires prompt retention in your own storage.</li>
+    </ol>
+    <!-- TODO(screenshot): AI Gateway dashboard prompt log view showing a captured LLM context window -->
+    <div class="callout callout-warning">
+      <div class="callout-title">S3 export is Hybrid-only</div>
+      <p>Prompt log export to a customer-owned S3 bucket is available only on Hybrid deployments. If your compliance program requires prompt logs in your own storage, that requirement decides the deployment model back in the Choose Your Deployment Model section.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Prompt logs for test traffic are visible with full context, and Hybrid tenants see objects arriving in their S3 bucket if export is configured.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.4: Final end-to-end verification</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Walk the whole chain once before handing the gateway to teams:</p>
+    <ol>
+      <li><strong>License</strong> &mdash; the deployment profile shows flex credit consumption as test traffic flows.</li>
+      <li><strong>Gateway</strong> &mdash; the data plane is active (SaaS) or registered and healthy in SCM (Hybrid).</li>
+      <li><strong>Integration</strong> &mdash; a provisioned workspace sees the provider in its Model Catalog and can invoke an allowed model without holding provider credentials.</li>
+      <li><strong>Controls</strong> &mdash; a request to a model outside the allowlist fails, and traffic past a rate limit is rejected with a clear rate-limit error until the window resets.</li>
+      <li><strong>Logs</strong> &mdash; the interaction appears as an event log and a prompt log, and Threat Logs reach SLS.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Deployment is complete. AI traffic routes through the Prisma AIRS AI Gateway with credentials centralized, models allowlisted, spend guarded by budgets and rate limits, and every interaction logged to the dashboard, SLS, and your SIEM.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  REFERENCE                                                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="reference">Reference</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Budget and rate limit quick reference</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Property</th><th>Budget Limits</th><th>Rate Limits</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Limit basis</td><td>Cost (USD) or tokens</td><td>Requests or tokens</td></tr>
+        <tr><td>Minimums</td><td>$1 cost; 100 tokens</td><td>0 allowed (0 disables the provider)</td></tr>
+        <tr><td>Window / cadence</td><td>None, weekly (Sun 12 AM UTC), monthly (1st, 12 AM UTC)</td><td>Per minute, per hour, per day</td></tr>
+        <tr><td>Takes effect</td><td>On future requests only, never retroactive</td><td>Immediately</td></tr>
+        <tr><td>Editable after set</td><td>No &mdash; by any organization member</td><td>No &mdash; by any organization member</td></tr>
+        <tr><td>When exceeded</td><td>Key expires, further usage prevented</td><td>Requests rejected with a rate-limit error until the window resets</td></tr>
+        <tr><td>Scope</td><td>Cascades to all AI Providers created from the integration</td><td>All providers on AI Gateway, all organization members using the provider</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Concept map &mdash; AI Gateway to SCM</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>AI Gateway Term</th><th>Where it lives</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Organization</td><td>Tenant Service Group (TSG)</td><td>Bound by the deployment profile mapping in Step 1.4</td></tr>
+        <tr><td>Workspace</td><td>SCM Workspace</td><td>Access governed by SBAC roles; one default workspace per tenant</td></tr>
+        <tr><td>Integration</td><td>AI Gateway (SCM AI Security)</td><td>Provider connection plus credentials, limits, and model list</td></tr>
+        <tr><td>AI Provider</td><td>Workspace Model Catalog</td><td>What a provisioned workspace sees and consumes</td></tr>
+        <tr><td>Slug</td><td>Model Catalog and API calls</td><td>Identifier that selects a provider or integration in requests</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Official resources</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Resource</th><th>Location</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Configure AI Gateway (official techdocs)</td>
+          <td><a href="https://docs.paloaltonetworks.com/ai-runtime-security/administration/configure-ai-gateway" target="_blank" rel="noopener">docs.paloaltonetworks.com/ai-runtime-security/administration/configure-ai-gateway</a></td>
+        </tr>
+        <tr>
+          <td>Activate Your AI Runtime Security License</td>
+          <td><a href="https://docs.paloaltonetworks.com/ai-runtime-security/activation-and-onboarding/activate-your-ai-runtime-security-license" target="_blank" rel="noopener">docs.paloaltonetworks.com/.../activate-your-ai-runtime-security-license</a></td>
+        </tr>
+        <tr>
+          <td>Onboard and Activate a Cloud Account in SCM</td>
+          <td><a href="https://docs.paloaltonetworks.com/ai-runtime-security/activation-and-onboarding/onboard-and-activate-cloud-account-in-scm" target="_blank" rel="noopener">docs.paloaltonetworks.com/.../onboard-and-activate-cloud-account-in-scm</a></td>
+        </tr>
+        <tr>
+          <td>Strata Cloud Manager</td>
+          <td><a href="https://stratacloudmanager.paloaltonetworks.com/" target="_blank" rel="noopener">stratacloudmanager.paloaltonetworks.com</a></td>
+        </tr>
+        <tr>
+          <td>AIRS API Intercept Guide</td>
+          <td><a href="../airs/airs-api-intercept.html">Full AIRS setup (license, profile, API key)</a></td>
+        </tr>
+        <tr>
+          <td>AIRS Integrations</td>
+          <td><a href="../airs-integrations/index.html">Embed AIRS in third-party gateways and tools</a></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You know where the authoritative sources live. When this guide and the official techdocs disagree, the techdocs win; report the drift so this guide gets refreshed.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="download-md-btn" id="downloadMdBtn" onclick="downloadAsMarkdown()">&#8681; Markdown</button>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>
