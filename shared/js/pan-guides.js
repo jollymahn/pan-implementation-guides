@@ -1,7 +1,7 @@
 /* ══════════════════════════════════════════════════════════════════
    PAN Implementation Guides — Evolved JavaScript
    Copy buttons, scroll spy, back-to-top, mobile sidebar, mgmt tabs,
-   download-as-markdown
+   download-as-markdown, image lightbox
 
    Usage: <script src="../../shared/js/pan-guides.js"></script>
    ══════════════════════════════════════════════════════════════════ */
@@ -372,3 +372,35 @@ function downloadAsMarkdown() {
     }, 2500);
   }
 }
+
+// ── Image lightbox (click article images to enlarge) ───────────────
+function openLightbox(img) {
+  const overlay = document.createElement('div');
+  overlay.className = 'lightbox-overlay';
+
+  const large = document.createElement('img');
+  large.src = img.src;
+  large.alt = img.alt;
+  overlay.appendChild(large);
+
+  function close() {
+    overlay.remove();
+    document.body.classList.remove('lightbox-open');
+    document.removeEventListener('keydown', onKeydown);
+  }
+  function onKeydown(e) {
+    if (e.key === 'Escape') close();
+  }
+
+  overlay.addEventListener('click', close);
+  document.addEventListener('keydown', onKeydown);
+
+  document.body.appendChild(overlay);
+  document.body.classList.add('lightbox-open');
+}
+
+document.addEventListener('click', (e) => {
+  const img = e.target.closest('.article img');
+  if (!img || img.closest('a')) return;
+  openLightbox(img);
+});
