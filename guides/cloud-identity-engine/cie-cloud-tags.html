@@ -817,42 +817,112 @@
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 2A.2: Create IAM Role with Cross-Account Trust</span>
+    <span>Step 2A.1b: Create IAM User and Access Keys in the Source Account</span>
   </div>
   <div class="collapsible-body">
-    <p>CIE runs in Palo Alto Networks' AWS infrastructure and assumes a role in the customer account to read tags. This step creates the role and attaches the trust policy.</p>
+    <p>CIE authenticates to AWS using IAM user access keys that you provide. For cross-account tag collection, this IAM user lives in a <strong>source account</strong> (sometimes called a security account or hub account) and assumes a role in each <strong>target account</strong> (the accounts containing the EC2 workloads). Create this user in whatever account you use to centralize CIE credentials.</p>
 
     <div class="callout callout-note">
-      <div class="callout-title">Alternative: CloudFormation Templates</div>
-      <p>CIE provides two CloudFormation Templates (CFTs) that automate IAM role and policy creation:</p>
-      <ul>
-        <li><strong>Application Account CFT</strong> &mdash; run in each AWS account that contains workloads whose tags you want to collect. Creates the IAM role, trust policy, and read-only EC2 permissions. In the CIE console under <code>IP-Tag Collection</code> &gt; <code>Credential Configuration</code>, select <code>AWS</code> and click <code>Open CFT (Application Account Prerequisites)</code>.</li>
-        <li><strong>Security Account CFT</strong> &mdash; run in the AWS account that owns the IAM user whose access keys are entered in CIE. Creates the IAM user and grants <code>sts:AssumeRole</code> permission to assume the application account roles. Click <code>Open CFT (Security Account Prerequisites)</code>.</li>
-      </ul>
-      <p>For <strong>cross-account</strong> setups (Panorama/CIE pulling tags from VPCs in a different account), run the Security Account CFT once in the account that holds the IAM user, then run the Application Account CFT in every target account. Each application account role trusts the security account&rsquo;s IAM user as the principal. If using CFTs, skip this manual step and proceed to <a href="#step-2a3">Step 2A.3</a>.</p>
+      <div class="callout-title">Two-account model for cross-account access</div>
+      <p><strong>Source account</strong>: holds the IAM user whose access keys are entered in CIE. The user has only <code>sts:AssumeRole</code> permission &mdash; no direct EC2 access.<br>
+      <strong>Target account(s)</strong>: hold the EC2 workloads. Each target account has the <code>CIE-IPTag-AssumeRole</code> role (created in Step 2A.2) with EC2 read permissions and a trust policy that allows the source account user to assume it.<br>
+      CIE uses the source account access keys to call <code>sts:AssumeRole</code> into each target account, then reads EC2 tags with the resulting temporary credentials.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Single-account deployments (skip Step 2A.2)</div>
+      <p>If the EC2 workloads are in the <strong>same account</strong> as the IAM user, skip Step 2A.2 entirely. Attach the <code>CIE-IPTag-ReadOnly</code> policy directly to the IAM user, and enter the user's access keys in Step 2A.3 with no Role ARN.</p>
     </div>
 
     <ol>
-      <li>In the AWS IAM Console, navigate to <code>Roles</code> &gt; <code>Create role</code>.</li>
+      <li>Open the <a href="https://console.aws.amazon.com/iam/">AWS IAM Console</a> in the <strong>source account</strong> (the account where CIE credentials will be managed).</li>
+      <li>Navigate to <code>Users</code> &gt; <code>Create user</code>.</li>
+      <li>Set <strong>User name</strong> to <code>cie-iptag-collector</code>.</li>
+      <li>Click <code>Next</code>.</li>
+      <li>Select <strong>Attach policies directly</strong>.</li>
+      <li>Click <code>Create policy</code> (opens a new tab), select the <code>JSON</code> tab, and paste the following. This grants the user permission to assume the tag-collection role in target accounts.</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::*:role/CIE-IPTag-AssumeRole"
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Scope the Resource to specific target account IDs</div>
+      <p>Replace <code>*</code> with each target account ID to limit which accounts can be assumed into (e.g., <code>arn:aws:iam::111122223333:role/CIE-IPTag-AssumeRole</code>). Using <code>*</code> is broader than necessary if you have a known set of target accounts.</p>
+    </div>
+
+    <ol start="7">
+      <li>Set <strong>Policy name</strong> to <code>CIE-IPTag-AssumeRole-Policy</code> and click <code>Create policy</code>.</li>
+      <li>Return to the user creation tab, refresh the policy list, and attach <code>CIE-IPTag-AssumeRole-Policy</code>.</li>
+      <li>Click <code>Next</code>, review, then click <code>Create user</code>.</li>
+      <li>Open the newly created user and select the <code>Security credentials</code> tab.</li>
+      <li>Under <strong>Access keys</strong>, click <code>Create access key</code>.</li>
+      <li>Select <strong>Third-party service</strong> as the use case and click <code>Next</code>, then <code>Create access key</code>.</li>
+      <li>Copy and securely store the <strong>Access key ID</strong> and <strong>Secret access key</strong>. These values are entered in Step 2A.3.</li>
+    </ol>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Save the secret access key now</div>
+      <p>AWS displays the secret access key only once at creation time. If you navigate away before copying it, the value is gone permanently and you must create a new key.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The IAM user <code>cie-iptag-collector</code> appears under <code>IAM</code> &gt; <code>Users</code>. The <code>Security credentials</code> tab shows one active access key. The access key ID and secret access key are recorded securely.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2A.2: Create IAM Role with Cross-Account Trust</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create an IAM role in the <strong>target account</strong> (the account with the EC2 workloads). This role grants EC2 read permissions and trusts the source account IAM user (created in Step 2A.1b) to assume it. Run this step once per target account.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Alternative: CloudFormation Templates</div>
+      <p>CIE provides two CloudFormation Templates (CFTs) that automate both the IAM user and IAM role setup:</p>
+      <ul>
+        <li><strong>Application Account CFT</strong> &mdash; run in each <strong>target</strong> account (the accounts with EC2 workloads). Creates the IAM role, trust policy, and read-only EC2 permissions. In the CIE console under <code>IP-Tag Collection</code> &gt; <code>Credential Configuration</code>, select <code>AWS</code> and click <code>Open CFT (Application Account Prerequisites)</code>.</li>
+        <li><strong>Security Account CFT</strong> &mdash; run in the <strong>source</strong> account (the account where you manage CIE credentials). Creates the IAM user and attaches an <code>sts:AssumeRole</code> policy for the target account roles. Click <code>Open CFT (Security Account Prerequisites)</code>.</li>
+      </ul>
+      <p>If using CFTs for both accounts, skip Steps 2A.1, 2A.1b, and 2A.2 and proceed directly to <a href="#step-2a3">Step 2A.3</a> to register the credentials in CIE.</p>
+    </div>
+
+    <ol>
+      <li>Open the <a href="https://console.aws.amazon.com/iam/">AWS IAM Console</a> in the <strong>target account</strong> (the account containing the EC2 workloads).</li>
+      <li>Navigate to <code>Roles</code> &gt; <code>Create role</code>.</li>
       <li>Select <strong>Trusted entity type</strong>: <code>Another AWS account</code>.</li>
-      <li>Enter the <strong>Account ID</strong> provided by CIE. This is the Palo Alto Networks account that CIE uses to assume the role.
+      <li>Enter the <strong>Account ID</strong> of the <strong>source account</strong> (the account where the <code>cie-iptag-collector</code> IAM user was created in Step 2A.1b).
         <div class="callout callout-warning">
-          <div class="callout-title">Important: CIE Account ID</div>
-          <p>The CIE AWS Account ID is displayed in the CIE console when adding an AWS credential configuration. Copy it from there; do not guess or use a placeholder.</p>
+          <div class="callout-title">Important: Enter the source account ID, not a PAN account ID</div>
+          <p>The Account ID entered here is <strong>your own source account</strong> (where the <code>cie-iptag-collector</code> IAM user lives), not an account provided by Palo Alto Networks. This trust relationship is between two accounts you control.</p>
         </div>
       </li>
-      <li>Check <code>Require external ID</code> and enter the External ID shown in the CIE console.</li>
-      <li>Click <code>Next</code>.</li>
+      <li>Leave <code>Require external ID</code> unchecked for customer-controlled cross-account setups. Click <code>Next</code>.</li>
       <li>Search for and attach the <code>CIE-IPTag-ReadOnly</code> policy created in Step 2A.1.</li>
       <li>Click <code>Next</code>.</li>
       <li>Set <strong>Role name</strong> to <code>CIE-IPTag-AssumeRole</code>.</li>
       <li>Click <code>Create role</code>.</li>
-      <li>Open the newly created role and copy the <strong>Role ARN</strong> (format: <code>arn:aws:iam::&lt;account-id&gt;:role/CIE-IPTag-AssumeRole</code>). This ARN is needed in Step 2A.3.</li>
+      <li>Open the newly created role and copy the <strong>Role ARN</strong> (format: <code>arn:aws:iam::&lt;target-account-id&gt;:role/CIE-IPTag-AssumeRole</code>). This ARN is needed in Step 2A.3.</li>
     </ol>
 
     <div class="callout callout-note">
       <div class="callout-title">Trust Policy JSON (for IaC / Terraform users)</div>
-      <p>If provisioning the IAM role via Terraform, CloudFormation, or another IaC tool instead of the console wizard, use this trust policy document. Replace <code>&lt;CIE-ACCOUNT-ID&gt;</code> and <code>&lt;CIE-EXTERNAL-ID&gt;</code> with the values shown in the CIE console.</p>
+      <p>If provisioning the IAM role via Terraform, CloudFormation, or another IaC tool, use this trust policy. Replace <code>&lt;SOURCE-ACCOUNT-ID&gt;</code> with the account ID of your source account (where <code>cie-iptag-collector</code> lives). Replace <code>&lt;IAM-USER-NAME&gt;</code> with <code>cie-iptag-collector</code> or omit <code>:user/&lt;IAM-USER-NAME&gt;</code> and use <code>:root</code> to trust all principals in that account.</p>
     </div>
     <div class="code-block">
       <pre><code>{
@@ -861,23 +931,23 @@
     {
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::&lt;CIE-ACCOUNT-ID&gt;:root"
+        "AWS": "arn:aws:iam::&lt;SOURCE-ACCOUNT-ID&gt;:user/&lt;IAM-USER-NAME&gt;"
       },
-      "Action": "sts:AssumeRole",
-      "Condition": {
-        "StringEquals": {
-          "sts:ExternalId": "&lt;CIE-EXTERNAL-ID&gt;"
-        }
-      }
+      "Action": "sts:AssumeRole"
     }
   ]
 }</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
+    <div class="callout callout-note">
+      <div class="callout-title">Repeat for each target account</div>
+      <p>If collecting tags from multiple AWS accounts, create the <code>CIE-IPTag-AssumeRole</code> role in <strong>each</strong> target account, with the trust policy pointing to the same source account. Add each role's ARN to the CIE credential configuration in Step 2A.3.</p>
+    </div>
+
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The role <code>CIE-IPTag-AssumeRole</code> appears under <code>IAM</code> &gt; <code>Roles</code>. The <strong>Trust relationships</strong> tab shows the Palo Alto Networks account ID as a trusted entity with the external ID condition.</p>
+      <p>The role <code>CIE-IPTag-AssumeRole</code> appears under <code>IAM</code> &gt; <code>Roles</code> in the target account. The <strong>Trust relationships</strong> tab shows your source account ID as the trusted principal. The <strong>Permissions</strong> tab shows the <code>CIE-IPTag-ReadOnly</code> policy attached.</p>
     </div>
   </div>
 </div>
@@ -894,7 +964,7 @@
       <li>Select the <code>Credential Configuration</code> tab.</li>
       <li>Click <code>Set Up a New Credential Configuration</code> and select <code>AWS</code>.</li>
       <li>Enter a descriptive <strong>Name</strong> (e.g., <code>aws-prod-account-tags</code>).</li>
-      <li>Enter the <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> for the IAM user created in Step 2A.1. These fields are required even when using Role ARN-based assume-role authentication.</li>
+      <li>Enter the <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> for the <code>cie-iptag-collector</code> IAM user created in Step 2A.1b. These credentials identify the source account that CIE will use to call <code>sts:AssumeRole</code>.</li>
       <li>Click <code>Add Role ARN</code>. Enter:
         <table>
           <tr><th>Field</th><th>Value</th></tr>
@@ -3281,9 +3351,16 @@ Total: 3 registered addresses</code></pre>
 
     <h3>STS Assume-Role Failures</h3>
     <ol>
-      <li>If using a cross-account role, verify the <strong>trust policy</strong> on the target role allows the CIE service account to assume it. The trust policy must include the correct <code>Principal</code> (the CIE AWS account) and the correct <code>Condition</code> for the <code>sts:ExternalId</code>.</li>
-      <li>Verify the <code>Role ARN</code> value in the CIE Credential Configuration matches the ARN in the target AWS account exactly. ARNs are case-sensitive.</li>
-      <li>If using CloudFormation templates provided by CIE (<code>Open CFT (Application Account Prerequisites)</code> or <code>Open CFT (Security Account Prerequisites)</code>), confirm the stacks completed successfully in the AWS CloudFormation console.</li>
+      <li>Verify the <strong>trust policy</strong> on the <code>CIE-IPTag-AssumeRole</code> role in the <strong>target account</strong> trusts the correct principal. The <code>Principal</code> must be the <strong>source account</strong> IAM user (or account root) where the <code>cie-iptag-collector</code> user lives &mdash; not a Palo Alto Networks account ID. Navigate to <code>IAM</code> &gt; <code>Roles</code> &gt; <code>CIE-IPTag-AssumeRole</code> &gt; <code>Trust relationships</code> and confirm the <code>Principal</code> shows your source account ID.
+        <div class="callout callout-warning">
+          <div class="callout-title">Common mistake: wrong trust principal</div>
+          <p>If the trust policy <code>Principal</code> contains a Palo Alto Networks account ID or any account ID other than your source account (where the <code>cie-iptag-collector</code> user was created), the assume role call will fail with <code>AccessDenied</code>. Update the trust policy to reference your source account: <code>arn:aws:iam::&lt;SOURCE-ACCOUNT-ID&gt;:user/cie-iptag-collector</code>.</p>
+        </div>
+      </li>
+      <li>Verify the <code>Role ARN</code> value entered in the CIE Credential Configuration matches the ARN of the role in the target account exactly. Copy the ARN from <code>IAM</code> &gt; <code>Roles</code> &gt; <code>CIE-IPTag-AssumeRole</code> &gt; <code>Summary</code>. ARNs are case-sensitive.</li>
+      <li>Verify the <code>cie-iptag-collector</code> IAM user in the source account has the <code>CIE-IPTag-AssumeRole-Policy</code> attached and that the policy <code>Resource</code> includes the target account's role ARN. Navigate to <code>IAM</code> &gt; <code>Users</code> &gt; <code>cie-iptag-collector</code> &gt; <code>Permissions</code> and confirm the policy is present.</li>
+      <li>Confirm the <strong>access keys</strong> entered in CIE belong to the <code>cie-iptag-collector</code> user in the source account and have not been rotated or deactivated. Navigate to <code>IAM</code> &gt; <code>Users</code> &gt; <code>cie-iptag-collector</code> &gt; <code>Security credentials</code> and confirm the key status is <code>Active</code>.</li>
+      <li>If using CloudFormation templates (<code>Open CFT (Application Account Prerequisites)</code> or <code>Open CFT (Security Account Prerequisites)</code>), confirm the stacks completed successfully in the AWS CloudFormation console in each respective account.</li>
     </ol>
 
     <h3>IAM Permission Errors</h3>
