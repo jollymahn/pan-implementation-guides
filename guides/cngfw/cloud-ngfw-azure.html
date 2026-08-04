@@ -1260,6 +1260,11 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
           </table>
         </div>
 
+        <div class="callout callout-note">
+          <div class="callout-title">Panorama public IP access</div>
+          <p>If no VPN or VNet peering connects your Panorama appliance to the Cloud NGFW VNet, Cloud NGFW will connect to Panorama's public IP over the internet. This requires specific NSG rules on the Panorama side and Source NAT configuration in the Azure portal. See <strong>Step 2A.1a</strong> below for the complete setup procedure.</p>
+        </div>
+
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
           <p>Dashboard shows PAN-OS <code>11.2.7</code> or later in Panorama mode. The <code>azure</code> plugin is installed and shows version <code>5.2.3</code> or later in the Plugins list.</p>
@@ -1267,6 +1272,102 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
 
         <p><em>The Panorama management plane, where Panorama in Panorama mode manages Cloud NGFW resources and collects logs via a management VNet:</em></p>
         <img src="diagrams/azure/pn-management.png" alt="Panorama in Panorama mode on a Management Virtual Network managing two Cloud NGFW resources in an Azure Virtual Network, with management and logging connections from Cloud NGFW to Panorama" loading="lazy">
+      </div>
+    </div>
+
+    <!-- Step 2A.1a: Panorama Public IP Access -->
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2A.1a: Panorama Public IP Access &mdash; NSG and SNAT Configuration</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Use this step only if Panorama has no VPN or VNet peering connection to the Cloud NGFW VNet. In this topology, the Security Processing VM instances powering the Cloud NGFW resource automatically detect that Panorama's IP address is non-RFC-1918 and route their management connections out through the public subnet using the Cloud NGFW public IP. Two things must be configured to make this work: Source NAT on the Cloud NGFW resource and an NSG inbound rule on the Panorama side.</p>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">When this applies</div>
+          <p>Only follow these steps if Panorama is reachable only via its public IP (no VPN or VNet peering). If you are using private connectivity, skip this step.</p>
+        </div>
+
+        <p><em>Public IP connectivity path: Cloud NGFW Security Processing VMs connect to Panorama's public IP through the internet. Source NAT on the Cloud NGFW ensures a consistent public IP is used as the source, and an NSG on the Panorama side allows inbound traffic on the required management ports.</em></p>
+        <img src="diagrams/azure/pn-public-ip.svg" alt="Diagram showing Cloud NGFW resource in an Azure VNet connecting through the internet to Panorama using its public IP. The Cloud NGFW public subnet CIDR is SNAT'd to the Cloud NGFW public IP before leaving Azure. An NSG on the Panorama host allows inbound TCP 3978, 28443, and 28270 from the Cloud NGFW public IP." loading="lazy">
+
+        <h3>Step 1: Identify the Cloud NGFW Public IP</h3>
+        <ol>
+          <li>In the Azure portal, navigate to your Cloud NGFW resource.</li>
+          <li>In the left menu, select <strong>Networking &amp; NAT</strong>.</li>
+          <li>Under <strong>Public IP addresses</strong>, note the public IP address assigned to the Cloud NGFW resource. This is the source IP Panorama will see inbound connections from.</li>
+        </ol>
+
+        <p><em>The Networking &amp; NAT page showing the Cloud NGFW public IP address and Source NAT configuration:</em></p>
+        <img src="cngfw-screenshots/cngfw-az-panorama-pub-ip-nat.png" alt="Azure portal Networking and NAT page for the Cloud NGFW resource, showing the assigned public IP addresses and the Source NAT configuration section" loading="lazy">
+
+        <h3>Step 2: Configure Source NAT</h3>
+        <p>Source NAT ensures that outbound connections from the Cloud NGFW to Panorama use the Cloud NGFW public IP as the source address, rather than an ephemeral Azure SNAT address. Without this, the source IP seen by Panorama changes unpredictably and the NSG allowlist cannot be pinned to a specific address.</p>
+        <ol>
+          <li>On the same <strong>Networking &amp; NAT</strong> page, locate the <strong>Source NAT</strong> section.</li>
+          <li>Select <strong>Use the above public IP addresses</strong>.</li>
+          <li>Click <strong>Save</strong>.</li>
+        </ol>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">SNAT is required for public IP access</div>
+          <p>If Source NAT is not configured, Azure assigns a random SNAT address to outbound connections from the Cloud NGFW. This makes it impossible to create a reliable NSG allowlist on the Panorama side, and the connection may fail intermittently as the SNAT address changes.</p>
+        </div>
+
+        <p><em>Source NAT set to "Use the above public IP addresses":</em></p>
+        <img src="cngfw-screenshots/cngfw-az-panorama-pub-ip-snat.png" alt="Source NAT section of the Networking and NAT page with the option set to Use the above public IP addresses" loading="lazy">
+
+        <h3>Step 3: Create NSG Inbound Rule on the Panorama Host</h3>
+        <p>From Panorama's perspective, the Cloud NGFW management connections are inbound. Create an NSG inbound rule on the subnet or NIC associated with the Panorama appliance to allow the required management ports from the Cloud NGFW public IP.</p>
+        <ol>
+          <li>In the Azure portal (or your on-premises firewall if Panorama is on-premises), navigate to the NSG associated with the Panorama host NIC or subnet.</li>
+          <li>Select <strong>Inbound security rules</strong> and click <strong>+ Add</strong>.</li>
+          <li>Configure the rule as follows:
+            <table>
+              <thead><tr><th>Field</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Source</td><td>IP Addresses</td></tr>
+                <tr><td>Source IP addresses/CIDR ranges</td><td>Cloud NGFW public IP (from Step 1)</td></tr>
+                <tr><td>Source port ranges</td><td>*</td></tr>
+                <tr><td>Destination</td><td>Any</td></tr>
+                <tr><td>Service</td><td>Custom</td></tr>
+                <tr><td>Destination port ranges</td><td><code>3978,28443,28270</code></td></tr>
+                <tr><td>Protocol</td><td>TCP</td></tr>
+                <tr><td>Action</td><td>Allow</td></tr>
+                <tr><td>Priority</td><td>300 (or lower than any deny rules)</td></tr>
+                <tr><td>Name</td><td><code>Allow-CloudNGFW-Panorama-Mgmt</code></td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Click <strong>Add</strong>.</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">On-premises Panorama</div>
+          <p>If Panorama is on-premises rather than in Azure, apply the equivalent rule on the perimeter firewall or host-based firewall protecting the Panorama management interface. The source IP to allow is the Cloud NGFW public IP identified in Step 1.</p>
+        </div>
+
+        <p><em>NSG inbound rule allowing the Cloud NGFW public IP to reach Panorama management ports:</em></p>
+        <img src="cngfw-screenshots/cngfw-az-panorama-pub-ip-nsg.png" alt="Azure NSG inbound security rule configuration showing source set to the Cloud NGFW public IP, destination port ranges 3978 28443 28270, protocol TCP, action Allow" loading="lazy">
+
+        <h3>Step 4: Verify and Resolve Asymmetric Routing (if needed)</h3>
+        <p>Asymmetric routing occurs when return traffic from Panorama cannot reach the specific Security Processing VM instance that initiated the connection. This typically happens when a load balancer intercepts the return path. If connectivity fails after completing Steps 1-3, add a UDR host route for the Cloud NGFW DNAT IP addresses to ensure return traffic bypasses the Internal Load Balancer.</p>
+        <ol>
+          <li>In the Azure portal, navigate to the Route Table associated with the subnet containing the Panorama host (or the gateway subnet, for on-premises scenarios).</li>
+          <li>Add a User Defined Route:
+            <ul>
+              <li><strong>Address prefix:</strong> CIDRs associated with the private subnet you delegated to the Cloud NGFW resource</li>
+              <li><strong>Next hop type:</strong> Virtual Network</li>
+            </ul>
+          </li>
+          <li>This ensures return packets bypass the ILB and route directly back to the originating Security Processing VM instance.</li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>After completing this step, the Cloud NGFW resource <strong>Health Status</strong> in the Azure portal changes to <code>Healthy</code> (green). Under Panorama, navigate to <code>Panorama &gt; Managed Devices</code> and confirm the Cloud NGFW device appears with a <strong>Connected</strong> status.</p>
+        </div>
       </div>
     </div>
 
