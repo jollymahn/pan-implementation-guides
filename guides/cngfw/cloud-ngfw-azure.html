@@ -1595,19 +1595,95 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
           <li>Click <code>OK</code>.</li>
         </ol>
 
-        <h3>Baseline Security Rules</h3>
+        <h3>Step 1: Create Address Objects</h3>
+        <p>Create these address objects in the Cloud Device Group before building rules. They keep rules readable and make future updates a single-object change.</p>
         <ol start="7">
-          <li>Navigate to <code>Policies &gt; Security &gt; Pre Rules</code>.</li>
-          <li>Set <strong>Device Group</strong> to <code>cngfw-az-device-group-vnet</code>.</li>
-          <li>Create an <strong>outbound allow rule</strong>: Source Zone <code>private</code>, Destination Zone <code>public</code>, with the appropriate applications, <strong>Action</strong> = <code>Allow</code>, <strong>Log Forwarding</strong> = <code>Forward-to-Collector-Group</code>.</li>
-          <li>Create an <strong>east-west allow rule</strong>: Source Zone <code>private</code>, Destination Zone <code>private</code>, Rule Type <code>intrazone</code>, with specific applications, <strong>Action</strong> = <code>Allow</code>.</li>
-          <li>Override the <strong>intrazone-default</strong> rule under <code>Default Rules</code>: set <strong>Action</strong> to <code>Deny</code>, enable <code>Log at Session End</code>, set <strong>Log Forwarding</strong> to <code>Forward-to-Collector-Group</code>.</li>
-          <li>Commit and push: <code>Commit &gt; Commit and Push</code>.</li>
+          <li>Navigate to <code>Objects &gt; Addresses</code>. Set <strong>Device Group</strong> to <code>cngfw-az-device-group-vnet</code>.</li>
+          <li>Create each address object below using <code>Add</code>:
+            <table>
+              <thead><tr><th>Name</th><th>Type</th><th>Value</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>spoke-cidrs</code></td><td>IP Netmask</td><td>Your Azure spoke VNet CIDRs</td><td>All internal Azure subnets</td></tr>
+                <tr><td><code>onprem-cidrs</code></td><td>IP Netmask</td><td>Your on-premises network ranges</td><td>Source for east-west access via VPN/ER</td></tr>
+                <tr><td><code>dns-server-ips</code></td><td>IP Netmask</td><td>Internal DNS resolver IPs</td><td>AD DNS or Azure Private DNS forwarders</td></tr>
+                <tr><td><code>db-server-ips</code></td><td>IP Netmask</td><td>SQL Server IPs in Azure</td><td>Database tier — east-west destination</td></tr>
+                <tr><td><code>web-server-ips</code></td><td>IP Netmask</td><td>Backend VM / app server IPs</td><td>Inbound destination behind App Gateway</td></tr>
+                <tr><td><code>appgw-subnet-cidr</code></td><td>IP Netmask</td><td>App Gateway subnet CIDR</td><td>Inbound source — App GW to CNGFW</td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Commit: <code>Commit &gt; Commit to Panorama</code>.</li>
+        </ol>
+
+        <h3>Step 2: Create Security Profile Group</h3>
+        <ol start="10">
+          <li>Navigate to <code>Objects &gt; Security Profile Groups</code>. Click <code>Add</code>.</li>
+          <li>Name: <code>cngfw-baseline-protection</code>. Assign your Antivirus, Anti-Spyware, and Vulnerability Protection profiles. Click <code>OK</code>.</li>
+        </ol>
+
+        <h3>Step 3: Build the Rulebase</h3>
+        <p>Navigate to <code>Policies &gt; Security &gt; Pre Rules</code>. Set <strong>Device Group</strong> to <code>cngfw-az-device-group-vnet</code>. Create rules in priority order; rules are evaluated top to bottom and the first match wins.</p>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Zone model</div>
+          <p><code>private</code> = VNet-facing (spokes, on-prem via VPN/ER). <code>public</code> = internet-facing. East-west rules between private subnets use Rule Type <code>intrazone</code>.</p>
+        </div>
+
+        <p><strong>Outbound Egress (private &rarr; public)</strong></p>
+        <table>
+          <thead><tr><th>Priority</th><th>Name</th><th>Src Zone</th><th>Src Addr</th><th>Dst Zone</th><th>Dst Addr</th><th>Application</th><th>Service</th><th>Action</th><th>Profile Group</th></tr></thead>
+          <tbody>
+            <tr><td>100</td><td><code>allow-dns-out</code></td><td>private</td><td>spoke-cidrs</td><td>public</td><td>any</td><td>dns</td><td>app-default</td><td>Allow</td><td>cngfw-baseline-protection</td></tr>
+            <tr><td>110</td><td><code>allow-ntp-out</code></td><td>private</td><td>spoke-cidrs</td><td>public</td><td>any</td><td>ntp</td><td>app-default</td><td>Allow</td><td>none</td></tr>
+            <tr><td>120</td><td><code>allow-web-out</code></td><td>private</td><td>spoke-cidrs</td><td>public</td><td>any</td><td>ssl, web-browsing</td><td>app-default</td><td>Allow</td><td>cngfw-baseline-protection</td></tr>
+            <tr><td>130</td><td><code>allow-windows-updates</code></td><td>private</td><td>spoke-cidrs</td><td>public</td><td>any</td><td>ms-update</td><td>app-default</td><td>Allow</td><td>cngfw-baseline-protection</td></tr>
+            <tr><td>140</td><td><code>allow-pan-updates</code></td><td>private</td><td>spoke-cidrs</td><td>public</td><td>any</td><td>paloalto-updates</td><td>app-default</td><td>Allow</td><td>none</td></tr>
+            <tr><td>190</td><td><code>deny-egress</code></td><td>private</td><td>any</td><td>public</td><td>any</td><td>any</td><td>any</td><td>Deny</td><td>none</td></tr>
+          </tbody>
+        </table>
+
+        <p><strong>East-West: On-Prem to Azure (private &rarr; private, intrazone)</strong></p>
+        <table>
+          <thead><tr><th>Priority</th><th>Name</th><th>Src Zone</th><th>Src Addr</th><th>Dst Zone</th><th>Dst Addr</th><th>Application</th><th>Service</th><th>Action</th><th>Profile Group</th></tr></thead>
+          <tbody>
+            <tr><td>200</td><td><code>allow-icmp-ew</code></td><td>private</td><td>onprem-cidrs</td><td>private</td><td>spoke-cidrs</td><td>ping</td><td>app-default</td><td>Allow</td><td>none</td></tr>
+            <tr><td>210</td><td><code>allow-dns-internal</code></td><td>private</td><td>spoke-cidrs</td><td>private</td><td>dns-server-ips</td><td>dns</td><td>app-default</td><td>Allow</td><td>cngfw-baseline-protection</td></tr>
+            <tr><td>220</td><td><code>allow-ssh-ew</code></td><td>private</td><td>onprem-cidrs</td><td>private</td><td>spoke-cidrs</td><td>ssh</td><td>TCP/22</td><td>Allow</td><td>cngfw-baseline-protection</td></tr>
+            <tr><td>230</td><td><code>allow-rdp-ew</code></td><td>private</td><td>onprem-cidrs</td><td>private</td><td>spoke-cidrs</td><td>ms-rdp</td><td>TCP/3389</td><td>Allow</td><td>cngfw-baseline-protection</td></tr>
+            <tr><td>240</td><td><code>allow-web-ew</code></td><td>private</td><td>onprem-cidrs</td><td>private</td><td>spoke-cidrs</td><td>ssl, web-browsing</td><td>app-default</td><td>Allow</td><td>cngfw-baseline-protection</td></tr>
+            <tr><td>250</td><td><code>allow-sql-ew</code></td><td>private</td><td>onprem-cidrs</td><td>private</td><td>db-server-ips</td><td>ms-sql-db</td><td>app-default</td><td>Allow</td><td>cngfw-baseline-protection</td></tr>
+            <tr><td>290</td><td><code>deny-ew</code></td><td>private</td><td>any</td><td>private</td><td>any</td><td>any</td><td>any</td><td>Deny</td><td>none</td></tr>
+          </tbody>
+        </table>
+
+        <p><strong>Inbound via App Gateway (public &rarr; private)</strong></p>
+        <table>
+          <thead><tr><th>Priority</th><th>Name</th><th>Src Zone</th><th>Src Addr</th><th>Dst Zone</th><th>Dst Addr</th><th>Application</th><th>Service</th><th>Action</th><th>Profile Group</th></tr></thead>
+          <tbody>
+            <tr><td>300</td><td><code>allow-appgw-https</code></td><td>public</td><td>appgw-subnet-cidr</td><td>private</td><td>web-server-ips</td><td>ssl</td><td>TCP/443</td><td>Allow</td><td>cngfw-baseline-protection</td></tr>
+            <tr><td>310</td><td><code>allow-appgw-http</code></td><td>public</td><td>appgw-subnet-cidr</td><td>private</td><td>web-server-ips</td><td>web-browsing</td><td>TCP/80</td><td>Allow</td><td>cngfw-baseline-protection</td></tr>
+            <tr><td>320</td><td><code>allow-appgw-probe</code></td><td>public</td><td>appgw-subnet-cidr</td><td>private</td><td>web-server-ips</td><td>any</td><td>TCP/80, TCP/443</td><td>Allow</td><td>none</td></tr>
+            <tr><td>390</td><td><code>deny-inbound</code></td><td>public</td><td>any</td><td>private</td><td>any</td><td>any</td><td>any</td><td>Deny</td><td>none</td></tr>
+          </tbody>
+        </table>
+
+        <p><strong>Default Cleanup</strong></p>
+        <ol>
+          <li>Navigate to <code>Policies &gt; Security &gt; Default Rules</code>.</li>
+          <li>Edit <strong>intrazone-default</strong>: set Action to <code>Deny</code>, enable <code>Log at Session End</code>, set Log Forwarding to <code>Forward-to-Collector-Group</code>.</li>
+          <li>Edit <strong>interzone-default</strong>: set Action to <code>Deny</code>, enable <code>Log at Session End</code>, set Log Forwarding to <code>Forward-to-Collector-Group</code>.</li>
+        </ol>
+
+        <h3>Step 4: Commit and Push</h3>
+        <ol>
+          <li>Select <code>Commit &gt; Commit and Push</code>.</li>
+          <li>Under <strong>Push Scope</strong>, confirm the Cloud Device Group <code>cngfw-az-device-group-vnet</code> is selected.</li>
+          <li>Click <code>OK</code>.</li>
         </ol>
 
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>Navigate to <code>Policies &gt; Security &gt; Pre Rules</code> with device group <code>cngfw-az-device-group-vnet</code> selected. Baseline outbound and east-west rules appear. The intrazone-default rule under Default Rules shows <code>Deny</code>.</p>
+          <p>Navigate to <code>Policies &gt; Security &gt; Pre Rules</code> with device group <code>cngfw-az-device-group-vnet</code> selected. All 14 rules appear in priority order. Both <code>intrazone-default</code> and <code>interzone-default</code> under Default Rules show Action <code>Deny</code> with log forwarding set.</p>
         </div>
       </div>
     </div>
@@ -1782,56 +1858,87 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
         <span>Step 2B.4: Configure Security Policy</span>
       </div>
       <div class="collapsible-body">
-        <p>Create security rules in SCM. SCM-managed Cloud NGFW requires all security rules to set both source and destination zones to <code>any</code>. Source and destination matching is done through address objects (IP ranges, FQDNs), not zones.</p>
+        <p>Create security rules in SCM. SCM-managed Cloud NGFW requires all security rules to set both source and destination zones to <code>any</code>. Traffic direction is differentiated using address objects (spoke CIDRs, on-prem CIDRs, server IPs) rather than zones.</p>
 
         <div class="callout callout-warning">
-          <div class="callout-title">Important: SCM zones must be ANY</div>
-          <p>Unlike Panorama-managed Cloud NGFW (which supports <code>private</code>, <code>public</code>, and <code>loopback</code> zones), SCM-managed Cloud NGFW requires <code>any</code> for both source and destination zones in every security rule. Logs in Strata Logging Service still display the actual zone (<code>public</code>/<code>private</code>) for each session, but the rule configuration itself must use <code>any</code>. See <a href="cloud-ngfw-deployment.html#understanding-zones">Understanding Security Zones</a> for a full cross-cloud comparison.</p>
+          <div class="callout-title">SCM zones must be ANY</div>
+          <p>Unlike Panorama-managed Cloud NGFW (which supports <code>private</code> and <code>public</code> zones), SCM-managed Cloud NGFW requires <code>any</code> for both source and destination zones in every rule. Logs in Strata Logging Service still display the actual zone (<code>public</code>/<code>private</code>) per session. See <a href="cloud-ngfw-deployment.html#understanding-zones">Understanding Security Zones</a> for a full comparison.</p>
         </div>
 
+        <h3>Step 1: Create Address Objects</h3>
         <ol>
-          <li>In SCM, select the <code>Cloud-NGFW-Azure</code> folder (or the appropriate sub-folder) from the Configuration Scope dropdown.</li>
-          <li>Navigate to <code>Security Services</code> &rarr; <code>Security Policy</code>.</li>
-          <li>Click <code>Add Rule</code> and configure an <strong>outbound rule</strong>:
+          <li>In SCM, select the <code>Cloud-NGFW-Azure</code> folder from the Configuration Scope dropdown.</li>
+          <li>Navigate to <code>Manage</code> &rarr; <code>Configuration</code> &rarr; <code>Objects</code> &rarr; <code>Addresses</code>.</li>
+          <li>Create each address object below:
             <table>
-              <thead>
-                <tr><th>Field</th><th>Value</th></tr>
-              </thead>
+              <thead><tr><th>Name</th><th>Type</th><th>Value</th><th>Description</th></tr></thead>
               <tbody>
-                <tr><td>Name</td><td><code>allow-outbound-web</code></td></tr>
-                <tr><td>Source Zone</td><td><code>any</code></td></tr>
-                <tr><td>Source Address</td><td><code>10.0.0.0/8</code> (or your spoke VNet ranges)</td></tr>
-                <tr><td>Destination Zone</td><td><code>any</code></td></tr>
-                <tr><td>Destination Address</td><td><code>any</code></td></tr>
-                <tr><td>Application</td><td><code>ssl</code>, <code>web-browsing</code></td></tr>
-                <tr><td>Action</td><td><code>Allow</code></td></tr>
-                <tr><td>Profile Group</td><td><code>cloud-ngfw-protection</code></td></tr>
-                <tr><td>Log at Session End</td><td>Enabled</td></tr>
+                <tr><td><code>spoke-cidrs</code></td><td>IP Netmask</td><td>Your Azure spoke VNet CIDRs</td><td>All internal Azure subnets</td></tr>
+                <tr><td><code>onprem-cidrs</code></td><td>IP Netmask</td><td>Your on-premises network ranges</td><td>Source for east-west access via VPN/ER</td></tr>
+                <tr><td><code>dns-server-ips</code></td><td>IP Netmask</td><td>Internal DNS resolver IPs</td><td>AD DNS or Azure Private DNS forwarders</td></tr>
+                <tr><td><code>db-server-ips</code></td><td>IP Netmask</td><td>SQL Server IPs in Azure</td><td>Database tier</td></tr>
+                <tr><td><code>web-server-ips</code></td><td>IP Netmask</td><td>Backend VM / app server IPs</td><td>Inbound destination behind App Gateway</td></tr>
+                <tr><td><code>appgw-subnet-cidr</code></td><td>IP Netmask</td><td>App Gateway subnet CIDR</td><td>Inbound source from App GW</td></tr>
               </tbody>
             </table>
           </li>
-          <li>Add an <strong>east-west rule</strong> for spoke-to-spoke traffic:
-            <table>
-              <thead>
-                <tr><th>Field</th><th>Value</th></tr>
-              </thead>
-              <tbody>
-                <tr><td>Name</td><td><code>allow-east-west</code></td></tr>
-                <tr><td>Source Zone</td><td><code>any</code></td></tr>
-                <tr><td>Destination Zone</td><td><code>any</code></td></tr>
-                <tr><td>Application</td><td>As needed</td></tr>
-                <tr><td>Action</td><td><code>Allow</code></td></tr>
-                <tr><td>Profile Group</td><td><code>cloud-ngfw-protection</code></td></tr>
-              </tbody>
-            </table>
-          </li>
-          <li>Add an <strong>inbound rule</strong> for internet-to-application traffic (Source Zone <code>any</code>, Destination Zone <code>any</code>, Destination Address = your server prefix list).</li>
-          <li>Add a <strong>deny-all</strong> cleanup rule at the bottom of the rulebase.</li>
+        </ol>
+
+        <h3>Step 2: Build the Rulebase</h3>
+        <ol start="4">
+          <li>Navigate to <code>Security Services</code> &rarr; <code>Security Policy</code>. Confirm the <code>Cloud-NGFW-Azure</code> folder is selected.</li>
+          <li>Create rules in priority order using <code>Add Rule</code>. All rules use Source Zone <code>any</code> and Destination Zone <code>any</code>:</li>
+        </ol>
+
+        <p><strong>Outbound Egress</strong></p>
+        <table>
+          <thead><tr><th>Priority</th><th>Name</th><th>Src Address</th><th>Dst Address</th><th>Application</th><th>Service</th><th>Action</th><th>Profile Group</th></tr></thead>
+          <tbody>
+            <tr><td>100</td><td><code>allow-dns-out</code></td><td>spoke-cidrs</td><td>any</td><td>dns</td><td>app-default</td><td>Allow</td><td>cloud-ngfw-protection</td></tr>
+            <tr><td>110</td><td><code>allow-ntp-out</code></td><td>spoke-cidrs</td><td>any</td><td>ntp</td><td>app-default</td><td>Allow</td><td>none</td></tr>
+            <tr><td>120</td><td><code>allow-web-out</code></td><td>spoke-cidrs</td><td>any</td><td>ssl, web-browsing</td><td>app-default</td><td>Allow</td><td>cloud-ngfw-protection</td></tr>
+            <tr><td>130</td><td><code>allow-windows-updates</code></td><td>spoke-cidrs</td><td>any</td><td>ms-update</td><td>app-default</td><td>Allow</td><td>cloud-ngfw-protection</td></tr>
+            <tr><td>140</td><td><code>allow-pan-updates</code></td><td>spoke-cidrs</td><td>any</td><td>paloalto-updates</td><td>app-default</td><td>Allow</td><td>none</td></tr>
+            <tr><td>190</td><td><code>deny-egress</code></td><td>spoke-cidrs</td><td>any</td><td>any</td><td>any</td><td>Deny</td><td>none</td></tr>
+          </tbody>
+        </table>
+
+        <p><strong>East-West: On-Prem to Azure</strong></p>
+        <table>
+          <thead><tr><th>Priority</th><th>Name</th><th>Src Address</th><th>Dst Address</th><th>Application</th><th>Service</th><th>Action</th><th>Profile Group</th></tr></thead>
+          <tbody>
+            <tr><td>200</td><td><code>allow-icmp-ew</code></td><td>onprem-cidrs</td><td>spoke-cidrs</td><td>ping</td><td>app-default</td><td>Allow</td><td>none</td></tr>
+            <tr><td>210</td><td><code>allow-dns-internal</code></td><td>spoke-cidrs</td><td>dns-server-ips</td><td>dns</td><td>app-default</td><td>Allow</td><td>cloud-ngfw-protection</td></tr>
+            <tr><td>220</td><td><code>allow-ssh-ew</code></td><td>onprem-cidrs</td><td>spoke-cidrs</td><td>ssh</td><td>TCP/22</td><td>Allow</td><td>cloud-ngfw-protection</td></tr>
+            <tr><td>230</td><td><code>allow-rdp-ew</code></td><td>onprem-cidrs</td><td>spoke-cidrs</td><td>ms-rdp</td><td>TCP/3389</td><td>Allow</td><td>cloud-ngfw-protection</td></tr>
+            <tr><td>240</td><td><code>allow-web-ew</code></td><td>onprem-cidrs</td><td>spoke-cidrs</td><td>ssl, web-browsing</td><td>app-default</td><td>Allow</td><td>cloud-ngfw-protection</td></tr>
+            <tr><td>250</td><td><code>allow-sql-ew</code></td><td>onprem-cidrs</td><td>db-server-ips</td><td>ms-sql-db</td><td>app-default</td><td>Allow</td><td>cloud-ngfw-protection</td></tr>
+            <tr><td>290</td><td><code>deny-ew</code></td><td>onprem-cidrs</td><td>spoke-cidrs</td><td>any</td><td>any</td><td>Deny</td><td>none</td></tr>
+          </tbody>
+        </table>
+
+        <p><strong>Inbound via App Gateway</strong></p>
+        <table>
+          <thead><tr><th>Priority</th><th>Name</th><th>Src Address</th><th>Dst Address</th><th>Application</th><th>Service</th><th>Action</th><th>Profile Group</th></tr></thead>
+          <tbody>
+            <tr><td>300</td><td><code>allow-appgw-https</code></td><td>appgw-subnet-cidr</td><td>web-server-ips</td><td>ssl</td><td>TCP/443</td><td>Allow</td><td>cloud-ngfw-protection</td></tr>
+            <tr><td>310</td><td><code>allow-appgw-http</code></td><td>appgw-subnet-cidr</td><td>web-server-ips</td><td>web-browsing</td><td>TCP/80</td><td>Allow</td><td>cloud-ngfw-protection</td></tr>
+            <tr><td>320</td><td><code>allow-appgw-probe</code></td><td>appgw-subnet-cidr</td><td>web-server-ips</td><td>any</td><td>TCP/80, TCP/443</td><td>Allow</td><td>none</td></tr>
+            <tr><td>390</td><td><code>deny-inbound</code></td><td>any</td><td>spoke-cidrs</td><td>any</td><td>any</td><td>Deny</td><td>none</td></tr>
+          </tbody>
+        </table>
+
+        <p><strong>Cleanup deny-all:</strong> Add a final rule at priority <code>999</code>, name <code>deny-all</code>, all fields <code>any</code>, Action <code>Deny</code>, Log at Session End enabled.</p>
+
+        <h3>Step 3: Push Configuration</h3>
+        <ol start="6">
+          <li>Click <code>Push Config</code> in the top bar.</li>
+          <li>Confirm the <code>Cloud-NGFW-Azure</code> folder is in scope and click <code>Push</code>.</li>
         </ol>
 
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>The folder contains outbound, east-west, and inbound allow rules with the <code>cloud-ngfw-protection</code> profile group attached, plus a final deny-all rule. The Profile Group column shows <code>cloud-ngfw-protection</code> for every allow rule.</p>
+          <p>The <code>Cloud-NGFW-Azure</code> folder contains all 15 rules in priority order. Every allow rule that carries user or application traffic shows <code>cloud-ngfw-protection</code> in the Profile Group column. The final <code>deny-all</code> rule has no profile group and Log at Session End enabled.</p>
         </div>
       </div>
     </div>
