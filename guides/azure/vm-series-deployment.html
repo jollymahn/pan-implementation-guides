@@ -535,18 +535,26 @@
   <div class="collapsible-body">
     <p><strong>Palo Alto Docs:</strong> <a href="https://docs.paloaltonetworks.com/vm-series/11-1/vm-series-deployment/license-the-vm-series-firewall/vm-series-models/install-a-device-certificate-on-the-vm-series-firewall">Install a Device Certificate on the VM-Series Firewall</a></p>
     <ol>
-      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a>.</li>
-      <li>Navigate to <strong>Products &gt; VM-Series Auth-Codes</strong>.</li>
-      <li>Click <strong>Create Registration PIN</strong>.</li>
-      <li>Copy both: <strong>PIN ID</strong> (UUID format) and <strong>PIN Value</strong> (hex string).</li>
+      <li>Log in to the <a href="https://support.paloaltonetworks.com">Customer Support Portal</a> with an account that has <strong>Superuser</strong> privileges. Lesser roles do not see the PIN generation controls.</li>
+      <li>In the left-hand navigation, click <strong>Products</strong> to expand it, then click <strong>Device Certificates</strong>.</li>
+      <li>The Device Certificates page has two panes. Locate the <strong>VM Registration PIN</strong> pane (the other pane, <strong>One Time Password</strong>, is for hardware NGFW and is not what you want here).</li>
+      <li>Click <strong>Generate Registration PIN</strong>.</li>
+      <li>Enter a <strong>Description</strong> that identifies this deployment (e.g., <code>Azure VM-Series - Transit VNet</code>).</li>
+      <li>Select a <strong>PIN Expiration</strong> time period from the drop-down. Choose a window long enough to cover your full deployment; the firewalls must launch before the PIN expires.</li>
+      <li>Click <strong>Generate Registration PIN</strong> to confirm.</li>
+      <li>Copy both values before leaving the page: <strong>PIN ID</strong> (UUID format) and <strong>PIN Value</strong> (hex string).</li>
     </ol>
     <div class="callout callout-note">
       <div class="callout-title">Note</div>
       Without a valid PIN, the firewall cannot fetch a device certificate and will fail to authenticate with the licensing infrastructure.
     </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Registration PINs expire</div>
+      <p>The PIN is valid only for the expiration period you selected. If it lapses before your firewalls bootstrap, they fail device-certificate retrieval and you must return to the Customer Support Portal to generate a new PIN, then update <code>vm-series-auto-registration-pin-id</code> and <code>vm-series-auto-registration-pin-value</code> in <code>terraform.tfvars</code>.</p>
+    </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>You have recorded both the <strong>PIN ID</strong> (UUID) and the <strong>PIN Value</strong> (hex string), and the PIN shows as valid (not expired) in the Registration PIN list in the Customer Support Portal. You will supply both values in Phase 3 and Phase 6.</p>
+      <p>You have recorded both the <strong>PIN ID</strong> (UUID) and the <strong>PIN Value</strong> (hex string), and the PIN shows as valid (not expired) in the <strong>VM Registration PIN</strong> pane under <strong>Products &gt; Device Certificates</strong>. You will supply both values in Phase 3 and Phase 6.</p>
     </div>
   </div>
 </div>
@@ -902,10 +910,31 @@ az account show</code></pre>
   <div class="collapsible-body">
     <p>A remote state backend is critical for team collaboration, maintaining a single source of truth, and preventing concurrent modifications. Azure's <code>azurerm</code> backend uses a Storage Account container; state locking is provided by the native blob lease, so no separate locking table is required.</p>
 
+    <div class="callout callout-note">
+      <div class="callout-title">What this step does and does not do</div>
+      <p>This step creates only the Azure <em>resources</em> that hold Terraform state: a resource group, a Storage Account, and a blob container. You do <strong>not</strong> write the <code>backend.tf</code> file here, because your Terraform project directory does not exist yet. You create the Git repository in <a href="#prerequisites">1.11</a> and the project directory in <a href="#terraform-deployment">Phase 4</a>, and <code>backend.tf</code> is written there, alongside the rest of your Terraform code.</p>
+    </div>
+
     <h3>Create the Backend Resources</h3>
-    <p>Create a small bootstrap resource group with a Storage Account and a container for Terraform state. The Storage Account name must be globally unique and 3–24 lowercase alphanumeric characters.</p>
-    <div class="code-block">
-      <pre><code>RG=tfstate-rg
+    <p>Create a small bootstrap resource group with a Storage Account and a container for Terraform state. The Storage Account name must be globally unique and 3&ndash;24 lowercase alphanumeric characters. Run these commands in whichever shell you selected in <a href="#prerequisites">1.9</a>.</p>
+
+    <div class="fork-banner">
+      <div class="fork-icon"><svg viewBox="0 0 24 24"><path d="M12 3v6"/><path d="M12 9l-4 4"/><path d="M12 9l4 4"/><path d="M8 13v5"/><path d="M16 13v5"/></svg></div>
+      <div class="fork-text">
+        <span class="fork-label">Choose your path</span>
+        <span class="fork-desc">Shell</span>
+        <span class="fork-hint">Variable syntax and line continuations differ between Bash and PowerShell.</span>
+      </div>
+    </div>
+    <div class="mgmt-tabs" data-tab-group="tfstate-shell">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="bash">Bash (Linux, macOS, WSL, Cloud Shell Bash)</button>
+        <button class="mgmt-tab" data-plane="pwsh">PowerShell (Windows, Cloud Shell PowerShell)</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="bash">
+        <div class="code-block">
+          <pre><code>RG=tfstate-rg
 LOCATION=eastus
 SA=&lt;your-unique-storage-account-name&gt;
 CONTAINER=tfstate
@@ -931,29 +960,61 @@ az storage account blob-service-properties update \
 
 # Container for state
 az storage container create --name $CONTAINER --account-name $SA</code></pre>
-      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+
+      <div class="mgmt-panel" data-plane="pwsh">
+        <p>PowerShell uses <code>$VAR</code> for its own variables and a backtick (<code>`</code>) for line continuation instead of a backslash:</p>
+        <div class="code-block">
+          <pre><code>$RG = "tfstate-rg"
+$LOCATION = "eastus"
+$SA = "&lt;your-unique-storage-account-name&gt;"
+$CONTAINER = "tfstate"
+
+# Resource group
+az group create --name $RG --location $LOCATION
+
+# Storage account (versioned, TLS 1.2 only)
+az storage account create `
+  --name $SA `
+  --resource-group $RG `
+  --location $LOCATION `
+  --sku Standard_LRS `
+  --kind StorageV2 `
+  --min-tls-version TLS1_2 `
+  --allow-blob-public-access false
+
+# Enable blob versioning for state history
+az storage account blob-service-properties update `
+  --account-name $SA `
+  --resource-group $RG `
+  --enable-versioning true
+
+# Container for state
+az storage container create --name $CONTAINER --account-name $SA</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
     </div>
 
-    <h3>Configure the Backend (backend.tf)</h3>
-    <div class="code-block">
-      <pre><code>terraform {
-  backend "azurerm" {
-    resource_group_name  = "tfstate-rg"
-    storage_account_name = "&lt;your-unique-storage-account-name&gt;"
-    container_name       = "tfstate"
-    key                  = "pan-vmseries/azure/terraform.tfstate"
-  }
-}</code></pre>
-      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <div class="callout callout-note">
+      <div class="callout-title">Azure Cloud Shell</div>
+      <p>Cloud Shell offers both a Bash and a PowerShell session; the selector sits in the toolbar at the top of the Cloud Shell pane. Pick the tab above that matches your session. Cloud Shell is already authenticated as your portal user, so you can skip <code>az login</code>. Note that Cloud Shell only persists files under your home directory (<code>~</code>, backed by the mounted <code>clouddrive</code> file share); anything written elsewhere is lost when the session times out, so clone your repository in <a href="#prerequisites">1.11</a> into your home directory.</p>
     </div>
 
     <div class="callout callout-note">
       <div class="callout-title">Note</div>
       <p>Place the state Storage Account in the <strong>same region</strong> as your deployment to minimize latency. Blob versioning provides state history; the native blob lease handles concurrent-modification locking automatically, so no DynamoDB-equivalent is needed.</p>
     </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Record these values</div>
+      <p>Write down the resource group name, Storage Account name, and container name. You will need all three to fill in <code>backend.tf</code> in <a href="#terraform-deployment">Phase 4</a>.</p>
+    </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Run <code>az storage container list --account-name &lt;your-unique-storage-account-name&gt; --output table</code> and confirm the <code>tfstate</code> container is listed. In the Azure Portal, the Storage Account's <strong>Data protection</strong> settings show blob versioning enabled.</p>
+      <p>Run <code>az storage container list --account-name &lt;your-unique-storage-account-name&gt; --output table</code> and confirm the <code>tfstate</code> container is listed. In the Azure Portal, the Storage Account's <strong>Data protection</strong> settings show blob versioning enabled. You have the resource group, Storage Account, and container names recorded for Phase 4.</p>
     </div>
   </div>
 </div>
@@ -968,7 +1029,7 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
     <p>Store your Terraform configuration in a remote Git repository (GitHub, GitLab, Bitbucket, Azure Repos, etc.) for version control and collaboration.</p>
     <ol>
       <li>Create a new repository for your PAN deployment code.</li>
-      <li>Clone it to your deployment machine or Cloud Shell session.</li>
+      <li>Clone it to your deployment machine, or into your home directory (<code>~</code>) if you are working in Cloud Shell, since only your home directory persists between Cloud Shell sessions. This cloned repository is the working directory for <a href="#terraform-deployment">Phase 4</a>, where you create the project directory, copy in a reference example, and write <code>backend.tf</code>.</li>
       <li>Bootstrap your repo from the official Palo Alto Networks reference modules: <a href="https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules" target="_blank" rel="noopener"><code>PaloAltoNetworks/terraform-azurerm-swfw-modules</code></a> (covers VM-Series and Cloud NGFW, plus reference example architectures under <code>examples/</code>; see <code>vmseries_transit_vnet_common</code> and <code>vmseries_transit_vnet_dedicated</code>).</li>
       <li>For advanced deployments, configure a CI/CD pipeline (GitHub Actions, Azure DevOps Pipelines, GitLab CI, Terraform Cloud) that can authenticate to Azure (via the Service Principal from <a href="#prerequisites">1.8</a>) and run <code>terraform plan</code> / <code>apply</code>.</li>
     </ol>
@@ -1071,18 +1132,22 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
   </div>
   <div class="collapsible-body">
     <p>The Bootstrap Definition associates a deployment-profile auth code with a friendly name. Create one Bootstrap Definition per deployment tier so each tier's licensing can be tracked and rotated independently:</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Use your own auth code, not the placeholder</div>
+      <p>The Auth Code column below shows <code>&lt;your-auth-code&gt;</code> as a placeholder. Substitute the real auth code you copied from your deployment profile in <a href="#prerequisites">1.5</a>. It is a single value in the format <code>D</code> followed by seven digits (for example <code>D1234567</code>), and the same value is used in all three rows because all three tiers draw from one credit pool.</p>
+    </div>
     <table>
       <tr><th>Bootstrap Definition</th><th>Used by Tier</th><th>Auth Code</th><th>Description</th></tr>
-      <tr><td><code>BD-AZ-COMMON</code></td><td>Common Model</td><td><code>D1234567</code></td><td>Common Model deployments</td></tr>
-      <tr><td><code>BD-AZ-TVNET-INBOUND</code></td><td>TVNet Dedicated &mdash; Inbound tier</td><td><code>D1234567</code></td><td>TVNet Inbound dedicated tier</td></tr>
-      <tr><td><code>BD-AZ-TVNET-OBEW</code></td><td>TVNet Dedicated &mdash; OBEW tier</td><td><code>D1234567</code></td><td>TVNet OBEW dedicated tier</td></tr>
+      <tr><td><code>BD-AZ-COMMON</code></td><td>Common Model</td><td><code>&lt;your-auth-code&gt;</code></td><td>Common Model deployments</td></tr>
+      <tr><td><code>BD-AZ-TVNET-INBOUND</code></td><td>TVNet Dedicated &mdash; Inbound tier</td><td><code>&lt;your-auth-code&gt;</code></td><td>TVNet Inbound dedicated tier</td></tr>
+      <tr><td><code>BD-AZ-TVNET-OBEW</code></td><td>TVNet Dedicated &mdash; OBEW tier</td><td><code>&lt;your-auth-code&gt;</code></td><td>TVNet OBEW dedicated tier</td></tr>
     </table>
     <p>For each row in the table:</p>
     <ol>
       <li>Go to <strong>Panorama &gt; SW Firewall License &gt; Bootstrap Definitions</strong>.</li>
       <li>Click <strong>Add</strong>.</li>
       <li>Enter the <strong>Name</strong> from the table.</li>
-      <li>Paste the <strong>Auth Code</strong> from your deployment profile (created in <a href="#prerequisites">1.4</a>), in the format <code>D1234567</code>.</li>
+      <li>Paste the <strong>Auth Code</strong> you obtained in <a href="#prerequisites">1.5</a> from the deployment profile created in <a href="#prerequisites">1.4</a>. It has the format <code>D1234567</code>.</li>
       <li>Optionally fill <strong>Description</strong> with the credit pool ID for traceability (e.g., <code>Credit Pool ID: 8267823982 &mdash; Common Model deployments</code>).</li>
       <li>Click <strong>OK</strong>.</li>
     </ol>
@@ -1932,11 +1997,15 @@ az storage container create --name $CONTAINER --account-name $SA</code></pre>
   </div>
   <div class="collapsible-body">
     <p>Clone the official Palo Alto Networks Azure modules into your workspace, then copy the example you'll customize into your Git repo from Phase 1.11.</p>
+    <p>Two separate repositories are involved, and it is easy to conflate them. The upstream modules repo is a <strong>read-only reference</strong> you clone once to a scratch location. Your own deployment repo (created in <a href="#prerequisites">1.11</a>) is where your committed Terraform code lives. Change into your own deployment repo before running the <code>mkdir</code> command below, so the project directory is created inside version control:</p>
     <div class="code-block">
       <pre><code># Clone the upstream modules repo (read-only reference)
 git clone https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules.git ~/swfw-modules-ref
 
-# In your own deployment repo (from Phase 1.11), create a project directory
+# Change into YOUR OWN deployment repo cloned in Phase 1.11
+cd ~/&lt;your-deployment-repo&gt;
+
+# Create the project directory inside your deployment repo
 mkdir -p pan-vmseries-azure &amp;&amp; cd pan-vmseries-azure
 
 # Copy ONE example as your starting point — choose A or B
@@ -3339,7 +3408,7 @@ debug logview component bts_details</code></pre>
       <tr><td>Firewall stuck at 192.168.1.1</td><td>Bootstrap failed &mdash; reverted to factory defaults</td><td>Check custom data syntax, verify no spaces around <code>=</code> signs in bootstrap parameters. In Azure Portal, check the VM's <strong>Export template</strong> to confirm custom data was passed correctly.</td></tr>
       <tr><td>Firewall boots but not in Panorama</td><td>Cannot reach Panorama on ports 3978 / 28443</td><td>Verify VNet peering, NSGs, and routing between management subnet and Panorama. See <em>Panorama Connectivity</em> below.</td></tr>
       <tr><td>Licensed but wrong DG / Template Stack</td><td><code>dgname</code> or <code>tplname</code> mismatch</td><td>Verify exact names match what exists on Panorama (case-sensitive). Check the custom data bootstrap string.</td></tr>
-      <tr><td>Device certificate failure</td><td>Invalid or expired registration PIN</td><td>Generate a new PIN in the Customer Support Portal. Update <code>vm-series-auto-registration-pin-id</code> and <code>pin-value</code> in terraform.tfvars.</td></tr>
+      <tr><td>Device certificate failure</td><td>Invalid or expired registration PIN</td><td>Generate a new PIN in the Customer Support Portal under <strong>Products &gt; Device Certificates &gt; VM Registration PIN</strong>. Update <code>vm-series-auto-registration-pin-id</code> and <code>pin-value</code> in terraform.tfvars.</td></tr>
       <tr><td>Content version mismatch</td><td>Content version incompatible with PAN-OS version</td><td>Ensure the minimum content version required for the target PAN-OS is available. Check <code>debug logview component bts_details</code> for details.</td></tr>
     </table>
 
