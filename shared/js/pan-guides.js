@@ -427,9 +427,10 @@ document.addEventListener('click', (e) => {
 
     // Build inner markup
     const month = updated.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    const what = el.dataset.what ? el.dataset.what : 'this page was recently revised';
     el.innerHTML =
       '<span class="update-banner-dot" aria-hidden="true"></span>' +
-      '<span class="update-banner-text"><strong>Updated ' + month + '</strong> &mdash; this page was recently revised.</span>' +
+      '<span class="update-banner-text"><strong>Updated ' + month + '</strong> &mdash; ' + what + '.</span>' +
       '<button class="update-banner-dismiss" aria-label="Dismiss update notice">&times;</button>';
 
     el.querySelector('.update-banner-dismiss').addEventListener('click', () => {
