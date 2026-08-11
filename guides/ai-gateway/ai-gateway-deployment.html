@@ -91,7 +91,7 @@
 
 <div class="callout callout-warning">
   <div class="callout-title">Newly released feature</div>
-  <p>AI Gateway is a new Prisma AIRS capability and this guide tracks the <a href="https://docs.paloaltonetworks.com/ai-runtime-security/administration/configure-ai-gateway" target="_blank" rel="noopener">initial official documentation release</a>. Most screenshots in this guide are captured from a live tenant. A few operational details (such as the Hybrid data plane Helm charts and the MCP registration wizard) have not yet been published by Palo Alto Networks or captured; those gaps are flagged inline where they occur.</p>
+  <p>AI Gateway is a new Prisma AIRS capability and this guide tracks the <a href="https://docs.paloaltonetworks.com/ai-runtime-security/administration/configure-ai-gateway" target="_blank" rel="noopener">initial official documentation release</a>. Most screenshots in this guide are captured from a live tenant. A few operational details (such as the MCP registration wizard) have not yet been published by Palo Alto Networks or captured; those gaps are flagged inline where they occur. The Hybrid data plane steps draw their commands and configuration from the public <a href="https://github.com/Portkey-AI/airs-gw-helm" target="_blank" rel="noopener">airs-gw-helm</a> chart repository that the registration wizard links to.</p>
 </div>
 
 <div class="cloud-links">
@@ -242,9 +242,10 @@
   <div class="callout-title">Which path should I pick?</div>
   <ul>
     <li><strong>SaaS</strong> &mdash; the default. Choose it when you want zero infrastructure work, automatic scaling, and built-in high availability. It is enabled as soon as licensing completes.</li>
-    <li><strong>Hybrid</strong> &mdash; choose it when AI traffic must stay inside your own environment (any public cloud, private cloud, or on-premises Kubernetes cluster), or when you need local prompt-log export to your own S3 bucket. You operate the data plane; SCM still manages it.</li>
+    <li><strong>Hybrid</strong> &mdash; choose it when AI traffic must stay inside your own environment (any public cloud, private cloud, or on-premises Kubernetes cluster), or when you need prompt logs written to storage you own. You operate the data plane; SCM still manages it.</li>
   </ul>
   <p>Pricing is identical for both models. There is no cost penalty for choosing one over the other, and no additional cost for using multiple gateways or distributing the data plane.</p>
+  <p>For most deployments this is an either/or decision, and the rest of this guide treats it that way. Technically, though, the two are not mutually exclusive: the SaaS gateway stays enabled per TSG even after you deploy a Hybrid data plane, so a tenant can run both at once. That is useful for piloting Hybrid alongside existing SaaS traffic, and it is something to switch off deliberately if your reason for choosing Hybrid was that no AI traffic may leave your environment. Phase 2, Step 2.1 covers the toggle.</p>
 </div>
 
 <div class="fork-banner">
@@ -537,7 +538,6 @@ estimated monthly tokens = total characters sent and received per month / 4</cod
 
   <!-- ── Hybrid panel ── -->
   <div class="mgmt-panel" data-plane="hybrid">
-    <!-- TODO(links): capture the URLs behind the registration wizard's Configuration Reference, Deployment guide, and external Redis links -->
 
     <div class="collapsible">
       <div class="collapsible-header">
@@ -547,13 +547,40 @@ estimated monthly tokens = total characters sent and received per month / 4</cod
       <div class="collapsible-body">
         <p>The Hybrid data plane ships as a <strong>container image with Helm charts</strong> and can run in any Kubernetes cluster you control, in a public cloud, a private cloud, or on-premises. Registration comes first: SCM creates the gateway record and generates the deployment values your cluster will use.</p>
         <ol>
-          <li>On <strong>AI Security &rarr; Home</strong>, click <strong>Deploy Hybrid</strong> on the AI Gateway card (<strong>Launch AI Gateway</strong> leads into the same hybrid registration flow). The <strong>Gateway Registration</strong> wizard opens (under <strong>AI Gateway &rarr; Admin Settings</strong>) with three stages: Register Gateway, Workspace Provisioning, and Configure Gateway Deployment.</li>
+          <li>Open <strong>AI Security &rarr; AI Gateway &rarr; Admin Settings</strong> and select the <strong>Gateway Registration</strong> tab. This is the durable home of the Hybrid flow; the <strong>Deploy Hybrid</strong> button on the AI Security Home card leads to the same place, but that card is state-aware and stops offering the button once a gateway exists.</li>
+          <li>Click <strong>+ Add New Gateway</strong> on the right of the <strong>Total Gateways</strong> bar. The <strong>Gateway Registration</strong> wizard opens with three stages: Register Gateway, Workspace Provisioning, and Configure Gateway Deployment.</li>
           <li>Enter a <strong>Gateway Name</strong>.</li>
           <li>Select the <strong>Gateway Type</strong>: <strong>Production</strong> or <strong>Non Production</strong>.</li>
           <li>Click <strong>Next</strong>.</li>
         </ol>
-        <p><em>Your screen should look like this:</em></p>
+        <p><em>The Gateway Registration tab, before any gateway exists:</em></p>
+        <img src="aigw-screenshots/aigw-hybrid-gateway-registration-tab.png" alt="Admin Settings Gateway Registration tab showing the SaaS Gateway row with an Enabled toggle, a search box, and a Total Gateways counter reading zero with the Add New Gateway button highlighted" loading="lazy">
+        <p><em>After clicking Add New Gateway, the wizard's first stage:</em></p>
         <img src="aigw-screenshots/aigw-hybrid-register-gateway.png" alt="Gateway Registration wizard step one with the Gateway Name field, Production and Non Production gateway type options, and the Next button highlighted" loading="lazy">
+        <p><em>Once the wizard finishes, the gateway appears in the list:</em></p>
+        <img src="aigw-screenshots/aigw-hybrid-gateway-registered-unknown.png" alt="Gateway Registration tab listing one gateway named AI-Gateway with a copyable slug, type Production, Connection Status reading Unknown, Default set to Yes, and Last Sync showing two dashes" loading="lazy">
+        <div class="callout callout-note">
+          <div class="callout-title">Optional &mdash; the SaaS gateway can be switched off</div>
+          <p>Deploying Hybrid does not disable the SaaS gateway. Both run in parallel, and the <strong>SaaS Gateway</strong> row at the top of this page stays <strong>Enabled</strong> per TSG regardless. If your reason for choosing Hybrid is that AI traffic must never leave your environment, switch that row's toggle off once Step 2.7 shows your data plane healthy and you have proven a request through it. Turning it off earlier takes your gateway offline, and breaks any client already pointed at the SaaS endpoint.</p>
+        </div>
+        <div class="callout callout-note">
+          <div class="callout-title">Total Gateways counts Hybrid gateways only</div>
+          <p>The counter reads <strong>0</strong> on a tenant that is already serving traffic through the SaaS gateway, because the SaaS gateway is the separate row above rather than a list entry. An empty list here does not mean AI Gateway is unlicensed or inactive.</p>
+        </div>
+        <div class="callout callout-note">
+          <div class="callout-title">Connection Status reads Unknown until you deploy</div>
+          <p>A gateway that has been registered but never deployed reads <strong>Unknown</strong>, with <strong>Last Sync</strong> showing <code>--</code>. This is expected, not an error. Registration creates the record in SCM; the status only changes once running pods check in, so <strong>Unknown</strong> is the normal state for the entire gap between finishing this wizard and completing Step 2.6.</p>
+        </div>
+        <div class="callout callout-note">
+          <div class="callout-title">The gateway list columns</div>
+          <ul>
+            <li><strong>Slug Name</strong> &mdash; the copyable identifier (for example <code>dp-ai-gateway-5aa51a</code>) that names this data plane. Note it now; slugs are how gateways and integrations are referenced.</li>
+            <li><strong>Type</strong> &mdash; the Production or Non Production choice you made above.</li>
+            <li><strong>Connection Status</strong> &mdash; whether the pods are currently reaching the management plane.</li>
+            <li><strong>Default</strong> &mdash; whether traffic that does not name a gateway lands here.</li>
+            <li><strong>Last Sync</strong> &mdash; the last successful check-in, which the data plane repeats roughly every 30 seconds once running.</li>
+          </ul>
+        </div>
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
           <p>The wizard advances to the <strong>Workspace Provisioning</strong> stage with Register Gateway marked complete.</p>
@@ -611,7 +638,7 @@ environment:
         </div>
         <ol>
           <li>Click <strong>Download values.yaml</strong>, or use the copy icon on the values block, and store the file securely.</li>
-          <li>Open and bookmark the <strong>Deployment guide</strong> and <strong>Configuration Reference</strong> links on this screen now. Step 2.4 needs the Deployment guide's install commands, and this wizard closes when you click Done.</li>
+          <li>Note the <strong>Configuration Reference</strong>, <strong>Deployment guide</strong>, and Redis links on this screen. They point into the public <a href="https://github.com/Portkey-AI/airs-gw-helm" target="_blank" rel="noopener">Portkey-AI/airs-gw-helm</a> repository, which stays reachable after the wizard closes; the table below reproduces them so you do not have to capture them now.</li>
           <li>Click <strong>Done</strong>.</li>
         </ol>
         <p><em>Your screen should look like this:</em></p>
@@ -620,9 +647,20 @@ environment:
           <div class="callout-title">Save the values now &mdash; shown once</div>
           <p>The wizard warns that these values <strong>will not be available later</strong>. Download or copy them before clicking Done. Treat the file as credentials: store it in a secret manager and never commit it to a repository.</p>
         </div>
+        <p>The wizard's three reference links all resolve into the public Helm chart repository, which is where the rest of this phase draws its commands and configuration from:</p>
+        <table>
+          <thead>
+            <tr><th>Link on the screen</th><th>Where it goes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Configuration Reference</td><td><a href="https://github.com/Portkey-AI/airs-gw-helm" target="_blank" rel="noopener">Portkey-AI/airs-gw-helm</a> &mdash; the chart repository. The full value-by-value reference is <a href="https://github.com/Portkey-AI/airs-gw-helm/blob/main/charts/airs-gw/docs/Configuration.md" target="_blank" rel="noopener">docs/Configuration.md</a>.</td></tr>
+            <tr><td>Deployment guide</td><td><a href="https://github.com/Portkey-AI/airs-gw-helm/blob/main/charts/airs-gw/docs/Configuration.md" target="_blank" rel="noopener">docs/Configuration.md</a>. The install commands themselves live in the <a href="https://github.com/Portkey-AI/airs-gw-helm/blob/main/charts/airs-gw/README.md" target="_blank" rel="noopener">chart README</a>, reproduced in Step 2.6.</td></tr>
+            <tr><td>This document (in the Redis bullet)</td><td><a href="https://github.com/Portkey-AI/airs-gw-helm/blob/main/charts/airs-gw/README.md" target="_blank" rel="noopener">chart README</a>, whose cache-store section points to <a href="https://github.com/Portkey-AI/airs-gw-helm/blob/main/charts/airs-gw/docs/Redis.md" target="_blank" rel="noopener">docs/Redis.md</a> for the per-provider authentication options.</td></tr>
+          </tbody>
+        </table>
         <div class="callout callout-note">
-          <div class="callout-title">Reference links on this screen</div>
-          <p>The screen links to a <strong>Configuration Reference</strong> (all available configuration options), a <strong>Deployment guide</strong> (end-to-end deployment steps), and an external Redis document. The Helm chart spawns a built-in Redis instance by default; for production deployments, Palo Alto Networks recommends connecting to an external Redis instead, as covered in Step 2.4.</p>
+          <div class="callout-title">The chart is public, the credentials are not</div>
+          <p>Everything the wizard links to is an open GitHub repository you can read before or after registering. Only the <code>values.yaml</code> on this screen is sensitive, because it carries your image pull credentials and environment secrets.</p>
         </div>
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
@@ -634,51 +672,37 @@ environment:
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>Step 2.4 (Hybrid): Install the data plane with Helm</span>
+        <span>Step 2.4 (Hybrid): Confirm what the cluster has to provide</span>
       </div>
       <div class="collapsible-body">
-        <p>Install the data plane chart into a Kubernetes cluster using the <code>values.yaml</code> you saved in Step 2.3 (it carries the registry location, image pull credentials, and environment secrets). Follow the <strong>Deployment guide</strong> you bookmarked in Step 2.3 for the install commands; the exact <code>helm</code> command sequence has not yet been published by Palo Alto Networks, and the registration wizard that linked the guide does not reopen after Done.</p>
-
         <div class="callout callout-note">
           <div class="callout-title">The underlying Kubernetes infrastructure does not matter</div>
           <p>The data plane is an ordinary container workload delivered as a Helm chart, so it does not know or care what is underneath it. EKS, AKS, GKE, OpenShift, Rancher, k3s, or a self-built cluster on bare metal are all equally valid, and none of them change a single value in the file SCM generated for you. Any cluster that meets the requirements below can run the data plane.</p>
         </div>
 
-        <p>The cluster needs four things, and nothing beyond them:</p>
+        <p>Check these before you install, because every one of them fails at a different and confusing point later if it is missing:</p>
         <table>
           <thead>
             <tr><th>Requirement</th><th>Why the data plane needs it</th></tr>
           </thead>
           <tbody>
             <tr><td>A conformant Kubernetes cluster you can deploy to</td><td>The data plane runs as normal pods. Any distribution that passes upstream conformance is fine; there is no minimum managed-service tier and no cloud-specific integration.</td></tr>
-            <tr><td>Helm, with permission to install a release</td><td>The chart is the only supported delivery mechanism. Your account needs enough RBAC to create the release's resources in the target namespace.</td></tr>
-            <tr><td>Egress to <code>registry.portkey.ai</code> and to Strata Cloud Manager</td><td>Nodes pull the data plane image from the registry using the credentials in <code>values.yaml</code>, and the running pods call home to SCM for management. Proxies and firewalls in the path must allow both.</td></tr>
+            <tr><td><a href="https://helm.sh/docs/intro/install/" target="_blank" rel="noopener">Helm</a>, with permission to install a release</td><td>The chart is the only supported delivery mechanism. Your account needs enough RBAC to create the release's resources in the target namespace.</td></tr>
+            <tr><td>Outbound HTTPS on 443 to <code>api.portkey.ai</code></td><td>The pods pull configuration every 30 seconds and push analytics in batches. All management traffic is <strong>outbound only</strong>, so no inbound path into the cluster is required.</td></tr>
+            <tr><td>Image pull access to <code>registry.portkey.ai</code></td><td>The gateway image is pulled from here with the credentials in your <code>values.yaml</code>. The chart's optional bundled components pull from <code>docker.io</code> and <code>quay.io</code> as well, so a mirrored or air-gapped cluster needs all three mirrored.</td></tr>
+            <tr><td>An object store and a Redis the pods can reach</td><td>Request and response logs go to an object store, and cached configuration and rate-limit state go to Redis. Step 2.5 configures both; the chart can supply Redis itself but the object store is yours.</td></tr>
             <tr><td>CPU and memory you can allocate to the pods</td><td>Gateway <strong>scale is dependent on the CPU and memory allocated to the Data Plane</strong>, so the resources you request set your throughput ceiling. Size against the AI traffic volume you estimated in Step 1.2.</td></tr>
           </tbody>
         </table>
 
-        <p>The install itself is the ordinary Helm flow:</p>
-        <ol>
-          <li>Point your <code>kubectl</code> context at the target cluster and confirm you can reach it.</li>
-          <li>Create or choose the namespace the release will live in.</li>
-          <li>Install the chart with your saved <code>values.yaml</code>, following the Deployment guide you bookmarked in Step 2.3.</li>
-          <li>Set the pods' CPU and memory requests to match your expected traffic volume.</li>
-        </ol>
-        <!-- TODO(hybrid): paste the helm install command sequence when the Deployment guide content is published -->
-
         <div class="callout callout-note">
-          <div class="callout-title">High availability is a cluster property, not a gateway setting</div>
-          <p>There is no gateway-specific HA toggle. When the cluster's nodes span multiple failure domains, the scheduler distributes data plane pods across them automatically. On a cloud-managed cluster those failure domains are Availability Zones; on-premises they are whatever you have labeled your nodes with, such as racks, rooms, or sites. Give the scheduler more than one domain and run more than one replica, then confirm the spread with <code>kubectl get pods -o wide</code>.</p>
-        </div>
-
-        <div class="callout callout-note">
-          <div class="callout-title">External Redis for production</div>
-          <p>The Helm chart spawns a built-in Redis instance by default. For production deployments, Palo Alto Networks recommends connecting to an external Redis instead. That can be a managed service if your platform offers one, or a Redis you operate yourself with authentication enabled; the data plane only needs a reachable, authenticated endpoint. The wizard's linked Redis document covers the supported options.</p>
+          <div class="callout-title">Traffic is outbound only</div>
+          <p>The data plane opens connections to the management plane; the management plane never opens connections to your cluster. That means no inbound firewall rule, no public load balancer, and no VPN back to Palo Alto Networks is needed for management. The chart documents the full list of outbound calls in <a href="https://github.com/Portkey-AI/airs-gw-helm/blob/main/charts/airs-gw/docs/OutboundAPIs.md" target="_blank" rel="noopener">OutboundAPIs.md</a>.</p>
         </div>
 
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>The Helm release installs successfully and the data plane pods show as Running in <code>kubectl get pods</code> with the resource allocations you intended.</p>
+          <p>You can run <code>kubectl get nodes</code> against the target cluster, <code>helm version</code> returns a v3 client, and you have confirmed with whoever runs your network that the cluster can reach <code>api.portkey.ai</code> and <code>registry.portkey.ai</code> on 443.</p>
         </div>
       </div>
     </div>
@@ -686,25 +710,340 @@ environment:
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>Step 2.5 (Hybrid): Verify the Data Plane in SCM</span>
+        <span>Step 2.5 (Hybrid): Add your storage backends to values.yaml</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The <code>values.yaml</code> SCM generated is <strong>not ready to deploy as-is</strong>. Its <code>environment.data</code> block arrives empty: the file carries your identity and image pull credentials, but says nothing about where logs and cache state go. Two backends have to be filled in before the install.</p>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Do not skip straight to helm install</div>
+          <p>Installing the downloaded file unmodified gives the gateway nowhere durable to put request and response logs. The log store is the one you must configure; the cache store has a working in-cluster default you can accept, and the vector store and OpenTelemetry export at the bottom of this step are genuinely optional.</p>
+        </div>
+
+        <p>Both backends are set the same way, as keys under <code>environment.data</code> in the file you downloaded:</p>
+        <ul>
+          <li><strong>Log store</strong> &mdash; an object store holding raw LLM request and response bodies. This is the mechanism behind the prompt logs you will read in Phase 4.</li>
+          <li><strong>Cache store</strong> &mdash; a Redis holding cached configuration, rate limit counters, and budget state, refreshed from the management plane roughly every 30 seconds.</li>
+        </ul>
+
+        <div class="callout callout-danger">
+          <div class="callout-title">Merge into the existing environment block, do not add a second one</div>
+          <p>The downloaded file already contains a top-level <code>environment:</code> key holding <code>create</code>, <code>secret</code>, and an empty <code>data</code>. Add your <code>LOG_STORE_*</code> lines <strong>underneath that existing <code>data:</code></strong>. YAML does not merge duplicate top-level keys: pasting a second <code>environment:</code> block silently discards the first, taking your gateway's environment secrets with it, and the failure surfaces later as a gateway that cannot authenticate rather than as a parse error. Blocks with their own top-level key, such as <code>minio:</code> and <code>redis:</code>, can be appended anywhere in the file.</p>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">This choice is about your storage, not your cluster</div>
+          <p>Step 2.4 established that the Kubernetes platform underneath makes no difference. Storage is the one place where the environment genuinely does change what you type, because each provider has its own service names, environment variables, and authentication model. Pick the tab matching the storage you already own, which is usually but not always the platform your cluster runs on. Nothing stops an on-premises cluster from writing to S3, or an EKS cluster from writing to in-cluster MinIO.</p>
+        </div>
+
+        <div class="fork-banner">
+          <div class="fork-icon"><svg viewBox="0 0 24 24"><path d="M12 3v6"/><path d="M12 9l-4 4"/><path d="M12 9l4 4"/><path d="M8 13v5"/><path d="M16 13v5"/></svg></div>
+          <div class="fork-text">
+            <span class="fork-label">Choose your path</span>
+            <span class="fork-desc">Storage Backend</span>
+            <span class="fork-hint">Each tab carries a complete log store and cache store pair. The selection is sticky across the page.</span>
+          </div>
+        </div>
+
+        <div class="mgmt-tabs" data-tab-group="hybrid-storage">
+          <div class="mgmt-tab-bar">
+            <button class="mgmt-tab active" data-plane="onprem">On-Prem &middot; In-Cluster</button>
+            <button class="mgmt-tab" data-plane="aws">AWS</button>
+            <button class="mgmt-tab" data-plane="azure">Azure</button>
+            <button class="mgmt-tab" data-plane="gcp">GCP</button>
+          </div>
+
+          <!-- ── On-prem panel ── -->
+          <div class="mgmt-panel active" data-plane="onprem">
+            <p>With no cloud object store or managed cache available, the chart can supply both itself. This is the only path that needs no external service and no cloud identity at all, which also makes it the quickest way to prove the deployment works before introducing external storage.</p>
+
+            <h4>Log store &mdash; in-cluster MinIO</h4>
+            <p>Enable the bundled MinIO and point the log store at it. MinIO is disabled by default, so both blocks below are required.</p>
+            <div class="code-block">
+              <pre><code>minio:
+  enabled: true
+  name: "minio"
+  authKey:
+    create: true
+    accessKey: "&lt;Enter access key here&gt;"   # you choose this
+    secretKey: "&lt;Enter secret here&gt;"       # you choose this
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: "&lt;Enter storage class here&gt;"   # kubectl get storageclass
+    accessMode: ReadWriteOnce
+
+# already in your downloaded file, do not duplicate this key
+environment:
+  create: true
+  secret: true
+  data:
+    PORTKEY_CLIENT_AUTH: "&lt;already present&gt;"
+    ORGANISATIONS_TO_SYNC: "&lt;already present&gt;"
+    PORT: "8787"
+    # add the log store keys below, alongside the ones above
+    LOG_STORE: s3_custom
+    LOG_STORE_REGION: "us-east-1"                    # placeholder value; see note below
+    LOG_STORE_ACCESS_KEY: "&lt;Enter access key here&gt;"   # same as above
+    LOG_STORE_SECRET_KEY: "&lt;Enter secret here&gt;"       # same as above
+    LOG_STORE_GENERATIONS_BUCKET: "&lt;Enter bucket name here&gt;"   # chart creates this bucket
+    LOG_STORE_BASEPATH: "&lt;Enter bucket name here&gt;"             # same bucket name</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <div class="callout callout-note">
+              <div class="callout-title">Region is a placeholder here</div>
+              <p>There are no regions in a single in-cluster MinIO, but <code>LOG_STORE_REGION</code> should still be set to a plausible value rather than left blank. Region is part of the S3 signature scope, so an empty string can produce signing failures depending on the client. Use <code>us-east-1</code>, the conventional default for S3-compatible storage, and keep the same value everywhere you point a client at this MinIO. A mismatch between what the client signs with and what the server expects is a common cause of <code>SignatureDoesNotMatch</code> errors.</p>
+            </div>
+            <div class="callout callout-note">
+              <div class="callout-title">The bucket creates itself, but only if you name it</div>
+              <p>You do not need to create the bucket by hand. On startup the MinIO pod runs an init step that waits for MinIO to come up, then issues <code>mc mb --ignore-existing</code> for the bucket named in <code>LOG_STORE_GENERATIONS_BUCKET</code>.</p>
+              <p>Set that key even though the chart's own <code>s3_custom</code> example omits it. That example lists only <code>LOG_STORE_BASEPATH</code>, but the MinIO init step reads <code>LOG_STORE_GENERATIONS_BUCKET</code>, and with it unset the command renders as <code>mc mb --ignore-existing minio/</code> and no bucket is created. Giving both keys the same bucket name satisfies the init step and the gateway's own path handling at once. The key is documented in the chart's <a href="https://github.com/Portkey-AI/airs-gw-helm/blob/main/charts/airs-gw/docs/Configuration.md" target="_blank" rel="noopener">Configuration reference</a> as the bucket for generation logs.</p>
+            </div>
+            <p>Find your cluster's storage class with <code>kubectl get storageclass</code> and use the one marked <code>(default)</code>. On K3s and RKE2 that is typically <code>local-path</code>, the Rancher local-path provisioner. The MinIO console can be reached without exposing it, using <code>kubectl port-forward svc/minio 9001:9001</code>, then signing in at <code>http://localhost:9001</code> with the same access key and secret key you set above.</p>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">Node-local storage pins your pods</div>
+              <p>Check the provisioner before treating this as production storage. A local-path or hostPath provisioner writes to a directory on whichever node the pod lands on, so the volume cannot move: if that node goes away, the data goes with it, and the pod cannot reschedule elsewhere. That is fine for a lab or a first deployment, and it directly conflicts with the multi-replica, spread-across-failure-domains posture described in Step 2.6. For production on-premises, back MinIO with networked storage (Ceph, Longhorn, or an NFS or iSCSI class) so volumes follow their pods.</p>
+              <p>A related detail worth knowing: a class with <code>VOLUMEBINDINGMODE: WaitForFirstConsumer</code> leaves the PersistentVolumeClaim in <code>Pending</code> until a pod actually schedules against it. Seeing <code>Pending</code> immediately after install is expected with that mode, not a failure.</p>
+            </div>
+
+            <h4>Cache store &mdash; bundled Redis</h4>
+            <p>The chart deploys its own Redis when <code>redis.external.enabled</code> is <code>false</code>, and that is already the default. <strong>You do not have to add anything for the cache store</strong>: omit the <code>redis</code> block entirely and you get a working in-cluster Redis.</p>
+            <p>The one default worth reconsidering is persistence, which is off, making the bundled Redis ephemeral. Cache contents rebuild from the management plane on restart, so this is survivable, but a pod restart drops rate limit and budget counters along with the cache. To keep it across restarts:</p>
+            <div class="code-block">
+              <pre><code>redis:
+  statefulSet:
+    persistence:
+      enabled: true
+      size: 2Gi
+      storageClassName: "&lt;Enter storage class here&gt;"</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+
+            <div class="callout callout-note">
+              <div class="callout-title">Why some external keys still apply to the bundled Redis</div>
+              <p>The naming is misleading. When <code>redis.external.enabled</code> is <code>false</code>, the chart composes the connection URL itself from the release name and ignores <code>connectionUrl</code>, but it still reads <code>tlsEnabled</code>, <code>mode</code>, and <code>store</code> from under <code>redis.external</code> and writes them into the Redis Secret. Those three are shared settings that happen to live under an <code>external</code> key, not external-only ones. Their defaults (<code>"false"</code>, <code>"standalone"</code>, <code>"redis"</code>) are correct for the bundled instance, which is why nothing above needs to set them. Only <code>connectionUrl</code> and <code>existingSecretName</code> are genuinely external-only.</p>
+            </div>
+
+            <p>To use a Redis you operate yourself instead of the bundled one, set <code>external.enabled: true</code> and give it a <code>connectionUrl</code> such as <code>redis://my-redis:6379</code>, turning on <code>tlsEnabled</code> and authentication if your instance requires them.</p>
+          </div>
+
+          <!-- ── AWS panel ── -->
+          <div class="mgmt-panel" data-plane="aws">
+            <p>Amazon S3 for logs and Amazon ElastiCache for the cache store. The examples below use role-based access rather than static keys, which is the recommended pattern on EKS.</p>
+
+            <h4>Log store &mdash; Amazon S3</h4>
+            <p>Using IRSA or EKS Pod Identity, where the pods assume a role through their service account:</p>
+            <div class="code-block">
+              <pre><code>serviceAccount:
+  create: true
+  automount: true
+  name: &lt;SERVICE_ACCOUNT_NAME&gt;
+  annotations:
+    eks.amazonaws.com/role-arn: &lt;ROLE_ARN&gt;
+
+# already in your downloaded file, do not duplicate this key
+environment:
+  data:
+    LOG_STORE: s3_assume
+    LOG_STORE_REGION: "&lt;AWS_BUCKET_REGION&gt;"
+    LOG_STORE_GENERATIONS_BUCKET: "&lt;AWS_BUCKET_NAME&gt;"</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>The role needs <code>s3:PutObject</code> and <code>s3:GetObject</code> on the bucket. <code>serviceAccount.name</code> is a name you choose rather than one you look up, and it must match the <code>system:serviceaccount:&lt;namespace&gt;:&lt;name&gt;</code> subject in the role's trust policy.</p>
+
+            <h4>Cache store &mdash; Amazon ElastiCache</h4>
+            <div class="code-block">
+              <pre><code># already in your downloaded file, do not duplicate this key
+environment:
+  data:
+    CACHE_STORE: aws-elastic-cache
+    REDIS_URL: "redis://&lt;ElastiCache_Endpoint&gt;:&lt;Port&gt;"
+    REDIS_TLS_ENABLED: "true"
+    REDIS_MODE: cluster
+    REDIS_PASSWORD: &lt;Auth_Token&gt;</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>Add <code>REDIS_MODE: cluster</code> only when cluster mode is enabled, in which case use the Configuration Endpoint rather than the Primary Endpoint. The ElastiCache security group needs an inbound rule allowing the cluster. IAM authentication is also supported, using <code>AWS_REDIS_AUTH_MODE: iam</code> with <code>AWS_REDIS_CLUSTER_NAME</code> and <code>REDIS_USERNAME</code>, and requires <code>elasticache:Connect</code> on the role.</p>
+          </div>
+
+          <!-- ── Azure panel ── -->
+          <div class="mgmt-panel" data-plane="azure">
+            <p>Azure Blob Storage for logs and Azure Managed Redis for the cache store. Azure offers three authentication modes for each; Workload Identity is shown first as the recommended option.</p>
+
+            <h4>Log store &mdash; Azure Blob Storage</h4>
+            <p>Workload Identity requires the OIDC issuer and Workload Identity to be enabled on the AKS cluster first:</p>
+            <div class="code-block">
+              <pre><code>serviceAccount:
+  create: true
+  automount: true
+  name: &lt;SERVICE_ACCOUNT_NAME&gt;
+  annotations:
+    azure.workload.identity/client-id: &lt;MANAGED_IDENTITY_CLIENT_ID&gt;
+
+podLabels:
+  azure.workload.identity/use: "true"
+
+# already in your downloaded file, do not duplicate this key
+environment:
+  data:
+    LOG_STORE: azure
+    AZURE_STORAGE_ACCOUNT: &lt;STORAGE_ACCOUNT_NAME&gt;
+    AZURE_STORAGE_CONTAINER: &lt;STORAGE_CONTAINER&gt;
+    AZURE_AUTH_MODE: workload</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>The alternatives set <code>AZURE_AUTH_MODE</code> to <code>managed</code>, adding <code>AZURE_MANAGED_CLIENT_ID</code>, or to <code>entra</code>, adding <code>AZURE_ENTRA_CLIENT_ID</code>, <code>AZURE_ENTRA_CLIENT_SECRET</code>, and <code>AZURE_ENTRA_TENANT_ID</code>. Create the Storage Account and Blob Container before deploying.</p>
+
+            <h4>Cache store &mdash; Azure Managed Redis</h4>
+            <div class="code-block">
+              <pre><code># already in your downloaded file, do not duplicate this key
+environment:
+  data:
+    CACHE_STORE: azure-redis
+    REDIS_URL: "rediss://&lt;Azure_Redis_Endpoint&gt;:&lt;Port&gt;"
+    REDIS_TLS_ENABLED: "true"
+    REDIS_MODE: cluster
+    AZURE_REDIS_AUTH_MODE: password
+    REDIS_PASSWORD: &lt;Access_Key&gt;</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>Note the <code>rediss://</code> scheme for the TLS endpoint. <code>AZURE_REDIS_AUTH_MODE</code> also accepts <code>workload</code>, <code>managed</code> (with <code>AZURE_REDIS_MANAGED_CLIENT_ID</code>), and <code>entra</code> (with the three <code>AZURE_REDIS_ENTRA_</code> values). Whichever identity you use needs a data access policy on the Redis instance.</p>
+          </div>
+
+          <!-- ── GCP panel ── -->
+          <div class="mgmt-panel" data-plane="gcp">
+            <p>Google Cloud Storage for logs and Cloud Memorystore for the cache store.</p>
+
+            <h4>Log store &mdash; Google Cloud Storage</h4>
+            <p>Workload Identity, where a Kubernetes service account impersonates a Google service account:</p>
+            <div class="code-block">
+              <pre><code>serviceAccount:
+  create: true
+  automount: true
+  name: &lt;KSA&gt;
+  annotations:
+    iam.gke.io/gcp-service-account: &lt;GSA&gt;@&lt;PROJECT_ID&gt;.iam.gserviceaccount.com
+
+# already in your downloaded file, do not duplicate this key
+environment:
+  data:
+    LOG_STORE: gcs_assume
+    GCP_AUTH_MODE: workload
+    LOG_STORE_REGION: &lt;GCS_BUCKET_REGION&gt;
+    LOG_STORE_GENERATIONS_BUCKET: &lt;GCS_BUCKET_NAME&gt;</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>The Google service account needs <code>roles/storage.objectAdmin</code> on the bucket's project, which also covers the cross-project case. To use HMAC keys instead, set <code>LOG_STORE: gcs</code> and supply <code>LOG_STORE_ACCESS_KEY</code> and <code>LOG_STORE_SECRET_KEY</code>.</p>
+
+            <h4>Cache store &mdash; Cloud Memorystore</h4>
+            <div class="code-block">
+              <pre><code># already in your downloaded file, do not duplicate this key
+environment:
+  data:
+    CACHE_STORE: gcp-memory-store
+    REDIS_URL: "redis://&lt;GCP_MEMORY_STORE_IP&gt;:&lt;Port&gt;"
+    REDIS_TLS_ENABLED: "false"
+    REDIS_MODE: cluster</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p>Memorystore is addressed by IP rather than hostname. Add <code>REDIS_MODE: cluster</code> only when cluster mode is enabled, and set <code>REDIS_PASSWORD</code> if you enabled the AUTH string on the instance.</p>
+          </div>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Supplying credentials from a Secret instead</div>
+          <p>Every example above writes values directly into <code>values.yaml</code>, which keeps the walkthrough readable but puts credentials in a file. For production, the chart accepts an existing Secret via <code>environment.existingSecret</code>, and Redis separately via <code>redis.external.existingSecretName</code>. The chart also supports vault injection. See the <a href="https://github.com/Portkey-AI/airs-gw-helm/blob/main/charts/airs-gw/docs/SecretManager.md" target="_blank" rel="noopener">SecretManager</a> documentation.</p>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Optional extras</div>
+          <ul>
+            <li><strong>Vector store</strong> &mdash; enables semantic caching, backed by Milvus. On-premises this pairs with the same bundled MinIO. See <a href="https://github.com/Portkey-AI/airs-gw-helm/blob/main/charts/airs-gw/docs/VectorStore.md" target="_blank" rel="noopener">VectorStore.md</a>.</li>
+            <li><strong>OpenTelemetry</strong> &mdash; pushes analytics to an OTel-compatible endpoint, which is the Hybrid answer to the export configuration discussed in Phase 4, Step 4.5.</li>
+            <li><strong>Data service</strong> &mdash; set <code>dataservice.enabled: true</code> for custom fine-tuning, batches, and data exports. Fine-tuning data storage currently supports S3 only.</li>
+          </ul>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Your <code>values.yaml</code> now has a populated <code>environment.data</code> block naming a log store you control, plus either a cache store pointing at a managed Redis or a deliberate decision to keep the bundled one, which needs no configuration at all. Nothing else in the file generated by SCM has been altered. The full value-by-value reference is in <a href="https://github.com/Portkey-AI/airs-gw-helm/blob/main/charts/airs-gw/docs/Configuration.md" target="_blank" rel="noopener">Configuration.md</a>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2.6 (Hybrid): Install the chart with Helm</span>
+      </div>
+      <div class="collapsible-body">
+        <p>With storage configured, the install is four commands. Run them from the directory holding your edited <code>values.yaml</code>, with your <code>kubectl</code> context pointed at the target cluster.</p>
+        <div class="code-block">
+          <pre><code>helm repo add airs-gw https://portkey-ai.github.io/airs-gw-helm
+helm repo update
+
+helm upgrade --install airs-gw airs-gw/airs-gw \
+  -f ./values.yaml \
+  -n airs-gw \
+  --create-namespace</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Then confirm the pods came up:</p>
+        <div class="code-block">
+          <pre><code>kubectl get pods -n airs-gw</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Optionally, reach the gateway locally without exposing it, to prove it is listening before you wire any client to it:</p>
+        <div class="code-block">
+          <pre><code>kubectl port-forward &lt;pod-name&gt; -n airs-gw 8787:8787</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">upgrade --install is deliberate</div>
+          <p>The same command installs the release the first time and upgrades it afterwards, so re-running it after editing <code>values.yaml</code> is the normal way to change configuration. To remove the release entirely, use <code>helm uninstall airs-gw --namespace airs-gw</code>.</p>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Plan for more than one replica</div>
+          <p>The chart ships with <code>replicaCount: 1</code>, which is a starting point rather than a production posture. Palo Alto Networks' resiliency guidance describes three or more gateway pods, and the chart exposes autoscaling (defaulting to a range of 2 to 20 replicas when enabled), pod disruption budgets, and <code>topologySpreadConstraints</code>. Spreading pods across failure domains is what buys availability: Availability Zones on a cloud-managed cluster, or your own labeled racks, rooms, or sites on-premises. Confirm the spread with <code>kubectl get pods -n airs-gw -o wide</code>.</p>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">If pods do not reach Running</div>
+          <p>Check the logs first: <code>kubectl logs -n airs-gw deployment/airs-gw</code>. Image pull failures point at registry egress or the credentials in <code>values.yaml</code>; crash loops shortly after start usually point at the log store or Redis settings from Step 2.5.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p><code>kubectl get pods -n airs-gw</code> shows the gateway pods Running and ready, and <code>kubectl logs</code> shows no repeating connection errors to <code>api.portkey.ai</code> or to your storage backends.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2.7 (Hybrid): Verify the Data Plane in SCM</span>
       </div>
       <div class="collapsible-body">
         <p>The data plane runs in your environment, but its lifecycle is managed centrally. Registration already happened in Step 2.1; this step confirms the pods you deployed connected back to that registration.</p>
         <ol>
-          <li>In SCM, open <strong>AI Security &rarr; AI Gateway &rarr; Observability</strong>.</li>
-          <li>Locate the gateway you named in Step 2.1 and confirm its data plane is listed as connected and healthy, then manage it through SCM from this point on.</li>
+          <li>In SCM, open <strong>AI Security &rarr; AI Gateway &rarr; Admin Settings</strong> and select the <strong>Gateway Registration</strong> tab.</li>
+          <li>Find your gateway in the <strong>Total Gateways</strong> list and confirm its <strong>Connection Status</strong> now reads <strong>Healthy</strong> with a green dot, in place of the <strong>Unknown</strong> it showed before the install.</li>
+          <li>Confirm the <strong>Last Sync</strong> column shows a recent timestamp rather than <code>--</code>. That column is the live proof: it only advances when the pods reach the management plane.</li>
         </ol>
-        <div class="callout callout-note">
-          <div class="callout-title">Health indicator wording pending capture</div>
-          <p>The exact label and placement of the data plane health indicator have not yet been captured from a live Hybrid tenant; this step will name the specific status element once captured.</p>
-        </div>
-        <!-- TODO(screenshot): SCM AI Gateway showing a registered Hybrid data plane; also capture the health indicator element for the step text -->
+
+        <p><em>Your screen should look like this:</em></p>
+        <img src="aigw-screenshots/aigw-hybrid-dataplane-healthy.png" alt="Gateway Registration tab with the gateway row showing Connection Status reading Healthy in green, highlighted, alongside a Last Sync timestamp" loading="lazy">
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>The Hybrid data plane appears in SCM as registered and healthy. Configuration from Phase 3 onward applies to it exactly as it would to the SaaS gateway.</p>
+          <p>Your gateway's <strong>Connection Status</strong> reads <strong>Healthy</strong> and <strong>Last Sync</strong> shows a recent timestamp, which together prove the pods from Step 2.6 are reaching the management plane. Configuration from Phase 3 onward applies to this gateway exactly as it would to the SaaS gateway.</p>
         </div>
       </div>
     </div>
+
   </div>
 </div>
 
@@ -1126,6 +1465,43 @@ and Cache Write Tokens inherit 0.90 from Default.</code></pre>
       <div class="callout-title">Copy these values from your own tenant</div>
       <p>The official Palo Alto Networks documentation currently covers the SCM configuration side of the gateway but does not yet publish the client-facing connection workflow. The AI Gateway is built on the acquired Portkey platform, and the patterns in this step and the next follow that platform's documented behavior. Treat your tenant's UI as the source of truth for the exact base URL, key workflow, and model string.</p>
     </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Hybrid deployments address their own data plane</div>
+      <p>The <strong>Gateway URLs</strong> value SCM shows is the hosted SaaS endpoint. If you deployed a Hybrid data plane in Phase 2, that endpoint is not where your traffic should go: your gateway is the service running in your own cluster, and requests should be sent to it directly. Everything else in this step is unchanged, since the API key and the model reference come from the same SCM tenant either way.</p>
+      <p>The address depends on how you exposed the release. Find the service with:</p>
+      <div class="code-block">
+        <pre><code>kubectl get svc -n airs-gw</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>The gateway service publishes two ports: the LLM traffic port (the chart's <code>service.port</code>, defaulting to <code>8787</code>) and an MCP port on <code>8788</code> used in Step 3.9. Your base URL is built from the first one, reached whichever way suits the cluster:</p>
+      <ul>
+        <li><strong>ClusterIP</strong> &mdash; the in-cluster DNS name, for callers running in the same cluster: <code>http://airs-gw.airs-gw.svc.cluster.local</code> on the service port.</li>
+        <li><strong>NodePort</strong> &mdash; any node's address on the high-numbered port shown in the <code>PORT(S)</code> column.</li>
+        <li><strong>LoadBalancer</strong> &mdash; the address in <code>EXTERNAL-IP</code>, once one is assigned.</li>
+        <li><strong>Port-forward</strong> &mdash; no cluster changes at all, for a quick test from your workstation.</li>
+      </ul>
+      <div class="code-block">
+        <pre><code>kubectl port-forward -n airs-gw pod/&lt;gateway-pod-name&gt; 8787:8787</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>With the forward running, <code>http://localhost:8787</code> is your base URL. Sending traffic straight to your own data plane is the point of Hybrid: prompts and responses never transit a Palo Alto Networks hosted endpoint, while the gateway still reports usage and logs back to SCM exactly as Step 2.7 verified.</p>
+      <div class="callout callout-warning">
+        <div class="callout-title">Port-forward the pod, not the service</div>
+        <p>Running <code>kubectl port-forward</code> against <code>svc/airs-gw</code> can fail with <em>Pod 'airs-gw-redis-0' does not have a named port 'gateway'</em>. The bundled Redis pod carries the same base selector labels as the gateway, and the gateway Service does not narrow its selector by component, so the Service matches the Redis pod as well. Port-forwarding resolves the Service to whichever pod it picks first, and that can be Redis.</p>
+        <p>Target the gateway pod directly, using the name from <code>kubectl get pods -n airs-gw</code>. Note the container listens on <code>8787</code> even when the Service publishes port 80. The same overlap means the Service can route live traffic to Redis, so confirm which pods are actually behind it:</p>
+        <div class="code-block">
+          <pre><code>kubectl get endpoints -n airs-gw airs-gw</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>If a Redis pod's address appears in that list, requests to the Service will intermittently fail. Using an external Redis, as recommended for production in Step 2.5, avoids the overlap entirely because no Redis pod is deployed.</p>
+      </div>
+
+      <div class="callout callout-warning">
+        <div class="callout-title">LoadBalancer stays pending without a controller</div>
+        <p>On-premises clusters have nothing to satisfy a <code>LoadBalancer</code> service unless you have installed a bare-metal load balancer such as MetalLB, so <code>EXTERNAL-IP</code> sits at <code>&lt;pending&gt;</code> indefinitely. The service still works: Kubernetes allocates a NodePort alongside it, visible in the <code>PORT(S)</code> column as <code>80:31707/TCP</code>, and that high port is reachable on any node. Use the NodePort or a port-forward, or switch the service to <code>ClusterIP</code> and put your own ingress in front of it.</p>
+      </div>
+    </div>
     <ol>
       <li>In the left navigation, select <strong>AI Security &rarr; AI Gateway &rarr; Admin Settings</strong> (the last entry in the AI Gateway section). The page opens on the <strong>General</strong> tab, showing the <strong>Organization Details</strong> panel.</li>
       <li>Copy the value in the <strong>Gateway URLs</strong> field; this is your gateway base URL (shown as <code>https://aigw.portkey.ai/v1</code> in the capture below). The <strong>MCP Gateway URLs</strong> field beneath it is the equivalent address for MCP traffic, used in Step 3.9.</li>
@@ -1257,7 +1633,7 @@ export ANTHROPIC_CUSTOM_HEADERS="x-portkey-provider: @&lt;integration-slug&gt;"<
         A JSON response starting with <code>{"id":"msg_</code> and containing a <code>"content":[...]</code> field proves the URL and credential work. An error naming an unknown model still proves both, because the gateway authenticated the request before rejecting the model name.
       </li>
       <li>In the same terminal, run <code>claude</code>, then run <code>/status</code> inside the session. The output includes an <strong>Anthropic base URL</strong> line (shown only when a gateway address is set) and an <strong>Auth token</strong> line confirming which credential is active.</li>
-      <li>Send any prompt, then open <strong>AI Security &rarr; AI Gateway &rarr; Observability</strong> in SCM (the page you verified in Phase 2: Step 2.1 on the SaaS path, Step 2.5 on the Hybrid path) and check the <strong>Logs</strong> tab: the request appears with its model, token counts, and cost, and the Analytics panels tick up from zero.</li>
+      <li>Send any prompt, then open <strong>AI Security &rarr; AI Gateway &rarr; Observability</strong> in SCM (the page you verified in Phase 2: Step 2.1 on the SaaS path, Step 2.7 on the Hybrid path) and check the <strong>Logs</strong> tab: the request appears with its model, token counts, and cost, and the Analytics panels tick up from zero.</li>
       <li>Persist the configuration so every future session routes through the gateway. If <code>~/.claude/settings.json</code> does not exist, create it with exactly the block below. If it already exists, add the <code>"env"</code> key inside the existing top-level object, alongside your other settings, rather than pasting the whole block; the file must remain a single JSON object:
         <div class="code-block">
           <pre><code>{
@@ -1514,7 +1890,7 @@ message = client.messages.create(
     <ol>
       <li>On the Observability <strong>Logs</strong> tab, click a request row to open its trace detail. The panel shows a <strong>Trace ID</strong>, the <strong>Request Details</strong> (model, total cost, request timing, the provider integration, and the API key that made the call), and the full <strong>Request</strong> and <strong>Response</strong> context windows with token counts, each viewable as Pretty or raw JSON.</li>
       <li>Confirm full request and response context is captured for your test traffic.</li>
-      <li><strong>Hybrid deployments only:</strong> configure local export to your customer-owned S3 bucket if compliance requires prompt retention in your own storage. The export configuration steps (where the target is set, and the IAM permissions the data plane needs) have not yet been published; provision the bucket and grant the data plane write access to it, then consult the official documentation for the procedure. Note that the export target is an S3 bucket regardless of where your cluster runs, so a data plane hosted outside AWS still needs credentials that let it write to S3.</li>
+      <li><strong>Hybrid deployments only:</strong> prompt retention in your own storage is configured in the Helm chart rather than in SCM. It is the <code>LOG_STORE</code> setting covered in Phase 2, Step 2.5, and the target does not have to be S3: Azure Blob Storage, Google Cloud Storage, and S3-compatible stores you run yourself are all supported. For S3 specifically the data plane needs <code>s3:PutObject</code> and <code>s3:GetObject</code> on the bucket, granted through a role on the pods' service account.</li>
     </ol>
     <p><em>Clicking the Step 3.8 test request opens its trace (steps 1 and 2):</em></p>
     <img src="aigw-screenshots/aigw-prompt-log-detail.png" alt="Prompt log trace detail showing a Trace ID, Request Details with model claude-fable-5, total cost in cents, request timing, the default-anthropic provider, and the drod-api key, alongside the full Request and Response context windows with token counts and Pretty or JSON views" loading="lazy">
