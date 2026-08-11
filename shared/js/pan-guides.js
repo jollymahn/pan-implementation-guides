@@ -404,3 +404,37 @@ document.addEventListener('click', (e) => {
   if (!img || img.closest('a')) return;
   openLightbox(img);
 });
+
+// ── Update banners ───────────────────────────────────────────────
+// Usage: <div class="update-banner" data-updated="YYYY-MM-DD">
+// Auto-hides after 30 days; dismiss button writes to localStorage.
+(function () {
+  const DAYS = 30;
+  const storageKey = (path) => 'update-banner-dismissed:' + path;
+
+  document.querySelectorAll('.update-banner').forEach((el) => {
+    const raw = el.dataset.updated;
+    if (!raw) return;
+
+    const updated = new Date(raw);
+    const now = new Date();
+    const age = (now - updated) / (1000 * 60 * 60 * 24);
+
+    if (age > DAYS) { el.remove(); return; }
+
+    const key = storageKey(location.pathname);
+    if (localStorage.getItem(key) === raw) { el.remove(); return; }
+
+    // Build inner markup
+    const month = updated.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    el.innerHTML =
+      '<span class="update-banner-dot" aria-hidden="true"></span>' +
+      '<span class="update-banner-text"><strong>Updated ' + month + '</strong> &mdash; this page was recently revised.</span>' +
+      '<button class="update-banner-dismiss" aria-label="Dismiss update notice">&times;</button>';
+
+    el.querySelector('.update-banner-dismiss').addEventListener('click', () => {
+      localStorage.setItem(key, raw);
+      el.remove();
+    });
+  });
+}());

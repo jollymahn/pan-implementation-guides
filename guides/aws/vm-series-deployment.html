@@ -97,6 +97,7 @@
     <a href="#appendix-routing" data-section="appendix-routing">How Routing Works</a>
     <a href="#appendix-flows" data-section="appendix-flows">Traffic Flows Explained</a>
     <a href="#appendix-inbound-deep-dive" data-section="appendix-inbound-deep-dive">Inbound Deep Dive</a>
+    <a href="#appendix-aws-cli" data-section="appendix-aws-cli">AWS CLI Quick Reference</a>
   </div>
 </aside>
 
@@ -112,6 +113,8 @@
 </div>
 
 <div class="article">
+
+<div class="update-banner" data-updated="2026-08-11"></div>
 
 <h1>VM-Series Combined Deployment on AWS</h1>
 <p class="subtitle">End-to-end guide: Panorama configuration through AWS infrastructure to verified traffic inspection</p>
@@ -7739,6 +7742,150 @@ mv production-combined_design.tfvars terraform.tfvars</code></pre>
       <tr><td>East-West (app &rarr; app)</td><td>TGW-Attach &rarr; EAST-WEST &rarr; FW &rarr; EAST-WEST &rarr; TGW</td><td>Yes (both directions)</td><td>EAST-WEST</td></tr>
       <tr><td>On-prem &rarr; app</td><td>TGW-Attach &rarr; OUTBOUND &rarr; FW &rarr; EAST-WEST &rarr; TGW</td><td>Yes (both directions)</td><td>OUTBOUND (inbound leg), EAST-WEST (reply leg)</td></tr>
     </table>
+  </div>
+</div>
+
+<h2 id="appendix-aws-cli">Appendix: AWS CLI Quick Reference</h2>
+
+<p>Common AWS CLI commands for working with VM-Series and AIRS deployments. Commands are grouped by task. Replace placeholder values (e.g., <code>XXXXXXXXXXXX</code>, <code>eni-0a9c...</code>) with your actual resource IDs.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Prerequisites</div>
+  <p>The AWS CLI must be installed and configured with credentials that have the necessary IAM permissions. Run <code>aws sts get-caller-identity</code> to confirm your active credentials before running any commands below.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Marketplace image discovery</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Use these commands to find the current AMI IDs for VM-Series, Panorama, and AIRS in a given region. AMI IDs change with each software release and vary by region, so always look them up before deploying.</p>
+
+    <h4>Product codes</h4>
+    <table>
+      <thead><tr><th>Product</th><th>Marketplace product code</th></tr></thead>
+      <tbody>
+        <tr><td>VM-Series BYOL</td><td><code>6njl1pau431dv1qxipg63mvah</code></td></tr>
+        <tr><td>AI Runtime Security (AIRS)</td><td><code>b261y39exndwe1ltro1tqpeog</code></td></tr>
+      </tbody>
+    </table>
+
+    <h4>List VM-Series NGFW images (BYOL, all 10.x versions)</h4>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-images \
+  --filters "Name=owner-alias,Values=aws-marketplace" \
+            "Name=name,Values=PA-VM-AWS-10*" \
+            "Name=product-code,Values=6njl1pau431dv1qxipg63mvah" \
+  --region us-west-2</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>List VM-Series NGFW images (BYOL, 11.2.x)</h4>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-images \
+  --filters "Name=owner-alias,Values=aws-marketplace" \
+            "Name=name,Values=PA-VM-AWS-11.2*" \
+            "Name=product-code,Values=6njl1pau431dv1qxipg63mvah" \
+  --region us-west-2</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>List Panorama images (11.1.x)</h4>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-images \
+  --filters "Name=owner-alias,Values=aws-marketplace" \
+            "Name=name,Values=Panorama-AWS-11.1*" \
+  --region us-west-2</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>List AIRS images (11.2.x, table output)</h4>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-images \
+  --filters "Name=owner-alias,Values=aws-marketplace" \
+            "Name=product-code,Values=b261y39exndwe1ltro1tqpeog" \
+            "Name=name,Values=PA-AI-Runtime-Security-AWS-11.2*" \
+  --region us-west-2 \
+  --output table</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Tip: narrow down to the latest AMI</div>
+      <p>Pipe the output through <code>jq</code> to sort by creation date and grab the most recent: <code>| jq '[.Images] | sort_by(.CreationDate) | last | {ImageId, Name, CreationDate}'</code></p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Network interface management</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Commands for managing ENIs after deployment: associating Elastic IPs and updating security group assignments without restarting instances.</p>
+
+    <h4>Associate an Elastic IP to a specific private IP on an ENI</h4>
+    <p>Use this when the management ENI has multiple private IPs and you need to pin the EIP to one of them.</p>
+    <div class="code-block">
+      <pre><code>aws ec2 associate-address \
+  --allocation-id &lt;eipalloc-ID&gt; \
+  --network-interface-id &lt;eni-ID&gt; \
+  --private-ip-address &lt;10.x.x.x&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Change the security group on a network interface</h4>
+    <p>Replaces the current security group assignment on an ENI. Pass all desired group IDs, not just the new one, because this command replaces the full list.</p>
+    <div class="code-block">
+      <pre><code>aws ec2 modify-network-interface-attribute \
+  --network-interface-id &lt;eni-ID&gt; \
+  --groups &lt;sg-ID&gt; [&lt;sg-ID-2&gt; ...]</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Replace, not append</div>
+      <p>The <code>--groups</code> flag replaces all security groups on the interface. If you omit an existing group, it will be removed. List every group you want applied, including ones that are already there.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Transit Gateway operations</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Commands for inspecting and modifying Transit Gateway attachments. Appliance Mode must be enabled on any TGW attachment used for GWLB-based inspection to ensure symmetric routing.</p>
+
+    <h4>List all TGW attachments (all types, all VPCs)</h4>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-transit-gateway-attachments</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Describe specific VPC attachments by ID</h4>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-transit-gateway-vpc-attachments \
+  --transit-gateway-attachment-ids &lt;tgw-attach-ID&gt; [&lt;tgw-attach-ID-2&gt; ...]</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>Enable Appliance Mode on a VPC attachment</h4>
+    <p>Required for the Security VPC attachment. Without Appliance Mode, return traffic may take a different path through the TGW than the inspected forward path, causing asymmetric routing and dropped connections.</p>
+    <div class="code-block">
+      <pre><code>aws ec2 modify-transit-gateway-vpc-attachment \
+  --transit-gateway-attachment-id &lt;tgw-attach-ID&gt; \
+  --options ApplianceModeSupport=enable</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Verify the change took effect</div>
+      <p>After enabling Appliance Mode, re-run <code>describe-transit-gateway-vpc-attachments</code> and confirm <code>"ApplianceModeSupport": "enable"</code> appears under <code>Options</code>.</p>
+    </div>
   </div>
 </div>
 
