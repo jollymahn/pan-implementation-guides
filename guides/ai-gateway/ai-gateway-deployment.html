@@ -277,15 +277,16 @@
   </div>
 
   <div class="mgmt-panel" data-plane="hybrid">
-    <p>The Hybrid data plane ships as a container image with Helm charts and runs in your own Kubernetes cluster while SCM manages it centrally.</p>
+    <p>The Hybrid data plane ships as a container image with Helm charts and runs in your own Kubernetes cluster while SCM manages it centrally. Any conformant Kubernetes will do; the platform underneath makes no difference to the deployment.</p>
     <table>
       <thead>
         <tr><th>Attribute</th><th>Details</th></tr>
       </thead>
       <tbody>
         <tr><td>Setup required</td><td>Deploy container using Helm charts</td></tr>
+        <tr><td>Cluster</td><td>Any conformant Kubernetes that can install a Helm chart</td></tr>
         <tr><td>Scale</td><td>Dependent on CPU and memory allocated to the Data Plane</td></tr>
-        <tr><td>High availability</td><td>Multi-zone Kubernetes &mdash; pods auto-distributed across Availability Zones</td></tr>
+        <tr><td>High availability</td><td>Multi-zone Kubernetes &mdash; pods auto-distributed across failure domains</td></tr>
         <tr><td>Management</td><td>Strata Cloud Manager (SCM)</td></tr>
       </tbody>
     </table>
@@ -493,7 +494,7 @@ estimated monthly tokens = total characters sent and received per month / 4</cod
 
 <h2 id="enable-gateway">Phase 2: Enable the Gateway</h2>
 
-<p>This phase brings the data plane online. What that means depends entirely on the deployment model: the SaaS gateway is deployed by default with no additional work, while Hybrid registers a gateway in SCM and deploys the data plane into your own Kubernetes cluster. The selector below mirrors your earlier choice.</p>
+<p>This phase brings the data plane online. What that means depends entirely on the deployment model: the SaaS gateway is deployed by default with no additional work, while Hybrid registers a gateway in SCM, produces a Helm <code>values.yaml</code>, and installs the data plane into a Kubernetes cluster you provide. The selector below mirrors your earlier choice.</p>
 
 <div class="fork-banner">
   <div class="fork-icon"><svg viewBox="0 0 24 24"><path d="M12 3v6"/><path d="M12 9l-4 4"/><path d="M12 9l4 4"/><path d="M8 13v5"/><path d="M16 13v5"/></svg></div>
@@ -544,7 +545,7 @@ estimated monthly tokens = total characters sent and received per month / 4</cod
         <span>Step 2.1 (Hybrid): Register the gateway</span>
       </div>
       <div class="collapsible-body">
-        <p>The Hybrid data plane ships as a <strong>container image with Helm charts</strong> and can run in any public cloud, private cloud, or on-premises Kubernetes cluster. Registration comes first: SCM creates the gateway record and generates the deployment values your cluster will use.</p>
+        <p>The Hybrid data plane ships as a <strong>container image with Helm charts</strong> and can run in any Kubernetes cluster you control, in a public cloud, a private cloud, or on-premises. Registration comes first: SCM creates the gateway record and generates the deployment values your cluster will use.</p>
         <ol>
           <li>On <strong>AI Security &rarr; Home</strong>, click <strong>Deploy Hybrid</strong> on the AI Gateway card (<strong>Launch AI Gateway</strong> leads into the same hybrid registration flow). The <strong>Gateway Registration</strong> wizard opens (under <strong>AI Gateway &rarr; Admin Settings</strong>) with three stages: Register Gateway, Workspace Provisioning, and Configure Gateway Deployment.</li>
           <li>Enter a <strong>Gateway Name</strong>.</li>
@@ -621,7 +622,7 @@ environment:
         </div>
         <div class="callout callout-note">
           <div class="callout-title">Reference links on this screen</div>
-          <p>The screen links to a <strong>Configuration Reference</strong> (all available configuration options), a <strong>Deployment guide</strong> (end-to-end deployment steps), and an external Redis document. The Helm chart spawns a built-in Redis instance by default; for production deployments, Palo Alto Networks recommends connecting to an external managed Redis service (AWS, Azure, and GCP options are covered).</p>
+          <p>The screen links to a <strong>Configuration Reference</strong> (all available configuration options), a <strong>Deployment guide</strong> (end-to-end deployment steps), and an external Redis document. The Helm chart spawns a built-in Redis instance by default; for production deployments, Palo Alto Networks recommends connecting to an external Redis instead, as covered in Step 2.4.</p>
         </div>
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
@@ -633,86 +634,51 @@ environment:
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>Step 2.4 (Hybrid): Deploy the container into your Kubernetes cluster</span>
+        <span>Step 2.4 (Hybrid): Install the data plane with Helm</span>
       </div>
       <div class="collapsible-body">
-        <p>Install the data plane into the target cluster using the Helm charts and the <code>values.yaml</code> you saved in Step 2.3 (it carries the registry location and image pull credentials). Follow the <strong>Deployment guide</strong> you bookmarked in Step 2.3 for the install commands; the exact <code>helm</code> command sequence has not yet been published by Palo Alto Networks, and the registration wizard that linked the guide does not reopen after Done. Size the deployment deliberately: gateway <strong>scale is dependent on the CPU and memory allocated to the Data Plane</strong>, so the resources you give the pods set your throughput ceiling.</p>
+        <p>Install the data plane chart into a Kubernetes cluster using the <code>values.yaml</code> you saved in Step 2.3 (it carries the registry location, image pull credentials, and environment secrets). Follow the <strong>Deployment guide</strong> you bookmarked in Step 2.3 for the install commands; the exact <code>helm</code> command sequence has not yet been published by Palo Alto Networks, and the registration wizard that linked the guide does not reopen after Done.</p>
 
         <div class="callout callout-note">
-          <div class="callout-title">Which environment should I pick?</div>
-          <ul>
-            <li><strong>On-Prem Kubernetes</strong> &mdash; you run your own cluster (any conformant distribution) in your data center or private cloud.</li>
-            <li><strong>AWS (EKS)</strong> &mdash; the data plane runs in Amazon Elastic Kubernetes Service.</li>
-            <li><strong>Azure (AKS)</strong> &mdash; the data plane runs in Azure Kubernetes Service.</li>
-            <li><strong>GCP (GKE)</strong> &mdash; the data plane runs in Google Kubernetes Engine.</li>
-          </ul>
+          <div class="callout-title">The underlying Kubernetes infrastructure does not matter</div>
+          <p>The data plane is an ordinary container workload delivered as a Helm chart, so it does not know or care what is underneath it. EKS, AKS, GKE, OpenShift, Rancher, k3s, or a self-built cluster on bare metal are all equally valid, and none of them change a single value in the file SCM generated for you. Any cluster that meets the requirements below can run the data plane.</p>
         </div>
 
-        <p>The install flow is the same in every environment:</p>
+        <p>The cluster needs four things, and nothing beyond them:</p>
+        <table>
+          <thead>
+            <tr><th>Requirement</th><th>Why the data plane needs it</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>A conformant Kubernetes cluster you can deploy to</td><td>The data plane runs as normal pods. Any distribution that passes upstream conformance is fine; there is no minimum managed-service tier and no cloud-specific integration.</td></tr>
+            <tr><td>Helm, with permission to install a release</td><td>The chart is the only supported delivery mechanism. Your account needs enough RBAC to create the release's resources in the target namespace.</td></tr>
+            <tr><td>Egress to <code>registry.portkey.ai</code> and to Strata Cloud Manager</td><td>Nodes pull the data plane image from the registry using the credentials in <code>values.yaml</code>, and the running pods call home to SCM for management. Proxies and firewalls in the path must allow both.</td></tr>
+            <tr><td>CPU and memory you can allocate to the pods</td><td>Gateway <strong>scale is dependent on the CPU and memory allocated to the Data Plane</strong>, so the resources you request set your throughput ceiling. Size against the AI traffic volume you estimated in Step 1.2.</td></tr>
+          </tbody>
+        </table>
+
+        <p>The install itself is the ordinary Helm flow:</p>
         <ol>
-          <li>Create or choose the target cluster, with nodes spanning multiple zones (Step 2.5 relies on this).</li>
-          <li>Point your <code>kubectl</code> context at the cluster and confirm nodes have egress to <code>registry.portkey.ai</code>, so they can pull the data plane image with the credentials in <code>values.yaml</code>.</li>
-          <li>Install the Helm charts using your saved <code>values.yaml</code>, following the Deployment guide you bookmarked in Step 2.3.</li>
-          <li>Allocate CPU and memory according to your expected AI traffic volume from Step 1.2.</li>
+          <li>Point your <code>kubectl</code> context at the target cluster and confirm you can reach it.</li>
+          <li>Create or choose the namespace the release will live in.</li>
+          <li>Install the chart with your saved <code>values.yaml</code>, following the Deployment guide you bookmarked in Step 2.3.</li>
+          <li>Set the pods' CPU and memory requests to match your expected traffic volume.</li>
         </ol>
-        <!-- TODO(hybrid): paste the helm install command sequence and per-environment prerequisites when the Deployment guide content is published -->
-        <p>What differs is the environment itself. Pick your tab for the background that matters when designing the cluster:</p>
+        <!-- TODO(hybrid): paste the helm install command sequence when the Deployment guide content is published -->
 
-        <div class="mgmt-tabs" data-tab-group="hybrid-environment">
-          <div class="mgmt-tab-bar">
-            <button class="mgmt-tab active" data-plane="onprem">On-Prem Kubernetes</button>
-            <button class="mgmt-tab" data-plane="aws">AWS &middot; EKS</button>
-            <button class="mgmt-tab" data-plane="azure">Azure &middot; AKS</button>
-            <button class="mgmt-tab" data-plane="gcp">GCP &middot; GKE</button>
-          </div>
-
-          <div class="mgmt-panel active" data-plane="onprem">
-            <p>Any conformant Kubernetes distribution in your data center or private cloud. This is the only path with no cloud-managed control plane, so everything the managed services below provide for free is yours to own:</p>
-            <ul>
-              <li><strong>Cluster currency</strong> &mdash; you manage Kubernetes version upgrades, node OS patching, and storage provisioning.</li>
-              <li><strong>Egress</strong> &mdash; data center firewalls and proxies must allow the cluster to reach <code>registry.portkey.ai</code> for image pulls and Strata Cloud Manager for control plane management.</li>
-              <li><strong>Zone spread</strong> &mdash; there are no cloud Availability Zones; map Step 2.5's multi-zone guidance onto your own failure domains (racks, rooms, or sites) by labeling nodes accordingly.</li>
-              <li><strong>Redis</strong> &mdash; with no managed cache service available, either run the chart's built-in Redis (non-production) or operate your own external Redis with authentication.</li>
-            </ul>
-          </div>
-
-          <div class="mgmt-panel" data-plane="aws">
-            <p><strong>Amazon Elastic Kubernetes Service (EKS)</strong> gives you a managed control plane; you design the node groups the data plane runs on:</p>
-            <ul>
-              <li><strong>Zone spread</strong> &mdash; create node groups spanning multiple Availability Zones so Step 2.5's auto-distribution has somewhere to spread.</li>
-              <li><strong>Egress</strong> &mdash; NAT gateway or equivalent outbound path from the node subnets to <code>registry.portkey.ai</code> and Strata Cloud Manager.</li>
-              <li><strong>Redis</strong> &mdash; the wizard's Redis document covers connecting a managed service such as Amazon ElastiCache for production instead of the chart's built-in instance.</li>
-              <li><strong>S3 prompt log export</strong> &mdash; AWS is where the Hybrid-only prompt log export (Phase 4, Step 4.4) lands. Plan the bucket and the IAM permissions for the data plane during cluster design, since the export configuration attaches to this cluster.</li>
-            </ul>
-          </div>
-
-          <div class="mgmt-panel" data-plane="azure">
-            <p><strong>Azure Kubernetes Service (AKS)</strong> gives you a managed control plane; you design the node pools the data plane runs on:</p>
-            <ul>
-              <li><strong>Zone spread</strong> &mdash; create node pools spanning multiple Availability Zones so Step 2.5's auto-distribution has somewhere to spread.</li>
-              <li><strong>Egress</strong> &mdash; an outbound path (NAT gateway, load balancer outbound rules, or Azure Firewall) from the node subnets to <code>registry.portkey.ai</code> and Strata Cloud Manager.</li>
-              <li><strong>Redis</strong> &mdash; the wizard's Redis document covers connecting a managed service such as Azure Cache for Redis for production instead of the chart's built-in instance.</li>
-            </ul>
-          </div>
-
-          <div class="mgmt-panel" data-plane="gcp">
-            <p><strong>Google Kubernetes Engine (GKE)</strong> gives you a managed control plane; you design the node pools the data plane runs on:</p>
-            <ul>
-              <li><strong>Zone spread</strong> &mdash; use a regional cluster or node pools spanning multiple zones so Step 2.5's auto-distribution has somewhere to spread.</li>
-              <li><strong>Egress</strong> &mdash; Cloud NAT or equivalent outbound path from the node subnets to <code>registry.portkey.ai</code> and Strata Cloud Manager.</li>
-              <li><strong>Redis</strong> &mdash; the wizard's Redis document covers connecting a managed service such as Google Cloud Memorystore for production instead of the chart's built-in instance.</li>
-            </ul>
-          </div>
+        <div class="callout callout-note">
+          <div class="callout-title">High availability is a cluster property, not a gateway setting</div>
+          <p>There is no gateway-specific HA toggle. When the cluster's nodes span multiple failure domains, the scheduler distributes data plane pods across them automatically. On a cloud-managed cluster those failure domains are Availability Zones; on-premises they are whatever you have labeled your nodes with, such as racks, rooms, or sites. Give the scheduler more than one domain and run more than one replica, then confirm the spread with <code>kubectl get pods -o wide</code>.</p>
         </div>
 
         <div class="callout callout-note">
           <div class="callout-title">External Redis for production</div>
-          <p>The Helm chart spawns a built-in Redis instance by default. For production deployments, Palo Alto Networks recommends connecting to an external managed Redis service; the wizard's linked Redis document covers the supported options and authentication methods across AWS, Azure, and GCP.</p>
+          <p>The Helm chart spawns a built-in Redis instance by default. For production deployments, Palo Alto Networks recommends connecting to an external Redis instead. That can be a managed service if your platform offers one, or a Redis you operate yourself with authentication enabled; the data plane only needs a reachable, authenticated endpoint. The wizard's linked Redis document covers the supported options.</p>
         </div>
 
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>The data plane pods show as Running in <code>kubectl get pods</code> with the resource allocations you intended, and the cluster satisfies your environment tab's egress and zone-spread points.</p>
+          <p>The Helm release installs successfully and the data plane pods show as Running in <code>kubectl get pods</code> with the resource allocations you intended.</p>
         </div>
       </div>
     </div>
@@ -720,25 +686,7 @@ environment:
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>Step 2.5 (Hybrid): Configure multi-zone high availability</span>
-      </div>
-      <div class="collapsible-body">
-        <p>Hybrid high availability comes from <strong>multi-zone Kubernetes</strong>: when the cluster's nodes span multiple Availability Zones, data plane pods are auto-distributed across them. No gateway-specific setting controls this; your only action is giving the scheduler zones to spread across.</p>
-        <ol>
-          <li>Confirm the node group or pool used by the data plane has nodes in at least two Availability Zones (arranged during cluster design in Step 2.4).</li>
-          <li>After the install, verify the spread with <code>kubectl get pods -o wide</code> and confirm the pods' nodes sit in different zones.</li>
-        </ol>
-        <div class="callout callout-success">
-          <div class="callout-title">Verification</div>
-          <p>Data plane pods are spread across at least two Availability Zones, so the loss of a single zone does not take the gateway down.</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="collapsible">
-      <div class="collapsible-header">
-        <span class="chevron">&#9654;</span>
-        <span>Step 2.6 (Hybrid): Verify the Data Plane in SCM</span>
+        <span>Step 2.5 (Hybrid): Verify the Data Plane in SCM</span>
       </div>
       <div class="collapsible-body">
         <p>The data plane runs in your environment, but its lifecycle is managed centrally. Registration already happened in Step 2.1; this step confirms the pods you deployed connected back to that registration.</p>
@@ -1309,7 +1257,7 @@ export ANTHROPIC_CUSTOM_HEADERS="x-portkey-provider: @&lt;integration-slug&gt;"<
         A JSON response starting with <code>{"id":"msg_</code> and containing a <code>"content":[...]</code> field proves the URL and credential work. An error naming an unknown model still proves both, because the gateway authenticated the request before rejecting the model name.
       </li>
       <li>In the same terminal, run <code>claude</code>, then run <code>/status</code> inside the session. The output includes an <strong>Anthropic base URL</strong> line (shown only when a gateway address is set) and an <strong>Auth token</strong> line confirming which credential is active.</li>
-      <li>Send any prompt, then open <strong>AI Security &rarr; AI Gateway &rarr; Observability</strong> in SCM (the page you verified in Phase 2: Step 2.1 on the SaaS path, Step 2.6 on the Hybrid path) and check the <strong>Logs</strong> tab: the request appears with its model, token counts, and cost, and the Analytics panels tick up from zero.</li>
+      <li>Send any prompt, then open <strong>AI Security &rarr; AI Gateway &rarr; Observability</strong> in SCM (the page you verified in Phase 2: Step 2.1 on the SaaS path, Step 2.5 on the Hybrid path) and check the <strong>Logs</strong> tab: the request appears with its model, token counts, and cost, and the Analytics panels tick up from zero.</li>
       <li>Persist the configuration so every future session routes through the gateway. If <code>~/.claude/settings.json</code> does not exist, create it with exactly the block below. If it already exists, add the <code>"env"</code> key inside the existing top-level object, alongside your other settings, rather than pasting the whole block; the file must remain a single JSON object:
         <div class="code-block">
           <pre><code>{
@@ -1566,7 +1514,7 @@ message = client.messages.create(
     <ol>
       <li>On the Observability <strong>Logs</strong> tab, click a request row to open its trace detail. The panel shows a <strong>Trace ID</strong>, the <strong>Request Details</strong> (model, total cost, request timing, the provider integration, and the API key that made the call), and the full <strong>Request</strong> and <strong>Response</strong> context windows with token counts, each viewable as Pretty or raw JSON.</li>
       <li>Confirm full request and response context is captured for your test traffic.</li>
-      <li><strong>Hybrid deployments only:</strong> configure local export to your customer-owned S3 bucket if compliance requires prompt retention in your own storage. The export configuration steps (where the target is set, and the IAM permissions the data plane needs) have not yet been published; plan the bucket and permissions during cluster design (Step 2.4) and consult the official documentation for the procedure.</li>
+      <li><strong>Hybrid deployments only:</strong> configure local export to your customer-owned S3 bucket if compliance requires prompt retention in your own storage. The export configuration steps (where the target is set, and the IAM permissions the data plane needs) have not yet been published; provision the bucket and grant the data plane write access to it, then consult the official documentation for the procedure. Note that the export target is an S3 bucket regardless of where your cluster runs, so a data plane hosted outside AWS still needs credentials that let it write to S3.</li>
     </ol>
     <p><em>Clicking the Step 3.8 test request opens its trace (steps 1 and 2):</em></p>
     <img src="aigw-screenshots/aigw-prompt-log-detail.png" alt="Prompt log trace detail showing a Trace ID, Request Details with model claude-fable-5, total cost in cents, request timing, the default-anthropic provider, and the drod-api key, alongside the full Request and Response context windows with token counts and Pretty or JSON views" loading="lazy">
