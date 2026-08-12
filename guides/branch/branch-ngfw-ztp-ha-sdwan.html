@@ -82,7 +82,7 @@
 <div class="article">
 
 <h1>Branch NGFW ZTP to Active/Passive HA and SD-WAN AutoVPN</h1>
-<p class="subtitle">End-to-end guide: factory-fresh PA-410 hardware through Zero Touch Provisioning into Strata Cloud Manager, optionally formed into an Active/Passive HA pair, and joined to an existing SD-WAN AutoVPN cluster with an Azure hub — zero local console configuration required.</p>
+<p class="subtitle">End-to-end guide: factory-fresh PA-410 hardware through Zero Touch Provisioning into Strata Cloud Manager, optionally formed into an Active/Passive HA pair, and joined to an existing SD-WAN AutoVPN cluster with an Azure hub. Zero local console configuration required.</p>
 
 <!-- ── Phase Progress ─────────────────────────────────────── -->
 <div class="progress-phases">
@@ -200,7 +200,15 @@
         <tr><td><code>eth1/7</code></td><td>Branch LAN switch</td><td><code>zone-private</code> — Trust/LAN. Firewall is default gateway for branch LAN.</td></tr>
       </tbody>
     </table>
-    <p>No HA crosslinks are required. Failover is handled at the SD-WAN layer , if the single branch firewall fails, the hub SD-WAN policy can route branch traffic through an alternate path or mark the site as unavailable.</p>
+    <p>No HA crosslinks are required. Failover is handled at the SD-WAN layer: if the single branch firewall fails, the hub SD-WAN policy can route branch traffic through an alternate path or mark the site as unavailable.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Management interface placement: provider switch for ZTP, LAN switch for production</div>
+      <p>The management interface is connected to the <strong>provider switch</strong> for initial ZTP. This is required because the firewall has zero configuration at factory default and needs direct internet access to reach SCM on first boot. There is no security policy, NAT, or routing configured yet, so it cannot route through the dataplane to get out.</p>
+      <p>In production, this is not ideal. Once ZTP completes and the firewall has a working configuration, move the management cable to the <strong>LAN switch</strong> and configure a static default route on the management interface pointing to your internal next-hop. PAN-OS uses a dedicated management routing table, so management traffic exits independently of the dataplane. See Phase 4 for the recommended post-ZTP management port migration.</p>
+      <p><strong>CG-NAT mitigates the initial risk:</strong> because this deployment is behind carrier-grade NAT, the management interface gets a private RFC1918 DHCP address. The carrier blocks all unsolicited inbound connections, so the management port is not directly reachable from the internet during ZTP. This makes the provider-switch placement acceptable for initial setup even though it is not the long-term production posture.</p>
+    </div>
+    <p><em>Single firewall physical cabling — interface assignments and LAN/WAN connections:</em></p>
+    <img src="diagrams/branch-single-cabling.svg" alt="Single firewall physical cabling diagram showing one PA-410 with management and eth1/1 connecting to the provider switch (DHCP internet / CG-NAT) for OOB management and WAN/SD-WAN respectively, and eth1/7 connecting down to the branch LAN switch. No HA crosslinks." loading="lazy">
   </div>
 
   <div class="mgmt-panel" data-plane="ha-pair">
@@ -232,11 +240,16 @@
       <div class="callout-title">SCM management independence</div>
       <p>SCM communicates with both HA members independently over their dedicated management interfaces. The passive unit maintains its own SCM connection regardless of which unit is active on the dataplane. This is why Phase 4 moves service routes from the ZTP dataplane path (<code>eth1/1</code> via <code>loopback.900</code>) to the management interface before HA is formed.</p>
     </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Management interface placement: provider switch for ZTP, LAN switch for production</div>
+      <p>Both HA management interfaces are connected to the <strong>provider switch</strong> for initial ZTP. This is required: at factory default the firewall has no configuration and needs direct internet access to reach SCM on first boot. There is no dataplane security policy or NAT available yet to route management traffic through the LAN side.</p>
+      <p>In production, the management interfaces should be on the <strong>LAN switch</strong> on a dedicated management VLAN. Move the cables post-ZTP and configure a static default route on the management interface pointing to your internal next-hop. Because PAN-OS uses a separate management routing table, traffic exits the management interface independently of the firewall dataplane, so it can reach the internet through the LAN infrastructure without going through a security policy. See Phase 4 for the post-ZTP management migration steps.</p>
+      <p><strong>CG-NAT mitigates the initial risk:</strong> the carrier-grade NAT blocks all unsolicited inbound connections, so management interfaces on the provider switch are not directly internet-reachable during ZTP. This makes the provider-switch placement acceptable for initial setup.</p>
+    </div>
+    <p><em>Branch HA physical cabling — interface assignments, crosslinks, and LAN/WAN connections:</em></p>
+    <img src="diagrams/branch-ha-cabling.svg" alt="Branch HA physical cabling diagram showing two PA-410 firewalls side by side. Each has management and eth1/1 connecting to the provider switch (DHCP/internet). eth1/2 is a direct HA1 crosslink (172.16.254.x/24), eth1/3 is the HA2 data crosslink (172.16.255.x/24 UDP/29281). Both eth1/7 interfaces connect to the branch LAN switch below." loading="lazy">
   </div>
 </div>
-
-<p><em>Branch HA physical cabling , interface assignments, crosslinks, and LAN/WAN connections:</em></p>
-<img src="diagrams/branch-ha-cabling.svg" alt="Branch HA physical cabling diagram showing two PA-410 firewalls side by side. Each has management and eth1/1 connecting to the provider switch (DHCP/internet). eth1/2 is a direct HA1 crosslink (172.16.254.x/24), eth1/3 is the HA2 data crosslink (172.16.255.x/24 UDP/29281). Both eth1/7 interfaces connect to the branch LAN switch below." loading="lazy">
 
 <h3>Azure Hub: VNet Layout and Floating IP Model</h3>
 <p>The hub is deployed in Azure as two VM-Series instances in an Availability Set. The VNet is <code>10.0.0.0/23</code> with four subnets. Unlike the branch (which uses DHCP and CG-NAT), the hub has static private IPs and Azure Public IPs assigned directly to the untrust NIC.</p>
@@ -1068,6 +1081,17 @@ show ha all</code></pre>
 </div>
 
 <p>The ZTP process leaves the firewall(s) reachable via SCM but using a temporary routing path through the WAN dataplane interface (<code>eth1/1</code> via <code>loopback.900</code>). This phase moves SCM connectivity to the dedicated management interface. For HA deployments, this is critical: the passive unit must maintain its own independent SCM connection so it can receive config pushes regardless of which unit holds the active dataplane role.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Optional: move management cable to LAN switch after this phase</div>
+  <p>Management was connected to the provider switch for ZTP. Once this phase is complete and the management interface has a confirmed DHCP address from the provider switch, you can optionally re-cable management to the <strong>LAN switch</strong> for a more secure long-term posture. Steps:</p>
+  <ol>
+    <li>Physically move the management Ethernet cable from the provider switch port to a port on the branch LAN switch (on a dedicated management VLAN if available).</li>
+    <li>On each firewall, update the management interface configuration: add a <strong>static default route</strong> on the management interface pointing to the LAN switch's default gateway IP. This tells PAN-OS how to reach the internet via the LAN-side path for management traffic.</li>
+    <li>Confirm SCM remains connected after the cable move using <code>show cloud-management-status</code>.</li>
+  </ol>
+  <p>This step is optional for a demo/POC. In production, it is recommended. Management on the LAN side is not directly internet-adjacent and is behind your existing LAN security controls. The CG-NAT on the provider switch provides initial protection, but the LAN placement is the right long-term posture.</p>
+</div>
 
 <div class="collapsible">
   <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 4.1: Rename devices from serial numbers to meaningful names</span></div>
