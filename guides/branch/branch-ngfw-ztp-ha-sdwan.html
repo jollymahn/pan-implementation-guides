@@ -1,0 +1,1833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Branch NGFW ZTP to Active/Passive HA and SD-WAN AutoVPN | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">Branch NGFW | SCM</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="../aws/index.html">AWS</a>
+    <a href="../azure/index.html">Azure</a>
+    <a href="../gcp/index.html">GCP</a>
+    <a href="index.html" class="active">Branch</a>
+    <a href="../../scm-onboarding/index.html">SCM</a>
+    <a href="../cngfw/cloud-ngfw-deployment.html">CNGFW</a>
+  </nav>
+</header>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prerequisites</div>
+    <a href="#prerequisites" data-section="prerequisites">Phase 1: Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Azure Hub</div>
+    <a href="#hub-deploy" data-section="hub-deploy">Phase 1B: Deploy Azure Hub</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">SCM Setup</div>
+    <a href="#scm-preconfig" data-section="scm-preconfig">Phase 2: SCM Pre-Configuration</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">ZTP Onboarding</div>
+    <a href="#ztp" data-section="ztp">Phase 3: Initiate ZTP</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Management Interface</div>
+    <a href="#mgmt-prep" data-section="mgmt-prep">Phase 4: Mgmt Interface &amp; HA Prep</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">High Availability</div>
+    <a href="#build-ha" data-section="build-ha">Phase 5: Build HA Pair</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">SD-WAN</div>
+    <a href="#sdwan" data-section="sdwan">Phase 6: Add to SD-WAN AutoVPN</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#verification" data-section="verification">Phase 7: Verification</a>
+  </div>
+</aside>
+
+<main class="main-content">
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">Branch NGFW</a>
+  <span class="sep">|</span>
+  ZTP + HA + SD-WAN AutoVPN
+</div>
+
+<div class="article">
+
+<h1>Branch NGFW ZTP to Active/Passive HA and SD-WAN AutoVPN</h1>
+<p class="subtitle">End-to-end guide: factory-fresh PA-410 hardware through Zero Touch Provisioning into Strata Cloud Manager, optionally formed into an Active/Passive HA pair, and joined to an existing SD-WAN AutoVPN cluster with an Azure hub — zero local console configuration required.</p>
+
+<!-- ── Phase Progress ─────────────────────────────────────── -->
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#hub-deploy" class="progress-phase">
+    <span class="progress-phase-label">Phase 1B</span>
+    Azure Hub
+  </a>
+  <a href="#scm-preconfig" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    SCM Setup
+  </a>
+  <a href="#ztp" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    ZTP
+  </a>
+  <a href="#mgmt-prep" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Mgmt Prep
+  </a>
+  <a href="#build-ha" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Build HA
+  </a>
+  <a href="#sdwan" class="progress-phase">
+    <span class="progress-phase-label">Phase 6</span>
+    SD-WAN
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 7</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide follows a <strong>management-first</strong> approach. All SCM folder structure, ZTP snippets, labels, and onboarding rules are configured in <strong>Strata Cloud Manager (SCM)</strong> before any firewall hardware is powered on. When the PA-410s boot and reach the internet, they claim themselves automatically and receive a fully staged configuration.</p>
+  <p><strong>Design model:</strong> One or two PA-410 hardware NGFWs at a remote branch site onboard via ZTP directly to SCM, optionally form an Active/Passive HA pair, then join an existing SD-WAN AutoVPN cluster with an Azure hub. The branch internet is behind SNAT/CG-NAT , no static public IP is assumed.</p>
+  <p><strong>Scope:</strong> This guide covers the branch side only. The Azure hub deployment is covered in Phase 1B using the <code>vmseries_standalone-HA</code> Terraform example.</p>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE OVERVIEW                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>This deployment connects one or two PA-410 branch firewalls to an existing SD-WAN AutoVPN hub-spoke cluster. The single-firewall path provides perimeter security and SD-WAN connectivity with no local redundancy. The HA pair path matches the <strong>Small-Site HA Perimeter Firewall Design Model</strong> from Palo Alto Networks reference architecture, adding Active/Passive failover at the branch. Both paths sit the firewall(s) between the provider switch (DHCP internet) and the branch LAN switch.</p>
+
+<p><em>SD-WAN hub-spoke topology , Azure hub A/P HA pair connected to single-firewall and HA-pair branch paths over SD-WAN AutoVPN:</em></p>
+<img src="diagrams/sdwan-hub-spoke-topology.svg" alt="SD-WAN hub-spoke topology showing Azure hub Active/Passive HA pair (fw-1 active, fw-2 passive, sdwan-hub-pip floating Public IP) connected via IKEv2/IPsec AutoVPN tunnels through the internet and CG-NAT to Branch A (single PA-410) and Branch B (PA-410-upper Active, PA-410-lower Passive HA pair with HA1/HA2 crosslinks)" loading="lazy">
+
+<h3>SD-WAN Topology</h3>
+<ul>
+  <li><strong>Cluster type:</strong> Single hub-spoke VPN cluster. The hub is central; all branches connect to the hub. Branch-to-branch traffic routes through the hub.</li>
+  <li><strong>Hub:</strong> 1 existing HA Active/Passive pair (pre-existing, not provisioned by this guide)</li>
+  <li><strong>Branch (new):</strong> 1 new HA Active/Passive PA-410 pair behind SNAT/CG-NAT</li>
+  <li><strong>Overlay:</strong> IKEv2/IPsec tunnels auto-built by AutoVPN from <code>eth1/1</code> on each branch firewall to each hub firewall WAN interface</li>
+  <li><strong>Routing:</strong> eBGP over the overlay; each site has a unique BGP AS number. AutoVPN auto-configures BGP on the branch when it joins the cluster.</li>
+</ul>
+
+<h3>SD-WAN Constructs the AutoVPN Process Creates</h3>
+<p>When the branch HA pair is added to the VPN cluster and AutoVPN runs, SCM automatically creates the following on the branch firewalls:</p>
+<table>
+  <thead><tr><th>Construct</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><strong>DIA VIF</strong></td><td>SD-WAN virtual interface grouping the WAN physical interfaces. Handles Direct Internet Access path selection and DHCP default gateway abstraction.</td></tr>
+    <tr><td><strong>VPN VIF</strong></td><td>SD-WAN virtual interface grouping all IPSec tunnels to the hub. One VPN VIF per central site. Used for path selection across overlay tunnels.</td></tr>
+    <tr><td><strong>IPSec tunnels</strong></td><td>One tunnel per branch WAN interface to each hub WAN interface. With 1 WAN interface (eth1/1) at the branch and 2 at the hub, AutoVPN creates 2 tunnels.</td></tr>
+    <tr><td><strong>Loopback (loopback.901)</strong></td><td>BGP router-ID interface. AutoVPN creates this in zone-internal.</td></tr>
+    <tr><td><strong>BGP peering</strong></td><td>eBGP session over each tunnel to the hub. Branch advertises its LAN prefixes; hub advertises its internal prefixes back.</td></tr>
+  </tbody>
+</table>
+
+<h3>Required Security Zones</h3>
+<p>The SD-WAN AutoVPN process uses these zone names on the branch firewalls. AutoVPN creates any that don't already exist. <strong>Only <code>zone-internal</code> and <code>zone-to-hub</code> must match exactly</strong> , the AutoVPN plugin keys on these names internally. <code>zone-public</code> and <code>zone-private</code> are user-defined and can use your organization's naming convention:</p>
+<table>
+  <thead><tr><th>Zone name</th><th>Type</th><th>Applied to</th><th>Required name?</th></tr></thead>
+  <tbody>
+    <tr><td><code>zone-internal</code></td><td>Layer 3</td><td>Loopback <code>loopback.901</code> — BGP router-ID</td><td><strong>Yes</strong> — AutoVPN keys on this name</td></tr>
+    <tr><td><code>zone-to-hub</code></td><td>Layer 3</td><td>VPN VIF and IPSec tunnels to the hub</td><td><strong>Yes</strong> — AutoVPN keys on this name</td></tr>
+    <tr><td><code>zone-public</code></td><td>Layer 3</td><td>WAN interface (<code>eth1/1</code>) and DIA VIF</td><td>No — user-defined, use your naming convention</td></tr>
+    <tr><td><code>zone-private</code></td><td>Layer 3</td><td>LAN interface (<code>eth1/7</code>)</td><td>No — user-defined</td></tr>
+  </tbody>
+</table>
+
+<div class="fork-banner">
+  <div class="fork-icon">
+    <svg viewBox="0 0 24 24"><polyline points="6 3 6 12"/><circle cx="6" cy="3" r="2"/><circle cx="6" cy="21" r="2"/><circle cx="18" cy="6" r="2"/><path d="M18 8a6 6 0 0 1-6 6H6"/></svg>
+  </div>
+  <div class="fork-text">
+    <span class="fork-label">Choose Your Path</span>
+    <span class="fork-desc">Branch Deployment Model</span>
+    <span class="fork-hint">Single Firewall (simpler) or HA Pair (resilient) — selection persists throughout the guide.</span>
+  </div>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="branch-model">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="single">1A &middot; Single Firewall</button>
+    <button class="mgmt-tab" data-plane="ha-pair">1B &middot; HA Pair</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="single">
+    <h3>Branch Interface Assignments — Single Firewall</h3>
+    <table>
+      <thead><tr><th>Interface</th><th>Connected To</th><th>Zone / Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>eth1/1</code></td><td>Provider switch</td><td><code>zone-public</code> — Internet/WAN (DHCP). SD-WAN-enabled, source for IPSec tunnels to hub.</td></tr>
+        <tr><td><code>management</code></td><td>Provider switch</td><td>OOB management (DHCP). SCM connectivity.</td></tr>
+        <tr><td><code>eth1/7</code></td><td>Branch LAN switch</td><td><code>zone-private</code> — Trust/LAN. Firewall is default gateway for branch LAN.</td></tr>
+      </tbody>
+    </table>
+    <p>No HA crosslinks are required. Failover is handled at the SD-WAN layer , if the single branch firewall fails, the hub SD-WAN policy can route branch traffic through an alternate path or mark the site as unavailable.</p>
+  </div>
+
+  <div class="mgmt-panel" data-plane="ha-pair">
+    <h3>HA Link Model</h3>
+    <p>The PA-410 HA pair uses two dedicated Ethernet crosslinks:</p>
+    <table>
+      <thead><tr><th>Link</th><th>Interface</th><th>Layer</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><strong>HA1 (Control)</strong></td><td><code>eth1/2</code></td><td>Layer 3</td><td>Heartbeats, HA state, routing management plane, User-ID, config sync. IP subnet: 172.16.254.x/24.</td></tr>
+        <tr><td><strong>HA2 (Data)</strong></td><td><code>eth1/3</code></td><td>UDP/29281</td><td>Session sync, forwarding tables, IPSec SAs, ARP tables. Flows from active to passive only. Configured as Layer 4 UDP transport (port 29281) over the direct Ethernet crosslink. IP subnet: 172.16.255.x/24.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Branch Interface Assignments — HA Pair</h3>
+    <table>
+      <thead><tr><th>Interface</th><th>Connected To</th><th>Zone / Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>eth1/1</code></td><td>Provider switch</td><td><code>zone-public</code> — Internet/WAN (DHCP). SD-WAN-enabled, source for IPSec tunnels to hub.</td></tr>
+        <tr><td><code>management</code></td><td>Provider switch</td><td>OOB management (DHCP). SCM connectivity — each HA unit maintains its own independent SCM session.</td></tr>
+        <tr><td><code>eth1/2</code></td><td>Peer firewall <code>eth1/2</code></td><td>HA1 control link (Layer 3 direct cable, 172.16.254.x/24)</td></tr>
+        <tr><td><code>eth1/3</code></td><td>Peer firewall <code>eth1/3</code></td><td>HA2 data link (direct cable, UDP/29281 transport, 172.16.255.x/24)</td></tr>
+        <tr><td><code>eth1/7</code></td><td>Branch LAN switch</td><td><code>zone-private</code> — Trust/LAN. Active firewall is default gateway for branch LAN.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Active/Passive HA Behavior</h3>
+    <p>In HA Active/Passive mode, only one firewall is active at a time. The passive firewall has all interfaces inactive except <code>management</code>. When the active firewall fails, the passive assumes the active IP/MAC addresses and sends a gratuitous ARP to update LAN switches. Failover takes under 2 seconds with Passive Link State set to Auto.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">SCM management independence</div>
+      <p>SCM communicates with both HA members independently over their dedicated management interfaces. The passive unit maintains its own SCM connection regardless of which unit is active on the dataplane. This is why Phase 4 moves service routes from the ZTP dataplane path (<code>eth1/1</code> via <code>loopback.900</code>) to the management interface before HA is formed.</p>
+    </div>
+  </div>
+</div>
+
+<p><em>Branch HA physical cabling , interface assignments, crosslinks, and LAN/WAN connections:</em></p>
+<img src="diagrams/branch-ha-cabling.svg" alt="Branch HA physical cabling diagram showing two PA-410 firewalls side by side. Each has management and eth1/1 connecting to the provider switch (DHCP/internet). eth1/2 is a direct HA1 crosslink (172.16.254.x/24), eth1/3 is the HA2 data crosslink (172.16.255.x/24 UDP/29281). Both eth1/7 interfaces connect to the branch LAN switch below." loading="lazy">
+
+<h3>Azure Hub: VNet Layout and Floating IP Model</h3>
+<p>The hub is deployed in Azure as two VM-Series instances in an Availability Set. The VNet is <code>10.0.0.0/23</code> with four subnets. Unlike the branch (which uses DHCP and CG-NAT), the hub has static private IPs and Azure Public IPs assigned directly to the untrust NIC.</p>
+
+<table>
+  <thead><tr><th>Subnet</th><th>CIDR</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>mgmt-snet</code></td><td>10.0.0.0/28</td><td>OOB management. Each VM gets a dedicated public IP for direct admin access.</td></tr>
+    <tr><td><code>untrust-snet</code></td><td>10.0.1.0/28</td><td>WAN/internet-facing (<code>eth1/1</code>). Holds the floating SD-WAN endpoint IP.</td></tr>
+    <tr><td><code>trust-snet</code></td><td>10.0.1.16/28</td><td>LAN/spoke-facing (<code>eth1/2</code>). Floating IP is the default gateway for spoke VNets.</td></tr>
+    <tr><td><code>ha-snet</code></td><td>10.0.1.32/28</td><td>HA1 control link (<code>eth1/3</code>). L3 crosslink, direct between the two VMs.</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Floating IP model:</strong> Two secondary private IPs float between VMs on failover:</p>
+<table>
+  <thead><tr><th>Floating IP</th><th>Location</th><th>Purpose</th><th>Has Public IP?</th></tr></thead>
+  <tbody>
+    <tr><td><code>10.0.1.6</code></td><td>untrust NIC</td><td>SD-WAN hub WAN endpoint. Branch firewalls use the attached Public IP (<code>sdwan-hub-pip</code>) as their hub peer address.</td><td>Yes — <code>sdwan-hub-pip</code></td></tr>
+    <tr><td><code>10.0.1.22</code></td><td>trust NIC</td><td>Default gateway for spoke VNets and LAN traffic. Azure Route Table on <code>trust-snet</code> points <code>0.0.0.0/0</code> here.</td><td>No</td></tr>
+  </tbody>
+</table>
+
+<p><em>Azure hub VNet layout , four subnets, floating IPs, Managed Identity failover:</em></p>
+<img src="diagrams/azure-hub-vnet-layout.svg" alt="Azure hub VNet layout showing resource group containing VNet 10.0.0.0/23 with four subnets: mgmt-snet (10.0.0.0/28) with fw-1-mgmt 10.0.0.4 and fw-2-mgmt 10.0.0.5 each with public IPs; untrust-snet (10.0.1.0/28) with floating IP 10.0.1.6 and sdwan-hub-pip public IP on fw-1, NSG allowing UDP 500/4500; trust-snet (10.0.1.16/28) with floating 10.0.1.22 as LAN gateway; ha-snet (10.0.1.32/28) with HA1 crosslink between fw-1 10.0.1.36 and fw-2 10.0.1.37. Both VMs in Availability Set with SystemAssigned Managed Identity." loading="lazy">
+
+<h3>Hub HA: Azure API-Based Failover</h3>
+<p>Azure's software-defined networking does not support gratuitous ARP between VMs. Hub HA failover works differently from the branch:</p>
+<ol>
+  <li>fw-2 detects fw-1 failure (heartbeat loss on HA1, link monitor, or path monitor).</li>
+  <li>fw-2 calls the Azure REST API using its <strong>SystemAssigned Managed Identity</strong> (granted Network Contributor on the resource group by Terraform).</li>
+  <li>The API call moves the floating private IPs (<code>10.0.1.6</code> and <code>10.0.1.22</code>) from fw-1's NICs to fw-2's NICs. The Public IP <code>sdwan-hub-pip</code> follows the floating private IP automatically.</li>
+  <li>Branch SD-WAN tunnels re-establish to the same public IP address on fw-2.</li>
+</ol>
+<div class="callout callout-warning">
+  <div class="callout-title">Hub failover is slower than branch failover</div>
+  <p>Azure API calls take 15 to 60 seconds to complete, compared to sub-second failover for on-premises hardware HA using gratuitous ARP. Plan SD-WAN path-quality profile thresholds accordingly , branch firewalls will briefly lose the hub tunnel during failover and will re-establish on the same Public IP once the API call completes.</p>
+</div>
+
+<h3>Hub SD-WAN Security Zones</h3>
+<p>Hub zones differ from branch zones. AutoVPN creates these on the hub if they don't already exist:</p>
+<table>
+  <thead><tr><th>Zone name</th><th>Applied to</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>zone-internal</code></td><td>Loopback (loopback.901) — BGP router-ID</td><td>Must match exactly.</td></tr>
+    <tr><td><code>zone-to-branch</code></td><td>VPN VIF and IPSec tunnels to branch sites</td><td>Must match exactly. Hub uses <code>zone-to-branch</code>; branch uses <code>zone-to-hub</code>.</td></tr>
+    <tr><td><code>zone-public</code></td><td>Untrust NIC (<code>eth1/1</code>) and DIA VIF</td><td>Can choose name, but must be consistent in security policies.</td></tr>
+    <tr><td><code>zone-private</code></td><td>Trust NIC (<code>eth1/2</code>) — spoke/LAN side</td><td>Can choose name.</td></tr>
+  </tbody>
+</table>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<p>Verify all of the following before beginning. Steps 2 and 3 must be complete before the firewalls are powered on.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 1.1: Hardware and physical requirements</span></div>
+  <div class="collapsible-body">
+    <div class="mgmt-tabs" data-tab-group="branch-model">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="single">1A &middot; Single Firewall</button>
+        <button class="mgmt-tab" data-plane="ha-pair">1B &middot; HA Pair</button>
+      </div>
+      <div class="mgmt-panel active" data-plane="single">
+        <table>
+          <thead><tr><th>Item</th><th>Requirement</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Firewall</td><td>1x PA-410</td><td>PAN-OS 11.2.10-h4 or later. Not supported if Enterprise DLP license is active.</td></tr>
+            <tr><td>Internet connectivity</td><td>DHCP Ethernet</td><td>Provider switch provides DHCP on 2 ports (management + <code>eth1/1</code>). Both must reach the internet on boot.</td></tr>
+            <tr><td>LAN switch</td><td>Any managed switch</td><td>Connected to <code>eth1/7</code> for LAN zone.</td></tr>
+            <tr><td>Claim code</td><td>Physical device label</td><td>Located on the back or bottom of the PA-410 chassis. Collect before racking.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="mgmt-panel" data-plane="ha-pair">
+        <table>
+          <thead><tr><th>Item</th><th>Requirement</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Firewalls</td><td>2x PA-410</td><td>PAN-OS 11.2.10-h4 or later. <strong>Both units must run the same PAN-OS version</strong> — HA will not form between mismatched versions. Not supported if Enterprise DLP license is active — if Enterprise DLP is active on your tenant, contact your Palo Alto Networks account team before proceeding as it is incompatible with the ZTP cloud-management flow.</td></tr>
+            <tr><td>Internet connectivity</td><td>DHCP Ethernet</td><td>Provider switch must provide DHCP on all 4 WAN ports (2 per firewall). Both <code>management</code> and <code>eth1/1</code> on each unit must reach the internet on boot.</td></tr>
+            <tr><td>HA crosslinks</td><td>2x direct Ethernet cables</td><td>PA-410-upper <code>eth1/2</code> ↔ PA-410-lower <code>eth1/2</code> (HA1 control); PA-410-upper <code>eth1/3</code> ↔ PA-410-lower <code>eth1/3</code> (HA2 data).</td></tr>
+            <tr><td>LAN switch</td><td>Any managed switch</td><td>Connected to both <code>eth1/7</code> ports. Active firewall handles traffic; passive stays standby with links up.</td></tr>
+            <tr><td>Claim codes</td><td>Physical device labels (x2)</td><td>Located on the back or bottom of each PA-410 chassis. Collect from both units before racking.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All cables are connected per the interface table in Architecture Overview. PA-410 unit(s) are powered off and at factory state (or private-data-reset state). Claim codes and serial numbers are recorded.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 1.2: SCM account and licensing</span></div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Requirement</th><th>Details</th></tr></thead>
+      <tbody>
+        <tr><td>SCM license</td><td>Strata Cloud Manager Essentials, SCM Pro, or AIOps for NGFW Premium. At least one must be active on the tenant.</td></tr>
+        <tr><td>Strata Logging Service</td><td>Required. SCM cloud management will not complete without an active SLS license on the tenant.</td></tr>
+        <tr><td>SD-WAN subscription</td><td>Active SD-WAN subscription on both PA-410 branch firewalls and on the hub firewalls. SD-WAN features (VIFs, AutoVPN, path quality profiles) are unavailable without this subscription. Verify in the CSP that SD-WAN auth codes are activated on all devices in the VPN cluster.</td></tr>
+        <tr><td>CSP account</td><td>Active Palo Alto Networks Customer Support Portal account at <a href="https://support.paloaltonetworks.com" target="_blank">support.paloaltonetworks.com</a>. Both PA-410 units must be registered here with auth codes activated.</td></tr>
+        <tr><td>SCM role</td><td>Account Administrator or App Administrator on the SCM tenant.</td></tr>
+        <tr><td>ZTP access</td><td>Access to the ZTP portal at <a href="https://stratacloudmanager.paloaltonetworks.com/ztpdeviceactivation" target="_blank">stratacloudmanager.paloaltonetworks.com/ztpdeviceactivation</a>.</td></tr>
+        <tr><td>BGP planning</td><td>Each SD-WAN site requires a unique BGP AS number and a loopback IP address (used as the BGP router-ID). Plan these before Phase 6: the branch site needs 1 unique private AS number (example: 65101) and 1 loopback IP (example: 10.255.101.1/32). The hub AS and loopback must already be configured.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Log in to SCM at <a href="https://stratacloudmanager.paloaltonetworks.com" target="_blank">stratacloudmanager.paloaltonetworks.com</a>. Confirm the tenant is active and you have administrator access. Both PA-410 serial numbers appear in the CSP device inventory.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 1.3: Network and firewall outbound requirements</span></div>
+  <div class="collapsible-body">
+    <p>The provider switch (DHCP internet) must allow outbound connectivity from both firewalls on the following ports and FQDNs. These are required for ZTP to succeed and for SCM ongoing management.</p>
+    <table>
+      <thead><tr><th>Service</th><th>FQDN</th><th>TCP Port</th></tr></thead>
+      <tbody>
+        <tr><td>SCM connectivity (Virtus)</td><td><code>*.us.ngfw.cloudmgmt.paloaltonetworks.com</code> (substitute your region)</td><td>3978, 443</td></tr>
+        <tr><td>SCM discovery</td><td><code>ds-cloudmgmt.paloaltonetworks.com</code></td><td>443</td></tr>
+        <tr><td>Strata Logging Service</td><td>SLS regional FQDNs</td><td>444, 3978</td></tr>
+        <tr><td>Device certificates (OCSP)</td><td><code>ocsp.paloaltonetworks.com</code>, <code>ocsp.godaddy.com</code></td><td>80</td></tr>
+        <tr><td>Certificate APIs</td><td><code>api.paloaltonetworks.com</code>, <code>certificate.paloaltonetworks.com</code></td><td>443</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">CG-NAT and SNAT</div>
+      <p>The branch is behind SNAT/CG-NAT , outbound-initiated connections from the firewalls work normally. The SD-WAN AutoVPN tunnel uses NAT traversal (NAT-T) for IKEv2, so no inbound port forwarding is required.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>From a laptop on the provider switch network, confirm outbound HTTPS (port 443) and port 3978 are not blocked to internet destinations. No firewall rules or proxy should inspect or block these connections.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 1.4: Pre-flight checklist</span></div>
+  <div class="collapsible-body">
+    <p>All of the following must be true before proceeding to Phase 2:</p>
+    <p style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--fg-light);margin-bottom:0.25rem;">Branch hardware &amp; accounts</p>
+    <ul class="checklist">
+      <li>Both PA-410 serial numbers recorded</li>
+      <li>Both PA-410 ZTP claim codes recorded (from physical device labels)</li>
+      <li>CSP account active, both devices registered and licensed</li>
+      <li>SCM tenant active with SCM Essentials/Pro or AIOps Premium license</li>
+      <li>Strata Logging Service license active on tenant</li>
+      <li>SCM administrator access confirmed</li>
+      <li>SD-WAN subscription activated on both PA-410s and on hub firewalls (CSP)</li>
+      <li>Outbound internet (port 3978 and 443) confirmed available from provider switch</li>
+      <li>Physical cabling complete per interface table (firewalls still powered off)</li>
+      <li>Both PA-410s running same PAN-OS version (HA requirement — mismatched versions prevent HA formation)</li>
+      <li>Branch BGP AS number chosen (unique, private — e.g. 65101)</li>
+      <li>Branch BGP router-ID / loopback IP chosen (e.g. 10.255.101.1/32)</li>
+      <li>Branch LAN prefix documented (the subnet AutoVPN will advertise via eBGP to hub)</li>
+    </ul>
+    <p style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--fg-light);margin-bottom:0.25rem;">Azure hub (Step 1.5 explains each item in detail)</p>
+    <ul class="checklist">
+      <li>Existing SD-WAN VPN cluster operational (hub side is healthy) or Phase 1B will be completed before Phase 6</li>
+      <li>Azure subscription with Owner or Contributor + User Access Administrator role</li>
+      <li>Terraform &gt;= 1.5 installed locally</li>
+      <li>Azure CLI installed and authenticated (<code>az login</code>)</li>
+      <li>VM-Series Marketplace terms accepted (one-time per subscription — see Step 1.5)</li>
+      <li>Hub BGP AS number chosen (unique, different from branch AS — e.g., <code>65100</code>)</li>
+      <li>Hub BGP router-ID / loopback IP chosen (e.g., <code>10.255.100.1/32</code>)</li>
+      <li>Hub LAN/spoke prefix documented (the CIDR AutoVPN will advertise from the hub to branches)</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All checklist items checked. Do not power on the branch firewalls until Phase 3 is initiated. Complete Phase 1B (Azure Hub deployment) before Phase 2 , the hub must be in the VPN cluster before branch onboarding rules reference it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 1.5: Azure and Terraform prerequisites</span></div>
+  <div class="collapsible-body">
+    <p>The Azure hub is deployed via Terraform using the <code>vmseries_standalone-HA</code> example. Verify the following before running the Terraform deployment in Phase 1B.</p>
+    <table>
+      <thead><tr><th>Requirement</th><th>Details</th></tr></thead>
+      <tbody>
+        <tr><td>Azure subscription role</td><td>Owner, or Contributor + User Access Administrator. The Terraform creates <code>azurerm_role_assignment</code> resources (Network Contributor for each VM's Managed Identity) — this requires the User Access Administrator permission. Contributor alone is insufficient.</td></tr>
+        <tr><td>Terraform</td><td>Version >= 1.5. Install from <a href="https://developer.hashicorp.com/terraform/downloads" target="_blank">developer.hashicorp.com/terraform/downloads</a> or via <code>brew install terraform</code>.</td></tr>
+        <tr><td>Azure CLI</td><td>Authenticated via <code>az login</code> or via environment variables <code>ARM_SUBSCRIPTION_ID</code>, <code>ARM_CLIENT_ID</code>, <code>ARM_CLIENT_SECRET</code>, <code>ARM_TENANT_ID</code>.</td></tr>
+        <tr><td>Marketplace image</td><td>Accept VM-Series BYOL terms once per subscription:
+          <div class="code-block" style="margin-top:0.5rem">
+            <pre><code>az vm image terms accept \
+  --publisher paloaltonetworks \
+  --offer vmseries-flex \
+  --plan byol</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+        </td></tr>
+        <tr><td>VM-Series size</td><td><code>Standard_DS3_v2</code> minimum — 4 vCPUs, 14 GB RAM, supports 4 NICs (required for mgmt / untrust / trust / ha layout). Set in <code>vmseries_universal.size</code> in <code>example.tfvars</code>.</td></tr>
+        <tr><td>PAN-OS version</td><td><code>11.2.3</code> (set in <code>vmseries_universal.version</code>). Both hub VMs must run the same version — required for HA formation.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>az account show</code> and confirm the subscription is correct. Run <code>terraform version</code> and confirm >= 1.5. Marketplace terms acceptance returns no error.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1B: DEPLOY AZURE HUB                                 -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="hub-deploy">Phase 1B: Deploy Azure Hub (VM-Series A/P HA)</h2>
+
+<p>Deploy the Azure hub infrastructure using the <code>vmseries_standalone-HA</code> Terraform example. This creates two VM-Series instances in an Availability Set with Managed Identity-based HA failover, the four-subnet VNet, NSGs, route tables, and floating IPs.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">When the hub must be ready</div>
+  <p>Phases 2, 3, 4, and 5 are branch-side operations that can proceed in parallel with the hub deployment. The hub only needs to be fully deployed and added to the VPN cluster (Steps 1B.3 through 1B.5) before <strong>Phase 6</strong> , not before Phase 2. If Azure access is delayed, complete the branch SCM setup (Phase 2) and ZTP (Phase 3) independently and return to this phase when ready.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 1B.1: Clone the SWFW modules repo and configure hub-deploy.tfvars</span></div>
+  <div class="collapsible-body">
+    <p>The hub Terraform example uses local module references (<code>../../modules/vnet</code>, <code>../../modules/vmseries</code>, etc.) and must run from inside the official PAN SWFW modules repository. Clone the repo first, then place the customer tfvars file inside the example directory.</p>
+
+    <h4>1. Clone the repository</h4>
+    <div class="code-block">
+      <pre><code>git clone https://github.com/PaloAltoNetworks/terraform-azurerm-swfw-modules.git
+cd terraform-azurerm-swfw-modules</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>2. Download and place the customer tfvars</h4>
+    <p>Download the pre-configured customer tfvars file and copy it into the example directory:</p>
+    <p><a href="hub-deploy.tfvars" class="dl-btn" download>&#8681; hub-deploy.tfvars</a></p>
+    <div class="code-block">
+      <pre><code># After downloading hub-deploy.tfvars, copy it into the example directory
+cp ~/Downloads/hub-deploy.tfvars examples/vmseries_standalone-HA/hub-deploy.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h4>3. Fill in the customer placeholders</h4>
+    <p>Open <code>hub-deploy.tfvars</code> in any text editor. Every value to change is marked with a <code>CUSTOMER_</code> prefix , use find-and-replace to set all instances at once.</p>
+
+    <p>Every placeholder follows the <code>CUSTOMER_XXXX</code> naming convention , a single find-and-replace in your editor sets all instances at once.</p>
+
+    <table style="font-size:0.85rem;">
+      <thead><tr><th style="width:140px">Placeholder</th><th>What to set</th></tr></thead>
+      <tbody>
+        <tr><td><code>CUSTOMER_ADMIN_IP</code></td><td>Your public IP in CIDR notation (e.g. <code>203.0.113.5/32</code>). Controls SSH/HTTPS access to hub management interfaces.</td></tr>
+        <tr><td><code>CUSTOMER_REGION</code></td><td>Azure region closest to your branch sites (e.g. <code>East US 2</code>, <code>West Europe</code>).</td></tr>
+        <tr><td><code>CUSTOMER_RG_NAME</code></td><td>Azure resource group name to create (e.g. <code>vmseries-hub-prod</code>).</td></tr>
+        <tr><td><code>CUSTOMER_PREFIX</code></td><td>Short prefix prepended to every Azure resource name (e.g. <code>acme-</code>). Include the trailing dash.</td></tr>
+        <tr><td><code>CUSTOMER_FW1_HOSTNAME</code></td><td>Hostname for hub firewall 1 (e.g. <code>hub-fw1</code>).</td></tr>
+        <tr><td><code>CUSTOMER_FW2_HOSTNAME</code></td><td>Hostname for hub firewall 2 (e.g. <code>hub-fw2</code>).</td></tr>
+        <tr><td><code>CUSTOMER_SCM_LABEL</code></td><td>SCM device label name (<code>tplname</code>) — the label assigned in the SCM hub folder.</td></tr>
+        <tr><td><code>CUSTOMER_SCM_FOLDER</code></td><td>SCM folder name (<code>dgname</code>) — the hub Azure folder created in SCM (e.g. <code>hub-azure</code>).</td></tr>
+        <tr><td><code>CUSTOMER_PIN_ID</code></td><td>VM-Series auto-registration PIN ID — see note below.</td></tr>
+        <tr><td><code>CUSTOMER_PIN_VALUE</code></td><td>VM-Series auto-registration PIN value — see note below.</td></tr>
+        <tr><td><code>CUSTOMER_AUTHCODE</code></td><td>BYOL license auth code. Leave as empty string <code>""</code> for PAYG/credit-funded deployments.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Getting the PIN ID and PIN value</div>
+      <p>Log in to <a href="https://support.paloaltonetworks.com" target="_blank">support.paloaltonetworks.com</a> &gt; <strong>Assets</strong> &gt; <strong>Device Certificates</strong> &gt; <strong>Generate VM-Series Auto-Registration PIN</strong>. Generate these <em>immediately before</em> running <code>terraform apply</code> , they are single-use and expire. Without them, <code>panorama-server = "cloud"</code> will not authenticate and the hub VMs will not connect to SCM.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Hub SCM folder must be separate from branch folder</div>
+      <p>Use a dedicated hub folder (e.g. <code>hub-azure</code>) separate from the branch folder (e.g. <code>410-ha</code>). Hub and branch should not share an SCM folder.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All <code>CUSTOMER_</code> placeholders are replaced. <code>panorama-server = "cloud"</code> is present in both fw-1 and fw-2 bootstrap blocks. PIN ID and value are generated and pasted in. Save the file before proceeding.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 1B.2: Initialize and apply Terraform</span></div>
+  <div class="collapsible-body">
+    <p>Run the Terraform deployment from inside the <code>vmseries_standalone-HA</code> example directory. Use the customer tfvars file placed in Step 1B.1.</p>
+    <div class="code-block">
+      <pre><code># From the repo root cloned in Step 1B.1:
+cd examples/vmseries_standalone-HA
+
+# Accept the VM-Series Marketplace image terms (one-time per subscription)
+az vm image terms accept \
+  --publisher paloaltonetworks \
+  --offer vmseries-flex \
+  --plan byol
+
+# Initialize providers and modules
+terraform init
+
+# Preview — review all resources before creating anything
+terraform plan -var-file=hub-deploy.tfvars
+
+# Deploy (typically 8–12 minutes)
+terraform apply -var-file=hub-deploy.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The apply creates approximately 30 Azure resources. Typical deployment time is 8 to 12 minutes. Key resources:</p>
+    <ul>
+      <li>Resource Group, VNet, 4 subnets, 3 NSGs, 1 Route Table</li>
+      <li>Availability Set</li>
+      <li>2 VM-Series instances (fw-1, fw-2) with 4 NICs each</li>
+      <li>3 Public IPs: <code>fw-1-mgmt</code>, <code>fw-2-mgmt</code>, <code>sdwan-hub-pip</code> (floating SD-WAN endpoint)</li>
+      <li>2 Managed Identities + 2 Network Contributor role assignments</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>terraform apply -var-file=hub-deploy.tfvars</code> completes with 0 errors. Note the output values , you will need them in later steps:</p>
+      <ul>
+        <li><code>vmseries_mgmt_ips.fw-1</code> and <code>vmseries_mgmt_ips.fw-2</code> — management public IPs for direct SSH/HTTPS access</li>
+        <li><code>ha_floating_untrust_ip</code> — the floating private IP (<code>10.0.1.6</code>); its Public IP (<code>sdwan-hub-pip</code>) is the SD-WAN hub WAN endpoint that branch firewalls will use</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 1B.3: Confirm hub VMs appear in SCM</span></div>
+  <div class="collapsible-body">
+    <p>Both hub VMs bootstrap via the SCM options set in <code>example.tfvars</code>. After the VMs boot (3 to 5 minutes after Terraform completes), they should appear in SCM as cloud-managed devices.</p>
+    <ol>
+      <li>Log in to SCM at <a href="https://stratacloudmanager.paloaltonetworks.com" target="_blank">stratacloudmanager.paloaltonetworks.com</a>.</li>
+      <li>Navigate to <strong>Settings</strong> &gt; <strong>Device Management</strong> &gt; <strong>Cloud Managed Devices</strong>.</li>
+      <li>Confirm both <code>vmseries-fw-1</code> and <code>vmseries-fw-2</code> appear, show their model (<code>PA-VM</code>), and display their management IP addresses.</li>
+      <li>Confirm both are in the hub SCM folder (e.g., <code>hub-azure</code>).</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Advanced Routing Engine reboot</div>
+      <p>SCM pushes a configuration enabling the Advanced Routing Engine on first contact. This causes an automatic reboot. Both VMs will briefly disconnect from SCM and reconnect. Wait for both to show <strong>Connected</strong> before proceeding.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both hub VMs show <strong>Connected</strong> in SCM Device Management and are assigned to the hub folder. Config sync status shows <strong>In Sync</strong> (after the initial push completes).</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 1B.4: Configure hub HA in SCM</span></div>
+  <div class="collapsible-body">
+    <p>Use the SCM HA wizard to pair the two hub VMs. The process is identical to the branch HA configuration (Phase 5) with different interface assignments. Hub HA interfaces are <code>eth1/3</code> (HA1) with the management NIC as the HA1 backup.</p>
+    <ol>
+      <li>In SCM, navigate to <strong>Configuration</strong> &gt; <strong>NGFW and Prisma Access</strong>.</li>
+      <li>Set the scope to the <strong>hub Azure folder</strong>.</li>
+      <li>Click the <strong>HA Setup gear</strong>.</li>
+      <li>Select <code>vmseries-fw-1</code> as the primary (active) device.</li>
+      <li>Select <code>vmseries-fw-2</code> as the secondary (passive) device.</li>
+      <li>Set <strong>HA1</strong> to <code>ethernet1/3</code> (ha-snet NIC). Peer IPs: fw-1 = <code>10.0.1.36</code>, fw-2 = <code>10.0.1.37</code>.</li>
+      <li>Set <strong>HA1 Backup</strong> to the management interface (provides HA1 redundancy if the ha-snet link fails).</li>
+      <li>Set <strong>HA2</strong> to <code>ethernet1/3</code> (same interface, different IP — HA2 uses the same ha-snet subnet).</li>
+      <li>Set <strong>Device Priority</strong>: fw-1 = <code>90</code>, fw-2 = <code>100</code>. <strong>Lower number = higher priority = preferred active device</strong> in PAN-OS HA. fw-1 (90) will be the preferred active unit.</li>
+      <li>Leave <strong>Preemptive</strong> disabled — recommended for Azure to avoid unnecessary failover when fw-1 recovers.</li>
+      <li>Push configuration to both hub VMs.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Azure HA requires additional PAN-OS configuration</div>
+      <p>After the SCM HA push, configure the Azure-specific HA settings on each VM via <strong>Device</strong> &gt; <strong>High Availability</strong> &gt; <strong>Active/Passive Settings</strong> &gt; <strong>Azure</strong>. Set the Azure Tenant ID, Subscription ID, and Resource Group. Leave Client ID blank , the VM uses its Managed Identity automatically. This configuration cannot currently be pushed from SCM and must be set locally on each VM or via bootstrap XML.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>From the CLI on fw-1: <code>show ha state</code> shows <strong>active</strong>. From the CLI on fw-2: <code>show ha state</code> shows <strong>passive</strong>. Both show peer state as connected. HA sync status shows configuration synchronized.</p>
+      <div class="code-block">
+        <pre><code>show ha state
+show ha all</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 1B.5: Add hub VMs to SD-WAN plugin as Hub devices</span></div>
+  <div class="collapsible-body">
+    <p>Add both hub VMs to the SD-WAN plugin before adding the branch. Both VMs in an A/P HA pair are added individually with the same site settings , crucially, <strong>both use the same site name</strong>. The SD-WAN plugin treats them as a single logical hub site.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Azure hub requires Upstream NAT even with a Public IP</div>
+      <p>In Azure, PAN-OS on the VM sees only the <em>private</em> IP on <code>eth1/1</code> , Azure NATs the associated Public IP at the hypervisor level. The SD-WAN plugin needs to know the actual public IP (<code>sdwan-hub-pip</code>) so it can tell branch firewalls where to build tunnels. Enable <strong>Upstream NAT</strong> on the hub gateway settings, set NAT Type to <strong>IP Address</strong>, and set the IP Address field to the floating Public IP (<code>sdwan-hub-pip</code>) from the Terraform output.</p>
+    </div>
+
+    <ol>
+      <li>In SCM, navigate to <strong>VPN Clusters</strong> (under SD-WAN / Prisma SD-WAN).</li>
+      <li>Create a new VPN cluster (e.g., name <code>VPNC1</code>) with SD-WAN enabled.</li>
+      <li>On the <strong>Hub devices</strong> tab, click <strong>Add Hub devices</strong>.</li>
+      <li>Select <code>vmseries-fw-1</code> and configure Gateway Settings:
+        <ul>
+          <li><strong>Site Name:</strong> <code>hub1</code></li>
+          <li><strong>Priority:</strong> <code>1</code></li>
+          <li><strong>Router:</strong> <code>default</code></li>
+          <li><strong>BGP Redistribution Profile:</strong> <code>All-Connected-Routes</code></li>
+          <li><strong>DIA VPN:</strong> Disabled (hub has direct internet access — DIA VPN failover not needed)</li>
+          <li><strong>Interface 1 — Ethernet Interface:</strong> <code>$eth-internet</code></li>
+          <li><strong>Interface 1 — Next Hop Gateway:</strong> <code>$internet-dgw</code> (Azure subnet gateway, e.g., 10.0.1.1)</li>
+          <li><strong>Interface 1 — SD-WAN Interface Profile:</strong> select or create an Ethernet public profile</li>
+          <li><strong>Interface 1 — Upstream NAT:</strong> Enable</li>
+          <li><strong>Interface 1 — NAT Type:</strong> IP Address</li>
+          <li><strong>Interface 1 — IP Address:</strong> set to the <code>sdwan-hub-pip</code> Public IP from Terraform output (the floating IP, e.g., <code>$internet-pub-ip</code> variable)</li>
+        </ul>
+      </li>
+      <li>Save, then repeat for <code>vmseries-fw-2</code> using <strong>identical settings</strong>:
+        <ul>
+          <li><strong>Site Name:</strong> <code>hub1</code> — same name as fw-1, not a <code>-2</code> suffix</li>
+          <li>Same Priority (<code>1</code>), same BGP profile, same Upstream NAT settings</li>
+        </ul>
+      </li>
+    </ol>
+
+    <p><em>VPN Clusters screen showing both hub VMs with site name <code>hub1</code>, priority 1, DIA VPN disabled:</em></p>
+    <img src="screenshots/image3.png" alt="SCM VPN Clusters Add screen showing Hub devices tab with two entries: mharms-scm-f-vmseries-ha-fw2 and mharms-scm-f-vmseries-ha-fw1, both with Site Name=hub1, Priority=1, Router=default, BGP Redistribution=All-Connected-Routes, DIA VPN=Disabled, Interface=$eth-internet" loading="lazy">
+
+    <p><em>Gateway Settings detail for fw-1 , note Upstream NAT enabled with IP Address type:</em></p>
+    <img src="screenshots/image21.png" alt="Gateway Settings panel for mharms-scm-f-vmseries-ha-fw1: Site Name=hub1, Priority=1, Router=default, BGP Redistribution=All-Connected-Routes, DIA VPN unchecked, Interface 1: Ethernet Interface=$eth-internet, Next Hop=$internet-dgw (10.0.1.1), SD-WAN profile=F-SDWAN-IP-DIA1, Upstream NAT=Enable checked, NAT Type=IP Address, IP=$internet-pub-ip" loading="lazy">
+
+    <div class="callout callout-note">
+      <div class="callout-title">A/P hub: same site name for both VMs</div>
+      <p>For an Active/Passive HA hub pair, both VMs use the <strong>same site name</strong> (e.g., <code>hub1</code>). The SD-WAN plugin generates tunnel configuration targeting only the active VM's public IP. When failover occurs, the floating Public IP moves to fw-2 and branch tunnels re-establish to the same address automatically. The <code>-2</code> suffix convention applies to dual-standalone hub models, not A/P HA pairs.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both hub VMs appear in the VPN cluster Hub devices tab with site name <code>hub1</code>, priority <code>1</code>, DIA VPN disabled, Upstream NAT enabled. The VPN cluster is created and contains both hub entries. No branch devices are in the cluster yet.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 1B.6: Configure hub security policies for SD-WAN</span></div>
+  <div class="collapsible-body">
+    <p>The hub requires security policies to permit control-plane (BGP) and data-plane (branch-to-hub) traffic. These are configured in the hub SCM folder and pushed to both hub VMs.</p>
+    <table>
+      <thead><tr><th>Policy</th><th>Source zone</th><th>Destination zone</th><th>Application</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>BGP from branches</td><td><code>zone-to-branch</code></td><td><code>zone-internal</code></td><td><code>bgp</code></td><td>Allow</td></tr>
+        <tr><td>BGP to branches</td><td><code>zone-internal</code></td><td><code>zone-to-branch</code></td><td><code>bgp</code></td><td>Allow</td></tr>
+        <tr><td>Branch to hub LAN</td><td><code>zone-to-branch</code></td><td><code>zone-private</code></td><td>any (or specific)</td><td>Allow</td></tr>
+        <tr><td>Hub LAN to branch</td><td><code>zone-private</code></td><td><code>zone-to-branch</code></td><td>any (or specific)</td><td>Allow</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Hub zone names differ from branch</div>
+      <p>On the hub, the SD-WAN tunnel zone is <code>zone-to-branch</code>. On the branch, the equivalent zone is <code>zone-to-hub</code>. These names are required by AutoVPN and must match exactly in your security policies.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Push hub security policies to both hub VMs. Push succeeds. The hub is ready to receive branch SD-WAN tunnel connections once the branch firewalls are onboarded and added to the VPN cluster in Phase 6.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: SCM PRE-CONFIGURATION                             -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="scm-preconfig">Phase 2: SCM Pre-Configuration</h2>
+
+<p>All SCM-side configuration is staged before the firewalls boot. When ZTP completes, the firewalls self-assign to the correct folder, receive the ZTP snippet, and establish management connectivity , without any local console interaction.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 2.1: Verify folder structure</span></div>
+  <div class="collapsible-body">
+    <p>SCM uses folders to group firewalls for configuration management. Both HA firewalls must be in the same folder before HA is configured. Plan your folder hierarchy before proceeding.</p>
+    <p>The folder path used in this deployment is:</p>
+    <div class="code-block">
+      <pre><code>All Firewalls  →  ztp  →  410-ha</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ul>
+      <li><strong>ztp</strong> — parent folder that holds the ZTP snippet (inherited by all child folders). This allows multiple HA branch folders to inherit the same ZTP baseline.</li>
+      <li><strong>410-ha</strong> — the branch HA pair folder. Both PA-410 units land here via the onboarding rule. The HA wizard in Phase 5 runs at this folder scope.</li>
+    </ul>
+    <div class="callout callout-danger">
+      <div class="callout-title">HA folder constraint</div>
+      <p>Once HA is configured, SCM will not allow either firewall to be moved to a different folder. To move them you must first break the HA pair, move both firewalls individually, then reconfigure HA. Plan the folder structure before ZTP boots the devices.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>ztp</code> parent folder and <code>410-ha</code> child folder both exist in <strong>Settings</strong> &gt; <strong>Folder Management</strong>. The hub folder is in a separate branch of the hierarchy and is not modified by this guide.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 2.2: Create label groups and labels</span></div>
+  <div class="collapsible-body">
+    <p>ZTP uses device labels to match firewalls to onboarding rules and to pair them into HA groups during ZTP registration. This deployment uses two distinct label group types , create both before proceeding.</p>
+
+    <h4>Label group 1: region (geographic assignment)</h4>
+    <p>The <strong>region</strong> label group classifies devices by physical location. Region labels are assigned in the ZTP portal at claim time to identify which geographic site a device belongs to , they are informational and available for optional use in onboarding rule match criteria, but the onboarding rule in Step 2.4 matches on the HA-Group label only.</p>
+    <ol>
+      <li>Navigate to <strong>Configuration</strong> &gt; <strong>NGFW and Prisma Access</strong> &gt; <strong>Setup</strong> &gt; <strong>Device Onboarding</strong> &gt; <strong>Device Labels</strong> &gt; <strong>Manage Label Group</strong>.</li>
+      <li>Click <strong>Add Label Group</strong>. Name it <code>region</code>. Enable exposure for <strong>ZTP</strong>.</li>
+      <li>Save, then create individual labels within this group for each region (e.g., <code>west</code>, <code>east</code>, <code>central</code>).</li>
+    </ol>
+
+    <h4>Label group 2: HA-Group (HA pair assignment)</h4>
+    <p>The <strong>HA-Group</strong> label group pairs two PA-410 devices into an HA unit during ZTP registration. When you register both devices in the ZTP portal, you assign them to the same HA-Group label (e.g., <code>fw-pair-01</code>). SCM uses this to associate the two devices as an HA pair without requiring console access.</p>
+    <ol>
+      <li>Click <strong>Add Label Group</strong>. Name it <code>HA-Group</code>. Enable exposure for <strong>ZTP</strong>.</li>
+      <li>Save, then create a label for each branch HA pair (e.g., <code>fw-pair-01</code>, <code>fw-pair-02</code>).</li>
+    </ol>
+    <p><em>Your screen should look like this , two label groups (region and HA-Group) with their labels:</em></p>
+    <img src="screenshots/image7.png" alt="SCM Device Labels screen showing two label groups: region (with labels west, east, central) and HA-Group (with labels fw-pair-01, fw-pair-02)" loading="lazy">
+    <div class="callout callout-note">
+      <div class="callout-title">HA-Group is used in the ZTP portal</div>
+      <p>When you register each PA-410 in the ZTP portal (Step 3.3), you will see both a <strong>region</strong> dropdown and an optional <strong>HA-Group</strong> dropdown. Assigning both devices in a pair to the same HA-Group label (e.g., <code>fw-pair-01</code>) is how SCM knows to pair them for HA , without any local console configuration.</p>
+    </div>
+    <img src="screenshots/image35.png" alt="SCM Device Labels showing region and HA-Group labels created and ready for ZTP portal assignment" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both label groups (<code>region</code> and <code>HA-Group</code>) appear in <strong>Device Labels</strong>, each with ZTP exposure enabled. At least one region label and one HA-Group label exist for this branch pair.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 2.3: Create the ZTP snippet and configure folder variables</span></div>
+  <div class="collapsible-body">
+    <p>A snippet is a reusable configuration block SCM pushes to a firewall when it first connects. The ZTP snippet provides DHCP management interface configuration and service routes via <code>loopback.900</code>, keeping the firewall reachable over its dataplane WAN until the management interface is configured in Phase 4.</p>
+
+    <h4>Create the snippet</h4>
+    <ol>
+      <li>In SCM, navigate to <strong>Configuration</strong> &gt; <strong>NGFW and Prisma Access</strong> &gt; <strong>Setup</strong>.</li>
+      <li>Set the configuration scope to the <strong>ztp</strong> folder. The scope selector is the folder dropdown in the top-left of the Configuration area — click it and select <strong>ztp</strong> from the folder hierarchy. The selected scope controls which folder's configuration you are editing. Subsequent steps will ask you to "set the scope to X" — this is always the same control.</li>
+      <li>Click <strong>Snippets</strong> in the left navigation.</li>
+      <li>Click <strong>Add Snippet</strong>. Name it <code>ZTP-Default</code>.</li>
+      <li>In the snippet editor, configure service routes for the following services, each pointing to the <code>loopback.900</code> interface (via <strong>Device</strong> &gt; <strong>Setup</strong> &gt; <strong>Services</strong> &gt; <strong>Service Route Configuration</strong>):
+        <ul>
+          <li><code>dns</code></li>
+          <li><code>ntp</code></li>
+          <li><code>paloalto-networks-services</code></li>
+          <li><code>panorama</code> (SCM connectivity)</li>
+          <li><code>scep</code></li>
+          <li><code>ztp</code></li>
+          <li><code>deployments</code></li>
+        </ul>
+      </li>
+      <li>Also configure the management interface as <strong>DHCP Client</strong> within the snippet (<strong>Device</strong> &gt; <strong>Setup</strong> &gt; <strong>Interfaces</strong> &gt; <strong>Management</strong> &gt; set IP Address Type to <strong>DHCP Client</strong>).</li>
+      <li>Click <strong>Save</strong>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Why loopback.900?</div>
+      <p>During ZTP, the firewall reaches the internet via <code>eth1/1</code> (WAN) before the management interface is configured. The <code>loopback.900</code> construct routes service traffic through that dataplane path. Phase 4 replaces it with management interface service routes.</p>
+    </div>
+
+    <h4>Associate the snippet with the ztp folder</h4>
+    <ol>
+      <li>Navigate to <strong>Settings</strong> &gt; <strong>Folder Management</strong>.</li>
+      <li>Click the <strong>ztp</strong> folder &gt; <strong>Edit</strong>.</li>
+      <li>Under <strong>Snippet Association</strong>, add <code>ZTP-Default</code>.</li>
+      <li>Click <strong>Save</strong>. The <code>410-ha</code> child folder inherits the snippet automatically.</li>
+    </ol>
+
+    <h4>Folder variables</h4>
+    <p>The <code>410-ha</code> folder uses SCM variables to abstract device-specific values (HA link IPs, interface assignments) so both firewalls in the pair share the same configuration template. The following variables are configured at the folder scope:</p>
+    <table>
+      <thead><tr><th>Variable</th><th>Type</th><th>Value</th><th>Used in</th></tr></thead>
+      <tbody>
+        <tr><td><code>$ha1-pri-ip</code></td><td>ip-netmask</td><td>172.16.254.11</td><td>HA1 primary device IP</td></tr>
+        <tr><td><code>$ha1-sec-ip</code></td><td>ip-netmask</td><td>172.16.254.12</td><td>HA1 secondary device IP</td></tr>
+        <tr><td><code>$ha1-mask</code></td><td>ip-netmask</td><td>255.255.255.0</td><td>HA1 subnet mask</td></tr>
+        <tr><td><code>$ha2-pri-ip</code></td><td>ip-netmask</td><td>172.16.255.11</td><td>HA2 primary device IP</td></tr>
+        <tr><td><code>$ha2-sec-ip</code></td><td>ip-netmask</td><td>172.16.255.12</td><td>HA2 secondary device IP</td></tr>
+        <tr><td><code>$ha2-mask</code></td><td>ip-netmask</td><td>255.255.255.0</td><td>HA2 subnet mask</td></tr>
+        <tr><td><code>$local-ip-mask</code></td><td>ip-netmask</td><td><strong>Replace with your branch LAN gateway IP</strong> (e.g. 10.10.1.1/24). The value shown (10.255.255.1/24) is from the reference deployment — using it as-is will assign the wrong gateway to the LAN interface and advertise the wrong prefix to the hub via eBGP.</td><td>LAN interface (<code>$eth-local</code>)</td></tr>
+        <tr><td><code>$ztp-loopback-addr</code></td><td>ip-netmask</td><td>100.64.0.200/32</td><td>ZTP loopback address (<code>$ztp-loopback</code>)</td></tr>
+        <tr><td><code>$eth-internet</code></td><td>Layer 3</td><td>ethernet1/1</td><td>Internet/WAN interface assignment</td></tr>
+        <tr><td><code>$eth-local</code></td><td>Layer 3</td><td>ethernet1/7</td><td>LAN interface assignment</td></tr>
+        <tr><td><code>$ztp-loopback</code></td><td>Loopback</td><td>loopback.900</td><td>ZTP service route loopback</td></tr>
+      </tbody>
+    </table>
+    <p><em>Your screen should look like this , Manage Variables for the 410-ha folder:</em></p>
+    <img src="screenshots/image18.png" alt="SCM Manage Variables screen for the 410-ha folder showing 11 variables including HA1/HA2 IPs, eth-internet=ethernet1/1, eth-local=ethernet1/7, and ztp-loopback=loopback.900" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The ZTP snippet exists in SCM and is associated with the <code>ztp</code> folder (inherited by <code>410-ha</code>). The <code>410-ha</code> folder shows all required variables populated, including <code>$eth-internet</code>, <code>$eth-local</code>, <code>$ztp-loopback</code>, and all four HA IP variables.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 2.4: Create the device onboarding rule</span></div>
+  <div class="collapsible-body">
+    <p>The onboarding rule tells SCM what to do when a new firewall connects for the first time. The rule matches on the HA-Group label assigned during ZTP portal registration and automatically places the firewall in the <code>410-ha</code> folder with the ZTP snippet applied.</p>
+    <ol>
+      <li>Navigate to <strong>Configuration</strong> &gt; <strong>NGFW and Prisma Access</strong> &gt; <strong>Setup</strong> &gt; <strong>Device Onboarding</strong>.</li>
+      <li>Click <strong>Add Rule</strong>.</li>
+      <li>Enter a name (for example: <code>Branch-PA-410</code>).</li>
+      <li>Under <strong>Match Criteria</strong>:
+        <ul>
+          <li>Set <strong>Models</strong> to <strong>Any</strong> (or Match PA-410 specifically).</li>
+          <li>Set <strong>Device S/N</strong> to <strong>Any</strong>.</li>
+          <li>Set <strong>Labels</strong> to match the HA-Group label for this pair (e.g., <code>fw-pair-01</code>).</li>
+        </ul>
+      </li>
+      <li>Under <strong>Action</strong>:
+        <ul>
+          <li>Set <strong>Target Folder</strong> to <code>410-ha</code>.</li>
+          <li>Under <strong>Snippet Association</strong>, select <code>ZTP-Default</code> (the ZTP snippet created in Step 2.3).</li>
+        </ul>
+      </li>
+      <li>Click <strong>Save</strong>. Confirm the rule is <strong>Enabled</strong>.</li>
+    </ol>
+    <p><em>Your screen should look like this , the rule matches on HA-Group label <code>fw-pair-01</code> and targets folder <code>410-ha</code> with snippet <code>ZTP-Default</code>:</em></p>
+    <img src="screenshots/image30.png" alt="SCM Device Onboarding Rules showing one enabled rule named Branch-PA-410 matching label fw-pair-01, targeting folder 410-ha, applying snippet ZTP-Default" loading="lazy">
+    <img src="screenshots/image39.png" alt="SCM onboarding rule detail showing match criteria (label fw-pair-01), target folder (410-ha), and ZTP-Default snippet association" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The onboarding rule <code>Branch-PA-410</code> appears in <strong>Device Onboarding</strong> with status <strong>Enabled</strong>. Match criteria shows the <code>fw-pair-01</code> HA-Group label. Action shows folder <code>410-ha</code> and snippet <code>ZTP-Default</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: INITIATE ZTP                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="ztp">Phase 3: Initiate ZTP</h2>
+
+<p>Execute these steps in strict order. The ZTP portal registration must exist <em>before</em> the firewalls are powered on. The flowchart below shows the complete ZTP sequence including what happens automatically on the device and what SCM does in response.</p>
+
+<p><em>ZTP process flow , from device boot through Bootstrap Done:</em></p>
+<img src="diagrams/ztp-process-flow.svg" alt="ZTP process flowchart with three swim lanes (PA-410 device, ZTP Portal/Internet, Strata Cloud Manager). Flow: pre-boot SCM setup → device powers on → DHCP on management and eth1/1 → contacts ZTP portal → validates serial and claim key → installs device certificate → connects to SCM on TCP 3978 → onboarding rule fires placing device in 410-ha folder with ZTP-Default snippet → SCM pushes first config enabling Advanced Routing Engine (Auto Reboot 1) → device reconnects → SCM pushes full config (Auto Reboot 2 if needed) → Bootstrap Done state with device Connected and Config Out of Sync → Phase 4." loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 3.1: Collect serial numbers and claim codes</span></div>
+  <div class="collapsible-body">
+    <p>Gather the serial number and claim code from the physical label on each PA-410. The claim code is a numeric code printed on the device label , used once during ZTP portal registration.</p>
+    <div class="mgmt-tabs" data-tab-group="branch-model">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="single">1A &middot; Single Firewall</button>
+        <button class="mgmt-tab" data-plane="ha-pair">1B &middot; HA Pair</button>
+      </div>
+      <div class="mgmt-panel active" data-plane="single">
+        <table>
+          <thead><tr><th>Role</th><th>Model</th><th>Serial Number</th><th>Claim Code</th></tr></thead>
+          <tbody>
+            <tr><td>Branch firewall</td><td>PA-410</td><td><code>&lt;upper-serial&gt;</code></td><td><code>&lt;upper-claim-key&gt;</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="mgmt-panel" data-plane="ha-pair">
+        <table>
+          <thead><tr><th>Role</th><th>Model</th><th>Serial Number</th><th>Claim Code</th></tr></thead>
+          <tbody>
+            <tr><td>PA-410-upper (Primary)</td><td>PA-410</td><td><code>&lt;upper-serial&gt;</code></td><td><code>&lt;upper-claim-key&gt;</code></td></tr>
+            <tr><td>PA-410-lower (Secondary)</td><td>PA-410</td><td><code>&lt;lower-serial&gt;</code></td><td><code>&lt;lower-claim-key&gt;</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Serial number(s) match the physical label(s). Claim code(s) recorded. Claim codes cannot be retrieved from SCM after registration , confirm before proceeding.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 3.2: Reset ZTP (optional — only if devices were previously provisioned)</span></div>
+  <div class="collapsible-body">
+    <p>If either PA-410 has been through a ZTP process before or has an existing SCM association, complete all three sub-steps below. Skip this step entirely for factory-fresh devices.</p>
+    <h4>3.2a — Clean up VPN cluster</h4>
+    <p>If the devices are already in an SD-WAN cluster, remove them and push the configuration before resetting:</p>
+    <ol>
+      <li>In SCM, navigate to the SD-WAN VPN cluster and remove the branch HA pair.</li>
+      <li>Push the configuration change to the hub.</li>
+    </ol>
+    <h4>3.2b — CLI private data reset</h4>
+    <p>Run the following command on each firewall from the CLI. This wipes all local configuration and certificates, returning the device to a clean state. The firewall will reboot and the SCM connection will drop.</p>
+    <div class="code-block">
+      <pre><code>request system private-data-reset</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">This action is irreversible</div>
+      <p>A private data reset erases all local configuration, certificates, and logs. Run this only when you intend to fully re-provision the device via ZTP.</p>
+    </div>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image6.png" alt="CLI output of request system private-data-reset command and reboot sequence" loading="lazy">
+    <h4>3.2c — Remove from SCM tenant service group (TSG)</h4>
+    <p>In SCM, ensure the devices are unassigned from the TSG so they can be claimed fresh:</p>
+    <ol>
+      <li>Navigate to <strong>Settings</strong> &gt; <strong>Device Management</strong>.</li>
+      <li>Locate each serial number and move it back to <strong>Available Devices</strong> (or remove the device association).</li>
+    </ol>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image17.png" alt="SCM Device Management showing devices removed from TSG and returned to available state" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both firewalls have rebooted after the private data reset and are powered off or at the login prompt. Neither serial number appears as a cloud-managed device in SCM.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 3.3: Register devices in the ZTP portal</span></div>
+  <div class="collapsible-body">
+    <p>Register branch PA-410 unit(s) in the ZTP device activation portal.</p>
+    <div class="mgmt-tabs" data-tab-group="branch-model">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="single">1A &middot; Single Firewall</button>
+        <button class="mgmt-tab" data-plane="ha-pair">1B &middot; HA Pair</button>
+      </div>
+      <div class="mgmt-panel active" data-plane="single">
+        <ol>
+          <li>Open the ZTP portal: <a href="https://stratacloudmanager.paloaltonetworks.com/ztpdeviceactivation" target="_blank">stratacloudmanager.paloaltonetworks.com/ztpdeviceactivation</a></li>
+          <li>Fill in the form:
+            <ul>
+              <li><strong>Tenant</strong> — select your SCM tenant.</li>
+              <li><strong>Serial Number</strong> — enter <code>&lt;your-serial-number&gt;</code>.</li>
+              <li><strong>Claim Key</strong> — enter <code>&lt;your-claim-key&gt;</code>.</li>
+              <li><strong>region</strong> — select the region label for this branch (e.g., <code>central</code>).</li>
+              <li><strong>HA-Group</strong> — leave empty (optional field, not used for single firewall).</li>
+            </ul>
+          </li>
+          <li>Click <strong>Activate</strong>.</li>
+        </ol>
+      </div>
+      <div class="mgmt-panel" data-plane="ha-pair">
+        <ol>
+          <li>Open the ZTP portal: <a href="https://stratacloudmanager.paloaltonetworks.com/ztpdeviceactivation" target="_blank">stratacloudmanager.paloaltonetworks.com/ztpdeviceactivation</a></li>
+          <li>For the <strong>first PA-410</strong> (upper unit — primary):
+            <ul>
+              <li><strong>Tenant</strong> — select your SCM tenant.</li>
+              <li><strong>Serial Number</strong> — <code>&lt;upper-serial&gt;</code>, <strong>Claim Key</strong> — <code>&lt;upper-claim-key&gt;</code>.</li>
+              <li><strong>region</strong> — e.g., <code>central</code>.</li>
+              <li><strong>HA-Group</strong> — select <code>fw-pair-01</code>.</li>
+            </ul>
+          </li>
+          <li>Click <strong>Activate</strong>. Repeat for the <strong>second PA-410</strong> (lower unit): serial <code>&lt;lower-serial&gt;</code>, claim key <code>&lt;lower-claim-key&gt;</code>, same region, <strong>same HA-Group <code>fw-pair-01</code></strong>.</li>
+        </ol>
+        <div class="callout callout-warning">
+          <div class="callout-title">Both devices must use the same HA-Group label</div>
+          <p>This is how SCM identifies which two devices form an HA pair without local console access. Different HA-Group labels result in two standalone firewalls , the Phase 5 wizard will not pair them.</p>
+        </div>
+      </div>
+    </div>
+    <p><em>Your screen should look like this , note the region and HA-Group fields:</em></p>
+    <img src="screenshots/image20.png" alt="ZTP portal Activate ZTP Firewall form showing Tenant, CSP Account, Serial Number 023101005384, Claim Key 89433754, region=central, and HA-Group=fw-pair-01" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both serial numbers have been activated in the ZTP portal with the same region label and the same HA-Group label (<code>fw-pair-01</code>). Power on the firewalls only after both registrations are confirmed , ZTP registration must exist before the devices first reach the internet.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 3.4: Power on the firewalls and monitor ZTP progress</span></div>
+  <div class="collapsible-body">
+    <p>Power on both PA-410 units. They will boot, acquire DHCP addresses on <code>eth1/1</code> and <code>management</code>, reach the ZTP portal, claim themselves, and begin the onboarding sequence automatically.</p>
+    <p>ZTP triggers two automatic reboots:</p>
+    <ol>
+      <li><strong>First reboot:</strong> after the Advanced Routing Engine is enabled (required for SCM management)</li>
+      <li><strong>Second boot:</strong> full configuration push from SCM</li>
+    </ol>
+    <h4>Monitor via console (optional)</h4>
+    <p>Console access is not required but is useful for visibility. Log in with <code>admin</code> / <code>admin</code> and set a local password , this does not interrupt ZTP.</p>
+    <p>Run these commands in sequence to track progress:</p>
+    <div class="code-block">
+      <pre><code>show system info | match "uptime|cert|zero|routing|serial"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><em>Run just before the advanced routing reboot , your screen should look like this:</em></p>
+    <img src="screenshots/image34.png" alt="CLI show system info output showing ZTP and certificate status fields" loading="lazy">
+    <div class="code-block">
+      <pre><code>show system ztp status</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image31.png" alt="CLI show system ztp status output showing ZTP progress state" loading="lazy">
+    <div class="code-block">
+      <pre><code>show cloud-management-status</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image41.png" alt="CLI show cloud-management-status showing SCM connection status" loading="lazy">
+    <div class="code-block">
+      <pre><code>show jobs all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><em>Run just before the advanced routing reboot , your screen should look like this:</em></p>
+    <img src="screenshots/image29.png" alt="CLI show jobs all output showing pending ZTP and routing engine jobs" loading="lazy">
+    <h4>Monitor via SCM</h4>
+    <ol>
+      <li>Navigate to <strong>Settings</strong> &gt; <strong>Device Management</strong>.</li>
+    </ol>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image19.png" alt="SCM Settings Device Management view showing devices appearing during ZTP" loading="lazy">
+    <ol start="2">
+      <li>Click the <strong>Bootstrap in Progress</strong> link to follow the onboarding detail.</li>
+    </ol>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image16.png" alt="SCM Bootstrap in Progress detail view" loading="lazy">
+    <h4>Post-bootstrap state</h4>
+    <p>After bootstrap completes, both devices will show in SCM. At this point the configuration is <em>not yet in sync</em>. The management interface does not yet have a DHCP address from SCM's perspective, and the dataplane configuration is still using the ZTP snippet (routing via <code>loopback.900</code> through <code>eth1/1</code>). Phase 4 corrects this.</p>
+    <p><em>Bootstrap complete state , your screen should look like this:</em></p>
+    <img src="screenshots/image8.png" alt="SCM showing bootstrap complete with config out of sync warning" loading="lazy">
+    <img src="screenshots/image23.png" alt="SCM device detail showing ZTP routing via loopback.900 still active" loading="lazy">
+    <img src="screenshots/image24.png" alt="SCM interface view showing management interface without DHCP assignment" loading="lazy">
+    <img src="screenshots/image10.png" alt="SCM logical router view showing ZTP-router still in place" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both PA-410 serial numbers appear in <strong>Settings</strong> &gt; <strong>Device Management</strong> &gt; <strong>Cloud Managed Devices</strong>. The devices show a model, serial number, and connection to SCM. Config out-of-sync is expected at this stage.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: MANAGEMENT INTERFACE AND HA PREP                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="mgmt-prep">Phase 4: Management Interface and HA Prep</h2>
+
+<div class="callout callout-note">
+  <div class="callout-title">Single Firewall path — all steps apply</div>
+  <p>Phase 4 applies to both the single-firewall and HA pair paths. The ZTP process uses <code>loopback.900</code> for service routes regardless of how many firewalls are deployed. References to "both firewalls" in this phase mean "the single PA-410" for the single-firewall path. Phase 5 (HA wizard) is skipped for the single-firewall path , proceed to Phase 6 after completing Step 4.6.</p>
+</div>
+
+<p>The ZTP process leaves the firewall(s) reachable via SCM but using a temporary routing path through the WAN dataplane interface (<code>eth1/1</code> via <code>loopback.900</code>). This phase moves SCM connectivity to the dedicated management interface. For HA deployments, this is critical: the passive unit must maintain its own independent SCM connection so it can receive config pushes regardless of which unit holds the active dataplane role.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 4.1: Rename devices from serial numbers to meaningful names</span></div>
+  <div class="collapsible-body">
+    <p>By default, firewalls display their serial number as the device name in SCM. Rename them before proceeding to make subsequent steps easier to track.</p>
+    <ol>
+      <li>Navigate to <strong>Settings</strong> &gt; <strong>Folder Management</strong>.</li>
+      <li>Locate the first PA-410 (shown by serial number).</li>
+      <li>Click the <strong>vertical triple-dot menu</strong> in the Action column and select <strong>Edit</strong>.</li>
+      <li>Enter a meaningful <strong>Display Name</strong> (for example: <code>branch-fw-primary</code> and <code>branch-fw-secondary</code>).</li>
+      <li>Click <strong>Save</strong>.</li>
+      <li>Repeat for the second device.</li>
+    </ol>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image27.png" alt="SCM Folder Management showing device action menu with Edit option" loading="lazy">
+    <img src="screenshots/image13.png" alt="SCM device rename dialog showing new display name entry" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both devices now display their friendly names instead of serial numbers in <strong>Folder Management</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 4.2: Remove ZTP snippet and configure management interface</span></div>
+  <div class="collapsible-body">
+    <p>Remove the <code>ZTP-Default</code> snippet from the <code>410-ha</code> folder and configure the management interface for DHCP. Service routes stay on <code>loopback.900</code> for now , they move to management in Step 4.4.</p>
+
+    <h4>Remove the ZTP snippet</h4>
+    <ol>
+      <li>In SCM, navigate to <strong>Configuration</strong> &gt; <strong>NGFW and Prisma Access</strong> &gt; <strong>Setup</strong>.</li>
+      <li>Set the configuration scope to <strong>410-ha</strong> using the folder selector in the top-left of the Configuration area.</li>
+      <li>Click <strong>Snippets</strong>. Locate <code>ZTP-Default</code> in the associated snippets list.</li>
+      <li>Click the remove / unlink icon next to <code>ZTP-Default</code> and confirm. The snippet should no longer appear in the <code>410-ha</code> scope (it remains on the parent <code>ztp</code> folder — remove it there too if it appears inherited).</li>
+    </ol>
+
+    <h4>Configure the management interface for DHCP</h4>
+    <ol>
+      <li>With the scope still set to <strong>410-ha</strong>, navigate to <strong>Device</strong> &gt; <strong>Setup</strong> &gt; <strong>Interfaces</strong> &gt; <strong>Management</strong>.</li>
+      <li>Set <strong>IP Address Type</strong> to <strong>DHCP Client</strong>.</li>
+      <li>Click <strong>Save</strong>.</li>
+      <li>Leave service routes pointing to <code>loopback.900</code> — do not change them here. Step 4.4 handles service route migration.</li>
+    </ol>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image25.png" alt="SCM configuration showing ZTP snippet removed and management interface DHCP configured" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>ZTP-Default</code> no longer appears in the <code>410-ha</code> folder snippet list. The management interface shows <strong>DHCP Client</strong> as the IP address type. No service route changes yet.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 4.3: Push config and verify management interface receives DHCP</span></div>
+  <div class="collapsible-body">
+    <p>Push the updated configuration from SCM to both firewalls. After the push, verify that the management interface on each firewall has received a DHCP address from the provider switch.</p>
+    <ol>
+      <li>In SCM, click <strong>Push Config</strong>.</li>
+      <li>Select both branch firewalls as targets.</li>
+      <li>Confirm and wait for the push to complete.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Push status shows success for both firewalls. From the CLI on each firewall, run:</p>
+      <div class="code-block">
+        <pre><code>show interface management | match Ip</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>Confirm the management IP is a DHCP address from the provider switch, <em>not</em> the same as the <code>eth1/1</code> dataplane address.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 4.4: Update service routes to use the management interface</span></div>
+  <div class="collapsible-body">
+    <p>This is the most critical step in Phase 4. Moving SCM connectivity from the ZTP dataplane path (<code>loopback.900</code> via <code>eth1/1</code>) to the dedicated management interface ensures the passive HA unit maintains its own independent SCM session. Without this, the passive unit's SCM connectivity depends on the active unit's dataplane , breaking config sync and management visibility.</p>
+    <ol>
+      <li>In SCM, navigate to <strong>Configuration</strong> &gt; <strong>NGFW and Prisma Access</strong> &gt; <strong>Setup</strong>.</li>
+      <li>Set the scope to <strong>410-ha</strong>.</li>
+      <li>Click <strong>Services</strong> &gt; <strong>Service Route Configuration</strong>.</li>
+      <li>For each of the following services, change the <strong>Source Interface</strong> from <code>loopback.900</code> to <strong>Management</strong>:</li>
+    </ol>
+    <ul>
+      <li><code>panorama</code> (SCM connectivity — most important)</li>
+      <li><code>dns</code></li>
+      <li><code>ntp</code></li>
+      <li><code>paloalto-networks-services</code></li>
+    </ul>
+    <div class="callout callout-warning">
+      <div class="callout-title">Push required before reboot</div>
+      <p>Push this service route change before rebooting. If you reboot without pushing, the firewalls will come back up still using <code>loopback.900</code> and the management interface will not be the SCM path.</p>
+    </div>
+    <ol start="3">
+      <li>Push the configuration change from SCM.</li>
+      <li>Verify the push completes successfully for both firewalls.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Config push succeeds. From the CLI, confirm SCM connectivity is now via the management interface:</p>
+      <div class="code-block">
+        <pre><code>show netstat all yes numeric-ports yes numeric-hosts yes | match :3978</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>The source IP in the output should be the management interface IP, not the <code>eth1/1</code> IP.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 4.5: Reboot both firewalls</span></div>
+  <div class="collapsible-body">
+    <p>Reboot both firewalls from SCM to apply the service route changes cleanly.</p>
+    <ol>
+      <li>Navigate to <strong>Settings</strong> &gt; <strong>Device Management</strong>.</li>
+      <li>For each firewall, click the <strong>vertical triple-dot menu</strong> on the right and select <strong>Reboot</strong>.</li>
+      <li>Confirm the reboot.</li>
+      <li>Wait for both firewalls to come back online.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both firewalls reconnect to SCM via their management interfaces. Confirm using the CLI on each device:</p>
+      <div class="code-block">
+        <pre><code>show interface management | match Ip</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <div class="code-block">
+        <pre><code>show cloud-management-status</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>The management IP must be different from the <code>eth1/1</code> dataplane IP. SCM status shows <strong>Connected: Yes</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 4.6: Verify both firewalls are reconnected and config is in sync</span></div>
+  <div class="collapsible-body">
+    <p>Before forming the HA pair, confirm both firewalls are fully connected and config-synchronized in SCM.</p>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image22.png" alt="SCM Device Management showing both firewalls connected with config in sync status" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>In <strong>Settings</strong> &gt; <strong>Device Management</strong> &gt; <strong>Cloud Managed Devices</strong>, both firewalls show their model, serial number, management IP address, and a config-in-sync status. Both must be connected before proceeding to Phase 5.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: BUILD HA PAIR                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="build-ha">Phase 5: Build HA Pair</h2>
+
+<div class="mgmt-tabs" data-tab-group="branch-model">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="single">1A &middot; Single Firewall</button>
+    <button class="mgmt-tab" data-plane="ha-pair">1B &middot; HA Pair</button>
+  </div>
+  <div class="mgmt-panel active" data-plane="single">
+    <div class="callout callout-note">
+      <div class="callout-title">Single Firewall — skip Phase 5</div>
+      <p>Phase 5 configures the Active/Passive HA pair using the SCM HA wizard. The single-firewall path has no HA partner to configure. Proceed directly to <a href="#sdwan">Phase 6: SD-WAN AutoVPN</a>.</p>
+    </div>
+  </div>
+  <div class="mgmt-panel" data-plane="ha-pair">
+
+<p>Use the SCM HA wizard to configure the Active/Passive pair. The wizard has 5 steps: General settings, device selection, HA1 (control link), HA2 (data link), and failure conditions. HA1 runs on <code>ethernet1/2</code> and HA2 on <code>ethernet1/3</code> using dedicated IP addresses from the SCM variable set defined in Phase 2.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 5.1: Open the HA Setup wizard</span></div>
+  <div class="collapsible-body">
+    <p>Before launching the wizard, confirm the folder overview shows both branch firewalls connected and the HA Setup counter at 0 (not yet configured).</p>
+    <ol>
+      <li>In SCM, set the configuration scope to <strong>410-ha</strong>.</li>
+      <li>Click <strong>Overview</strong>. Confirm: Firewalls = 2, Connectivity Status = Connected (2), HA Setup = 0.</li>
+    </ol>
+    <p><em>Confirm pre-HA state , your screen should look like this:</em></p>
+    <img src="screenshots/image9.png" alt="SCM folder Overview for 410-ha showing 2 firewalls connected, both running 11.2.10-h4, Out of Sync (expected at this stage), HA Setup = 0, snippets: ztp (inherited), All Firewalls (inherited), Global (inherited)" loading="lazy">
+    <ol start="3">
+      <li>Navigate to <strong>HA Setup</strong> (gear icon or left navigation).</li>
+      <li>Click <strong>Add HA Setup</strong> to open the Create HA wizard.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Create HA wizard opens showing 5 steps across the top: General, Select Devices, Control Link Settings, Data Link Settings, Failure Condition Settings.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 5.2: Wizard Step 1 — General settings</span></div>
+  <div class="collapsible-body">
+    <p>Configure the overall HA mode and active/passive behavior.</p>
+    <table>
+      <thead><tr><th>Setting</th><th>Value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>HA Mode</td><td>Active - Passive</td><td>Only one firewall forwards traffic at a time.</td></tr>
+        <tr><td>Config Sync</td><td>Enable (checked)</td><td>Keeps both firewalls in identical configuration state.</td></tr>
+        <tr><td>Group ID</td><td>1</td><td>Must match on both peers. Leave at default.</td></tr>
+        <tr><td>SSH HA Profile</td><td>None</td><td>Leave as None unless PKI authentication is required.</td></tr>
+        <tr><td>Passive Link State</td><td>Auto</td><td><strong>Auto</strong> (not Shutdown) keeps passive NIC links up and negotiating LACP, enabling sub-2-second failover. Shutdown would require link re-negotiation on failover.</td></tr>
+        <tr><td>Monitor Fail Hold Down Time</td><td>1 min</td><td>How long to remain non-functional after a link/path monitor failure before failing over.</td></tr>
+      </tbody>
+    </table>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image15.png" alt="Create HA wizard Step 1 General: HA Mode=Active-Passive selected, Config Sync=Enable checked, Group ID=1, SSH HA Profile=None, Passive Link State=Auto selected, Monitor Fail Hold Down Time=1" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Active - Passive is selected. Passive Link State is set to <strong>Auto</strong> (not Shutdown). Click <strong>Next</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 5.3: Wizard Step 2 — Select Devices and Election Settings</span></div>
+  <div class="collapsible-body">
+    <p>Select the two PA-410s and configure device priority and failover election behavior.</p>
+    <ol>
+      <li>In the <strong>Select Primary Device</strong> panel, click <strong>PA-410-upper</strong>.</li>
+      <li>In the <strong>Select Secondary Device</strong> panel, click <strong>PA-410-lower</strong>.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Primary vs. Active</div>
+      <p>"Primary" in this wizard means the device with higher election priority , it is the <em>preferred</em> active unit. The actual active/passive state at runtime depends on which device wins the election. With preemptive disabled, whichever unit boots first becomes active and holds that role until it fails.</p>
+    </div>
+    <p>Configure Election Settings:</p>
+    <table>
+      <thead><tr><th>Setting</th><th>Value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Device Priority — Primary</td><td>1</td><td>Lower number = preferred active device.</td></tr>
+        <tr><td>Device Priority — Secondary</td><td>2</td><td>Higher number = standby preference.</td></tr>
+        <tr><td>Preemptive</td><td>Disabled</td><td>Leave unchecked. Preemptive causes the primary to retake active state after recovering — not recommended as it causes unnecessary traffic interruption.</td></tr>
+        <tr><td>Heartbeat Backup</td><td>Disabled</td><td>Leave unchecked unless you have a separate heartbeat backup path.</td></tr>
+        <tr><td>HA Timer Settings</td><td>Recommended</td><td>Use Recommended timers for standard branch deployments.</td></tr>
+      </tbody>
+    </table>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image28.png" alt="Create HA wizard Step 2 Select Devices: PA-410-upper shown as primary option selected, PA-410-lower as secondary, Election Settings showing Primary Priority=1, Secondary Priority=2, Preemptive=unchecked, HA Timer=Recommended" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both PA-410 devices appear in the wizard. Model and OS version match (PA-410, 11.2.10-h4). Priority 1 is assigned to the primary, priority 2 to the secondary. Preemptive is disabled. Click <strong>Next</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 5.4: Wizard Step 3 — Control Link Settings (HA1)</span></div>
+  <div class="collapsible-body">
+    <p>HA1 is the control link , it carries heartbeats, HA state information, routing management plane data, and configuration synchronization. Configure it on <code>ethernet1/2</code> for both devices using the SCM variables defined in Phase 2.</p>
+    <table>
+      <thead><tr><th>Setting</th><th>Primary (PA-410-upper)</th><th>Secondary (PA-410-lower)</th></tr></thead>
+      <tbody>
+        <tr><td>Port</td><td><code>ethernet1/2</code></td><td><code>ethernet1/2</code></td></tr>
+        <tr><td>IPv4/IPv6 Address</td><td><code>$ha1-pri-ip</code> (172.16.254.11)</td><td><code>$ha1-sec-ip</code> (172.16.254.12)</td></tr>
+        <tr><td>Netmask</td><td><code>$ha1-mask</code> (255.255.255.0)</td><td><code>$ha1-mask</code> (255.255.255.0)</td></tr>
+        <tr><td>Gateway</td><td>None</td><td>None</td></tr>
+        <tr><td>HA1 Backup</td><td>None (optional)</td><td>None (optional)</td></tr>
+        <tr><td>Monitor Hold Time</td><td colspan="2">3000 ms (common setting)</td></tr>
+      </tbody>
+    </table>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image32.png" alt="Create HA wizard Step 3 Control Link Settings: Primary PA-410-upper with HA1 Port=ethernet1/2, IP=$ha1-pri-ip (172.16.254.11), Netmask=$ha1-mask (255.255.255.0); Secondary PA-410-lower with Port=ethernet1/2, IP=$ha1-sec-ip (172.16.254.12), HA1 Backup=None for both, Monitor Hold Time=3000ms" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>HA1 is set to <code>ethernet1/2</code> on both devices. The SCM variable names resolve to the correct IPs (172.16.254.11 for primary, 172.16.254.12 for secondary) in the same /24 subnet. Click <strong>Next</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 5.5: Wizard Step 4 — Data Link Settings (HA2)</span></div>
+  <div class="collapsible-body">
+    <p>HA2 is the data link , it synchronizes sessions, forwarding tables, IPSec SAs, and ARP tables. Configure it on <code>ethernet1/3</code> using the HA2 SCM variables.</p>
+    <table>
+      <thead><tr><th>Setting</th><th>Primary (PA-410-upper)</th><th>Secondary (PA-410-lower)</th></tr></thead>
+      <tbody>
+        <tr><td>Port</td><td><code>ethernet1/3</code></td><td><code>ethernet1/3</code></td></tr>
+        <tr><td>IPv4/IPv6 Address</td><td><code>$ha2-pri-ip</code> (172.16.255.11)</td><td><code>$ha2-sec-ip</code> (172.16.255.12)</td></tr>
+        <tr><td>Netmask</td><td><code>$ha2-mask</code> (255.255.255.0)</td><td><code>$ha2-mask</code> (255.255.255.0)</td></tr>
+        <tr><td>HA2 Backup</td><td>None</td><td>None</td></tr>
+        <tr><td>Enable Session Synchronization</td><td colspan="2">Checked</td></tr>
+        <tr><td>Transport</td><td colspan="2">Layer4 transport via UDP/29281</td></tr>
+        <tr><td>HA2 Keep-alive</td><td colspan="2">Disabled (unchecked)</td></tr>
+      </tbody>
+    </table>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image2.png" alt="Create HA wizard Step 4 Data Link Settings: Primary PA-410-upper with HA2 Port=ethernet1/3, IP=$ha2-pri-ip (172.16.255.11), Netmask=$ha2-mask; Secondary PA-410-lower Port=ethernet1/3, IP=$ha2-sec-ip (172.16.255.12); Common Settings: Session Sync=enabled, Transport=Layer4 UDP/29281, HA2 Keep-alive=disabled" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>HA2 is set to <code>ethernet1/3</code> on both devices. IPs are in the 172.16.255.x/24 subnet (separate from HA1). Session synchronization is enabled. Click <strong>Next</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 5.6: Wizard Step 5 — Failure Condition Settings, then Save and Push</span></div>
+  <div class="collapsible-body">
+    <p>The final wizard step configures link monitoring and path monitoring failure conditions. In this deployment both are left disabled , failover is triggered by heartbeat loss and HA timer expiry only, not by link or path monitor.</p>
+    <p><em>Your screen should look like this , Link Monitoring and Path Monitoring both disabled:</em></p>
+    <img src="screenshots/image5.png" alt="Create HA wizard Step 5 Failure Condition Settings showing Link Monitoring Failure Condition and Path Monitoring Failure Condition both toggled off for Primary PA-410-upper and Secondary PA-410-lower" loading="lazy">
+    <ol>
+      <li>Leave both <strong>Link Monitoring Failure Condition</strong> and <strong>Path Monitoring Failure Condition</strong> disabled.</li>
+      <li>Click <strong>Save</strong>.</li>
+    </ol>
+    <p>SCM returns to the HA Setup list. Push the HA configuration to both branch firewalls.</p>
+    <p><em>The HA Setup list confirms the pair , PA-410-lower as Active, PA-410-upper as Passive:</em></p>
+    <img src="screenshots/image4.png" alt="SCM HA Setup list showing one entry: Primary Device=PA-410-lower (Active), Secondary Device=PA-410-upper (Passive), Mode=active-passive, Group ID=1, both running PAN-OS 11.2.10-h4" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The HA Setup list shows one entry with Mode <strong>active-passive</strong>, Group ID <strong>1</strong>. Status shows one device as <strong>Active</strong> and one as <strong>Passive</strong>. Both are running PAN-OS 11.2.10-h4.</p>
+      <p>It is normal for PA-410-lower (priority 2, secondary) to appear as Active if it booted first. Because Preemptive is disabled, the first-to-boot unit wins the election and holds the active role until it fails , regardless of device priority. This is expected behavior and does not need correction. Push the configuration before proceeding to Phase 6.</p>
+    </div>
+  </div>
+</div>
+
+  </div><!-- end ha-pair mgmt-panel -->
+</div><!-- end branch-model mgmt-tabs (Phase 5) -->
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 6: ADD TO SD-WAN AUTOVPN                             -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="sdwan">Phase 6: SD-WAN AutoVPN — Hub Verification and Branch Join</h2>
+
+<p>Phase 6 has two parts: first verify the hub is ready to accept branch connections, then add the branch HA pair to the VPN cluster. The hub side was configured in Phase 1B; this phase confirms it is operational and performs the branch join.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 6.0: Verify hub SD-WAN readiness</span></div>
+  <div class="collapsible-body">
+    <p>Before adding the branch, confirm the hub SD-WAN configuration is fully applied and the hub VMs are ready to terminate IPSec tunnels from branch firewalls.</p>
+    <ol>
+      <li>In SCM, navigate to the SD-WAN plugin and confirm both hub devices (both named site <code>hub1</code>) show as <strong>Configured</strong> under the VPN cluster.</li>
+      <li>Confirm the VPN cluster exists and both hub devices are members.</li>
+      <li>From the active hub firewall (fw-1) CLI, confirm AutoVPN has configured the expected constructs:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code># Verify SD-WAN VIFs were created by AutoVPN
+show sdwan vif all
+
+# Verify loopback.901 exists in zone-internal (BGP router-ID)
+show interface logical | match loopback
+
+# Verify BGP is configured (will show no peers yet — branch not added)
+show routing protocol bgp summary</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Hub floating Public IP — record before proceeding</div>
+      <p>From the Terraform output <code>ha_floating_untrust_ip</code>, identify the Public IP address of <code>sdwan-hub-pip</code>. This is the address branch firewalls will use as their hub WAN peer. Confirm it is reachable from the internet (UDP 500 and UDP 4500 inbound) by checking the untrust NSG in the Azure portal , the <code>allow-sdwan-ipsec-inbound</code> rule should be present and enabled.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The SD-WAN DIA VIF and loopback.901 exist on the active hub firewall. BGP is configured. The hub untrust NSG allows UDP 500 and UDP 4500 inbound. The <code>sdwan-hub-pip</code> Public IP is noted and reachable.</p>
+    </div>
+  </div>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Add both branch HA devices individually with same site name</div>
+  <p>The SD-WAN plugin requires each firewall in an HA pair to be added <em>separately</em> to the VPN cluster using identical site settings. Both devices receive the same hub failover priority. The passive device takes on the active device's characteristics at failover , the SD-WAN plugin only generates configuration for reaching the active device's parameters. For A/P HA branch pairs, use the <strong>same site name</strong> for both devices (matching the hub pattern used in Step 1B.5).</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 6.1: Add branch firewall(s) to the VPN cluster</span></div>
+  <div class="collapsible-body">
+    <p>Navigate to the VPN cluster created in Phase 1B and add the branch device(s) under the Branch devices tab.</p>
+
+    <div class="mgmt-tabs" data-tab-group="branch-model">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="single">1A &middot; Single Firewall</button>
+        <button class="mgmt-tab" data-plane="ha-pair">1B &middot; HA Pair</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="single">
+        <p>Add the single PA-410 as one branch device entry:</p>
+        <table>
+          <thead><tr><th>Setting</th><th>Value</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Site Name</td><td><code>branch1</code></td><td>Unique branch site name.</td></tr>
+            <tr><td>Router</td><td><code>default</code></td><td>Default logical router.</td></tr>
+            <tr><td>BGP Redistribution Profile</td><td><code>All-Connected-Routes</code></td><td>Advertises branch LAN prefixes to hub via eBGP.</td></tr>
+            <tr><td>Ethernet Interface</td><td><code>$eth-internet</code></td><td>Resolves to <code>ethernet1/1</code> — SD-WAN WAN interface.</td></tr>
+            <tr><td>Next Hop Gateway</td><td>None</td><td>DHCP default gateway used automatically by DIA VIF.</td></tr>
+            <tr><td>SD-WAN Interface Profile</td><td><code>SDWAN-DIA1</code></td><td>Ethernet-type public profile.</td></tr>
+            <tr><td>Upstream NAT</td><td>Disabled</td><td>Dynamic peer discovery handles CG-NAT tunnel establishment.</td></tr>
+          </tbody>
+        </table>
+        <p>One click , one device. The VPN cluster Branch devices tab will show one entry when complete.</p>
+      </div>
+
+      <div class="mgmt-panel" data-plane="ha-pair">
+        <p>Add <strong>both PA-410s separately</strong> using identical settings. Both devices use the same site name , the SD-WAN plugin targets the active device's IP and the passive inherits it on failover.</p>
+        <table>
+          <thead><tr><th>Setting</th><th>Value</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Site Name</td><td><code>branch1</code></td><td>Same for both PA-410-lower and PA-410-upper.</td></tr>
+            <tr><td>Router</td><td><code>default</code></td><td>Default logical router.</td></tr>
+            <tr><td>BGP Redistribution Profile</td><td><code>All-Connected-Routes</code></td><td>Advertises branch LAN prefixes to hub via eBGP.</td></tr>
+            <tr><td>Ethernet Interface</td><td><code>$eth-internet</code></td><td>Resolves to <code>ethernet1/1</code> on both devices.</td></tr>
+            <tr><td>Next Hop Gateway</td><td>None</td><td>DHCP default gateway — leave empty.</td></tr>
+            <tr><td>SD-WAN Interface Profile</td><td><code>SDWAN-DIA1</code></td><td>Ethernet-type public profile.</td></tr>
+            <tr><td>Upstream NAT</td><td>Disabled</td><td>Dynamic peer discovery handles CG-NAT.</td></tr>
+          </tbody>
+        </table>
+        <p>Add PA-410-lower first, then click <strong>Add Branch devices</strong> again and add PA-410-upper with the same settings.</p>
+      </div>
+    </div>
+
+    <p><em>Branch Settings for PA-410-lower , your screen should look like this:</em></p>
+    <img src="screenshots/image14.png" alt="Branch Settings panel for PA-410-lower showing Site Name=branch1, Router=default, BGP Redistribution=All-Connected-Routes, Interface 1: Ethernet Interface=$eth-internet, Next Hop=None, SD-WAN Profile=SDWAN-DIA1, Upstream NAT=unchecked" loading="lazy">
+    <p><em>Branch devices tab after adding both HA devices (HA Pair path) , both show site name <code>branch1</code>:</em></p>
+    <img src="screenshots/image11.png" alt="VPN Clusters Branch devices tab showing PA-410-lower and PA-410-upper both with Site Name=branch1, Router=default, BGP=All-Connected-Routes, Interface=$eth-internet" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><strong>Single Firewall:</strong> Branch devices tab shows one entry , site name <code>branch1</code>, router <code>default</code>, interface <code>$eth-internet</code>.<br>
+      <strong>HA Pair:</strong> Branch devices tab shows two entries , both named <code>branch1</code>, identical settings. Push to both branch and hub firewalls before proceeding.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 6.2: Review AutoVPN constructs created on branch firewalls</span></div>
+  <div class="collapsible-body">
+    <p>After pushing, AutoVPN creates the following constructs on both branch firewalls. Verify these exist after the push completes.</p>
+    <ul>
+      <li>Security zones: <code>zone-internal</code>, <code>zone-to-hub</code>, <code>zone-public</code>, <code>zone-private</code> (created if not already present)</li>
+      <li>Loopback <code>loopback.901</code> in <code>zone-internal</code> (BGP router-ID interface)</li>
+      <li>IPSec tunnels from branch <code>ethernet1/1</code> to each hub WAN interface (one tunnel per active hub)</li>
+      <li>DIA VIF grouping <code>ethernet1/1</code> for direct internet access path selection</li>
+      <li>VPN VIF grouping the IPSec tunnels to the hub</li>
+      <li>eBGP sessions over each tunnel to the hub, advertising branch LAN prefixes (via <code>All-Connected-Routes</code> redistribution)</li>
+      <li>Static default route pointing to the DIA VIF</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both branch firewalls are in the VPN cluster. Push to both branch and hub firewalls. After push, confirm from the branch CLI that SD-WAN VIFs exist and BGP is configured. Proceed to Phase 7 to verify tunnel formation.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 6.3: Verify required security policies exist</span></div>
+  <div class="collapsible-body">
+    <p>The AutoVPN process creates zones and routing, but security policies must permit the traffic. Verify the following policies exist in the branch folder configuration in SCM. Create any that are missing.</p>
+    <table>
+      <thead><tr><th>Policy</th><th>Source zone</th><th>Destination zone</th><th>Application</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>BGP to hub</td><td><code>zone-internal</code></td><td><code>zone-to-hub</code></td><td><code>bgp</code></td><td>Allow</td></tr>
+        <tr><td>Branch LAN to hub</td><td><code>zone-private</code></td><td><code>zone-to-hub</code></td><td>any (or specific)</td><td>Allow</td></tr>
+        <tr><td>Hub to branch LAN</td><td><code>zone-to-hub</code></td><td><code>zone-private</code></td><td>any (or specific)</td><td>Allow</td></tr>
+        <tr><td>DIA outbound</td><td><code>zone-private</code></td><td><code>zone-public</code></td><td>any (or specific)</td><td>Allow</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">BGP policy placement</div>
+      <p>Insert the BGP permit rule near the top of the security policy rulebase. BGP is a control-plane function , blocking it prevents tunnel formation and route exchange even if the IPSec tunnel is up.</p>
+    </div>
+    <h4>DIA NAT policy</h4>
+    <p>For direct internet access from the branch LAN, create a Dynamic IP and Port (DIPP) NAT rule per WAN interface:</p>
+    <table>
+      <thead><tr><th>Rule name</th><th>Source zone</th><th>Destination zone</th><th>Destination interface</th><th>Translation</th></tr></thead>
+      <tbody>
+        <tr><td><code>DIA-NAT-eth1_1</code></td><td><code>zone-private</code></td><td><code>zone-public</code></td><td><code>ethernet1/1</code></td><td>Dynamic IP and Port — interface address of <code>eth1/1</code></td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All required security policies are present in the branch folder configuration. The BGP policy is at or near the top of the rulebase. The DIA NAT policy covers each WAN interface.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 6.4: Push SD-WAN AutoVPN configuration</span></div>
+  <div class="collapsible-body">
+    <p>Push the full SD-WAN configuration to both branch firewalls and to the hub firewalls (the hub needs updated peer configuration to include the new branch tunnels).</p>
+    <ol>
+      <li>In SCM, click <strong>Push Config</strong>.</li>
+      <li>Target: both branch firewalls and the hub firewalls.</li>
+      <li>Confirm and wait for the push to complete.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Hub must also be pushed</div>
+      <p>The hub firewalls receive new IPSec peer configuration for the branch. Pushing only the branch leaves the tunnels half-configured and they will not come up.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Push status shows success for both branch firewalls and hub firewalls. Proceed to Phase 7 to verify tunnel formation and traffic flow.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 7: VERIFICATION                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                              -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<p>The five most common failure modes, in order of likelihood. Check these before opening a support case.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>T-1: ZTP never completes — firewalls do not appear in SCM</span></div>
+  <div class="collapsible-body">
+    <p>If both firewalls are powered on and connected to the provider switch but do not appear in SCM after 30–45 minutes, work through this checklist in order:</p>
+    <ol>
+      <li><strong>Outbound port 3978 blocked.</strong> From a device on the provider switch network, confirm port 3978 outbound is reachable. Many ISPs and CG-NAT providers block non-standard ports. If blocked, configure PAN-OS to use port 443 instead (available in PAN-OS 11.2 and later).</li>
+      <li><strong>DHCP not provided on management port.</strong> The management interface must receive a DHCP address. Check the provider switch port assignments and DHCP scope.</li>
+      <li><strong>Onboarding rule mismatch.</strong> In SCM, navigate to <strong>Configuration</strong> &gt; <strong>NGFW and Prisma Access</strong> &gt; <strong>Setup</strong> &gt; <strong>Device Onboarding</strong> and confirm the rule is enabled and matches the HA-Group label assigned in the ZTP portal.</li>
+      <li><strong>Devices not claimed in ZTP portal before boot.</strong> The ZTP portal registration must exist before the firewalls first reach the internet. If the devices booted without being registered, power them off, register them, then power back on.</li>
+    </ol>
+    <p>On the firewall CLI (console access), check ZTP status:</p>
+    <div class="code-block">
+      <pre><code>show system ztp status
+show cloud-management-status
+show jobs all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Expected healthy state</div>
+      <p><code>show cloud-management-status</code> shows <strong>Connected: Yes</strong>. <code>show jobs all</code> shows the Advanced Routing Engine job completed. Both devices appear in SCM <strong>Settings</strong> &gt; <strong>Device Management</strong> &gt; <strong>Cloud Managed Devices</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>T-2: Passive unit loses SCM connectivity after HA is formed</span></div>
+  <div class="collapsible-body">
+    <p>Symptom: SCM shows the passive firewall as Disconnected intermittently. Config sync fails. This means service routes were not moved to the management interface before HA was formed (Step 4.4 was skipped or the push failed).</p>
+    <p>Diagnosis , run on the passive firewall:</p>
+    <div class="code-block">
+      <pre><code>show netstat all yes numeric-ports yes numeric-hosts yes | match :3978</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>If the source IP in the output is <code>eth1/1</code>'s address (not the management IP), service routes are still using the dataplane path. Break HA, return to Phase 4, complete Steps 4.4–4.5, then re-run Phase 5.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>T-3: HA does not form — HA1 link stays down</span></div>
+  <div class="collapsible-body">
+    <p>Symptom: After the Phase 5 push, <code>show ha all</code> shows HA1 link state as <strong>down</strong> and peer state as <strong>unknown</strong>.</p>
+    <p>Check the physical link first:</p>
+    <div class="code-block">
+      <pre><code>show interface ethernet1/2</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ul>
+      <li>If link state is <strong>down</strong>: wrong cable or wrong port. Confirm the crosslink is <code>eth1/2</code> ↔ <code>eth1/2</code> (not <code>eth1/2</code> ↔ <code>eth1/3</code>).</li>
+      <li>If link state is <strong>up</strong> but no IP address: the wizard mapped the wrong interface. Return to Phase 5 and re-run the SCM HA wizard, selecting <code>ethernet1/2</code> explicitly for HA1.</li>
+      <li>If link state is <strong>up</strong> and IP is correct: check that both HA peers are running the same PAN-OS version. Mismatched versions block HA formation.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>T-4: IPSec tunnels form but BGP does not establish</span></div>
+  <div class="collapsible-body">
+    <p>Symptom: <code>show vpn ipsec-sa</code> shows tunnels active, but <code>show routing protocol bgp peer</code> shows state <strong>Idle</strong> or <strong>Active</strong> (not Established).</p>
+    <p>Most common causes:</p>
+    <ol>
+      <li><strong>Missing BGP security policy.</strong> In SCM, confirm a security policy exists that permits <code>bgp</code> from <code>zone-internal</code> to <code>zone-to-hub</code> and the reverse. Insert it near the top of the rulebase and push.</li>
+      <li><strong>BGP AS number conflict.</strong> Each SD-WAN site must have a unique BGP AS number. If two sites share an AS, BGP will not form. Check the VPN cluster configuration in SCM for duplicate AS numbers.</li>
+      <li><strong>Hub not pushed after branch was added to VPN cluster.</strong> The hub firewall must receive updated peer configuration when a new branch is added. Re-push to both hub and branch and confirm both pushes succeed.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>T-5: Hub HA failover — floating IP does not move to fw-2</span></div>
+  <div class="collapsible-body">
+    <p>Symptom: After <code>request high-availability state suspend</code> on fw-1, fw-2 becomes active but the SD-WAN hub tunnels do not recover. Branch firewalls cannot re-establish tunnels.</p>
+    <p>Check the Azure role assignment , this is the most common cause:</p>
+    <div class="code-block">
+      <pre><code>az role assignment list \
+  --resource-group CUSTOMER_RG_NAME \
+  --query "[?roleDefinitionName=='Network Contributor'].{principal:principalName}" \
+  --output table</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>If fw-2's Managed Identity does not appear in the output, the role assignment failed during Terraform apply. Re-run <code>terraform apply</code> , it is idempotent and will add the missing assignment. Then test failover again.</p>
+    <p>If the role assignment is present but the IP still doesn't move, check the system log on fw-2 for Azure API error messages:</p>
+    <div class="code-block">
+      <pre><code>show log system | match "azure\|HA\|floating"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<h2 id="verification">Phase 7: Verification</h2>
+
+<p>Confirm end-to-end operational state: configuration synchronization, VPN tunnel formation, EBGP route exchange, and live traffic flow from branch to hub.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 7.1: Verify configuration sync status</span></div>
+  <div class="collapsible-body">
+    <p>In SCM Device Management, confirm both branch PA-410s are Connected, Bootstrap Done, In Sync, and showing correct HA state (one Active, one Passive).</p>
+    <p><em>Your screen should look like this , both devices in folder <code>All Firewalls &gt; ztp &gt; 410-ha</code>, Connected, Bootstrap Done, In Sync, with HA state visible:</em></p>
+    <img src="screenshots/image1.png" alt="SCM Device Management Cloud Managed Devices showing folder All Firewalls > ztp > 410-ha with two devices: PA-410-lower (label auto-vpn-VP, Connected, Bootstrap Done, In Sync, HA=active) and PA-410-upper (label auto-vpn-VP, Connected, Bootstrap Done, In Sync, HA=passive)" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both branch firewalls show <strong>Connected</strong>, <strong>Bootstrap Done</strong>, <strong>In Sync</strong>. One shows HA state <strong>active</strong> (PA-410-lower), the other <strong>passive</strong> (PA-410-upper). Labels show <code>auto-vpn-VP...</code> , this confirms AutoVPN has applied the SD-WAN label to both devices after Phase 6 completed.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 7.2: Verify VPN tunnel and EBGP status</span></div>
+  <div class="collapsible-body">
+    <p>Verify that the IKEv2/IPsec tunnels have formed between the branch and hub, and that EBGP peering is established and exchanging routes in both directions.</p>
+    <p>From the branch firewall CLI, check tunnel and BGP status:</p>
+    <div class="code-block">
+      <pre><code>show vpn ike-sa
+show vpn ipsec-sa
+show routing protocol bgp peer</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="screenshots/image36.png" alt="SCM SD-WAN monitoring view showing IKEv2 tunnel up, IPSec SA active, and EBGP session established between branch and hub with routes exchanged" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>IKEv2 Phase 1 (IKE SA) and Phase 2 (IPsec SA) are both <strong>active</strong>. EBGP session between branch and hub shows state <strong>Established</strong>. Branch routing table contains hub prefixes learned via eBGP; hub routing table contains the branch LAN prefix (<code>eth1/7</code> subnet). In the SCM SD-WAN monitoring dashboard, the branch site shows path health (latency/jitter/loss metrics) , this confirms path-monitoring probes are flowing through the tunnels.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 7.3: Verify end-to-end connectivity</span></div>
+  <div class="collapsible-body">
+    <p>Pass live traffic from a branch client through the HA pair, over the SD-WAN VPN, to a host on the hub side. This confirms the complete data path is operational.</p>
+    <p><em>Connectivity test sequence , your screens should look like this:</em></p>
+    <img src="screenshots/image37.png" alt="Branch client connectivity test initiation , ping or traceroute to hub server" loading="lazy">
+    <img src="screenshots/image26.png" alt="Traffic flowing through branch firewall , session table or traffic log view" loading="lazy">
+    <img src="screenshots/image12.png" alt="VPN tunnel carrying traffic , encrypted session visible on branch side" loading="lazy">
+    <img src="screenshots/image38.png" alt="Traffic arriving at hub , session visible on hub firewall" loading="lazy">
+    <img src="screenshots/image40.png" alt="Hub server receiving traffic from branch client , end-to-end confirmation" loading="lazy">
+    <img src="screenshots/image33.png" alt="SCM traffic logs or monitor view showing branch-to-hub session with allow action" loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Traffic from a branch LAN client successfully reaches a destination on the hub network over the SD-WAN AutoVPN. Sessions appear in the firewall monitor on both the branch and hub. The branch HA pair is Active/Passive with the primary firewall handling traffic. The passive firewall maintains its independent SCM connection and config sync.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 7.4: Verify hub HA state and Azure Managed Identity</span></div>
+  <div class="collapsible-body">
+    <p>Confirm the hub A/P HA pair is healthy and the Managed Identity role assignment is in place so Azure API-based failover will work when needed.</p>
+    <h4>Verify HA state from hub CLI</h4>
+    <div class="code-block">
+      <pre><code># On fw-1 (active) — expect: state: active, peer state: passive
+show ha state
+
+# On fw-2 (passive) — expect: state: passive, peer state: active
+show ha state
+
+# Confirm config is synchronized between the pair
+show ha all | match sync</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <h4>Verify Managed Identity role assignment in Azure</h4>
+    <div class="code-block">
+      <pre><code># Verify both VMs have their Managed Identity granted Network Contributor
+# Replace <RG_NAME> with your resource group (e.g., example-vmseries-ha-hub)
+az role assignment list \
+  --resource-group <RG_NAME> \
+  --query "[?roleDefinitionName=='Network Contributor'].{principal:principalName, role:roleDefinitionName}" \
+  --output table</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Both VM-Series principal IDs should appear in the output with <code>Network Contributor</code>. If either is missing, re-run <code>terraform apply</code> , the role assignment may have failed silently on first apply.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>fw-1 shows <strong>active</strong>, fw-2 shows <strong>passive</strong>. Both show peer state as connected and config synchronized. The Azure CLI output shows two Network Contributor role assignments on the resource group , one per hub firewall Managed Identity.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 7.5: Hub HA failover test</span></div>
+  <div class="collapsible-body">
+    <p>Trigger a controlled hub failover to confirm the Azure API-based IP migration works and that branch SD-WAN tunnels recover automatically. Do this test before going live , it is much better to discover configuration issues now than during an unplanned outage.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Traffic interruption expected</div>
+      <p>Hub failover in Azure takes 15 to 60 seconds. Branch SD-WAN tunnels will drop and re-establish during this window. Schedule the test during a maintenance window if traffic is flowing.</p>
+    </div>
+    <h4>Initiate failover from fw-1 CLI</h4>
+    <div class="code-block">
+      <pre><code># Force fw-1 to become passive (fw-2 will assume active)
+request high-availability state suspend</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <h4>Monitor failover on fw-2</h4>
+    <div class="code-block">
+      <pre><code># On fw-2 — watch it transition to active
+show ha state
+
+# Confirm fw-2 now owns the floating IPs
+show interface ethernet1/1 | match "IP address"
+show interface ethernet1/2 | match "IP address"
+
+# Verify Azure API call succeeded (check system log for HA events)
+show log system | match "HA\|azure\|floating"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <h4>Verify from Azure CLI that floating IPs moved</h4>
+    <div class="code-block">
+      <pre><code># Check which NIC currently holds the floating untrust IP (10.0.1.6)
+az network nic show \
+  --resource-group example-vmseries-ha-hub \
+  --name example-fw-2-untrust \
+  --query "ipConfigurations[].privateIPAddress" \
+  --output tsv
+
+# Check which VM the sdwan-hub-pip Public IP is associated with
+az network public-ip show \
+  --resource-group example-vmseries-ha-hub \
+  --name example-sdwan-hub-pip \
+  --query "ipConfiguration.id" \
+  --output tsv</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <h4>Verify SD-WAN tunnel recovery from branch</h4>
+    <div class="code-block">
+      <pre><code># On the branch active firewall — tunnels should re-establish after failover
+show vpn ike-sa
+show vpn ipsec-sa
+show routing protocol bgp peer</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <h4>Restore fw-1 to active (failback)</h4>
+    <div class="code-block">
+      <pre><code># On fw-1 — restore it to functional state (it will return to passive initially
+# since preemptive is disabled — this is expected)
+request high-availability state functional
+
+# If you need to force fw-1 back to active immediately:
+# (Not recommended in production — let fw-2 stay active until next natural failback)
+# request high-availability state suspend  # run on fw-2</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After failover: fw-2 shows <strong>active</strong>. The Azure CLI confirms <code>10.0.1.6</code> is on fw-2's untrust NIC and <code>sdwan-hub-pip</code> is associated with fw-2's NIC. Branch IPSec tunnels and EBGP sessions re-establish to the same Public IP within 60 seconds. Branch-to-hub traffic resumes without reconfiguration on the branch. After failback: the system returns to fw-1 active / fw-2 passive.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>
