@@ -110,12 +110,32 @@ Every TRD question belongs to exactly one relevance tier. The tier determines pl
 
 ## 3. Document Structure
 
+### 3.0 Required Attendees (mandatory top-of-document section)
+
+Every TRD must open with a **Required Attendees** table before Part A. This section is visible to both the consultant and the customer — it is not a consultant-only note. Its purpose is to ensure the right people are booked for the discovery call before it happens.
+
+The table has three columns: **Role**, **Why They Must Be Present**, and **Risk If Absent**. Roles marked `*` are required for the call to proceed; roles marked `†` are conditional on specific product features or deployment topologies.
+
+At minimum, every TRD must include:
+- PANW PS Consultant
+- Project Sponsor `*`
+- Technical Lead (product-specific — AI/ML lead, network architect, etc.) `*`
+- Security Lead `*`
+- CSP Portal / Cloud Admin `*`
+- Any conditional roles specific to the product topology
+
+A pre-call preparation note must follow the table listing which sections should be sent to specific roles 48 hours in advance.
+
 ### 3.1 Tiered Architecture
 
 All AIRS TRDs follow a three-tier structure. Each tier has a different scope and repeat pattern.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
+│  REQUIRED ATTENDEES (top-of-document, before Part A)     │
+│  Who must be present on the discovery call. Visible to   │
+│  both consultant and customer.                           │
+├──────────────────────────────────────────────────────────┤
 │  PART A: ORGANIZATION & BUSINESS CONTEXT                 │
 │  Asked once per customer. Establishes who they are,      │
 │  what AI systems they have, and what they need.          │
