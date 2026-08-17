@@ -62,6 +62,7 @@
   <div class="sidebar-section">
     <div class="sidebar-section-title">Configure</div>
     <a href="#llm-integration" data-section="llm-integration">LLM Integration</a>
+    <a href="#mcp-integration" data-section="mcp-integration">MCP Integration</a>
   </div>
   <div class="sidebar-section">
     <div class="sidebar-section-title">Operate</div>
@@ -114,8 +115,12 @@
     <span class="progress-phase-label">Phase 3</span>
     LLM Integration
   </a>
-  <a href="#guardrails-logging" class="progress-phase">
+  <a href="#mcp-integration" class="progress-phase">
     <span class="progress-phase-label">Phase 4</span>
+    MCP Integration
+  </a>
+  <a href="#guardrails-logging" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
     Guardrails &amp; Logging
   </a>
 </div>
@@ -134,6 +139,12 @@
 <h2 id="architecture-overview">Architecture Overview</h2>
 
 <p>AI Gateway provides a centralized security and observability layer for all AI traffic in your organization. It sits between your applications, agents, and MCP clients on one side and your LLM providers, MCP servers, and privately hosted models on the other. Strata Cloud Manager is the control plane: licensing, configuration, access control, and dashboards all live there.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">AI Gateway &mdash; built on the acquired Portkey platform</div>
+  <p>Palo Alto Networks <a href="https://www.paloaltonetworks.com/company/press/2026/palo-alto-networks-completes-acquisition-of-portkey-to-secure-ai-agents" target="_blank" rel="noopener">completed its acquisition of Portkey</a> in May 2026, and AI Gateway is that platform brought into Prisma AIRS. This is worth knowing before you deploy, because the Portkey name is still visible throughout the running product even though the official documentation does not use it: the Helm chart is published as <code>Portkey-AI/airs-gw-helm</code>, the container image is pulled from <code>registry.portkey.ai</code>, the data plane calls home to <code>api.portkey.ai</code>, and the SaaS endpoint is <code>aigw.portkey.ai</code>. Seeing those hostnames is expected and is not a sign of a misconfiguration.</p>
+  <p>It also explains a gap this guide has to work around. Palo Alto Networks documents the Strata Cloud Manager side of the gateway, while some client-facing behavior is currently only described in the underlying platform's own documentation. Where this guide relies on that, it says so and tells you to treat your tenant as the source of truth.</p>
+</div>
 
 <p><em>High-level architecture, showing where each component sits:</em></p>
 <img src="diagrams/aigw-architecture-overview.svg" alt="Architecture overview showing AI applications and agents routing through the Prisma AIRS AI Gateway, which applies guardrails, budgets, rate limits, and model allowlists before reaching LLM providers and MCP servers, with Strata Cloud Manager as the control plane and logs flowing to the AI Gateway dashboard, Strata Logging Service, and OpenTelemetry endpoints" loading="lazy">
@@ -313,7 +324,7 @@
       <li>An <strong>activated AI Runtime Security license</strong>. If your organization has not activated Prisma AIRS yet, complete <a href="https://docs.paloaltonetworks.com/ai-runtime-security/activation-and-onboarding/activate-your-ai-runtime-security-license" target="_blank" rel="noopener">Activate Your AI Runtime Security License</a> first.</li>
       <li>A <strong>cloud account onboarded and activated in Strata Cloud Manager</strong>, per <a href="https://docs.paloaltonetworks.com/ai-runtime-security/activation-and-onboarding/onboard-and-activate-cloud-account-in-scm" target="_blank" rel="noopener">Onboard and Activate a Cloud Account in SCM</a>.</li>
       <li>A <strong>Customer Support Portal account</strong> on the support account that owns your flex credit pool, with a role that can view Software NGFW Credits and create deployment profiles. Step 1.3 happens entirely in the Customer Support Portal, not in SCM; if you cannot log in at <a href="https://support.paloaltonetworks.com/" target="_blank" rel="noopener">support.paloaltonetworks.com</a> or cannot see the credit pool, request access from your organization's CSP Super User before continuing.</li>
-      <li>Optionally, a <strong>Strata Logging Service (SLS)</strong> instance on the same tenant. SLS is where Threat Logs land. It is not required to deploy or use the gateway, and if your tenant has no SLS instance, the Threat Log checks in Phase 4 (Step 4.3 and Step 4.5) do not apply to you. SLS is normally provisioned with your Strata subscription; if you are unsure whether you have it, treat those checks as optional rather than as failures.</li>
+      <li>Optionally, a <strong>Strata Logging Service (SLS)</strong> instance on the same tenant. SLS is where Threat Logs land. It is not required to deploy or use the gateway, and if your tenant has no SLS instance, the Threat Log checks in Phase 5 (Step 5.3 and Step 5.5) do not apply to you. SLS is normally provisioned with your Strata subscription; if you are unsure whether you have it, treat those checks as optional rather than as failures.</li>
     </ol>
     <p>You also need <strong>flex credits</strong> available to allocate, and an SCM user whose role can open the <strong>AI Security</strong> section in the left navigation. If that entry is missing after you log in, your role does not include it; ask your SCM administrator to grant it. Deployment profile creation happens under the Customer Support Portal role above, not under an SCM permission.</p>
     <div class="callout callout-success">
@@ -543,7 +554,7 @@ Example: 12,000,000,000 characters per month
         <img src="aigw-screenshots/aigw-observability-fresh.png" alt="AI Gateway Observability page on the Analytics Overview tab showing Cost at zero dollars, Tokens Used, Latency at zero milliseconds, Requests, and Unique Users panels with no traffic, plus Logs and Exports tabs" loading="lazy">
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>The Observability page loads with its <strong>Analytics</strong> panels (Cost, Tokens Used, Latency, Requests, Unique Users) rendering at zero. The <strong>Logs</strong> and <strong>Exports</strong> tabs alongside Analytics are the views Step 3.8 and Phase 4 use. Nothing else needs to be deployed; continue to Phase 3 to add your first LLM integration.</p>
+          <p>The Observability page loads with its <strong>Analytics</strong> panels (Cost, Tokens Used, Latency, Requests, Unique Users) rendering at zero. The <strong>Logs</strong> and <strong>Exports</strong> tabs alongside Analytics are the views Step 3.8 and Phase 5 use. Nothing else needs to be deployed; continue to Phase 3 to add your first LLM integration.</p>
         </div>
       </div>
     </div>
@@ -735,7 +746,7 @@ environment:
 
         <p>Both backends are set the same way, as keys under <code>environment.data</code> in the file you downloaded:</p>
         <ul>
-          <li><strong>Log store</strong> &mdash; an object store holding raw LLM request and response bodies. This is the mechanism behind the prompt logs you will read in Phase 4.</li>
+          <li><strong>Log store</strong> &mdash; an object store holding raw LLM request and response bodies. This is the mechanism behind the prompt logs you will read in Phase 5.</li>
           <li><strong>Cache store</strong> &mdash; a Redis holding cached configuration, rate limit counters, and budget state, refreshed from the management plane roughly every 30 seconds.</li>
         </ul>
 
@@ -991,7 +1002,7 @@ environment:
           <div class="callout-title">Optional extras</div>
           <ul>
             <li><strong>Vector store</strong> &mdash; enables semantic caching, backed by Milvus. On-premises this pairs with the same bundled MinIO. See <a href="https://github.com/Portkey-AI/airs-gw-helm/blob/main/charts/airs-gw/docs/VectorStore.md" target="_blank" rel="noopener">VectorStore.md</a>.</li>
-            <li><strong>OpenTelemetry</strong> &mdash; pushes analytics to an OTel-compatible endpoint, which is the Hybrid answer to the event log export discussed in Phase 4, Step 4.3.</li>
+            <li><strong>OpenTelemetry</strong> &mdash; pushes analytics to an OTel-compatible endpoint, which is the Hybrid answer to the event log export discussed in Phase 5, Step 5.3.</li>
             <li><strong>Data service</strong> &mdash; set <code>dataservice.enabled: true</code> for custom fine-tuning, batches, and data exports. Fine-tuning data storage currently supports S3 only.</li>
           </ul>
         </div>
@@ -1509,7 +1520,7 @@ Every other token type is then expected to inherit 0.90.</code></pre>
     </ul>
     <div class="callout callout-warning">
       <div class="callout-title">Copy these values from your own tenant</div>
-      <p>The official Palo Alto Networks documentation currently covers the SCM configuration side of the gateway but does not yet publish the client-facing connection workflow. The AI Gateway is built on the acquired Portkey platform, and the patterns in this step and the next follow that platform's documented behavior. Treat your tenant's UI as the source of truth for the exact base URL, key workflow, and model string.</p>
+      <p>The official Palo Alto Networks documentation currently covers the SCM configuration side of the gateway but does not yet publish the client-facing connection workflow. As noted in the <a href="#architecture-overview">Architecture Overview</a>, the patterns in this step and the next follow the documented behavior of the underlying Portkey platform. Treat your tenant's UI as the source of truth for the exact base URL, key workflow, and model string.</p>
     </div>
 
     <!-- TODO(https): refactor this step so HTTPS is the documented default for the Hybrid base URL, not plain HTTP.
@@ -1532,7 +1543,7 @@ Every other token type is then expected to inherit 0.90.</code></pre>
         <pre><code>kubectl get svc -n airs-gw</code></pre>
         <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       </div>
-      <p>The gateway service publishes two ports: the LLM traffic port (the chart's <code>service.port</code>, defaulting to <code>8787</code>) and an MCP port on <code>8788</code> used in Step 3.9. Your base URL is built from the first one, reached whichever way suits the cluster:</p>
+      <p>The gateway service publishes two named ports: <code>gateway</code> for LLM traffic and <code>mcp</code> for Model Context Protocol traffic (used in Phase 4). Both are configurable in the chart values, so read the numbers out of the <code>PORT(S)</code> column rather than assuming them. Your base URL is built from the <code>gateway</code> port, reached whichever way suits the cluster:</p>
       <ul>
         <li><strong>ClusterIP</strong> &mdash; the in-cluster DNS name, for callers running in the same cluster: <code>http://airs-gw.airs-gw.svc.cluster.local</code> on the service port.</li>
         <li><strong>NodePort</strong> &mdash; any node's address on the high-numbered port shown in the <code>PORT(S)</code> column.</li>
@@ -1562,7 +1573,7 @@ Every other token type is then expected to inherit 0.90.</code></pre>
     </div>
     <ol>
       <li>In the left navigation, select <strong>AI Security &rarr; AI Gateway &rarr; Admin Settings</strong> (the last entry in the AI Gateway section). The page opens on the <strong>General</strong> tab, showing the <strong>Organization Details</strong> panel.</li>
-      <li>Get your gateway base URL. <strong>SaaS:</strong> copy the value in the <strong>Gateway URLs</strong> field (shown as <code>https://aigw.portkey.ai/v1</code> in the capture below). <strong>Hybrid:</strong> ignore that field, because it is the hosted SaaS endpoint; your base URL is the service running in your own cluster, built from <code>kubectl get svc -n airs-gw</code> as described in the Hybrid callout above. Either way, the <strong>MCP Gateway URLs</strong> field beneath it is the equivalent address for MCP traffic, used in Step 3.9.</li>
+      <li>Get your gateway base URL. <strong>SaaS:</strong> copy the value in the <strong>Gateway URLs</strong> field (shown as <code>https://aigw.portkey.ai/v1</code> in the capture below). <strong>Hybrid:</strong> ignore that field, because it is the hosted SaaS endpoint; your base URL is the service running in your own cluster, built from <code>kubectl get svc -n airs-gw</code> as described in the Hybrid callout above. Either way, the <strong>MCP Gateway URLs</strong> field beneath it is the equivalent address for MCP traffic, used in Phase 4.</li>
       <li>In the left navigation, select <strong>AI Security &rarr; AI Gateway &rarr; Integrations</strong>. On the <strong>LLM Integrations</strong> tab (its <strong>Connected</strong> view lists created integrations), click your integration's row (the <code>default-anthropic</code> worked example). The integration panel slides open on its <strong>Integration Details</strong> tab; the <strong>slug</strong> appears as a pill with a copy icon in the panel header, and again in the <strong>Slug</strong> field below. Record it.</li>
       <li>Switch to the panel's <strong>Model Provisioning</strong> tab. <strong>Provisioned LLMs</strong> lists every model you enabled in Step 3.6; record the <strong>Model Name</strong> of the model your application will use (for example <code>claude-fable-5</code>). The slug and model name combine into the <strong>model reference</strong> your application sends: <code>@&lt;integration-slug&gt;/&lt;model-name&gt;</code>, for example <code>@default-anthropic/claude-fable-5</code>.</li>
       <li>In the left navigation, select <strong>AI Security &rarr; AI Gateway &rarr; Security Keys</strong>. The <strong>Gateway API Keys</strong> page opens with two tabs: <strong>Service</strong> and <strong>User</strong>. For this worked example (Claude Code running as you), select the <strong>User</strong> tab, then click <strong>+ Create New</strong>. A User key is a personal access credential tied to your identity; choose the <strong>Service</strong> tab instead when creating a key for a backend application or automation that runs unattended.</li>
@@ -1570,7 +1581,7 @@ Every other token type is then expected to inherit 0.90.</code></pre>
         <ul>
           <li><strong>API Key Name</strong> &mdash; name the key so it identifies its holder or consuming application (the capture uses <code>drod-api</code>).</li>
           <li><strong>Short Description</strong> &mdash; optional, up to 100 characters; say whose access this is so the row explains itself later.</li>
-          <li><strong>Configuration</strong> &mdash; leave as is; the dropdown reads <strong>No configurations available</strong> unless your tenant has configs defined on the Policies &amp; Profiles <strong>Configuration</strong> tab (covered in Step 4.2).</li>
+          <li><strong>Configuration</strong> &mdash; leave as is; the dropdown reads <strong>No configurations available</strong> unless your tenant has configs defined on the Policies &amp; Profiles <strong>Configuration</strong> tab (covered in Step 5.2).</li>
           <li><strong>Metadata</strong> &mdash; optional JSON tags attached to the key for tracking, for example <code>{"app": "claude-code"}</code>.</li>
         </ul>
       </li>
@@ -1587,7 +1598,7 @@ Every other token type is then expected to inherit 0.90.</code></pre>
         <ul>
           <li><strong>Completions &mdash; Write</strong>: send LLM requests through the gateway. This is the permission Claude Code's prompt traffic uses.</li>
           <li><strong>Agents &mdash; Invoke</strong>: call agent integrations registered on the gateway.</li>
-          <li><strong>Mcp &mdash; Invoke</strong>: call MCP servers brokered by the gateway (Step 3.9).</li>
+          <li><strong>Mcp &mdash; Invoke</strong>: call MCP servers brokered by the gateway (Phase 4).</li>
           <li><strong>Logs &mdash; Write</strong>: submit entries to the gateway's logging pipeline.</li>
           <li><strong>Prompts &mdash; Render</strong>: fetch rendered prompt templates managed on the gateway.</li>
         </ul>
@@ -1763,7 +1774,57 @@ message = client.messages.create(
     </div>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The curl test returns a gateway-authenticated response, <code>/status</code> inside Claude Code shows the gateway base URL, a prompt sent from Claude Code appears in the Observability page's Logs tab with its token counts and cost, and the settings file keeps the routing in place for every new session. Traffic now flows for Phase 4 to observe.</p>
+      <p>The curl test returns a gateway-authenticated response, <code>/status</code> inside Claude Code shows the gateway base URL, a prompt sent from Claude Code appears in the Observability page's Logs tab with its token counts and cost, and the settings file keeps the routing in place for every new session. Traffic now flows for Phase 4 and Phase 5 to observe.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: MCP INTEGRATION                                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="mcp-integration">Phase 4: Configure an MCP Integration</h2>
+
+<p>Phase 3 routed LLM prompts through the gateway. This phase does the same for Model Context Protocol (MCP) traffic: the tool calls your agents and MCP clients make. Both kinds of traffic land in the same logs, draw down the same flex credits, and answer to the same guardrails, but they are configured separately and reach the gateway on different ports.</p>
+
+<p>The shape of the change is worth understanding before you make it. Today your MCP client talks straight to each MCP server. Afterward, the client talks only to the gateway, and the gateway talks to the servers on its behalf. Every tool call is then logged, policy-checked, and metered in flight, and your client holds one gateway credential instead of one credential per server.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Is this phase optional?</div>
+  <p>Yes, if nothing in your environment uses MCP. A deployment that only sends LLM prompts through the gateway is complete after Phase 3, and you can continue straight to Phase 5. Come back here when you start brokering tool calls.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">What is captured here, and what is not</div>
+  <p>The transport, authentication, and client configuration in this phase are verified against a running Hybrid gateway. The <strong>MCP Registry</strong> registration form itself is not yet captured: the official documentation does not walk it, and its exact field labels come from the tenant. Those gaps are marked inline where they occur.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1: Find the MCP endpoint</span>
+  </div>
+  <div class="collapsible-body">
+    <p>MCP traffic does not use the base URL from Step 3.7. The gateway listens for it separately, so the first task is finding the right address.</p>
+
+    <p><strong>SaaS:</strong> use the <strong>MCP Gateway URLs</strong> value on the Admin Settings General tab. It is the field directly beneath the <strong>Gateway URLs</strong> value you used in Step 3.7, on the same page shown in that step's capture.</p>
+
+    <p><strong>Hybrid:</strong> your MCP endpoint is the service in your own cluster, on the port named <code>mcp</code>. Read the number out of the service rather than assuming it, because the chart makes both ports configurable and your deployment may not match anyone else's:</p>
+    <div class="code-block">
+      <pre><code>kubectl get svc airs-gw -n airs-gw -o jsonpath='{range .spec.ports[*]}{.name}{"\t"}{.port}{"\n"}{end}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>That prints one line per port with the name in the first column. The <code>gateway</code> line is the LLM traffic port from Step 3.7; the <code>mcp</code> line is the one this phase uses. Reach it by ClusterIP, NodePort, LoadBalancer, or port-forward exactly as described in the Hybrid callout in Step 3.7. If your release name or namespace differs from <code>airs-gw</code>, substitute yours in both places.</p>
+
+    <p>Confirm the endpoint answers before going further, substituting your own host and MCP port:</p>
+    <div class="code-block">
+      <pre><code>curl -s http://&lt;mcp-host&gt;:&lt;mcp-port&gt;/health</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The command returns a JSON object whose <code>status</code> field reads <code>healthy</code>, along with a timestamp and the MCP gateway version. If the request times out or is refused, the MCP port is not exposed the way you think it is: recheck the <code>PORT(S)</code> column from the command above before continuing, since every later step in this phase depends on reaching this endpoint.</p>
     </div>
   </div>
 </div>
@@ -1771,53 +1832,140 @@ message = client.messages.create(
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 3.9: Route an MCP server through the gateway &mdash; skeleton</span>
+    <span>Step 4.2: Store the server credential as a Secret Reference</span>
   </div>
   <div class="collapsible-body">
-    <p>The gateway brokers more than LLM prompts: Model Context Protocol (MCP) interactions and agent-to-agent traffic route through it under the same guardrails, logging, and metering. Where LLM traffic uses an LLM Integration, MCP servers register on the <strong>MCP Registry</strong> tab of the same Integrations page from Step 3.1 (alongside <strong>Secret References</strong> for storing the credentials those servers need).</p>
+    <p>Most MCP servers require a credential of their own: an API key or a static token the gateway presents when it calls the server on your behalf. Create that credential before registering the server, so the registration can point at it rather than embedding the value.</p>
+
+    <p>In the left navigation, select <strong>AI Security &rarr; AI Gateway &rarr; Integrations</strong>, then open the <strong>Secret References</strong> tab, alongside the <strong>LLM Integrations</strong> tab used in Phase 3.</p>
+    <!-- TODO(mcp): capture the Secret Reference creation form, its field labels, and how a stored reference is displayed in the list -->
+    <!-- TODO(screenshot): Secret References tab on the Integrations page -->
+
     <div class="callout callout-warning">
-      <div class="callout-title">Section under construction</div>
-      <p>This step is a skeleton. The outline below reflects the tabs visible on the Integrations page and the MCP coverage in the official documentation, but the registration wizard itself has not yet been walked in a live tenant. Field names, screenshots, and client configuration will be filled in once captured.</p>
+      <div class="callout-title">Credentials on MCP servers are organization-wide</div>
+      <p>MCP servers that authenticate with API keys or static tokens use custom headers, which ride on every request and are shared by all users of the integration. This is the same caution as Step 3.3: scope the token minimally at the origin MCP server, and rotate it on personnel or scope changes. Storing it as a Secret Reference rather than pasting it inline means the rotation happens in one place instead of in every registration that uses it.</p>
     </div>
-    <p>The registration flow, at a high level, will cover:</p>
-    <ul>
-      <li>Opening the <strong>MCP Registry</strong> tab on the Integrations page.</li>
-      <li>Registering the MCP server with its endpoint URL and authentication. Servers that authenticate with API keys or static tokens use custom headers, which ride on every request and are shared by all users (the same caution as Step 3.3).</li>
-      <li>Provisioning the registered server to workspaces, mirroring the workspace access model from Step 3.5.</li>
-      <li>Pointing MCP clients at the <strong>MCP Gateway URLs</strong> address from Step 3.7 (<code>https://mcp-aigw.portkey.ai</code> on the Admin Settings General tab) instead of the origin server, so every tool call is logged and policy-checked in flight.</li>
-    </ul>
-    <!-- TODO(mcp): walk the MCP Registry registration wizard in the tenant and capture exact stages, fields, and labels -->
-    <!-- TODO(mcp): document Secret References workflow for MCP server credentials -->
-    <!-- TODO(mcp): document the client-side config (e.g. Claude Code .mcp.json) pointing at the gateway-hosted MCP endpoint -->
-    <!-- TODO(screenshot): MCP Registry tab on the Integrations page -->
-    <!-- TODO(screenshot): MCP server registration form -->
-    <!-- TODO(screenshot): Observability Logs showing a brokered MCP tool call -->
-    <div class="callout callout-note">
-      <div class="callout-title">What verification will look like</div>
-      <p>Once the registration flow is documented: an MCP client calls a tool through the gateway address, the call succeeds, and the interaction appears in the Observability logs alongside LLM traffic.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The reference appears in the Secret References list and is selectable when you register a server in Step 4.3. The secret value itself is masked after saving.</p>
     </div>
   </div>
 </div>
 
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.3: Register the server in the MCP Registry</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Registration is what tells the gateway a server exists, where to reach it, and which workspaces may call it. It is the MCP equivalent of the LLM integration you built across Steps 3.1 through 3.6.</p>
+    <ol>
+      <li>On the same <strong>Integrations</strong> page, open the <strong>MCP Registry</strong> tab.</li>
+      <li>Start a new server registration and supply the origin server's endpoint URL, along with its authentication, selecting the Secret Reference created in Step 4.2 where a credential is required.</li>
+      <li>Provision the registered server to workspaces, mirroring the workspace access model from Step 3.5. A server that is not provisioned to a workspace cannot be called by that workspace's keys, which is the most common reason a correctly configured client still cannot see a tool.</li>
+    </ol>
+    <!-- TODO(mcp): capture exact registration wizard stages, field labels, and button text from the tenant -->
+    <!-- TODO(screenshot): MCP Registry tab on the Integrations page -->
+    <!-- TODO(screenshot): MCP server registration form with fields filled -->
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The server appears in the MCP Registry list with its name and applied workspace count, in the same way a completed LLM integration appears on the LLM Integrations tab at the end of Step 3.6.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.4: Build the server URL and understand its authentication</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The MCP gateway does not expose one flat address serving every registered server. Each server is addressed by workspace and server identifier:</p>
+    <div class="code-block">
+      <pre><code>http://&lt;mcp-host&gt;:&lt;mcp-port&gt;/&lt;workspaceId&gt;/&lt;serverId&gt;/mcp</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>This matters when you configure clients in Step 4.5: pointing a client at the bare host will not reach a server. The identifiers come from the registration completed in Step 4.3. Requesting the gateway root returns a JSON document reporting this same path template, which is a quick way to confirm the convention on your own deployment.</p>
+    <!-- TODO(mcp): confirm where workspaceId and serverId are surfaced in the UI after registration -->
+
+    <h4>Authentication</h4>
+    <p>The MCP endpoint is authenticated, and an unauthenticated request returns <code>401</code> with a <code>WWW-Authenticate</code> header pointing at the gateway's OAuth resource metadata. That header is what lets a compliant MCP client discover how to authenticate on its own, without you assembling the flow by hand.</p>
+    <p>The gateway advertises standard OAuth 2.0 discovery, supporting the authorization code flow with PKCE, refresh tokens, client credentials, and dynamic client registration. Its scopes are MCP-specific, covering listing servers, listing tools, and calling tools. You can inspect what your own gateway advertises:</p>
+    <div class="code-block">
+      <pre><code>curl -s http://&lt;mcp-host&gt;:&lt;mcp-port&gt;/.well-known/oauth-authorization-server</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The response lists the authorization, token, revocation, and registration endpoints, the supported grant types, and the available scopes.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Reading the two different 401 responses</div>
+      <p>The gateway distinguishes between a missing credential and a rejected one, and the distinction saves real time when a client will not connect. A request carrying no token reports that authentication is required. A request carrying a token the gateway rejects reports instead that the access token is invalid or has expired. If you see the second message, the client is authenticating and the credential is the problem; if you see the first, the client is not sending a credential at all.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>An unauthenticated request to your server URL returns <code>401</code> rather than a connection error or a <code>404</code>. That combination proves the route resolves, the identifiers are correct, and the endpoint is protected, all before a client is involved.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.5: Point a client at the gateway and verify a tool call</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Configure your MCP client with the per-server URL from Step 4.4 in place of the origin server's own address. In Claude Code, MCP servers are declared in an <code>.mcp.json</code> file using the HTTP transport:</p>
+    <div class="code-block">
+      <pre><code>{
+  "mcpServers": {
+    "example-server": {
+      "type": "http",
+      "url": "http://&lt;mcp-host&gt;:&lt;mcp-port&gt;/&lt;workspaceId&gt;/&lt;serverId&gt;/mcp"
+    }
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Substitute the host, port, and identifiers before saving, since the placeholders in angle brackets are not literal values. On first connection the client performs the OAuth flow the gateway advertises, rather than you embedding a static key in the file.</p>
+    <!-- TODO(mcp): capture the end-to-end client authorization prompt once a server is registered in the tenant -->
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Use HTTPS outside a lab</div>
+      <p>The examples in this phase use plain HTTP so first bring-up is easy to debug. MCP traffic carries tool arguments and results, which routinely include sensitive data, and bearer tokens travel in the request headers. Terminate TLS in front of the MCP port before this leaves a lab network, exactly as noted for the LLM traffic port in Step 3.7.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Your MCP client connects and lists the server's tools, a tool call succeeds through the gateway, and the interaction appears in the Observability page's Logs tab alongside the LLM traffic from Step 3.8. Seeing both traffic types in one log view is the end-to-end proof that the gateway is brokering MCP rather than the client reaching the origin server directly.</p>
+    </div>
+    <!-- TODO(screenshot): Observability Logs showing a brokered MCP tool call -->
+  </div>
+</div>
+
 <!-- ════════════════════════════════════════════════════════════ -->
-<!--  PHASE 4: GUARDRAILS & LOGGING                                -->
+<!--  PHASE 5: GUARDRAILS & LOGGING                                -->
 <!-- ════════════════════════════════════════════════════════════ -->
 
-<h2 id="guardrails-logging">Phase 4: Guardrails &amp; Logging</h2>
+<h2 id="guardrails-logging">Phase 5: Guardrails &amp; Logging</h2>
 
 <p>With traffic flowing, two operational layers remain: the guardrails the gateway applies to AI interactions, and the two-tier logging pipeline that feeds dashboards, SIEM tooling, and compliance storage.</p>
 
+<p>This phase applies to everything the gateway brokers. The guardrails, dashboards, and log exports below govern the LLM prompts from Phase 3 and the MCP tool calls from Phase 4 alike, which is why they are configured once here rather than separately in each phase. If you skipped Phase 4 because nothing in your environment uses MCP, nothing here changes for you.</p>
+
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 4.1: Understand guardrail coverage</span>
+    <span>Step 5.1: Understand guardrail coverage</span>
   </div>
   <div class="collapsible-body">
     <div class="callout callout-warning">
       <div class="callout-title">Guardrail configuration steps pending capture</div>
-      <p>This step maps guardrail coverage only. The walkthrough for enabling and configuring individual guardrails has not yet been captured from a live tenant, and their home in the UI has not been identified (the <strong>Policies &amp; Profiles</strong> page manages budget and rate policies, not guardrails; see Step 4.2). Until those steps land here, treat this section as a planning reference for which detections belong to the gateway versus AI Runtime, not as a configuration procedure.</p>
+      <p>This step maps guardrail coverage only. The walkthrough for enabling and configuring individual guardrails has not yet been captured from a live tenant, and their home in the UI has not been identified (the <strong>Policies &amp; Profiles</strong> page manages budget and rate policies, not guardrails; see Step 5.2). Until those steps land here, treat this section as a planning reference for which detections belong to the gateway versus AI Runtime, not as a configuration procedure.</p>
     </div>
-    <!-- TODO(guardrails): locate the guardrail configuration UI in the tenant and document enabling Basic and third-party guardrails with screenshots. Policies & Profiles itself is already captured in Step 4.2; it manages budget/rate policies and configs, not guardrails. -->
+    <!-- TODO(guardrails): locate the guardrail configuration UI in the tenant and document enabling Basic and third-party guardrails with screenshots. Policies & Profiles itself is already captured in Step 5.2; it manages budget/rate policies and configs, not guardrails. -->
     <p>The current release supports the following guardrail categories:</p>
     <table>
       <thead>
@@ -1846,7 +1994,7 @@ message = client.messages.create(
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 4.2: Set policy-level budget and rate limits</span>
+    <span>Step 5.2: Set policy-level budget and rate limits</span>
   </div>
   <div class="collapsible-body">
     <p>The per-workspace budgets and rate limits from Step 3.5 are set inside one integration's wizard. The <strong>Policies &amp; Profiles</strong> page manages the policy layer above them: budget and rate policies that control spend across <strong>models, users, workspaces, or metadata conditions</strong>, plus request configurations for gateway traffic.</p>
@@ -1899,7 +2047,7 @@ message = client.messages.create(
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 4.3: Route event logs to your SIEM and dashboards</span>
+    <span>Step 5.3: Route event logs to your SIEM and dashboards</span>
   </div>
   <div class="collapsible-body">
     <p>AI Gateway separates logs into two categories with different storage and routing strategies. The first category, <strong>event logs</strong>, are small, structured logs built for real-time SIEM and SOAR ingestion. They include audit events, authentication events, traffic logs, and metrics and analytics.</p>
@@ -1936,7 +2084,7 @@ message = client.messages.create(
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 4.4: Manage prompt logs and compliance export</span>
+    <span>Step 5.4: Manage prompt logs and compliance export</span>
   </div>
   <div class="collapsible-body">
     <p>The second category, <strong>prompt logs</strong>, are large, text-heavy logs capturing full LLM context windows. They are routed to observability tooling for performance analysis, cost tracking, and compliance storage.</p>
@@ -1972,7 +2120,7 @@ message = client.messages.create(
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 4.5: Final end-to-end verification</span>
+    <span>Step 5.5: Final end-to-end verification</span>
   </div>
   <div class="collapsible-body">
     <p>Walk the whole chain once before handing the gateway to teams:</p>
