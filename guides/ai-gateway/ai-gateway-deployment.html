@@ -1796,7 +1796,7 @@ message = client.messages.create(
 
 <div class="callout callout-warning">
   <div class="callout-title">What is captured here, and what is not</div>
-  <p>The transport, authentication, and client configuration in this phase are verified against a running Hybrid gateway. The <strong>MCP Registry</strong> registration form itself is not yet captured: the official documentation does not walk it, and its exact field labels come from the tenant. Those gaps are marked inline where they occur.</p>
+  <p>The transport, authentication, and client configuration in this phase are verified against a running Hybrid gateway, and the registration form is captured from the tenant. The exact contents of the <strong>Advanced Settings</strong> editors and the <strong>Secret References</strong> connection details depend on the server and key management provider involved, so those steps describe the shape of the configuration rather than every field.</p>
 </div>
 
 <div class="collapsible">
@@ -1832,23 +1832,86 @@ message = client.messages.create(
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 4.2: Store the server credential as a Secret Reference</span>
+    <span>Step 4.2: Register the origin server in the MCP Registry</span>
   </div>
   <div class="collapsible-body">
-    <p>Most MCP servers require a credential of their own: an API key or a static token the gateway presents when it calls the server on your behalf. Create that credential before registering the server, so the registration can point at it rather than embedding the value.</p>
+    <p>Registration is what tells the gateway that a server exists, where to reach it, how to authenticate to it, and which workspaces may call it. It is the MCP equivalent of the LLM integration you built across Steps 3.1 through 3.6.</p>
 
-    <p>In the left navigation, select <strong>AI Security &rarr; AI Gateway &rarr; Integrations</strong>, then open the <strong>Secret References</strong> tab, alongside the <strong>LLM Integrations</strong> tab used in Phase 3.</p>
-    <!-- TODO(mcp): capture the Secret Reference creation form, its field labels, and how a stored reference is displayed in the list -->
-    <!-- TODO(screenshot): Secret References tab on the Integrations page -->
+    <ol>
+      <li>In the left navigation, select <strong>AI Security &rarr; AI Gateway &rarr; Integrations</strong>. The page opens on the <strong>LLM Integrations</strong> tab used in Phase 3; switch to the <strong>MCP Registry</strong> tab alongside it. The registry opens on its <strong>Connected</strong> view, which is the one this step uses.</li>
+      <li>Click <strong>+ Add MCP Servers</strong>. On a tenant with no servers registered yet, the tab shows an empty state reading <strong>No MCP Registry Created</strong> with that button in the middle of the page.</li>
+    </ol>
+
+    <p><em>Your screen should look like this:</em></p>
+    <img src="aigw-screenshots/aigw-mcp-registry-empty.png" alt="MCP Registry tab on the Integrations page showing the No MCP Registry Created empty state with the Add MCP Servers button" loading="lazy">
+
+    <p>The <strong>Add MCP Server</strong> page is a two-stage wizard, with <strong>MCP Integration Details</strong> and <strong>Workspace Provisioning</strong> listed down the left side. This step covers the first stage; Step 4.3 covers the second.</p>
+
+    <ol>
+      <li>Enter the <strong>Name</strong>. This is required, and it is what identifies the server in the registry list.</li>
+      <li>Enter a <strong>Short Description</strong> if you want one. It is optional.</li>
+      <li>Enter the <strong>URL</strong> of the MCP server you are putting behind the gateway. This is required, and it is the single field most often filled in wrong, so it gets its own callout below.</li>
+      <li>Check the <strong>Slug</strong>. It auto-fills from the Name, and it identifies the server in the registry the same way an integration slug does in Phase 3.</li>
+      <li>Leave <strong>Server Type</strong> on <strong>Streamable HTTP</strong> unless the server you are registering only speaks the older transport. The form describes this option as recommended for most integrations, supporting streaming responses over standard HTTP connections. Choose <strong>SSE</strong> only for a server that requires it.</li>
+      <li>Add <strong>Passthrough headers</strong> if you need them, filling in the <strong>Passthrough Headers</strong> and <strong>Passthrough String</strong> pair as necessary and clicking <strong>+ Add Header</strong> for each additional one. The trash icon at the end of a row removes it. These are optional.</li>
+      <li>Choose the <strong>Authentication</strong> mode the origin server requires. The form defaults to <strong>OAuth 2.1</strong>, and also offers <strong>None</strong> and <strong>Headers</strong>. The three modes are compared below.</li>
+      <li>Expand <strong>Advanced Settings</strong> only if the server requires it, and populate the fields as needed. See the callout below.</li>
+      <li>Click <strong>Next: Choose Workspace</strong> to continue to Step 4.3.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">A worked example you can register as-is</div>
+      <p>If you want a server to practice on before putting a production one behind the gateway, Context7 is a public documentation-lookup MCP server that needs no credential, which keeps this first registration focused on the mechanics:</p>
+      <ul>
+        <li><strong>Name</strong> &mdash; <code>context7</code></li>
+        <li><strong>URL</strong> &mdash; <code>https://mcp.context7.com/mcp</code></li>
+        <li><strong>Slug</strong> &mdash; <code>context7</code>, auto-filled from the Name</li>
+        <li><strong>Server Type</strong> &mdash; Streamable HTTP, the default</li>
+        <li><strong>Authentication</strong> &mdash; None, because the server requires no credential</li>
+        <li><strong>Passthrough headers</strong> and <strong>Advanced Settings</strong> &mdash; left empty</li>
+      </ul>
+      <p>Registering a server that needs no credential means a failure in Step 4.6 points at the gateway path or the workspace provisioning rather than at a mistyped token, which makes the first end-to-end test much easier to interpret.</p>
+    </div>
+
+    <p><em>The completed first stage of the wizard:</em></p>
+    <img src="aigw-screenshots/aigw-mcp-add-server-form.png" alt="Add MCP Server wizard on the MCP Integration Details stage, with Name set to context7 and URL set to the Context7 MCP endpoint, Server Type on Streamable HTTP, empty Passthrough headers, Authentication set to None, and Advanced Settings collapsed" loading="lazy">
+
+    <div class="callout callout-warning">
+      <div class="callout-title">The URL field is the origin server, not the gateway</div>
+      <p>This field takes the address of the MCP server you want the gateway to broker: the upstream server that actually implements the tools. It is not the gateway's own MCP endpoint from Step 4.1, and it is not the per-server URL your clients will eventually call. The registry exists to proxy servers, so pointing this field at the gateway itself makes the gateway its own upstream. Your clients get a different URL entirely, built in Step 4.5 once registration is complete.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Which authentication mode to choose</div>
+      <ul>
+        <li><strong>OAuth 2.1</strong> &mdash; for servers that speak OAuth. With dynamic client registration the gateway starts the OAuth exchange with the server on the first tool call, so each user completes their own consent and holds their own token. With a client credentials grant you supply a client ID and secret instead, the gateway fetches and refreshes tokens itself, and every user shares the same access.</li>
+        <li><strong>Headers</strong> &mdash; for servers that authenticate with an API key or a static token. The gateway attaches the headers to every request it makes to that server.</li>
+        <li><strong>None</strong> &mdash; for servers that require no credential at all.</li>
+      </ul>
+      <p>The choice is dictated by the origin server, not by preference. Check what that server supports before picking one here.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Passthrough headers are not authentication</div>
+      <p>The two header sections sit close together on this page and do different jobs. <strong>Headers</strong> under Authentication supplies fixed credentials that the gateway presents to the origin server. <strong>Passthrough headers</strong> forwards headers your client sent onward to that server, which is how distributed tracing identifiers, tenant context, and custom metadata survive the hop through the gateway. Putting a credential in the passthrough section does not authenticate anything.</p>
+    </div>
 
     <div class="callout callout-warning">
       <div class="callout-title">Credentials on MCP servers are organization-wide</div>
-      <p>MCP servers that authenticate with API keys or static tokens use custom headers, which ride on every request and are shared by all users of the integration. This is the same caution as Step 3.3: scope the token minimally at the origin MCP server, and rotate it on personnel or scope changes. Storing it as a Secret Reference rather than pasting it inline means the rotation happens in one place instead of in every registration that uses it.</p>
+      <p>A server registered with the <strong>Headers</strong> mode presents the same credential on every request, shared by all users of that integration. This is the same caution as Step 3.3: scope the token minimally at the origin MCP server, and rotate it on personnel or scope changes. The OAuth 2.1 mode with per-user consent is the way to avoid a shared credential where the origin server supports it.</p>
     </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Advanced Settings</div>
+      <p>Expanding <strong>Advanced Settings</strong> reveals three JSON editors: <strong>OAuth Metadata</strong>, <strong>External Auth Configuration</strong>, and <strong>Advanced Configuration</strong>. All three are optional, and all three stay empty for a straightforward registration like the one in this step. Populate them as needed for the server you are registering, following that server's own documentation for the exact keys it expects.</p>
+    </div>
+
+    <p><em>Advanced Settings expanded:</em></p>
+    <img src="aigw-screenshots/aigw-mcp-advanced-settings.png" alt="Advanced Settings expanded on the Add MCP Server wizard, showing three empty editors labelled OAuth Metadata, External Auth Configuration, and Advanced Configuration" loading="lazy">
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The reference appears in the Secret References list and is selectable when you register a server in Step 4.3. The secret value itself is masked after saving.</p>
+      <p>The wizard advances to the <strong>Workspace Provisioning</strong> stage without reporting a validation error on the Name or URL fields. If it rejects the URL, recheck it against the origin server's documented MCP endpoint, including its scheme and any path the server requires.</p>
     </div>
   </div>
 </div>
@@ -1856,22 +1919,46 @@ message = client.messages.create(
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 4.3: Register the server in the MCP Registry</span>
+    <span>Step 4.3: Provision the server to workspaces</span>
   </div>
   <div class="collapsible-body">
-    <p>Registration is what tells the gateway a server exists, where to reach it, and which workspaces may call it. It is the MCP equivalent of the LLM integration you built across Steps 3.1 through 3.6.</p>
+    <p>The second stage of the wizard, headed <strong>Workspace Access</strong>, controls which workspaces are allowed to call the server you just described. It mirrors the workspace access model from Step 3.5: the registry entry exists organization-wide, and provisioning is what exposes it to the teams that need it. The page describes itself as choosing workspaces that will have access to the integration and setting per-workspace or global budgets and rate limits.</p>
+
     <ol>
-      <li>On the same <strong>Integrations</strong> page, open the <strong>MCP Registry</strong> tab.</li>
-      <li>Start a new server registration and supply the origin server's endpoint URL, along with its authentication, selecting the Secret Reference created in Step 4.2 where a credential is required.</li>
-      <li>Provision the registered server to workspaces, mirroring the workspace access model from Step 3.5. A server that is not provisioned to a workspace cannot be called by that workspace's keys, which is the most common reason a correctly configured client still cannot see a tool.</li>
+      <li>Decide whether to enable <strong>Automatically provision this integration for new workspaces</strong>, using the toggle on the right of that banner. See the callout below before choosing.</li>
+      <li>Under <strong>Total Valid Workspaces</strong>, switch on each workspace that should reach this server. Use the <strong>Search</strong> box to find one by name in a large organization, or <strong>Select All</strong> and <strong>Deselect All</strong> to move through the list quickly.</li>
+      <li>Click <strong>Create MCP Server</strong> to finish the registration.</li>
     </ol>
-    <!-- TODO(mcp): capture exact registration wizard stages, field labels, and button text from the tenant -->
-    <!-- TODO(screenshot): MCP Registry tab on the Integrations page -->
-    <!-- TODO(screenshot): MCP server registration form with fields filled -->
+
+    <p><em>Your screen should look like this:</em></p>
+    <img src="aigw-screenshots/aigw-mcp-workspace-provisioning.png" alt="Workspace Provisioning stage of the Add MCP Server wizard, showing the Workspace Access heading, the automatic provisioning toggle enabled, one workspace switched on in the Total Valid Workspaces list, and the Create MCP Server button" loading="lazy">
+
+    <div class="callout callout-note">
+      <div class="callout-title">Workspace names are specific to your tenant</div>
+      <p>The workspace shown in the capture above is the one belonging to the tenant used to write this guide, and its name carries an identifier unique to that tenant. Yours will differ, so read the screenshot for the layout of the page rather than for the value in it, and select whichever workspaces exist in your own list. The same applies to any identifier appearing in a capture from here on, including the ones that make up the server URL in Step 4.5.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">When to turn on automatic provisioning</div>
+      <p>The toggle provisions this integration to every workspace created in the future, and the setting can be overridden or removed at any time. Turn it on for servers meant to be available organization-wide, where a new team should get access as a matter of course rather than by filing a request: a documentation lookup service or an internal knowledge base fits this shape. Leave it off for servers reaching sensitive or costly systems, where each new workspace should be a deliberate decision. The toggle governs only workspaces created from this point onward, so it never changes access for the workspaces already in the list below it.</p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">An unprovisioned server is invisible to clients</div>
+      <p>A server that is not provisioned to a workspace cannot be called by that workspace's keys. This is the most common reason a correctly configured client connects to the gateway but reports no tools: the transport is fine, the credential is fine, and the server simply is not exposed to the workspace the key belongs to. If you reach Step 4.6 and the tool list comes back empty, return here first.</p>
+    </div>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The server appears in the MCP Registry list with its name and applied workspace count, in the same way a completed LLM integration appears on the LLM Integrations tab at the end of Step 3.6.</p>
+      <p>The wizard closes and the server appears in the <strong>MCP Registry</strong> list on the <strong>Connected</strong> view, under <strong>Total MCP Servers</strong>, in the same way a completed LLM integration appears on the LLM Integrations tab at the end of Step 3.6. Confirm the <strong>Status</strong> column reads <strong>Active</strong> and the <strong>Workspaces</strong> column shows the number of workspaces you provisioned it to. The row also carries the <strong>Slug</strong> with a copy button, the <strong>Server version</strong>, the <strong>Creator</strong>, and a <strong>Last updated</strong> timestamp, along with edit and delete actions at the end.</p>
+    </div>
+
+    <p><em>Your screen should look like this:</em></p>
+    <img src="aigw-screenshots/aigw-mcp-registry-row.png" alt="MCP Registry list showing one registered server named context7 with Active status, its slug, creator, a workspace count of 1, and a last updated timestamp" loading="lazy">
+
+    <div class="callout callout-note">
+      <div class="callout-title">An empty Server version column is not a problem</div>
+      <p>The <strong>Server version</strong> column reads <code>--</code> for a server that has not reported one. It reflects what the origin server advertises about itself rather than anything you entered during registration, so an empty value here does not indicate a failed or incomplete registration. The <strong>Status</strong> column is the field to check.</p>
     </div>
   </div>
 </div>
@@ -1879,34 +1966,79 @@ message = client.messages.create(
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 4.4: Build the server URL and understand its authentication</span>
+    <span>Step 4.4: Store a reusable credential as a Secret Reference</span>
   </div>
   <div class="collapsible-body">
-    <p>The MCP gateway does not expose one flat address serving every registered server. Each server is addressed by workspace and server identifier:</p>
+    <p>This step is optional, and it applies when you are registering servers with the <strong>Headers</strong> authentication mode. Rather than pasting the same API key or static token into every registration that needs it, store it once as a Secret Reference and point registrations at it. Rotation then happens in one place instead of in every server entry that carries a copy.</p>
+
+    <p>A Secret Reference does not hold the secret value itself: it points at a secret held in an external key management service, and the gateway resolves the reference when it needs the credential. Backing the reference with one of these providers is required:</p>
+    <ul>
+      <li>HashiCorp Vault</li>
+      <li>Azure Key Vault</li>
+      <li>AWS KMS</li>
+    </ul>
+
+    <p>On the same <strong>Integrations</strong> page, open the <strong>Secret References</strong> tab, alongside <strong>LLM Integrations</strong> and <strong>MCP Registry</strong>, and create the reference against your provider, filling in the connection details your provider requires.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The reference appears in the Secret References list, and the secret value stays in your key management service rather than in the gateway configuration.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.5: Build the server URL and understand its authentication</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The MCP gateway does not expose one flat address serving every registered server. Each server has its own URL, built from the server's <strong>slug</strong>:</p>
     <div class="code-block">
-      <pre><code>http://&lt;mcp-host&gt;:&lt;mcp-port&gt;/&lt;workspaceId&gt;/&lt;serverId&gt;/mcp</code></pre>
+      <pre><code>http://&lt;mcp-host&gt;:&lt;mcp-port&gt;/&lt;server-slug&gt;/mcp</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
-    <p>This matters when you configure clients in Step 4.5: pointing a client at the bare host will not reach a server. The identifiers come from the registration completed in Step 4.3. Requesting the gateway root returns a JSON document reporting this same path template, which is a quick way to confirm the convention on your own deployment.</p>
-    <!-- TODO(mcp): confirm where workspaceId and serverId are surfaced in the UI after registration -->
+    <p>The slug is the value from the <strong>Slug</strong> column of the MCP Registry list, and the copy button beside it copies exactly the string this URL needs. For the worked example registered in Step 4.2, the path is <code>/context7/mcp</code>. This matters when you configure clients in Step 4.6: pointing a client at the bare host will not reach a server.</p>
 
     <h4>Authentication</h4>
-    <p>The MCP endpoint is authenticated, and an unauthenticated request returns <code>401</code> with a <code>WWW-Authenticate</code> header pointing at the gateway's OAuth resource metadata. That header is what lets a compliant MCP client discover how to authenticate on its own, without you assembling the flow by hand.</p>
-    <p>The gateway advertises standard OAuth 2.0 discovery, supporting the authorization code flow with PKCE, refresh tokens, client credentials, and dynamic client registration. Its scopes are MCP-specific, covering listing servers, listing tools, and calling tools. You can inspect what your own gateway advertises:</p>
+    <p>The MCP endpoint is authenticated, and clients authenticate to it with a gateway API key sent as a header on every request:</p>
+    <div class="code-block">
+      <pre><code>x-portkey-api-key: &lt;your-gateway-api-key&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>This is the same kind of key as the one created in Step 3.7, and the key determines which servers and tools the caller can reach: it must carry the <strong>MCP Invoke</strong> permission, granted on the permissions stage of the API key form. A key without that permission fails against the MCP endpoint no matter how correct the rest of the configuration is, so check it before blaming the URL.</p>
+    <p>Alongside the API key path, an unauthenticated request returns <code>401</code> with a <code>WWW-Authenticate</code> header pointing at the gateway's OAuth resource metadata. The gateway advertises standard OAuth 2.0 discovery, supporting the authorization code flow with PKCE, refresh tokens, client credentials, and dynamic client registration, which is what an OAuth-capable MCP client uses to negotiate access on its own. Its scopes are MCP-specific, covering listing servers, listing tools, and calling tools. You can inspect what your own gateway advertises:</p>
     <div class="code-block">
       <pre><code>curl -s http://&lt;mcp-host&gt;:&lt;mcp-port&gt;/.well-known/oauth-authorization-server</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
-    <p>The response lists the authorization, token, revocation, and registration endpoints, the supported grant types, and the available scopes.</p>
+    <p>The response lists the authorization, token, revocation, and registration endpoints, the supported grant types, and the available scopes. The scopes are MCP-specific:</p>
+    <ul>
+      <li><code>mcp:servers:read</code> and <code>mcp:servers:*</code> &mdash; discovering which servers the caller may reach</li>
+      <li><code>mcp:tools:list</code> &mdash; enumerating the tools a server exposes</li>
+      <li><code>mcp:tools:call</code> &mdash; invoking a tool</li>
+      <li><code>mcp:*</code> &mdash; all of the above</li>
+    </ul>
+    <p>Grant types are <code>authorization_code</code>, <code>refresh_token</code>, and <code>client_credentials</code>, with PKCE using the <code>S256</code> challenge method.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">The issuer follows the address you reach it on</div>
+      <p>The <code>issuer</code> and endpoint URLs in the discovery document are derived from the host used to reach the gateway rather than from a static setting in the chart. Reaching the MCP port directly by IP produces a discovery document advertising that IP over plain HTTP, while reaching it through a hostname with TLS in front produces one advertising that hostname over HTTPS. This matters because MCP clients follow discovery to find the authorization endpoint, and a client that connects over HTTPS but is then redirected to a plain HTTP address may refuse to continue. Putting the MCP port behind the hostname your clients actually use keeps the advertised issuer consistent with the connection, and no chart value needs changing to achieve it.</p>
+    </div>
 
     <div class="callout callout-note">
       <div class="callout-title">Reading the two different 401 responses</div>
       <p>The gateway distinguishes between a missing credential and a rejected one, and the distinction saves real time when a client will not connect. A request carrying no token reports that authentication is required. A request carrying a token the gateway rejects reports instead that the access token is invalid or has expired. If you see the second message, the client is authenticating and the credential is the problem; if you see the first, the client is not sending a credential at all.</p>
     </div>
 
+    <div class="callout callout-warning">
+      <div class="callout-title">A 401 does not confirm your identifiers</div>
+      <p>The gateway authenticates before it validates the path, so an unauthenticated request to a URL containing wrong identifiers returns exactly the same <code>401</code> and the same response body as one containing correct identifiers. The <code>WWW-Authenticate</code> header and the OAuth protected-resource metadata both echo whatever path you sent them, so neither confirms a server exists at that address. Treat a <code>401</code> as evidence that the MCP endpoint is reachable and protected, and nothing more. Confirming the identifiers themselves requires an authenticated request, which is what Step 4.6 does when a client connects and lists tools.</p>
+    </div>
+
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>An unauthenticated request to your server URL returns <code>401</code> rather than a connection error or a <code>404</code>. That combination proves the route resolves, the identifiers are correct, and the endpoint is protected, all before a client is involved.</p>
+      <p>An unauthenticated request to your server URL returns <code>401</code> rather than a connection error, a TLS failure, or an HTML error page from a reverse proxy. That establishes the endpoint is reachable and protected. Whether the workspace and server identifiers in the URL are right is settled in Step 4.6, not here.</p>
     </div>
   </div>
 </div>
@@ -1914,34 +2046,48 @@ message = client.messages.create(
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 4.5: Point a client at the gateway and verify a tool call</span>
+    <span>Step 4.6: Point a client at the gateway and verify a tool call</span>
   </div>
   <div class="collapsible-body">
-    <p>Configure your MCP client with the per-server URL from Step 4.4 in place of the origin server's own address. In Claude Code, MCP servers are declared in an <code>.mcp.json</code> file using the HTTP transport:</p>
+    <p>Configure your MCP client with the per-server URL from Step 4.5 in place of the origin server's own address, and the gateway API key in the request headers. In Claude Code, the <code>claude mcp add</code> command does both in one line:</p>
+    <div class="code-block">
+      <pre><code>claude mcp add --scope user --transport http &lt;server-name&gt; "http://&lt;mcp-host&gt;:&lt;mcp-port&gt;/&lt;server-slug&gt;/mcp" --header "x-portkey-api-key: &lt;your-gateway-api-key&gt;"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Substitute the placeholders in angle brackets before running, since they are not literal values. <code>--scope user</code> registers the server machine-wide; drop it to register for the current project only. Prefer the command over hand-editing configuration files. For reference, the entry it produces looks like this:</p>
     <div class="code-block">
       <pre><code>{
   "mcpServers": {
-    "example-server": {
+    "&lt;server-name&gt;": {
       "type": "http",
-      "url": "http://&lt;mcp-host&gt;:&lt;mcp-port&gt;/&lt;workspaceId&gt;/&lt;serverId&gt;/mcp"
+      "url": "http://&lt;mcp-host&gt;:&lt;mcp-port&gt;/&lt;server-slug&gt;/mcp",
+      "headers": {
+        "x-portkey-api-key": "&lt;your-gateway-api-key&gt;"
+      }
     }
   }
 }</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
-    <p>Substitute the host, port, and identifiers before saving, since the placeholders in angle brackets are not literal values. On first connection the client performs the OAuth flow the gateway advertises, rather than you embedding a static key in the file.</p>
-    <!-- TODO(mcp): capture the end-to-end client authorization prompt once a server is registered in the tenant -->
+    <p>Restart the Claude Code session after adding the server, then run <code>/mcp</code> and confirm the server shows as connected. Clients other than Claude Code have their own method of adding MCP servers; whatever the mechanism, ensure the <code>x-portkey-api-key</code> header is included on the connection.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Keep the key out of committed files</div>
+      <p><code>.mcp.json</code> at the project root is designed to be shared with a team, and often ends up committed. With the API key embedded in it, that file now carries a live credential, so either keep it untracked or place the server entry in a configuration scope that stays on your machine. If the key does land somewhere it should not, revoke it from the API Keys page and issue a new one.</p>
+    </div>
 
     <div class="callout callout-warning">
       <div class="callout-title">Use HTTPS outside a lab</div>
-      <p>The examples in this phase use plain HTTP so first bring-up is easy to debug. MCP traffic carries tool arguments and results, which routinely include sensitive data, and bearer tokens travel in the request headers. Terminate TLS in front of the MCP port before this leaves a lab network, exactly as noted for the LLM traffic port in Step 3.7.</p>
+      <p>The examples in this phase use plain HTTP so first bring-up is easy to debug. MCP traffic carries tool arguments and results, which routinely include sensitive data, and the gateway API key travels in the request headers. Terminate TLS in front of the MCP port before this leaves a lab network, exactly as noted for the LLM traffic port in Step 3.7.</p>
     </div>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Your MCP client connects and lists the server's tools, a tool call succeeds through the gateway, and the interaction appears in the Observability page's Logs tab alongside the LLM traffic from Step 3.8. Seeing both traffic types in one log view is the end-to-end proof that the gateway is brokering MCP rather than the client reaching the origin server directly.</p>
+      <p>Your MCP client connects and lists the server's tools, a tool call succeeds through the gateway, and the interaction appears in the Observability page's Logs tab alongside the LLM traffic from Step 3.8. MCP rows carry the server's slug in the <strong>Model</strong> column where LLM rows carry a model name, with their own token counts and status indicators. Seeing both traffic types in one log view is the end-to-end proof that the gateway is brokering MCP rather than the client reaching the origin server directly.</p>
     </div>
-    <!-- TODO(screenshot): Observability Logs showing a brokered MCP tool call -->
+
+    <p><em>Your screen should look like this, with MCP tool calls interleaved with LLM traffic:</em></p>
+    <img src="aigw-screenshots/aigw-mcp-observability-logs.png" alt="Observability Logs tab showing MCP tool call rows identified by the context7 slug in the Model column, interleaved with LLM request rows, each with timestamps, token counts, and status indicators" loading="lazy">
   </div>
 </div>
 
