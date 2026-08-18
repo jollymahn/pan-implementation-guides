@@ -439,3 +439,136 @@ document.addEventListener('click', (e) => {
     });
   });
 }());
+
+// ── Global Navigation ──────────────────────────────────────────
+const GLOBAL_NAV_GROUPS = [
+  { id: 'vm-cloud', label: 'VM-Series Cloud', links: [
+    { t: 'AWS', h: 'guides/aws/index.html' },
+    { t: 'VM-Series Deploy', h: 'guides/aws/vm-series-deployment.html', sub: true },
+    { t: 'Panorama Deploy', h: 'guides/aws/panorama-deployment.html', sub: true },
+    { t: 'AWS Plugin Monitor', h: 'guides/aws/aws-plugin-monitoring.html', sub: true },
+    { t: 'Azure', h: 'guides/azure/index.html' },
+    { t: 'VM-Series Deploy', h: 'guides/azure/vm-series-deployment.html', sub: true },
+    { t: 'Panorama Deploy', h: 'guides/azure/panorama-deployment.html', sub: true },
+    { t: 'GCP', h: 'guides/gcp/index.html' },
+    { t: 'VM-Series Deploy', h: 'guides/gcp/vm-series-deployment.html', sub: true },
+    { t: 'Panorama Deploy', h: 'guides/gcp/panorama-deployment.html', sub: true },
+    { t: 'OCI', h: 'guides/oci/index.html' },
+    { t: 'VM-Series Deploy', h: 'guides/oci/vm-series-deployment.html', sub: true },
+    { t: 'Panorama Deploy', h: 'guides/oci/panorama-deployment.html', sub: true },
+  ]},
+  { id: 'cngfw', label: 'Cloud NGFW', links: [
+    { t: 'Overview & Deploy', h: 'guides/cngfw/cloud-ngfw-deployment.html' },
+    { t: 'AWS', h: 'guides/cngfw/cloud-ngfw-aws.html', sub: true },
+    { t: 'Azure Native', h: 'guides/cngfw/cloud-ngfw-azure-native.html', sub: true },
+    { t: 'Azure', h: 'guides/cngfw/cloud-ngfw-azure.html', sub: true },
+  ]},
+  { id: 'airs', label: 'AI Runtime Security', links: [
+    { t: 'Overview', h: 'guides/airs/index.html' },
+    { t: 'Network Intercept', h: 'guides/airs/airs-network-intercept.html', sub: true },
+    { t: 'Cloud Deploy', h: 'guides/airs/airs-cloud-deployment.html', sub: true },
+    { t: 'API Intercept', h: 'guides/airs/airs-api-intercept.html', sub: true },
+    { t: 'Kubernetes', h: 'guides/airs/airs-k8s-protection.html', sub: true },
+    { t: 'Microperimeter', h: 'guides/airs/airs-microperimeter.html', sub: true },
+    { t: 'Model Security', h: 'guides/airs-model/airs-model-security.html', sub: true },
+    { t: 'Red Teaming', h: 'guides/airs-red/airs-red-teaming.html', sub: true },
+  ]},
+  { id: 'ai-integrations', label: 'AI Integrations', links: [
+    { t: 'Overview', h: 'guides/airs-integrations/index.html' },
+    { t: 'Claude Code', h: 'guides/airs-integrations/claude-code.html', sub: true },
+    { t: 'Codex CLI', h: 'guides/airs-integrations/codex-cli.html', sub: true },
+    { t: 'GitHub Actions', h: 'guides/airs-integrations/github-actions.html', sub: true },
+    { t: 'IDE Assistants', h: 'guides/airs-integrations/ide-assistants.html', sub: true },
+    { t: 'Jenkins', h: 'guides/airs-integrations/jenkins.html', sub: true },
+    { t: 'Kong', h: 'guides/airs-integrations/kong.html', sub: true },
+    { t: 'LiteLLM', h: 'guides/airs-integrations/litellm.html', sub: true },
+    { t: 'n8n', h: 'guides/airs-integrations/n8n.html', sub: true },
+    { t: 'TrueFoundry', h: 'guides/airs-integrations/truefoundry.html', sub: true },
+    { t: 'Apigee', h: 'guides/airs-integrations/apigee.html', sub: true },
+    { t: 'Azure APIM', h: 'guides/airs-integrations/azure-apim.html', sub: true },
+  ]},
+  { id: 'ai-gateway', label: 'AI Gateway', links: [
+    { t: 'Overview', h: 'guides/ai-gateway/index.html' },
+    { t: 'Deployment Guide', h: 'guides/ai-gateway/ai-gateway-deployment.html', sub: true },
+  ]},
+  { id: 'globalprotect', label: 'GlobalProtect', links: [
+    { t: 'Overview', h: 'globalprotect/index.html' },
+    { t: 'Linear Deploy Guide', h: 'globalprotect/linear-guide.html', sub: true },
+  ]},
+  { id: 'scm', label: 'SCM Onboarding', links: [
+    { t: 'Firewall Onboarding', h: 'scm-onboarding/index.html' },
+    { t: 'Okta SSO', h: 'scm-onboarding/okta-sso.html', sub: true },
+  ]},
+  { id: 'branch', label: 'Branch NGFW', links: [
+    { t: 'ZTP + HA + SD-WAN', h: 'guides/branch/branch-ngfw-ztp-ha-sdwan.html' },
+  ]},
+  { id: 'bootstrap', label: 'Bootstrap', links: [
+    { t: 'VM-Series Bootstrap', h: 'guides/bootstrap/vm-series-bootstrap.html' },
+  ]},
+  { id: 'cie', label: 'Cloud Identity Engine', links: [
+    { t: 'CIE Implementation', h: 'guides/cloud-identity-engine/cie-implementation.html' },
+    { t: 'Cloud Tags', h: 'guides/cloud-identity-engine/cie-cloud-tags.html', sub: true },
+  ]},
+  { id: 'panorama-cli', label: 'Panorama CLI', links: [
+    { t: 'CLI Reference', h: 'guides/panorama-cli/firewall-cli-reference.html' },
+    { t: 'FW Configuration', h: 'guides/panorama-cli/firewall-cli-configuration.html', sub: true },
+    { t: 'FW Operational', h: 'guides/panorama-cli/firewall-cli-operational.html', sub: true },
+    { t: 'Config: Set', h: 'guides/panorama-cli/firewall-cli-config-set.html', sub: true },
+    { t: 'Config: Delete', h: 'guides/panorama-cli/firewall-cli-config-delete.html', sub: true },
+    { t: 'Config: Copy', h: 'guides/panorama-cli/firewall-cli-config-copy.html', sub: true },
+    { t: 'Config: Rename', h: 'guides/panorama-cli/firewall-cli-config-rename.html', sub: true },
+    { t: 'Config: Other', h: 'guides/panorama-cli/firewall-cli-config-other.html', sub: true },
+    { t: 'Panorama Config', h: 'guides/panorama-cli/panorama-cli-configuration.html', sub: true },
+    { t: 'Panorama Ops', h: 'guides/panorama-cli/panorama-cli-operational.html', sub: true },
+  ]},
+];
+
+function initGlobalNav() {
+  var nav = document.querySelector('.global-nav');
+  if (!nav) return;
+
+  document.body.classList.add('has-global-nav');
+  var basePath = nav.dataset.basePath || '../..';
+  var currentHref = window.location.href.split('?')[0].split('#')[0];
+
+  var activeGroupId = null;
+  GLOBAL_NAV_GROUPS.forEach(function(group) {
+    group.links.forEach(function(link) {
+      var resolved = new URL(basePath + '/' + link.h, window.location.href).href.split('?')[0].split('#')[0];
+      if (resolved === currentHref) activeGroupId = group.id;
+    });
+  });
+
+  var html = '<div class="gnav-home"><a href="' + basePath + '/index.html">&#8962; Home</a></div>';
+
+  GLOBAL_NAV_GROUPS.forEach(function(group) {
+    var savedState = localStorage.getItem('gnav-' + group.id);
+    var isOpen = (group.id === activeGroupId) || (savedState === 'open') || (savedState === null);
+    html += '<div class="gnav-group' + (isOpen ? ' open' : '') + '" data-gnav-id="' + group.id + '">';
+    html += '<div class="gnav-group-header">';
+    html += '<span class="gnav-chevron">&#9658;</span> ' + group.label;
+    html += '</div>';
+    html += '<div class="gnav-group-body">';
+    group.links.forEach(function(link) {
+      var href = basePath + '/' + link.h;
+      var resolved = new URL(href, window.location.href).href.split('?')[0].split('#')[0];
+      var isActive = resolved === currentHref;
+      var cls = (link.sub ? 'gnav-sub' : '') + (isActive ? ' active' : '');
+      html += '<a href="' + href + '"' + (cls ? ' class="' + cls.trim() + '"' : '') + '>' + link.t + '</a>';
+    });
+    html += '</div></div>';
+  });
+
+  nav.innerHTML = html;
+
+  nav.querySelectorAll('.gnav-group-header').forEach(function(header) {
+    header.addEventListener('click', function() {
+      var group = header.parentElement;
+      var id = group.dataset.gnavId;
+      var isOpen = group.classList.toggle('open');
+      localStorage.setItem('gnav-' + id, isOpen ? 'open' : 'closed');
+    });
+  });
+}
+
+document.addEventListener('DOMContentLoaded', initGlobalNav);
