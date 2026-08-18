@@ -456,6 +456,8 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'OCI', h: 'guides/oci/index.html' },
     { t: 'VM-Series Deploy', h: 'guides/oci/vm-series-deployment.html', sub: true },
     { t: 'Panorama Deploy', h: 'guides/oci/panorama-deployment.html', sub: true },
+    { label: 'Bootstrap' },
+    { t: 'VM-Series Bootstrap', h: 'guides/bootstrap/vm-series-bootstrap.html', sub: true },
   ]},
   { id: 'cngfw', label: 'Cloud NGFW', links: [
     { t: 'Overview & Deploy', h: 'guides/cngfw/cloud-ngfw-deployment.html' },
@@ -463,7 +465,7 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'Azure Native', h: 'guides/cngfw/cloud-ngfw-azure-native.html', sub: true },
     { t: 'Azure', h: 'guides/cngfw/cloud-ngfw-azure.html', sub: true },
   ]},
-  { id: 'airs', label: 'AI Runtime Security', links: [
+  { id: 'airs', label: 'AIRS', links: [
     { t: 'Overview', h: 'guides/airs/index.html' },
     { t: 'Network Intercept', h: 'guides/airs/airs-network-intercept.html', sub: true },
     { t: 'Cloud Deploy', h: 'guides/airs/airs-cloud-deployment.html', sub: true },
@@ -472,9 +474,11 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'Microperimeter', h: 'guides/airs/airs-microperimeter.html', sub: true },
     { t: 'Model Security', h: 'guides/airs-model/airs-model-security.html', sub: true },
     { t: 'Red Teaming', h: 'guides/airs-red/airs-red-teaming.html', sub: true },
-  ]},
-  { id: 'ai-integrations', label: 'AI Integrations', links: [
-    { t: 'Overview', h: 'guides/airs-integrations/index.html' },
+    { label: 'AI Gateway' },
+    { t: 'Overview', h: 'guides/ai-gateway/index.html', sub: true },
+    { t: 'Deployment Guide', h: 'guides/ai-gateway/ai-gateway-deployment.html', sub: true },
+    { label: 'AI Integrations' },
+    { t: 'Overview', h: 'guides/airs-integrations/index.html', sub: true },
     { t: 'Claude Code', h: 'guides/airs-integrations/claude-code.html', sub: true },
     { t: 'Codex CLI', h: 'guides/airs-integrations/codex-cli.html', sub: true },
     { t: 'GitHub Actions', h: 'guides/airs-integrations/github-actions.html', sub: true },
@@ -487,29 +491,22 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'Apigee', h: 'guides/airs-integrations/apigee.html', sub: true },
     { t: 'Azure APIM', h: 'guides/airs-integrations/azure-apim.html', sub: true },
   ]},
-  { id: 'ai-gateway', label: 'AI Gateway', links: [
-    { t: 'Overview', h: 'guides/ai-gateway/index.html' },
-    { t: 'Deployment Guide', h: 'guides/ai-gateway/ai-gateway-deployment.html', sub: true },
-  ]},
   { id: 'globalprotect', label: 'GlobalProtect', links: [
     { t: 'Overview', h: 'globalprotect/index.html' },
     { t: 'Linear Deploy Guide', h: 'globalprotect/linear-guide.html', sub: true },
+  ]},
+  { id: 'specialty', label: 'Specialty Guides', links: [
+    { t: 'Branch NGFW ZTP+HA+SDWAN', h: 'guides/branch/branch-ngfw-ztp-ha-sdwan.html' },
   ]},
   { id: 'scm', label: 'SCM Onboarding', links: [
     { t: 'Firewall Onboarding', h: 'scm-onboarding/index.html' },
     { t: 'Okta SSO', h: 'scm-onboarding/okta-sso.html', sub: true },
   ]},
-  { id: 'branch', label: 'Branch NGFW', links: [
-    { t: 'ZTP + HA + SD-WAN', h: 'guides/branch/branch-ngfw-ztp-ha-sdwan.html' },
-  ]},
-  { id: 'bootstrap', label: 'Bootstrap', links: [
-    { t: 'VM-Series Bootstrap', h: 'guides/bootstrap/vm-series-bootstrap.html' },
-  ]},
   { id: 'cie', label: 'Cloud Identity Engine', links: [
     { t: 'CIE Implementation', h: 'guides/cloud-identity-engine/cie-implementation.html' },
     { t: 'Cloud Tags', h: 'guides/cloud-identity-engine/cie-cloud-tags.html', sub: true },
   ]},
-  { id: 'panorama-cli', label: 'Panorama CLI', links: [
+  { id: 'panos-cli', label: 'PanOS CLI', links: [
     { t: 'CLI Reference', h: 'guides/panorama-cli/firewall-cli-reference.html' },
     { t: 'FW Configuration', h: 'guides/panorama-cli/firewall-cli-configuration.html', sub: true },
     { t: 'FW Operational', h: 'guides/panorama-cli/firewall-cli-operational.html', sub: true },
@@ -534,6 +531,7 @@ function initGlobalNav() {
   var activeGroupId = null;
   GLOBAL_NAV_GROUPS.forEach(function(group) {
     group.links.forEach(function(link) {
+      if (link.label) return;
       var resolved = new URL(basePath + '/' + link.h, window.location.href).href.split('?')[0].split('#')[0];
       if (resolved === currentHref) activeGroupId = group.id;
     });
@@ -550,6 +548,10 @@ function initGlobalNav() {
     html += '</div>';
     html += '<div class="gnav-group-body">';
     group.links.forEach(function(link) {
+      if (link.label) {
+        html += '<span class="gnav-label">' + link.label + '</span>';
+        return;
+      }
       var href = basePath + '/' + link.h;
       var resolved = new URL(href, window.location.href).href.split('?')[0].split('#')[0];
       var isActive = resolved === currentHref;
