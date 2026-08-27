@@ -491,6 +491,16 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'Apigee', h: 'guides/airs-integrations/apigee.html', sub: true },
     { t: 'Azure APIM', h: 'guides/airs-integrations/azure-apim.html', sub: true },
   ]},
+  { id: 'labs', label: 'Hands-On Labs', links: [
+    { t: 'AIRS MLOps Lab', h: 'labs/airs-mlops/index.html' },
+    { t: 'Student Setup', h: 'labs/airs-mlops/student-setup.html', sub: true },
+    { t: 'Modules', h: 'labs/airs-mlops/modules.html', sub: true },
+    { t: 'How the Lab Works', h: 'labs/airs-mlops/how-it-works.html', sub: true },
+    { label: 'Español' },
+    { t: 'AIRS MLOps Lab (ES)', h: 'labs/airs-mlops/es/index.html', sub: true },
+    { label: 'Português' },
+    { t: 'AIRS MLOps Lab (PT)', h: 'labs/airs-mlops/pt/index.html', sub: true },
+  ]},
   { id: 'globalprotect', label: 'GlobalProtect', links: [
     { t: 'Overview', h: 'globalprotect/index.html' },
     { t: 'Linear Deploy Guide', h: 'globalprotect/linear-guide.html', sub: true },
