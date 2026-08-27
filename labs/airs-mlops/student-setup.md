@@ -4,7 +4,30 @@ Complete these steps before the lab begins. By the end, you will have your own p
 
 ---
 
-## Step 1: Create Your Private Repo from the Template
+## Pre-Lab Setup
+
+### Set Up a GCP Project via Torque
+
+Before touching the pipeline, provision the GCP project you will use for the lab through Torque.
+
+1. Navigate to `https://laas.paloaltonetworks.com`.
+2. Sign in using enterprise SSO.
+3. If not already on the **Self-service** tab, click **Self-service**.
+4. Click **Launch** under **"Create a GCP Project with Owner Permissions"**.
+5. Set a desired environment name, and set the environment duration to **2 weeks**.
+6. Click **Inputs**, set **"Can this be replicated in an on-premise GCS lab (VM/Physical device)?"** to **No**, then enter `GCS-PSO` for **Case or Project-Id**.
+7. Click **Tags**, set **activity_type** to `development` and set **department** to `Technical_service`.
+8. Click **Launch** toward the bottom.
+
+> **Note:** Torque requires the corporate access VPN. Connect before navigating to the URL.
+
+After approximately 7 minutes, you will receive an email with your GCP Project information. Keep these values handy; you will need them when editing `.github/pipeline-config.yaml` during Module 0.
+
+---
+
+### Set Up Your Lab Repository and Claude Code
+
+#### Step 1: Create Your Private Repo from the Template
 
 1. Open the template repository in your browser:
 
@@ -30,7 +53,7 @@ Complete these steps before the lab begins. By the end, you will have your own p
 
 ---
 
-## Step 2: Clone and Switch to the Lab Branch
+#### Step 2: Clone and Switch to the Lab Branch
 
 1. Clone your new private repo:
 
@@ -59,7 +82,7 @@ Complete these steps before the lab begins. By the end, you will have your own p
 
 ---
 
-## Step 3: Launch Claude Code
+#### Step 3: Launch Claude Code
 
 1. Open Claude Code in the repo directory:
 
@@ -192,3 +215,5 @@ git commit --no-edit
 | Claude doesn't seem to know about the lab | Make sure you're in the repo directory and on the `lab` branch — Claude reads `CLAUDE.md` from the repo root |
 | Merge conflict on `lab/.progress.json` | Keep your version: `git checkout --ours lab/.progress.json && git add lab/.progress.json && git commit --no-edit` |
 | `upstream` remote not found | Add it: `git remote add upstream https://github.com/airs-labs/prisma-airs-mlops-lab.git` |
+
+**[Next: Lab Modules &rarr;](modules.md)**

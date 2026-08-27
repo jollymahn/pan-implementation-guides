@@ -18,23 +18,6 @@ Antes de iniciar el lab, asegúrate de tener:
 - **Cuenta de HuggingFace** — para explorar modelos y datasets
 
 
-## Configura un Proyecto GCP vía Torque
-
-Antes de tocar el pipeline, aprovisiona a través de Torque el proyecto GCP que usarás para el lab.
-
-1. Navega a `https://laas.paloaltonetworks.com`.
-2. Inicia sesión con el SSO empresarial.
-3. Si no estás ya en la pestaña **Self-service**, haz clic en **Self-service**.
-4. Haz clic en **Launch** bajo **"Create a GCP Project with Owner Permissions"**.
-5. Establece el nombre de entorno que desees y configura la duración del entorno en **2 semanas**.
-6. Haz clic en **Inputs**, configura **"Can this be replicated in an on-premise GCS lab (VM/Physical device)?"** en **No**, luego ingresa `GCS-PSO` en **Case or Project-Id**.
-7. Haz clic en **Tags**, configura **activity_type** en `development` y **department** en `Technical_service`.
-8. Haz clic en **Launch** hacia la parte inferior.
-
-> **Nota:** Torque requiere la VPN de acceso corporativo. Conéctate antes de navegar a la URL.
-
-Después de aproximadamente 7 minutos, recibirás un correo con la información de tu proyecto GCP. Ten estos valores a la mano; los necesitarás al editar `.github/pipeline-config.yaml` durante el Módulo 0.
-
 ## El Pipeline
 
 Vas a construir un pipeline de CI/CD de 3 gates que escanea modelos de ML en cada etapa:
@@ -160,4 +143,6 @@ prisma-airs-mlops-lab/
 
 ## Siguiente Paso
 
-¿Listo para configurar? Ve a la [Guía de Configuración del Estudiante](student-setup.md) para crear tu repo y lanzar Claude Code.
+Lee [Cómo Funciona el Lab](how-it-works.md) para entender el mentor, la puntuación y el ritmo, y luego ve a la [Guía de Configuración del Estudiante](student-setup.md) para aprovisionar tu proyecto GCP vía Torque, crear tu repo y lanzar Claude Code.
+
+**[Siguiente: Cómo Funciona el Lab &rarr;](how-it-works.md)**

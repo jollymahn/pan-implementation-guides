@@ -147,3 +147,5 @@ When you first start the lab, Claude asks which scenario you're in:
 | **Public** | No | No | Self-guided learners |
 
 Your scenario determines pacing rules, whether hard stops are enforced, and whether your scores post to the leaderboard. Claude handles all of this automatically based on your selection during onboarding.
+
+**[Next: Student Setup &rarr;](student-setup.md)**

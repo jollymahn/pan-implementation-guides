@@ -147,3 +147,5 @@ Quando você inicia o lab pela primeira vez, o Claude pergunta em qual cenário 
 | **Public** | Não | Não | Aprendizado autoguiado |
 
 Seu cenário determina as regras de ritmo, se as paradas obrigatórias são aplicadas e se suas pontuações são publicadas no leaderboard. O Claude cuida de tudo isso automaticamente com base na sua seleção durante o onboarding.
+
+**[Próximo: Configuração do Estudante &rarr;](student-setup.md)**

@@ -493,9 +493,9 @@ const GLOBAL_NAV_GROUPS = [
   ]},
   { id: 'labs', label: 'Hands-On Labs', links: [
     { t: 'AIRS MLOps Lab', h: 'labs/airs-mlops/index.html' },
+    { t: 'How the Lab Works', h: 'labs/airs-mlops/how-it-works.html', sub: true },
     { t: 'Student Setup', h: 'labs/airs-mlops/student-setup.html', sub: true },
     { t: 'Modules', h: 'labs/airs-mlops/modules.html', sub: true },
-    { t: 'How the Lab Works', h: 'labs/airs-mlops/how-it-works.html', sub: true },
     { label: 'Español' },
     { t: 'AIRS MLOps Lab (ES)', h: 'labs/airs-mlops/es/index.html', sub: true },
     { label: 'Português' },
