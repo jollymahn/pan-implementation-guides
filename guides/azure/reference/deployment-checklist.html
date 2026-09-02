@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Azure VM-Series Deployment Checklist &mdash; Transit VNet</title>
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+<style>
+.pdf-header {
+  background: var(--pan-gold);
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pdf-header .logo { font-size: 1.1rem; font-weight: 700; color: var(--pan-navy); text-decoration: none; }
+.pdf-header .doc-date { font-size: 0.85rem; color: var(--pan-navy); }
+.article { max-width: 1100px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
+.article table { width: 100%; }
+.article td, .article th { vertical-align: top; }
+.article blockquote { border-left: 4px solid var(--pan-gold); margin: 1rem 0; padding: 0.5rem 1rem; background: var(--sidebar-bg); }
+.article ul.task { list-style: none; padding-left: 0; }
+.footer { margin-top: 3rem; padding-top: 1rem; border-top: 2px solid var(--pan-gold); font-size: 0.85rem; color: var(--fg-light); }
+@media print { .pdf-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+
+<div class="pdf-header">
+  <span class="logo"><span class="accent">IMPLEMENTATION</span> GUIDES</span>
+  <span class="doc-date">Azure VM-Series &mdash; Deployment Checklist</span>
+</div>
+
+<div class="article">
+
+<h1>Azure VM-Series Transit VNet: Deployment Checklist</h1>
+<p><a href="deployment-checklist.md">Markdown source</a> (copy it per deployment) &middot; <a href="../vm-series-deployment.html">Back to the deployment guide</a></p>
+
+<p>Companion to <a href="../vm-series-deployment.html"><code>vm-series-deployment.html</code></a>. Fill this in <strong>before</strong> you edit <code>terraform.tfvars</code> so every operator-specific value comes from one place.</p>
+<blockquote>
+<p><strong>Why this exists:</strong> the single most common bootstrap failure is a <code>panorama-server</code> IP lifted from an existing template or a lab environment instead of the customer's actual Panorama. The firewalls boot, register with the <strong>wrong</strong> Panorama (or nothing at all), and have to be destroyed and re-deployed. A pre-flight checklist catches this before <code>terraform apply</code>.</p>
+</blockquote>
+<hr />
+<h2>Section A: Bootstrap parameters (<code>bootstrap_options</code> block)</h2>
+<p>These end up in <code>terraform.tfvars</code> and are joined by Terraform into a single semicolon-separated string that Azure passes to each firewall as <strong>custom data</strong> on first boot. <strong>Get them right before the first <code>terraform apply</code></strong>: fixing them after means destroying the firewall VMs and re-applying, because custom data is read only once.</p>
+<p>Where the block lives depends on the model you chose in Phase 2A.4:</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Where <code>bootstrap_options</code> goes</th>
+<th>Guide step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Common (2 firewalls)</td>
+<td><code>vmseries_universal.bootstrap_options</code> (one block shared by both firewalls)</td>
+<td>4A.1</td>
+</tr>
+<tr>
+<td>TVNet Dedicated (4 firewalls)</td>
+<td><code>vmseries.&lt;fw-key&gt;.virtual_machine.bootstrap_options</code> (one block per firewall, values differ per tier)</td>
+<td>4B.1</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Source</th>
+<th>Example</th>
+<th>Your value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><strong>Fixed</strong> for Azure (management IP is DHCP-assigned by the subnet)</td>
+<td><code>dhcp-client</code></td>
+<td><code>dhcp-client</code></td>
+</tr>
+<tr>
+<td><code>plugin-op-commands</code></td>
+<td>License Manager &gt; <strong>Show Bootstrap Parameters</strong> (Phase 3)</td>
+<td><code>advance-routing:enable,panorama-licensing-mode-on</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td><code>panorama-server</code></td>
+<td><strong>Customer / your network</strong>: IP or FQDN reachable from the firewall management subnet via VNet peering, ExpressRoute, or VPN. Confirm with the customer; <strong>do NOT copy from existing baseline templates</strong></td>
+<td><code>10.52.0.4</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td><code>panorama-server-2</code></td>
+<td><strong>Customer / your network</strong>: secondary Panorama (HA peer). Same rules as above</td>
+<td><code>10.52.0.5</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td><code>auth-key</code></td>
+<td>License Manager &gt; <strong>Show Bootstrap Parameters</strong> (Phase 3). Generated by the SW Firewall License plugin; <strong>not</strong> a manually created VM auth key</td>
+<td><code>_AQ__K9YajjW...</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td><code>dgname</code></td>
+<td>Device Group name created in Phase 2A.4</td>
+<td><code>DG-AZ-COMMON-MODEL</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td><code>tplname</code></td>
+<td>Template Stack name created in Phase 2A.4</td>
+<td><code>STK-AZ-COMMON-MODEL</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td><code>vm-series-auto-registration-pin-id</code></td>
+<td>CSP Portal &gt; Products &gt; Device Certificates &gt; <strong>VM Registration PIN</strong> (Phase 1.5)</td>
+<td>UUID</td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td><code>vm-series-auto-registration-pin-value</code></td>
+<td>Same step as above</td>
+<td>hex string</td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+</tbody>
+</table>
+<h3>TVNet Dedicated only: per-tier values</h3>
+<p>Fill one row per tier. The PIN pair and Panorama IPs are the same for every firewall; only these three differ.</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>License Manager</th>
+<th><code>dgname</code></th>
+<th><code>tplname</code></th>
+<th><code>auth-key</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Inbound (<code>fw-in-1</code>, <code>fw-in-2</code>)</td>
+<td><code>LM-AZ-TVNET-INBOUND-USE</code></td>
+<td><strong><em>_</em></strong>______</td>
+<td><strong><em>_</em></strong>______</td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td>OBEW (<code>fw-obew-1</code>, <code>fw-obew-2</code>)</td>
+<td><code>LM-AZ-TVNET-OBEW-USE</code></td>
+<td><strong><em>_</em></strong>______</td>
+<td><strong><em>_</em></strong>______</td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+</tbody>
+</table>
+<h3>Validation before <code>terraform apply</code></h3>
+<ul>
+<li>&#9744; <code>panorama-server</code> and <code>panorama-server-2</code> are <strong>reachable from the planned firewall management subnet</strong> via VNet peering, ExpressRoute, or VPN. If not, the firewall will boot but never register.</li>
+<li>&#9744; <code>dgname</code> and <code>tplname</code> <strong>exist</strong> in Panorama (you created them in Phase 2A.4) and match character for character (case-sensitive).</li>
+<li>&#9744; <code>dgname</code> and <code>tplname</code> are <strong>not already in use</strong> by another tenant on a shared Panorama.</li>
+<li>&#9744; <code>auth-key</code> is the active key for its License Manager (it can be rotated; check it has not been replaced since you copied it).</li>
+<li>&#9744; The registration PIN shows as valid (not expired) in the CSP Portal.</li>
+<li>&#9744; The management NSG allows outbound TCP/443 to <code>updates.paloaltonetworks.com</code> and the licensing endpoints, and outbound TCP/3978 and TCP/28443 to the Panorama subnet. Without these the firewall boots and registers but licensing, config push, and log forwarding silently fail.</li>
+<li>&#9744; No value contains a semicolon or leading/trailing whitespace (the Terraform join is literal).</li>
+</ul>
+<hr />
+<h2>Section B: Other deployment values (root <code>terraform.tfvars</code>)</h2>
+<p>Required values outside <code>bootstrap_options</code>. These do not break the firewall boot if wrong, but they will produce a deployment that does not match your environment or naming conventions.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Source</th>
+<th>Where used in tfvars</th>
+<th>Example</th>
+<th>Your value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Subscription ID</td>
+<td>Azure Portal &gt; Subscriptions (Phase 1.7)</td>
+<td><code>ARM_SUBSCRIPTION_ID</code> env var; <code>subscription_id = null</code> in tfvars</td>
+<td><code>00000000-0000-...</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td>Service Principal (client ID, secret, tenant ID)</td>
+<td>Phase 1.7</td>
+<td><code>ARM_CLIENT_ID</code>, <code>ARM_CLIENT_SECRET</code>, <code>ARM_TENANT_ID</code> env vars</td>
+<td></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td><code>region</code></td>
+<td>Customer / target Azure region</td>
+<td><code>region</code></td>
+<td><code>East US</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td><code>resource_group_name</code></td>
+<td>Customer naming convention</td>
+<td><code>resource_group_name</code></td>
+<td><code>rg-az-vmseries-use</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td><code>name_prefix</code></td>
+<td>Customer / project naming convention. Keep short; Azure has tight name-length limits on Storage Accounts and load balancers</td>
+<td><code>name_prefix</code></td>
+<td><code>az-use-</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td>VM-Series admin password</td>
+<td>Generated by the example's <code>main.tf</code> when <code>password</code> is omitted (Phase 4.3); read it after apply with <code>terraform output -json passwords</code>. If you set your own, it must meet Azure complexity rules (12 to 123 characters, upper, lower, digit, special)</td>
+<td><code>vmseries_universal.authentication.password</code> (leave unset)</td>
+<td>generated</td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td>Admin source IP or CIDR</td>
+<td>Operator's management network. <strong>Never <code>0.0.0.0/0</code></strong></td>
+<td>management NSG rule <code>source_address_prefixes</code> (4.4)</td>
+<td><code>203.0.113.10/32</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td>Panorama VNet name and resource group</td>
+<td>Azure Portal &gt; Virtual networks (the VNet hosting Panorama, <code>10.52.0.0/24</code> in the guide)</td>
+<td><code>vnet_peerings["transit-to-panorama"].remote_vnet_name</code> / <code>.remote_resource_group_name</code> (4.6)</td>
+<td><code>panorama-vnet</code> / <code>rg-panorama</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td>Remote state Storage Account and container</td>
+<td>Phase 1.9</td>
+<td><code>backend.tf</code> (Phase 4.2)</td>
+<td><code>tfstate-rg</code> / <code>&lt;your-unique-storage-account-name&gt;</code> / <code>tfstate</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td>Customer prefix</td>
+<td>2 to 4 character code used in <code>dgname</code>, <code>tplname</code>, template names, License Manager names. Avoids collisions on shared Panoramas</td>
+<td>(composed into above)</td>
+<td><code>AZ</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td>Availability Zones</td>
+<td>2 zones in your region (one per firewall in each tier)</td>
+<td><code>vmseries.&lt;fw-key&gt;.virtual_machine.zone</code></td>
+<td><code>1</code>, <code>2</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td>PAN-OS image version</td>
+<td><code>az vm image list --publisher paloaltonetworks --offer vmseries-flex --sku byol --all --output table</code></td>
+<td><code>vmseries_universal.version</code></td>
+<td><code>11.1.607</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+<tr>
+<td><code>tags</code></td>
+<td>Customer / project owner and cost center (shows up in Azure cost management)</td>
+<td><code>tags</code></td>
+<td><code>owner = "network-security-team"</code></td>
+<td><strong><em>_</em></strong>______</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Section C: Prerequisites that must exist before <code>terraform apply</code></h2>
+<p>These are not tfvars values but the bootstrap sequence depends on them.</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Where</th>
+<th>Verified?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Software NGFW credits activated and a Deployment Profile created</td>
+<td>CSP Portal (Phase 1.1, 1.4)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>Auth code recorded from the Deployment Profile</td>
+<td>CSP Portal (Phase 1.4)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>Auto-Registration PIN generated and copied</td>
+<td>CSP Portal (Phase 1.5)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>Azure Marketplace EULA accepted for VM-Series</td>
+<td>Azure (Phase 1.6)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>Service Principal has Contributor on the subscription</td>
+<td>Azure (Phase 1.7)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>Remote state Storage Account and container exist</td>
+<td>Azure (Phase 1.9)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>SW Firewall License plugin installed and licensing API key set</td>
+<td>Panorama &gt; Plugins (Phase 2A.1, 2A.2)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>Bootstrap Definitions created with the auth code</td>
+<td>Panorama &gt; SW Firewall License (Phase 2A.3)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>Device Groups and Template Stacks created</td>
+<td>Panorama (Phase 2A.4)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>License Managers created, bound to DG / Stack / BD, and <strong>Active</strong></td>
+<td>Panorama &gt; SW Firewall License &gt; License Managers (Phase 2A.11)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>Commit to Panorama completed with no errors</td>
+<td>Panorama (Phase 2A.13)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>Panorama VNet exists and the Terraform identity has Contributor on its resource group (needed for the peering in 4.6); or, for on-prem Panorama, the ExpressRoute / VPN path from the management subnet is confirmed</td>
+<td>Azure / customer network team</td>
+<td>☐</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>How to use this sheet</h2>
+<ol>
+<li>Make a copy per deployment (do not fill in the canonical file in the repo).</li>
+<li>Walk Phase 1 to Phase 3 of the guide and fill values in as you go.</li>
+<li>Hand the completed sheet to whoever runs <code>terraform apply</code>. They should be able to populate <code>terraform.tfvars</code> from this sheet alone, with no need to revisit Panorama.</li>
+<li>Keep the completed sheet attached to the deployment ticket or runbook for audit and post-mortem.</li>
+</ol>
+
+<div class="footer">Companion to the Azure VM-Series Transit VNet deployment guide. Make a copy per deployment; do not fill in the canonical file in the repository.</div>
+
+</div>
+</body>
+</html>

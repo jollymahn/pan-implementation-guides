@@ -119,6 +119,36 @@ document.addEventListener('click', (e) => {
   window.scrollTo({ top, behavior: 'smooth' });
 });
 
+// ── Open collapsibles targeted by the URL hash ─────────────────────
+// Step links (#step-2a-6) land on a collapsed block; expand it and any
+// collapsible ancestors so the reader sees the step, not just its header.
+function openCollapsiblesForHash() {
+  const id = decodeURIComponent((location.hash || '').slice(1));
+  if (!id) return;
+  const target = document.getElementById(id);
+  if (!target) return;
+  let el = target.classList && target.classList.contains('collapsible') ? target : target.closest('.collapsible');
+  while (el) {
+    const header = el.querySelector(':scope > .collapsible-header');
+    const body = el.querySelector(':scope > .collapsible-body');
+    if (header && body) {
+      header.classList.add('open');
+      body.classList.add('open');
+    }
+    el = el.parentElement ? el.parentElement.closest('.collapsible') : null;
+  }
+}
+window.addEventListener('hashchange', openCollapsiblesForHash);
+document.addEventListener('DOMContentLoaded', openCollapsiblesForHash);
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('a[href^="#"]');
+  if (!link) return;
+  const id = link.getAttribute('href').slice(1);
+  if (!document.getElementById(id)) return;
+  history.replaceState(null, '', '#' + id);
+  openCollapsiblesForHash();
+});
+
 // ── Tabbed split-path UI (mgmt plane, routing model, etc.) ─────────
 // Each .mgmt-tabs container can declare data-tab-group="<name>" to scope
 // its selection state separately. Default group is "mgmt" for backwards
