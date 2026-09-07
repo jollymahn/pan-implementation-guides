@@ -32,7 +32,7 @@ Después de aproximadamente 7 minutos, recibirás un correo con la información 
 1. Abre el repositorio template en tu navegador:
 
    ```
-   https://github.com/airs-labs/prisma-airs-mlops-lab
+   https://github.com/panw-airs-enablement/prisma-airs-mlops-lab
    ```
 
 2. Haz clic en el botón verde **"Use this template"** (arriba a la derecha, junto a "Code").
@@ -41,7 +41,7 @@ Después de aproximadamente 7 minutos, recibirás un correo con la información 
 
 4. Configura tu nuevo repo (ve la captura de pantalla abajo):
    - **Include all branches:** Actívalo **On** — esto es necesario para que obtengas tanto el branch `lab` (tu espacio de trabajo) como el branch `main` (soluciones de referencia)
-   - **Owner:** Selecciona `airs-labs` (la organización del workshop)
+   - **Owner:** Selecciona `panw-airs-enablement` (la organización del workshop)
    - **Repository name:** `<tu-nombre>-prisma-airs-mlops-lab` (ej. `syoungberg-prisma-airs-mlops-lab`)
    - **Visibility:** Selecciona **Private**
 
@@ -58,7 +58,7 @@ Después de aproximadamente 7 minutos, recibirás un correo con la información 
 1. Clona tu nuevo repo privado:
 
    ```bash
-   git clone https://github.com/airs-labs/<tu-nombre>-prisma-airs-mlops-lab.git
+   git clone https://github.com/panw-airs-enablement/<tu-nombre>-prisma-airs-mlops-lab.git
    cd <tu-nombre>-prisma-airs-mlops-lab
    ```
 
@@ -129,7 +129,7 @@ claude
 ```
 
 ```
-Revisa si tengo un remote "upstream" apuntando a airs-labs/prisma-airs-mlops-lab.
+Revisa si tengo un remote "upstream" apuntando a panw-airs-enablement/prisma-airs-mlops-lab.
 Si no, agrégalo. Luego haz fetch de upstream y merge de upstream/lab en mi branch actual.
 Si hay conflictos de merge en lab/.progress.json o .github/pipeline-config.yaml,
 quédate con mi versión (--ours) ya que tienen mi configuración personal. Para todo lo demás,
@@ -175,7 +175,7 @@ Reemplaza `N` con el módulo en el que estabas. Claude leerá tu archivo de prog
 > **Agregar el remote upstream (solo la primera vez):**
 >
 ```bash
-git remote add upstream https://github.com/airs-labs/prisma-airs-mlops-lab.git
+git remote add upstream https://github.com/panw-airs-enablement/prisma-airs-mlops-lab.git
 ```
 >
 > **Descargar cambios:**
@@ -208,12 +208,12 @@ git commit --no-edit
 
 | Problema | Solución |
 |----------|----------|
-| No se ve el botón "Use this template" | Asegúrate de haber iniciado sesión en GitHub y que te hayan agregado a la organización `airs-labs` |
+| No se ve el botón "Use this template" | Asegúrate de haber iniciado sesión en GitHub y que te hayan agregado a la organización `panw-airs-enablement` |
 | El branch `lab` no existe después del clone | No activaste "Include all branches" al crear el template — borra el repo, recréalo con el toggle activado |
 | `uv: command not found` | Instala uv: `curl -LsSf https://astral.sh/uv/install.sh \| sh` y reinicia tu terminal |
 | `claude: command not found` | Instala Claude Code: `npm install -g @anthropic-ai/claude-code` |
 | Claude no parece saber del lab | Asegúrate de estar en el directorio del repo y en el branch `lab` — Claude lee `CLAUDE.md` desde la raíz del repo |
 | Conflicto de merge en `lab/.progress.json` | Quédate con tu versión: `git checkout --ours lab/.progress.json && git add lab/.progress.json && git commit --no-edit` |
-| No se encuentra el remote `upstream` | Agrégalo: `git remote add upstream https://github.com/airs-labs/prisma-airs-mlops-lab.git` |
+| No se encuentra el remote `upstream` | Agrégalo: `git remote add upstream https://github.com/panw-airs-enablement/prisma-airs-mlops-lab.git` |
 
 **[Siguiente: Módulos del Lab &rarr;](modules.md)**
