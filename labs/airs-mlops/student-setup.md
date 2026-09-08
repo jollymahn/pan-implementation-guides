@@ -41,8 +41,8 @@ After approximately 7 minutes, you will receive an email with your GCP Project i
 
 4. Configure your new repo (see screenshot below):
    - **Include all branches:** Toggle **On** — this is required so you get both the `lab` branch (your workspace) and `main` branch (reference solutions)
-   - **Owner:** Select `panw-airs-enablement` (the workshop organization)
-   - **Repository name:** `<your-name>-prisma-airs-mlops-lab` (e.g., `syoungberg-prisma-airs-mlops-lab`)
+   - **Owner:** Select your own GitHub account
+   - **Repository name:** `prisma-airs-mlops-lab` (the default is fine)
    - **Visibility:** Select **Private**
 
 5. Click **"Create repository"**.
@@ -58,8 +58,8 @@ After approximately 7 minutes, you will receive an email with your GCP Project i
 1. Clone your new private repo:
 
    ```bash
-   git clone https://github.com/panw-airs-enablement/<your-name>-prisma-airs-mlops-lab.git
-   cd <your-name>-prisma-airs-mlops-lab
+   git clone https://github.com/<your-github-username>/prisma-airs-mlops-lab.git
+   cd prisma-airs-mlops-lab
    ```
 
 2. Switch to the `lab` branch:
@@ -124,7 +124,7 @@ When you come back to the lab after closing your terminal or starting a new day:
 Before starting Claude Code, pull any changes the instructor has pushed. Open a terminal in your repo directory and paste this prompt into Claude:
 
 ```bash
-cd <your-name>-prisma-airs-mlops-lab
+cd prisma-airs-mlops-lab
 claude
 ```
 
@@ -208,7 +208,7 @@ git commit --no-edit
 
 | Problem | Fix |
 |---------|-----|
-| "Use this template" button not visible | Make sure you are signed into GitHub and have been added to the `panw-airs-enablement` org |
+| "Use this template" button not visible | Make sure you are signed into GitHub |
 | `lab` branch doesn't exist after clone | You missed "Include all branches" during template creation — delete the repo, recreate with the toggle on |
 | `uv: command not found` | Install uv: `curl -LsSf https://astral.sh/uv/install.sh \| sh` and restart your terminal |
 | `claude: command not found` | Install Claude Code: `npm install -g @anthropic-ai/claude-code` |

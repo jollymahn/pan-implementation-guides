@@ -41,8 +41,8 @@ Após aproximadamente 7 minutos, você receberá um e-mail com as informações 
 
 4. Configure seu novo repo (veja a captura de tela abaixo):
    - **Include all branches:** Ative **On** — isso é necessário para que você receba tanto o branch `lab` (seu espaço de trabalho) quanto o branch `main` (soluções de referência)
-   - **Owner:** Selecione `panw-airs-enablement` (a organização do workshop)
-   - **Repository name:** `<seu-nome>-prisma-airs-mlops-lab` (ex: `syoungberg-prisma-airs-mlops-lab`)
+   - **Owner:** Selecione sua própria conta do GitHub
+   - **Repository name:** `prisma-airs-mlops-lab` (o valor padrão serve)
    - **Visibility:** Selecione **Private**
 
 5. Clique em **"Create repository"**.
@@ -58,8 +58,8 @@ Após aproximadamente 7 minutos, você receberá um e-mail com as informações 
 1. Clone seu novo repo privado:
 
    ```bash
-   git clone https://github.com/panw-airs-enablement/<seu-nome>-prisma-airs-mlops-lab.git
-   cd <seu-nome>-prisma-airs-mlops-lab
+   git clone https://github.com/<seu-usuario-do-github>/prisma-airs-mlops-lab.git
+   cd prisma-airs-mlops-lab
    ```
 
 2. Mude para o branch `lab`:
@@ -124,7 +124,7 @@ Quando voltar ao lab depois de fechar seu terminal ou no dia seguinte:
 Antes de iniciar o Claude Code, baixe quaisquer mudanças que o instrutor tenha publicado. Abra um terminal no diretório do seu repo e cole este prompt no Claude:
 
 ```bash
-cd <seu-nome>-prisma-airs-mlops-lab
+cd prisma-airs-mlops-lab
 claude
 ```
 
@@ -208,7 +208,7 @@ git commit --no-edit
 
 | Problema | Solução |
 |----------|---------|
-| Botão "Use this template" não aparece | Confirme que está logado no GitHub e que foi adicionado à organização `panw-airs-enablement` |
+| Botão "Use this template" não aparece | Confirme que está logado no GitHub |
 | Branch `lab` não existe após o clone | Você não ativou "Include all branches" ao criar o template — delete o repo, recrie com o toggle ativado |
 | `uv: command not found` | Instale o uv: `curl -LsSf https://astral.sh/uv/install.sh \| sh` e reinicie seu terminal |
 | `claude: command not found` | Instale o Claude Code: `npm install -g @anthropic-ai/claude-code` |

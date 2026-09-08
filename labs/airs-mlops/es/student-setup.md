@@ -41,8 +41,8 @@ Después de aproximadamente 7 minutos, recibirás un correo con la información 
 
 4. Configura tu nuevo repo (ve la captura de pantalla abajo):
    - **Include all branches:** Actívalo **On** — esto es necesario para que obtengas tanto el branch `lab` (tu espacio de trabajo) como el branch `main` (soluciones de referencia)
-   - **Owner:** Selecciona `panw-airs-enablement` (la organización del workshop)
-   - **Repository name:** `<tu-nombre>-prisma-airs-mlops-lab` (ej. `syoungberg-prisma-airs-mlops-lab`)
+   - **Owner:** Selecciona tu propia cuenta de GitHub
+   - **Repository name:** `prisma-airs-mlops-lab` (el valor por defecto está bien)
    - **Visibility:** Selecciona **Private**
 
 5. Haz clic en **"Create repository"**.
@@ -58,8 +58,8 @@ Después de aproximadamente 7 minutos, recibirás un correo con la información 
 1. Clona tu nuevo repo privado:
 
    ```bash
-   git clone https://github.com/panw-airs-enablement/<tu-nombre>-prisma-airs-mlops-lab.git
-   cd <tu-nombre>-prisma-airs-mlops-lab
+   git clone https://github.com/<tu-usuario-de-github>/prisma-airs-mlops-lab.git
+   cd prisma-airs-mlops-lab
    ```
 
 2. Cámbiate al branch `lab`:
@@ -124,7 +124,7 @@ Cuando regreses al lab después de cerrar tu terminal o al día siguiente:
 Antes de iniciar Claude Code, descarga cualquier cambio que el instructor haya publicado. Abre una terminal en el directorio de tu repo y pega este prompt en Claude:
 
 ```bash
-cd <tu-nombre>-prisma-airs-mlops-lab
+cd prisma-airs-mlops-lab
 claude
 ```
 
@@ -208,7 +208,7 @@ git commit --no-edit
 
 | Problema | Solución |
 |----------|----------|
-| No se ve el botón "Use this template" | Asegúrate de haber iniciado sesión en GitHub y que te hayan agregado a la organización `panw-airs-enablement` |
+| No se ve el botón "Use this template" | Asegúrate de haber iniciado sesión en GitHub |
 | El branch `lab` no existe después del clone | No activaste "Include all branches" al crear el template — borra el repo, recréalo con el toggle activado |
 | `uv: command not found` | Instala uv: `curl -LsSf https://astral.sh/uv/install.sh \| sh` y reinicia tu terminal |
 | `claude: command not found` | Instala Claude Code: `npm install -g @anthropic-ai/claude-code` |
