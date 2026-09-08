@@ -60,6 +60,14 @@
   <div class="sidebar-section">
     <div class="sidebar-section-title">Verify</div>
     <a href="#verification" data-section="verification">Post-Deployment</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">FIPS-CC (Optional)</div>
+    <a href="#fips-cc-convert" data-section="fips-cc-convert">Enable FIPS-CC Mode</a>
+    <a href="#fips-cc-image" data-section="fips-cc-image">Capture Azure VM Image</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
     <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
   </div>
 </aside>
@@ -116,6 +124,10 @@
   <a href="#verification" class="progress-phase">
     <span class="progress-phase-label">Phase 7</span>
     Verify
+  </a>
+  <a href="#fips-cc-convert" class="progress-phase">
+    <span class="progress-phase-label">Phase 8</span>
+    FIPS-CC
   </a>
 </div>
 
@@ -3165,6 +3177,351 @@ debug logview component bts_details</code></pre>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
       <p><code>curl</code> returns an HTTP status line, and Panorama shows the session with the spoke VM as source, a firewall of the correct tier as the device, and the outbound allow rule as the matched rule.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 8: FIPS-CC MODE (OPTIONAL)                             -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="fips-cc-convert">Phase 8: Enable FIPS-CC Mode (Optional)</h2>
+
+<div class="callout callout-note">
+  <div class="callout-title">When to use this phase</div>
+  <p>FIPS 140-2 / Common Criteria (FIPS-CC) operational mode is required for U.S. federal and DoD deployments and any environment that must meet FIPS 140-2 Level 1 cryptographic standards. Complete Phase 7 and confirm your firewall is fully operational before converting. This phase also covers capturing a FIPS-CC base image in Azure so future VM deployments start from a validated, hardened baseline without repeating the conversion steps.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">SSH key required before converting</div>
+  <p>FIPS-CC mode disables password-based SSH authentication. You must have an SSH public key configured on the firewall <strong>before</strong> you run the conversion command. After conversion, password login via SSH is not permitted; use your SSH key to regain access, then configure an admin password through the web UI.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.1 Verify (or Add) SSH Key Authentication</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Check that an SSH public key is already on the firewall. If you deployed with a password only, add a key now before proceeding.</p>
+    <ol>
+      <li>SSH into the firewall management interface using your current credentials.</li>
+      <li>Check the existing admin key:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code># Show the current admin account configuration
+show admins</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="3">
+      <li>If no public key is shown, add one now. In the web UI, navigate to <strong>Device &gt; Administrators</strong>, click your admin account, and paste your SSH public key into the <strong>Public Key</strong> field. Click <strong>OK</strong> and then <strong>Commit</strong>.</li>
+      <li>Verify you can log in with your key from your admin workstation before proceeding:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>ssh -i /path/to/your/private-key admin@&lt;mgmt-ip&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>SSH key login succeeds without being prompted for a password. Only proceed to step 8.2 after confirming key-based access works.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.2 Enable FIPS-CC Operational Mode</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="callout callout-danger">
+      <div class="callout-title">This causes a reboot</div>
+      <p>The conversion command reboots the firewall immediately. Plan a maintenance window. In an HA pair, convert the passive peer first, verify it comes back up in FIPS-CC mode, then fail over and convert the other node.</p>
+    </div>
+    <ol>
+      <li>SSH into the firewall using your SSH key (from step 8.1).</li>
+      <li>Enable FIPS-CC mode:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>request system fips-cc enable</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="3">
+      <li>The firewall immediately reboots. Wait 5&ndash;10 minutes for it to come back online.</li>
+      <li>Reconnect via SSH using your key (password SSH will now be refused):</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>ssh -i /path/to/your/private-key admin@&lt;mgmt-ip&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="5">
+      <li>Verify the operational mode:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>show system info | match "operational-mode\|fips"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Output shows <code>operational-mode: fips-cc</code>. The web UI banner also displays "FIPS-CC" in the top-right corner to confirm the mode. Confirm the firewall still appears connected in Panorama and that health probe status on both load balancers remains <code>healthy</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  FIPS-CC IMAGE                                                 -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="fips-cc-image">Capture an Azure VM Image from the FIPS-CC Firewall</h2>
+
+<p>Once a firewall is running in FIPS-CC mode and verified, you can capture a <strong>specialized Azure VM image</strong> from it and store it in an Azure Compute Gallery. Future Terraform deployments reference this gallery image instead of the marketplace SKU, so every new VM starts in FIPS-CC mode without repeating the conversion.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Specialized vs. generalized images</div>
+  <p>VM-Series is a network appliance, not a general-purpose OS. Do <strong>not</strong> run <code>waagent -deprovision</code> or any generalization step before capture. Use a <strong>specialized image</strong> (Azure Compute Gallery supports both). The specialized image preserves the FIPS-CC mode setting in the OS disk while leaving device-specific config (hostname, interfaces, licenses) to be applied at boot via the bootstrap package, as normal.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.3 Stop and Deallocate the Source VM</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Azure requires the VM to be <strong>stopped (deallocated)</strong> before its OS disk can be captured.</p>
+    <ol>
+      <li>In Panorama, suspend the firewall from its Device Group to remove it from active traffic inspection gracefully.</li>
+      <li>Deallocate the VM via the Azure CLI:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>az vm deallocate \
+  --resource-group &lt;your-rg&gt; \
+  --name &lt;fips-cc-vm-name&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="3">
+      <li>Confirm the VM status shows <code>VM deallocated</code>:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>az vm show \
+  --resource-group &lt;your-rg&gt; \
+  --name &lt;fips-cc-vm-name&gt; \
+  --show-details \
+  --query powerState</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Command returns <code>"VM deallocated"</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.4 Create an Azure Compute Gallery and Image Definition</span>
+  </div>
+  <div class="collapsible-body">
+    <p>An Azure Compute Gallery organizes your custom images into versioned definitions. Create one gallery per region; you can replicate versions to additional regions later.</p>
+    <ol>
+      <li>Create the gallery (one-time setup per subscription/region):</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>az sig create \
+  --resource-group &lt;your-rg&gt; \
+  --gallery-name PanFipsGallery \
+  --location &lt;region&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="2">
+      <li>Create an image definition for the FIPS-CC VM-Series image. Use <code>--os-type Linux</code> and <code>--specialized</code> to mark it as a specialized (non-generalized) image:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>az sig image-definition create \
+  --resource-group &lt;your-rg&gt; \
+  --gallery-name PanFipsGallery \
+  --gallery-image-definition VMSeriesFipsCC \
+  --publisher PaloAltoNetworks \
+  --offer vmseries-flex \
+  --sku fips-cc \
+  --os-type Linux \
+  --os-state Specialized \
+  --location &lt;region&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.5 Capture the OS Disk and Create an Image Version</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Get the OS disk resource ID of the deallocated VM:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>az vm show \
+  --resource-group &lt;your-rg&gt; \
+  --name &lt;fips-cc-vm-name&gt; \
+  --query storageProfile.osDisk.managedDisk.id \
+  --output tsv</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="2">
+      <li>Create a new image version in the gallery, referencing the OS disk ID from step 1. Use semantic versioning for the version (e.g., <code>1.0.0</code> for PAN-OS 11.1, increment for each new capture):</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>az sig image-version create \
+  --resource-group &lt;your-rg&gt; \
+  --gallery-name PanFipsGallery \
+  --gallery-image-definition VMSeriesFipsCC \
+  --gallery-image-version 1.0.0 \
+  --os-snapshot &lt;os-disk-resource-id&gt; \
+  --location &lt;region&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="3">
+      <li>Wait for the image version to finish replicating. Check the provisioning state:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>az sig image-version show \
+  --resource-group &lt;your-rg&gt; \
+  --gallery-name PanFipsGallery \
+  --gallery-image-definition VMSeriesFipsCC \
+  --gallery-image-version 1.0.0 \
+  --query provisioningState</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Provisioning state returns <code>"Succeeded"</code>. The image version now appears in the Compute Gallery and is ready to reference in Terraform.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.6 Reference the FIPS-CC Image in Terraform</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The SWFW module uses an <code>image</code> block inside each VM entry in the <code>vmseries</code> map. To use your gallery image, set <code>custom_id</code> to the full resource ID of the image version and set <code>enable_marketplace_plan</code> to <code>false</code>. The <code>custom_id</code> and <code>version</code> properties are mutually exclusive: remove <code>version</code> when setting <code>custom_id</code>.</p>
+
+    <p>First, retrieve the gallery image version resource ID:</p>
+    <div class="code-block">
+      <pre><code>az sig image-version show \
+  --resource-group &lt;your-rg&gt; \
+  --gallery-name PanFipsGallery \
+  --gallery-image-definition VMSeriesFipsCC \
+  --gallery-image-version 1.0.0 \
+  --query id --output tsv</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Then update <code>terraform.tfvars</code>. The <code>image</code> block lives inside each firewall entry under <code>vmseries</code>. You can also override it universally in <code>vmseries_universal</code> if all VMs should use the same image:</p>
+    <div class="code-block">
+      <pre><code># terraform.tfvars — switch all firewalls to the FIPS-CC gallery image
+
+# Option A: set globally (applies to every VM unless overridden per-VM)
+vmseries_universal = {
+  # version = "11.1.607"   &lt;-- remove this; custom_id replaces it
+  size = "Standard_DS3_v2"
+}
+
+# Option B: set per VM inside the vmseries map
+vmseries = {
+  "fw-obew-1" = {
+    name     = "obew-firewall01"
+    vnet_key = "transit"
+
+    # Add an image block with custom_id pointing at your gallery version
+    image = {
+      custom_id               = "/subscriptions/&lt;sub-id&gt;/resourceGroups/&lt;your-rg&gt;/providers/Microsoft.Compute/galleries/PanFipsGallery/images/VMSeriesFipsCC/versions/1.0.0"
+      enable_marketplace_plan = false   # custom image — no marketplace plan needed
+    }
+
+    virtual_machine = {
+      # ... rest of virtual_machine block unchanged ...
+      bootstrap_options = {
+        type               = "dhcp-client"
+        plugin-op-commands = "advance-routing:enable,panorama-licensing-mode-on"
+        panorama-server    = "&lt;panorama-ip&gt;"
+        tplname            = "&lt;template-stack-name&gt;"
+        dgname             = "&lt;device-group-name&gt;"
+        auth-key           = "&lt;auth-key&gt;"
+      }
+    }
+
+    interfaces = [
+      # ... unchanged ...
+    ]
+  }
+  # Repeat image block for each additional firewall entry
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Remove <code>version</code> when using <code>custom_id</code></div>
+      <p>The module validates that exactly one of <code>custom_id</code> or <code>version</code> is set. If both are present, <code>terraform plan</code> will fail with a validation error. Remove any <code>version</code> lines from <code>vmseries_universal</code> and from individual VM image blocks when switching to a custom image.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Azure reference: Compute Gallery image version ID format</div>
+      <p>The full resource ID for a gallery image version follows this pattern:</p>
+      <p><code>/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Compute/galleries/{gallery}/images/{definition}/versions/{version}</code></p>
+      <p>Always use the versioned ID (ending in a specific version number like <code>/versions/1.0.0</code>) rather than <code>/versions/latest</code>. Using a pinned version ensures deployment reproducibility and prevents Terraform from pulling an updated image unexpectedly during a re-apply.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run <code>terraform plan</code> and confirm the <code>azurerm_linux_virtual_machine</code> resource shows <code>source_image_id</code> pointing to your gallery version (no <code>source_image_reference</code> block should appear). After <code>terraform apply</code>, SSH into the new VM and confirm:</p>
+      <div class="code-block">
+        <pre><code>show system info | match "operational-mode"
+# Expected: operational-mode: fips-cc</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.7 Azure Reference: Useful CLI Commands for Gallery Image Management</span>
+  </div>
+  <div class="collapsible-body">
+    <p>These commands cover day-2 gallery management: listing, replicating to additional regions, and cleaning up old versions.</p>
+
+    <table>
+      <tr><th>Task</th><th>Command</th></tr>
+      <tr>
+        <td>List all image versions in a definition</td>
+        <td><code>az sig image-version list --resource-group &lt;rg&gt; --gallery-name PanFipsGallery --gallery-image-definition VMSeriesFipsCC -o table</code></td>
+      </tr>
+      <tr>
+        <td>Add a replica to another region</td>
+        <td><code>az sig image-version update --resource-group &lt;rg&gt; --gallery-name PanFipsGallery --gallery-image-definition VMSeriesFipsCC --gallery-image-version 1.0.0 --add-replica-regions &lt;region2&gt;</code></td>
+      </tr>
+      <tr>
+        <td>Delete an old image version</td>
+        <td><code>az sig image-version delete --resource-group &lt;rg&gt; --gallery-name PanFipsGallery --gallery-image-definition VMSeriesFipsCC --gallery-image-version &lt;old-version&gt;</code></td>
+      </tr>
+      <tr>
+        <td>Grant another subscription read access to the gallery</td>
+        <td><code>az role assignment create --role "Reader" --scope /subscriptions/&lt;sub&gt;/.../PanFipsGallery --assignee &lt;principal-id&gt;</code></td>
+      </tr>
+      <tr>
+        <td>List available marketplace VM-Series versions (for reference)</td>
+        <td><code>az vm image list -o table --publisher paloaltonetworks --offer vmseries-flex --all</code></td>
+      </tr>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Naming new versions after a PAN-OS upgrade</div>
+      <p>When you upgrade VM-Series to a new PAN-OS version and re-enable FIPS-CC mode, capture a new image version using the PAN-OS version as the gallery version number (for example, <code>11.1.607</code> instead of <code>1.0.0</code>). This makes it easy to identify which PAN-OS release each gallery version corresponds to, and lets Terraform references stay unambiguous when multiple versions coexist.</p>
     </div>
   </div>
 </div>

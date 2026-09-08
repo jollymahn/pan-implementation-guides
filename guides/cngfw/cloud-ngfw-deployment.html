@@ -965,6 +965,12 @@
       </tbody>
     </table>
 
+    <div class="callout callout-note">
+      <div class="callout-title">Migrating from UDR-based routing to Routing Intent?</div>
+      <p>Enabling Routing Intent on a live vWAN hub requires coordination with TAC and your sales team before the change window. Use the migration checklist to prepare your environment, sequence the cutover, and validate traffic flow afterward.</p>
+      <p><a href="vwan-routing-intent-migration-checklist.html">Open Migration Checklist &rarr;</a></p>
+    </div>
+
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
       <p>Confirm you understand the Virtual WAN model and how it differs from Centralized VNet. Cloud NGFW deploys as a SaaS NVA inside the vWAN hub; traffic steering uses routing intent policies, not UDRs. Spoke VNets connect via virtual network connections, not VNet peering. All five traffic flows (egress, ingress, east-west, App Gateway, on-prem) pass through Cloud NGFW for inspection.</p>
@@ -1033,8 +1039,88 @@
 
 
 <!-- ════════════════════════════════════════════════════════════ -->
-<!--  PHASE 1: PREREQUISITES                                      -->
+<!--  APPENDIX: VWAN MIGRATION CHECKLIST                          -->
 <!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="azure-vwan-migration">Appendix: vWAN Routing Intent Migration Checklist</h2>
+
+<p>Use this checklist when migrating an existing Azure vWAN deployment from UDR-based spoke routing to Cloud NGFW inspection via Routing Intent. The checklist covers pre-migration preparation, TAC case coordination, Azure configuration, validation, and post-migration cleanup.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>View Migration Checklist</span>
+  </div>
+  <div class="collapsible-body">
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Enabling Routing Intent is a live network change</div>
+      <p>Routing Intent enablement triggers a route reprogramming event across all spoke VNets connected to the hub. Plan a maintenance window, verify NGFW policies are in place before cutover, and have TAC available. See <a href="vwan-routing-intent-migration-checklist.html">the full interactive checklist</a> for a printable, checkable version you can use during the change window.</p>
+    </div>
+
+    <h3>Pre-Migration Preparation</h3>
+    <ul>
+      <li>Document all existing UDRs across every spoke VNet, including next-hops and prefixes</li>
+      <li>Document current effective routes on all spoke NICs and subnets</li>
+      <li>Capture baseline traffic flows (applications, spoke-to-spoke, spoke-to-on-prem, internet egress)</li>
+      <li>Identify all connected branches (ExpressRoute, S2S VPN) and their route advertisements</li>
+      <li>Confirm Cloud NGFW is active in the vWAN hub and health checks are passing</li>
+      <li>Verify NGFW security policies are in place for all expected traffic flows before cutover</li>
+      <li>Identify maintenance window and notify application and network owners</li>
+    </ul>
+
+    <h3>Open a Preemptive TAC Case</h3>
+    <ul>
+      <li>Open a case flagged as <strong>Proactive/Planned Change</strong> — include the Subscription ID, vWAN Hub resource ID, Cloud NGFW resource ID, region, and planned maintenance date</li>
+      <li>Request a TAC engineer be available during the maintenance window</li>
+      <li>Confirm escalation path if traffic black-holing occurs post-cutover</li>
+    </ul>
+
+    <h3>Notify the Sales Team</h3>
+    <ul>
+      <li>Email the assigned AE and SE with customer name, account ID, planned cutover date, and scope (number of spokes, estimated traffic volume)</li>
+      <li>Request SE standby availability for large environments</li>
+    </ul>
+
+    <h3>Enable Routing Intent</h3>
+    <ul>
+      <li>Confirm the vWAN hub SKU is <strong>Standard</strong></li>
+      <li>Verify Cloud NGFW is the designated Next Hop resource in Routing Intent configuration</li>
+      <li>Decide scope: private traffic, internet traffic, or both</li>
+      <li>Enable Routing Intent via Azure Portal, CLI, or Bicep/Terraform</li>
+      <li>Confirm Azure propagates 0.0.0.0/0 and RFC1918 default routes to all spokes automatically — existing spoke UDRs for these prefixes are now redundant and may conflict</li>
+      <li>Remove conflicting UDRs from spoke subnets after Routing Intent is confirmed active</li>
+      <li>Verify effective routes on spoke NICs reflect the new next-hop (Cloud NGFW private IP)</li>
+    </ul>
+
+    <h3>Validation &amp; Testing</h3>
+    <ul>
+      <li>Confirm internet-bound traffic from a spoke VM is traversing the NGFW (check traffic logs)</li>
+      <li>Confirm spoke-to-spoke and spoke-to-branch traffic is traversing the NGFW</li>
+      <li>Verify BGP route propagation to branches is unaffected</li>
+      <li>Check NGFW logs for unexpected drops or policy denials</li>
+      <li>Run application smoke tests across all critical workloads</li>
+      <li>Confirm no asymmetric routing conditions exist</li>
+    </ul>
+
+    <h3>Post-Migration</h3>
+    <ul>
+      <li>Remove all legacy UDRs now made redundant by Routing Intent</li>
+      <li>Update internal network diagrams, runbooks, and monitoring dashboards</li>
+      <li>Close or update the TAC case with outcome</li>
+      <li>Send cutover completion notice to sales team and stakeholders</li>
+      <li>Schedule 24-hour and 7-day post-change reviews</li>
+    </ul>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Key gotcha: more-specific routes still override Routing Intent</div>
+      <p>Spoke subnet UDRs with more-specific routes (for example, /32s or custom prefixes) will still take precedence over Routing Intent default routes. Audit all spoke subnets for these and remove or reconcile them explicitly before enabling Routing Intent.</p>
+    </div>
+
+    <p><a href="vwan-routing-intent-migration-checklist.html">Open the interactive checklist &rarr;</a> with trackable checkboxes, a progress bar, browser-persisted state, and a print-to-PDF button for your change window runbook.</p>
+
+  </div>
+</div>
 
 
 <div class="cta-box">
