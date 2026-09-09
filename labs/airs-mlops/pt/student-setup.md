@@ -82,7 +82,18 @@ Após aproximadamente 7 minutos, você receberá um e-mail com as informações 
 
 ---
 
-#### Passo 3: Inicie o Claude Code
+#### Passo 3: Cadastre-se como Usuário Anton e Configure o Claude Code
+
+Antes de iniciar o Claude Code, cadastre-se como usuário Anton e configure o Claude Code para rodar como tal. Siga os dois guias na ordem:
+
+1. Cadastre-se: [Become an Anton User](https://anton.cipe.pan.run/guides/become-anton-user)
+2. Configure o Claude Code: [Using Claude Code](https://anton.cipe.pan.run/guides/using-claude-code/)
+
+> **Nota:** Estes guias são internos da Palo Alto Networks. Se as páginas não carregarem, conecte-se primeiro à rede corporativa ou à VPN.
+
+---
+
+#### Passo 4: Inicie o Claude Code
 
 1. Abra o Claude Code no diretório do repo:
 

@@ -82,7 +82,18 @@ After approximately 7 minutes, you will receive an email with your GCP Project i
 
 ---
 
-#### Step 3: Launch Claude Code
+#### Step 3: Sign Up as an Anton User and Configure Claude Code
+
+Before launching Claude Code, sign up as an Anton user and configure Claude Code to run as one. Follow both guides in order:
+
+1. Sign up: [Become an Anton User](https://anton.cipe.pan.run/guides/become-anton-user)
+2. Configure Claude Code: [Using Claude Code](https://anton.cipe.pan.run/guides/using-claude-code/)
+
+> **Note:** These guides are internal to Palo Alto Networks. If the pages do not load, connect to the corporate network or VPN first.
+
+---
+
+#### Step 4: Launch Claude Code
 
 1. Open Claude Code in the repo directory:
 

@@ -11,6 +11,7 @@ Isso não é um tutorial passivo. Você trabalha **com o Claude Code** como seu 
 Antes de iniciar o lab, garanta que você tem:
 
 - **Torque** — tenha acesso para criar seus próprios projetos antes de iniciar o lab
+- **code.pan.run** — acesso ao `code.pan.run`
 - **Licença de AIRS** — acesso a um tenant de Prisma AIRS com credenciais de Strata Cloud Manager
 - **Claude Code** — instalado e configurado
 - **Conta no GitHub** — com `gh` CLI autenticado
