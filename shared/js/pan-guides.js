@@ -479,6 +479,7 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'AWS Plugin Monitor', h: 'guides/aws/aws-plugin-monitoring.html', sub: true },
     { t: 'Azure', h: 'guides/azure/index.html' },
     { t: 'VM-Series Deploy', h: 'guides/azure/vm-series-deployment.html', sub: true },
+    { t: 'VM-Series HA', h: 'guides/azure/vm-series-ha.html', sub: true },
     { t: 'Panorama Deploy', h: 'guides/azure/panorama-deployment.html', sub: true },
     { t: 'GCP', h: 'guides/gcp/index.html' },
     { t: 'VM-Series Deploy', h: 'guides/gcp/vm-series-deployment.html', sub: true },
