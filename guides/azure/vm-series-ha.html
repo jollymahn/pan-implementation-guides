@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>VM-Series Active/Passive HA on Azure | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">VM-Series HA on Azure</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../.."></nav>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<div class="sidebar-backdrop"></div>
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#overview" data-section="overview">HA Modes &amp; Design</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prerequisites</div>
+    <a href="#prerequisites-azure" data-section="prerequisites-azure">Azure Requirements</a>
+    <a href="#prerequisites-scm" data-section="prerequisites-scm">SCM &amp; Folder Setup</a>
+    <a href="#prerequisites-sp" data-section="prerequisites-sp">Service Principal</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Azure Setup</div>
+    <a href="#azure-network" data-section="azure-network">NIC &amp; IP Configuration</a>
+    <a href="#azure-health" data-section="azure-health">Health Monitoring</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Plugin Config</div>
+    <a href="#plugin-config" data-section="plugin-config">VM-Series Plugin (Azure)</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">SCM HA Setup</div>
+    <a href="#scm-ha-basic" data-section="scm-ha-basic">Basic Settings</a>
+    <a href="#scm-ha-election" data-section="scm-ha-election">Election Settings</a>
+    <a href="#scm-ha-links" data-section="scm-ha-links">HA1 &amp; HA2 Links</a>
+    <a href="#scm-ha-push" data-section="scm-ha-push">Push Config</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Verify</div>
+    <a href="#verification" data-section="verification">Post-Config Verification</a>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">Azure</a>
+  <span class="sep">|</span>
+  VM-Series Active/Passive HA
+</div>
+
+<div class="article">
+
+<h1>VM-Series Active/Passive HA on Azure</h1>
+<p class="subtitle">Configure an active/passive HA pair for VM-Series firewalls managed by Strata Cloud Manager, covering Azure network prerequisites, Service Principal setup, VM-Series plugin configuration, and SCM HA provisioning.</p>
+
+<div class="cloud-links">
+  <a href="vm-series-deployment.html">VM-Series Deployment</a>
+  <a href="panorama-deployment.html">Panorama Deployment</a>
+  <a href="../cngfw/cloud-ngfw-azure.html">Cloud NGFW</a>
+</div>
+
+<!-- ── Phase Progress ────────────────────────────────────────── -->
+<div class="progress-phases">
+  <a href="#prerequisites-azure" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#azure-network" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Azure Setup
+  </a>
+  <a href="#plugin-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Plugin
+  </a>
+  <a href="#scm-ha-basic" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    SCM HA
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">What this guide covers</div>
+  <p>This guide walks through configuring active/passive HA for VM-Series firewalls already deployed on Azure and managed by <strong>Strata Cloud Manager (SCM)</strong>. It assumes both firewalls are deployed, licensed, and connected to SCM. If you need to deploy the firewalls first, complete the <a href="vm-series-deployment.html">VM-Series Deployment Guide</a> before returning here.</p>
+  <p><strong>SCM Pro license required.</strong> HA configuration for SCM-managed NGFWs requires a Strata Cloud Manager Pro license on both peers.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Active/passive only on Azure</div>
+  <p>VM-Series firewalls on Azure support <strong>active/passive HA only</strong>. Active/active HA is not supported on Azure. Both peers must be in the same Azure Resource Group and must run the same version of the VM-Series plugin.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  OVERVIEW                                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="overview">HA Modes &amp; Design</h2>
+
+<p>Azure active/passive HA uses the VM-Series plugin to interact with Azure APIs and move IP resources from the failing peer to the peer that takes over. There are two distinct HA types, and the choice determines the NIC and IP configuration required:</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Secondary IP Move &mdash; North-South and East-West Traffic</span>
+  </div>
+  <div class="collapsible-body">
+    <p>On failover, the VM-Series plugin calls the Azure API to detach <strong>secondary IP configurations</strong> from the previously active peer and attach them to the now-active peer. This enables the floating IPs on both untrust and trust interfaces to follow the active firewall, preserving inbound and outbound traffic flows.</p>
+    <ul>
+      <li><strong>Untrust interface:</strong> secondary IP configuration with a private IP (any netmask) and a public IP. The public IP is the internet-facing floating address for inbound traffic.</li>
+      <li><strong>Trust interface:</strong> secondary private IP address only. Moves on failover so servers can route return traffic through the active firewall.</li>
+      <li><strong>Failover time:</strong> several minutes (Azure API calls to detach and reattach IPs).</li>
+    </ul>
+    <p><strong>Use when</strong> you need to inspect north-south (internet-facing) traffic in addition to east-west.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>UDR &mdash; East-West Traffic Only</span>
+  </div>
+  <div class="collapsible-body">
+    <p>No floating IPs are required. On failover, the VM-Series plugin updates the Azure route tables (UDRs) so the next-hop points to the primary IP of the peer that has taken over. Because route table updates are faster than secondary IP moves, failover time is significantly lower.</p>
+    <ul>
+      <li><strong>Untrust and trust interfaces:</strong> primary private IPs only. No secondary IP configurations needed.</li>
+      <li><strong>Route tables:</strong> UDRs point to the active firewall's trust interface primary IP as next-hop. The plugin updates these routes on failover.</li>
+      <li><strong>Failover time:</strong> faster than Secondary IP Move.</li>
+    </ul>
+    <p><strong>Use when</strong> all resources are within the Azure VNet and there is no requirement for north-south internet traffic inspection through the firewall pair.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Cross-Availability-Zone Deployment</span>
+  </div>
+  <div class="collapsible-body">
+    <p>You can deploy the active and passive firewall peers in separate Azure Availability Zones (AZs). This is the <strong>recommended architecture</strong> for production because it protects against zone-level failures. Both peers still must be in the same Azure Resource Group and VNet.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">HA pair AZs and Azure Health Monitoring</div>
+      <p>Palo Alto Networks recommends placing HA peers in different AZs to avoid both being affected by the same Azure scheduled maintenance event. Azure Health Monitoring (configured in Phase 2) proactively fails over the active firewall when an Azure scheduled maintenance freeze event is detected, before the instance becomes unresponsive.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites-azure">Phase 1: Prerequisites: Azure Requirements</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 VM Placement Requirements</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li><strong>Same Azure Resource Group:</strong> both HA peers must be in the same resource group. This is required for the VM-Series plugin to manage IP configurations and route tables via Azure API.</li>
+      <li><strong>Same VNet:</strong> both peers must be deployed in the same Virtual Network.</li>
+      <li><strong>Same VM-Series plugin version:</strong> install identical versions of the VM-Series plugin on both peers.</li>
+      <li><strong>Matching hostname and VM Name:</strong> the VM Name in Azure must match the firewall hostname set under <strong>Device &gt; Setup &gt; Management</strong>. The hostname is used to trigger failover detection.</li>
+      <li><strong>IPv4 only:</strong> all firewall interfaces must use IPv4. IPv6 is not supported on Azure VM-Series.</li>
+      <li><strong>Layer 3 interfaces only:</strong> the Azure VNet is a Layer 3 network. All dataplane interfaces on the VM-Series must be configured as Layer 3.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 NIC Requirements (Minimum 4 per Firewall)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each HA peer requires a minimum of <strong>four network interfaces</strong>:</p>
+    <table>
+      <tr><th>Interface</th><th>PAN-OS Name</th><th>Purpose</th></tr>
+      <tr><td><strong>Management (eth0)</strong></td><td>mgmt</td><td>Web UI, SSH, Panorama/SCM connectivity. Used as HA1 control link by default unless a dedicated HA1 NIC is added.</td></tr>
+      <tr><td><strong>Untrust (eth1/1)</strong></td><td>ethernet1/1</td><td>Internet-facing dataplane interface. Requires secondary IP configuration for north-south HA; primary IP only for UDR (east-west) HA.</td></tr>
+      <tr><td><strong>Trust (eth1/2)</strong></td><td>ethernet1/2</td><td>Internal dataplane interface. Requires secondary IP configuration for north-south HA; primary IP only for UDR HA.</td></tr>
+      <tr><td><strong>HA2 (eth1/3)</strong></td><td>ethernet1/3</td><td>Dedicated HA2 data link for session synchronization between peers.</td></tr>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Optional: dedicated HA1 interface</div>
+      <p>By default, the management interface serves as the HA1 control link. If you want a dedicated HA1 interface, add a fifth NIC to each firewall. Configure it as the HA1 port under the HA settings (Step 4.4 below).</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1 SCM                                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites-scm">Phase 1 (cont.): SCM &amp; Folder Setup</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.3 Place Both Firewalls in the Same SCM Folder</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="callout callout-danger">
+      <div class="callout-title">Both firewalls must be in the same folder before you configure HA</div>
+      <p>SCM requires both HA peers to be in the same folder to configure HA. You cannot move firewalls to a different folder once they are in an HA configuration without first breaking the HA pair, moving both firewalls to the new folder, and then reconfiguring HA.</p>
+    </div>
+    <ol>
+      <li>In SCM, go to <strong>System Settings &gt; Folder Management</strong>.</li>
+      <li>If a target folder does not exist, click <strong>Add Folder</strong>, give it a name, and set its parent (typically <strong>All Firewalls</strong> or a regional parent folder).</li>
+      <li>For each firewall, expand the <strong>Actions</strong> menu and select <strong>Move</strong>.</li>
+      <li>Select the same destination folder for both peers and confirm the move.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both firewalls appear listed under the same folder in <strong>System Settings &gt; Folder Management</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  SERVICE PRINCIPAL                                            -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites-sp">Phase 1 (cont.): Azure Service Principal</h2>
+
+<p>The VM-Series plugin authenticates to Azure APIs to move secondary IPs and update route tables on failover. This requires an Azure Active Directory application and Service Principal with specific permissions.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.4 Create the Azure AD App Registration and Service Principal</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the Azure Portal, go to <strong>Azure Active Directory &gt; App registrations &gt; New registration</strong>.</li>
+      <li>Give the application a descriptive name (for example, <code>vmseries-ha-sp</code>) and register it.</li>
+      <li>Copy and save the following values; you will enter them into the VM-Series plugin in Phase 3:
+        <ul>
+          <li><strong>Client ID (Application ID)</strong>: displayed on the Overview page of the app registration.</li>
+          <li><strong>Tenant ID (Directory ID)</strong>: go to <strong>Azure Active Directory &gt; Properties &gt; Directory ID</strong>.</li>
+          <li><strong>Azure Subscription ID</strong>: found in the Azure Portal under <strong>Subscriptions</strong>.</li>
+          <li><strong>Resource Group Name</strong>: the resource group containing both VM-Series firewalls.</li>
+        </ul>
+      </li>
+      <li>Create a client secret: navigate to <strong>Certificates &amp; secrets &gt; New client secret</strong>, set an expiry, and copy the <strong>Value</strong> immediately (it is only shown once).</li>
+    </ol>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.5 Assign the Required Role Permissions</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Assign a custom Azure role (or use multiple built-in roles) with the permissions below, scoped to the resources listed. Choose the permission set that matches your chosen HA type:</p>
+
+    <h3>Secondary IP Move HA (North-South + East-West)</h3>
+    <div class="code-block">
+      <pre><code>Microsoft.Authorization/*/read
+Microsoft.Compute/virtualMachines/read
+Microsoft.Network/networkInterfaces/*
+Microsoft.Network/networkSecurityGroups/*
+Microsoft.Network/virtualNetworks/join/action
+Microsoft.Network/virtualNetworks/subnets/join/action
+
+# Required only if public IPs are assigned to data interfaces:
+Microsoft.Network/publicIPAddresses/join/action
+Microsoft.Network/publicIPAddresses/read
+Microsoft.Network/publicIPAddresses/write</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>Scope:</strong> the VNet containing both VMs, both VM-Series instances, their NICs, the Network Security Group, and any public IP addresses on the data interfaces.</p>
+
+    <h3>UDR HA (East-West Only)</h3>
+    <div class="code-block">
+      <pre><code>Microsoft.Authorization/*/read
+Microsoft.Compute/virtualMachines/read
+Microsoft.Network/routeTables/*</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>Scope:</strong> both VM-Series instances, their NICs, and the route tables associated with UDR failover.</p>
+
+    <h3>Secondary IP Move + UDR Combined</h3>
+    <div class="code-block">
+      <pre><code>Microsoft.Authorization/*/read
+Microsoft.Compute/virtualMachines/read
+Microsoft.Network/networkInterfaces/*
+Microsoft.Network/networkSecurityGroups/*
+Microsoft.Network/routeTables/*
+Microsoft.Network/virtualNetworks/join/action
+Microsoft.Network/virtualNetworks/subnets/join/action
+
+# Required only if public IPs are assigned to data interfaces:
+Microsoft.Network/publicIPAddresses/join/action
+Microsoft.Network/publicIPAddresses/read
+Microsoft.Network/publicIPAddresses/write</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Creating a custom role via Azure CLI</div>
+      <p>You can define the permissions above in a JSON role definition and create it with:</p>
+      <div class="code-block">
+        <pre><code>az role definition create --role-definition @vmseries-ha-role.json</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>Then assign the role to the Service Principal:</p>
+      <div class="code-block">
+        <pre><code>az role assignment create \
+  --assignee &lt;client-id&gt; \
+  --role "VM-Series HA" \
+  --scope /subscriptions/&lt;sub-id&gt;/resourceGroups/&lt;rg-name&gt;</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: AZURE NETWORK SETUP                                 -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="azure-network">Phase 2: Azure Network Setup</h2>
+
+<div class="callout callout-note">
+  <div class="callout-title">Choose your HA type first</div>
+  <p>The steps below differ depending on whether you are doing <strong>Secondary IP Move</strong> (north-south + east-west) or <strong>UDR</strong> (east-west only). Complete the section that matches your choice; skip the other.</p>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="ha-type">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="secondary-ip">2A &middot; Secondary IP Move</button>
+    <button class="mgmt-tab" data-plane="udr">2B &middot; UDR (East-West Only)</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="secondary-ip">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2A.1 Add Secondary IP to the Untrust Interface (Active Peer)</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The active peer's untrust NIC requires a secondary IP configuration with both a private IP and a public IP. This secondary configuration is what floats to the passive peer on failover.</p>
+        <ol>
+          <li>In the Azure Portal, go to the <strong>active firewall VM &gt; Networking &gt; Network settings</strong>.</li>
+          <li>Click the untrust NIC (typically named <code>*-untrust-nic</code>).</li>
+          <li>Under <strong>IP configurations</strong>, click <strong>Add</strong>.</li>
+          <li>Set <strong>Allocation</strong> to <strong>Static</strong> and assign a private IP address in the untrust subnet (any netmask).</li>
+          <li>Associate a <strong>public IP address</strong> with this secondary IP configuration (create a new Standard SKU public IP if needed). Standard SKU is recommended.</li>
+          <li>Save the IP configuration.</li>
+        </ol>
+        <div class="callout callout-note">
+          <div class="callout-title">Do not add a secondary IP to the passive peer's untrust interface</div>
+          <p>The secondary IP configuration (including the public IP) lives on the active peer only. On failover, the VM-Series plugin moves it to the passive peer. Do not pre-create a secondary IP on the passive peer's untrust interface.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2A.2 Add Secondary IP to the Trust Interface (Active Peer)</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The active peer's trust NIC also requires a secondary IP configuration, but with a private IP only (no public IP). This secondary IP moves to the passive peer on failover so traffic continues flowing through the trust interface.</p>
+        <ol>
+          <li>Click the trust NIC for the active firewall VM.</li>
+          <li>Under <strong>IP configurations</strong>, click <strong>Add</strong>.</li>
+          <li>Set <strong>Allocation</strong> to <strong>Static</strong> and assign a private IP in the trust subnet (matching the netmask of the servers it secures).</li>
+          <li>Do <strong>not</strong> associate a public IP with this secondary IP configuration.</li>
+          <li>Save.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2A.3 Configure Route Tables to Use the Floating IP</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Route tables (UDRs) in spoke subnets should route traffic toward the secondary (floating) IP of the trust interface, not the primary IP. This ensures traffic follows the floating IP after failover.</p>
+        <div class="code-block">
+          <pre><code># Example: set default route in spoke subnet UDR to floating trust IP
+az network route-table route create \
+  --resource-group &lt;rg&gt; \
+  --route-table-name &lt;spoke-rt-name&gt; \
+  --name default-to-firewall \
+  --address-prefix 0.0.0.0/0 \
+  --next-hop-type VirtualAppliance \
+  --next-hop-ip-address &lt;trust-secondary-floating-ip&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mgmt-panel" data-plane="udr">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2B.1 Verify Primary IP Configurations (No Secondary IPs Required)</span>
+      </div>
+      <div class="collapsible-body">
+        <p>For UDR-based east-west HA, only the <strong>primary IP configuration</strong> is needed on the trust and untrust interfaces of each peer. No secondary IP configurations are added. Confirm the following on both firewall VMs:</p>
+        <ul>
+          <li>Untrust NIC: one primary private IP address, no secondary.</li>
+          <li>Trust NIC: one primary private IP address, no secondary.</li>
+          <li>Management NIC: primary private IP and public IP (for management access).</li>
+          <li>HA2 NIC: primary private IP in the HA2 subnet.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2B.2 Configure Route Tables Pointing to the Active Peer</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Create UDR routes pointing to the <strong>primary trust IP of the active firewall</strong> as the next-hop virtual appliance. On failover, the VM-Series plugin automatically updates these routes to point to the new active peer's primary trust IP.</p>
+        <div class="code-block">
+          <pre><code># Route traffic from spoke subnet through the active firewall trust interface
+az network route-table route create \
+  --resource-group &lt;rg&gt; \
+  --route-table-name &lt;spoke-rt-name&gt; \
+  --name default-to-firewall \
+  --address-prefix 0.0.0.0/0 \
+  --next-hop-type VirtualAppliance \
+  --next-hop-ip-address &lt;active-peer-trust-primary-ip&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-note">
+          <div class="callout-title">After failover</div>
+          <p>When failover occurs, the VM-Series plugin updates the next-hop in these route tables to the primary trust IP of the peer that has become active. No manual route changes are required.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Common: HA2 NIC ──────────────────────────────────────── -->
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2C: Add HA2 Network Interface to Both Firewalls (Both HA Types)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Both HA peers require a dedicated HA2 NIC for session synchronization. Complete these steps on both firewall VMs.</p>
+    <ol>
+      <li>In the Azure Portal, add a subnet in the Transit VNet for the HA2 link (for example, <code>ha2-subnet / 10.51.0.96/27</code>).</li>
+      <li>Create a new NIC in the Azure Portal:
+        <ul>
+          <li><strong>Subscription and Resource Group:</strong> same as the firewall VMs.</li>
+          <li><strong>Network and subnet:</strong> the HA2 subnet created above.</li>
+          <li><strong>Private IP:</strong> assign a static private IP for each peer.</li>
+        </ul>
+      </li>
+      <li>Attach the NIC to the firewall VM: VM &gt; <strong>Networking &gt; Attach network interface</strong>. The VM must be stopped to attach a NIC.</li>
+      <li>Start the VM after attaching the NIC.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each firewall VM shows four (or more) network interfaces in <strong>Azure Portal &gt; VM &gt; Networking</strong>. The HA2 NIC has a private IP in the HA2 subnet.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  AZURE HEALTH MONITORING                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="azure-health">Azure Health Monitoring</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2D: Enable Azure Health Monitoring Auto-Remediation</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Azure health monitoring is a daemon built into the VM-Series firewall that detects Azure scheduled maintenance events (freeze events) and hotplug events. When auto-remediation is enabled, it proactively fails over the active firewall before the instance becomes unresponsive, rather than waiting for the HA heartbeat to time out.</p>
+    <p>Enable auto-remediation by adding the following key-value pair to the VM's <strong>custom data (bootstrap options)</strong> at deployment time, or update it in the Azure Portal under <strong>VM &gt; Configuration &gt; Custom data</strong>:</p>
+    <div class="code-block">
+      <pre><code>health-auto-remedy=true</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>With this set, a detected freeze event triggers an immediate active-to-passive failover on the firewall where the event is detected. The passive peer then takes over.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Best practice: deploy HA peers in different Availability Zones</div>
+      <p>To avoid both peers being affected by the same Azure maintenance event, place the active and passive firewalls in separate Azure Availability Zones (AZs). Both must still be in the same Resource Group and VNet.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: VM-SERIES PLUGIN                                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="plugin-config">Phase 3: VM-Series Plugin Configuration</h2>
+
+<p>The VM-Series plugin must be configured on the <strong>active peer only</strong> with the Azure credentials. The plugin configuration is synced to the passive peer automatically after HA is established.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.1 Configure the VM-Series Plugin on the Active Peer</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="callout callout-warning">
+      <div class="callout-title">Plugin version requirement</div>
+      <p>Use VM-Series plugin version 1.0.4 or later to encrypt the client secret. Both peers and any managing Panorama instance must run the same plugin version.</p>
+    </div>
+    <ol>
+      <li>Log in to the active firewall web interface.</li>
+      <li>Navigate to <strong>Device &gt; VM-Series</strong>.</li>
+      <li>Enter the following fields from the Service Principal created in Phase 1:
+        <ul>
+          <li><strong>Client ID:</strong> the Application ID of your Azure AD app registration.</li>
+          <li><strong>Client Secret:</strong> the secret value you copied when creating the client secret. Enter it twice to confirm.</li>
+          <li><strong>Tenant ID:</strong> the Directory ID of your Azure AD tenant.</li>
+          <li><strong>Subscription ID:</strong> the Azure subscription ID where the firewalls are deployed.</li>
+          <li><strong>Resource Group:</strong> the resource group name containing both firewall VMs.</li>
+        </ul>
+      </li>
+      <li>(Azure Stack only) Enter the <strong>Resource Mgr Endpoint URL</strong>. Leave this field empty for standard Azure Cloud deployments. Do not enter a value here for non-Azure Stack deployments because HA failover will fail if this field is set incorrectly.</li>
+      <li>Click <strong>Validate</strong> to confirm the plugin can authenticate to Azure and reach the required resources.</li>
+      <li>Commit the changes.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><strong>Validate</strong> returns success with no errors. The plugin is now authenticated to the Azure resource group and has the permissions to move IP configurations and update route tables on failover.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: SCM HA SETUP                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="scm-ha-basic">Phase 4: Configure HA in SCM: Basic Settings</h2>
+
+<div class="callout callout-note">
+  <div class="callout-title">Where to find HA configuration in SCM</div>
+  <p>In SCM, navigate to <strong>Configuration &gt; NGFW and Prisma Access</strong> and select the <strong>Folder</strong> that contains both HA peers (the folder you set up in Phase 1). The HA Setup section appears within the folder configuration scope.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 Create HA Pair and Set Basic Options</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the <strong>HA Setup</strong> section, click <strong>Create HA</strong>.</li>
+      <li>Set <strong>HA Mode</strong> to <strong>Active-Passive</strong>.</li>
+      <li>Enable <strong>Config Sync</strong>. This enables configuration synchronization between the two HA peers so they stay in sync at all times.</li>
+      <li>Set a <strong>Group ID</strong> (1&ndash;63) that is unique across all HA pairs on the same broadcast domain. If only one HA pair exists on this segment, any value works.</li>
+      <li>(Optional) Enter a <strong>Description</strong> for the HA pair.</li>
+      <li>Select an <strong>SSH HA Profile</strong> to apply to SSH sessions between HA peers on your network.</li>
+      <li>(Active-Passive) Configure the <strong>Passive Link State</strong>. The default is <strong>Shutdown</strong> (HA ports on the passive peer show as down). Setting it to <strong>Auto</strong> allows you to monitor the passive peer's link state and reduces failover time because the passive peer's interfaces are ready.</li>
+      <li>(Optional) Set the <strong>Monitor Fail Hold Down Time</strong> (1&ndash;60 minutes, default 1): the number of minutes to wait before retesting a down link.</li>
+      <li>Select the <strong>Primary Device</strong> (the firewall to act as the active peer).</li>
+      <li>Select the <strong>Secondary Device</strong> (the firewall to act as the passive peer).</li>
+      <li>Click <strong>Next</strong>.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  SCM ELECTION SETTINGS                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="scm-ha-election">Phase 4 (cont.): Election Settings</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.2 Configure Election Settings</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Set <strong>Device Priority</strong> for each peer. A <strong>lower numerical value</strong> means higher priority (the firewall with the lower value will be preferred as the active peer). If both firewalls share the same value, the one with the lowest MAC address on the HA1 control link becomes active.</li>
+      <li>Enable <strong>Preemptive</strong> on <strong>both</strong> the primary and secondary devices. With preemptive enabled, the higher-priority firewall will reclaim the active role after it recovers from a failure.</li>
+      <li>Enable <strong>Heartbeat Backup</strong>. This routes heartbeat messages over the management interface as a backup to the HA1 control link. Enabling heartbeat backup prevents a split-brain scenario: when the HA1 link fails but both firewalls are still running, each peer would otherwise believe the other is down and both would attempt to become active simultaneously.</li>
+      <li>(Optional) Modify <strong>HA Timers</strong>. The default profile is <strong>Recommended</strong>, suited for most deployments. Select <strong>Aggressive</strong> for faster failover triggering, or <strong>Advanced</strong> to define custom timer values. To view the preset timer values for your hardware model, select <strong>Advanced</strong> then <strong>Load Recommended</strong> or <strong>Load Aggressive</strong>.</li>
+      <li>Click <strong>Next</strong>.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  SCM HA1/HA2 LINKS                                            -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="scm-ha-links">Phase 4 (cont.): HA1 and HA2 Links</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.3 Configure the HA1 Control Link</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The HA1 control link carries hello messages, heartbeats, HA state information, and management-plane routing synchronization. It also carries configuration changes pushed from SCM.</p>
+    <p>By default, the management interface is used as the HA1 link. If you have added a dedicated HA1 NIC to each firewall, select that interface here instead.</p>
+
+    <h3>Primary Device (Active Peer)</h3>
+    <ol>
+      <li>Select the <strong>Ethernet Port</strong> for the HA1 control link (management interface or dedicated HA1 NIC).</li>
+      <li>Enter the <strong>IPv4 Address</strong>, <strong>Netmask</strong>, and <strong>Gateway</strong> for the HA1 interface on the primary peer.</li>
+      <li>(Optional) Expand <strong>Advanced Settings</strong> and set the <strong>Monitor Hold Time</strong> (ms): how long the firewall waits before declaring a peer failure due to a control link failure. Range is 1,000 to 60,000 ms; default is 3,000 ms.</li>
+    </ol>
+
+    <h3>Secondary Device (Passive Peer)</h3>
+    <ol>
+      <li>Select the same interface type for the HA1 link on the secondary peer.</li>
+      <li>Enter the <strong>IPv4 Address</strong>, <strong>Netmask</strong>, and <strong>Gateway</strong> for the HA1 interface on the secondary peer.</li>
+    </ol>
+
+    <h3>(Optional) HA1 Backup Link</h3>
+    <p>Configure an HA1 backup link to provide redundancy if the primary HA1 link fails. Observe these constraints:</p>
+    <ul>
+      <li>The HA1 backup IP addresses must not overlap with the primary HA1 IP addresses.</li>
+      <li>The HA1 backup link must be on a different subnet from the primary HA1 link.</li>
+      <li>HA1 backup and HA2 backup ports must be on separate physical ports.</li>
+      <li>The HA1 backup link uses TCP ports 28770 and 28260.</li>
+    </ul>
+    <p>Click <strong>Next</strong> when done.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.4 Configure the HA2 Data Link</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The HA2 data link synchronizes sessions, forwarding tables, IPSec security associations, and ARP tables from the active to the passive peer. Data flow on HA2 is unidirectional (active to passive) except for HA2 keep-alive messages.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Azure transport mode</div>
+      <p>In Azure environments, the HA2 link must use <strong>UDP transport (Layer 4, port 29281)</strong>. Layer 2 (Ethernet) transport is not supported on Azure because Azure VNets are Layer 3 networks. Select <strong>Layer4 transport via UDP/29281</strong> as the transport method.</p>
+    </div>
+
+    <h3>Primary Device (Active Peer)</h3>
+    <ol>
+      <li>Select the <strong>Ethernet Port</strong> for the HA2 data link. This should be the NIC you attached to the HA2 subnet in Phase 2C (typically <code>ethernet1/3</code>).</li>
+      <li>Enter the <strong>IPv4 Address</strong>, <strong>Netmask</strong>, and <strong>Gateway</strong> of the HA2 interface on the primary peer.</li>
+      <li>(Optional) Expand <strong>Advanced Settings</strong>:
+        <ul>
+          <li>Verify <strong>Enable Session Synchronization</strong> is checked. With session synchronization enabled, the passive peer maintains the session in its dataplane, allowing it to immediately forward packets using the synchronized session on failover rather than rebuilding sessions from scratch.</li>
+          <li>Set <strong>Transport</strong> to <strong>Layer4 transport via UDP/29281</strong> for Azure deployments.</li>
+          <li>Enable and configure <strong>HA2 Keep-alive</strong>:
+            <ul>
+              <li>Set <strong>Keep-alive Action</strong> to <strong>Log Only</strong> for active/passive deployments. The passive peer is in backup state and is not forwarding traffic, so a split datapath is not a risk.</li>
+              <li>Set the <strong>Keep-alive Threshold</strong> (ms): range is 5,000 to 60,000 ms; default is 10,000 ms.</li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ol>
+
+    <h3>Secondary Device (Passive Peer)</h3>
+    <ol>
+      <li>Select the same interface for HA2 on the secondary peer.</li>
+      <li>Enter the <strong>IPv4 Address</strong>, <strong>Netmask</strong>, and <strong>Gateway</strong> for the HA2 interface on the secondary peer.</li>
+    </ol>
+
+    <h3>(Optional) HA2 Backup Link</h3>
+    <p>Configure an HA2 backup link to maintain session synchronization if the primary HA2 link fails. With HA2 keep-alive enabled, failover to the backup link also occurs when keep-alive messages fail beyond the configured threshold.</p>
+    <p>Click <strong>Next</strong> when done.</p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PUSH CONFIG                                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="scm-ha-push">Phase 4 (cont.): Failover Conditions and Push Config</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.5 Define HA Failover Conditions</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Define which monitored link or path failures trigger a failover. SCM presents link monitoring and path monitoring options at this step. For Azure deployments, standard link monitoring on the management and dataplane interfaces is typical.</p>
+    <ul>
+      <li><strong>Link Monitoring:</strong> triggers failover when one or more specified interfaces go down.</li>
+      <li><strong>Path Monitoring:</strong> triggers failover when specified destination IP addresses become unreachable from the firewall.</li>
+    </ul>
+    <p>Configure the conditions appropriate for your environment, then proceed to push the configuration.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.6 Push Configuration to Both Peers</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In SCM, click <strong>Push Config</strong> to push the HA configuration to both firewall peers.</li>
+      <li>Monitor the push status. Both firewalls should show <strong>Success</strong> in the push results.</li>
+      <li>After the push completes, the firewalls will negotiate HA roles and synchronize configuration automatically.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Expected behavior after push</div>
+      <p>The firewall you designated as primary will become the <strong>active</strong> peer. The secondary firewall will enter <strong>passive</strong> state. Configuration synchronization begins immediately.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: VERIFICATION                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="verification">Phase 5: Post-Configuration Verification</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 Verify HA State via CLI</span>
+  </div>
+  <div class="collapsible-body">
+    <p>SSH into each firewall and run the following commands:</p>
+    <div class="code-block">
+      <pre><code># Check overall HA state (should show active or passive)
+show high-availability state
+
+# Check HA peer status and synchronization
+show high-availability all
+
+# Verify VM-Series plugin is authenticated to Azure
+show plugins vm_series
+
+# Check session synchronization state
+show high-availability transitions</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Expected output</div>
+      <ul>
+        <li><strong>Active peer:</strong> <code>Local state: active</code>, <code>Running Config: synchronized</code></li>
+        <li><strong>Passive peer:</strong> <code>Local state: passive</code>, <code>Running Config: synchronized</code></li>
+        <li>Both peers show <code>Peer state: established</code></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.2 Verify VM-Series Plugin Sync on the Passive Peer</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The VM-Series plugin configuration (Azure credentials) should have synced from the active peer to the passive peer automatically. Verify this on the passive firewall:</p>
+    <ol>
+      <li>Log in to the passive firewall web interface.</li>
+      <li>Navigate to <strong>Device &gt; VM-Series</strong>.</li>
+      <li>Confirm that the Client ID, Tenant ID, Subscription ID, and Resource Group are populated (synced from the active peer). The Client Secret will not display for security reasons but should be present.</li>
+      <li>Click <strong>Validate</strong> to confirm the passive peer can also authenticate to Azure.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Validate succeeds on the passive peer without you manually entering credentials. If fields are empty, the sync has not completed: wait a few minutes and refresh, or manually trigger a sync from the active peer's HA dashboard.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.3 Test Failover</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="callout callout-warning">
+      <div class="callout-title">Plan a maintenance window</div>
+      <p>Testing failover will briefly interrupt traffic while the IP configurations move (Secondary IP Move) or route tables update (UDR). Coordinate with stakeholders before triggering a test failover in production.</p>
+    </div>
+    <ol>
+      <li>On the active firewall, trigger a manual failover via CLI:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>request high-availability state suspend</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="2">
+      <li>Verify the passive peer transitions to <strong>active</strong>:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>show high-availability state</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="3">
+      <li>For Secondary IP Move: verify in the Azure Portal that the secondary IP configuration has moved from the previously active VM to the now-active VM.</li>
+      <li>For UDR: verify in the Azure Portal that the route table next-hops now point to the primary trust IP of the new active peer.</li>
+      <li>Restore the suspended peer to functional state:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>request high-availability state functional</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The originally active firewall returns to the passive state (or reclaims the active role if preemption is enabled). Both peers show <code>Running Config: synchronized</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                              -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Peers Not Forming HA Pair (Both Stay in Initial State)</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>Both firewalls show <code>initial</code> HA state after config push</td><td>HA1 control link cannot reach the peer</td><td>Verify network connectivity between the management IPs (or dedicated HA1 IPs) of both peers. Check NSG rules to ensure no inbound/outbound deny blocks the HA1 ports (TCP 28769 and 28260).</td></tr>
+      <tr><td>Config shows <code>not synchronized</code></td><td>HA1 link up but config sync blocked</td><td>Verify <strong>Config Sync</strong> is enabled on both peers. Check the system log for sync errors: <code>tail follow yes mp-log pan_comm.log</code>.</td></tr>
+      <tr><td>Both firewalls become active (split-brain)</td><td>HA1 link down but heartbeat backup not configured</td><td>Enable <strong>Heartbeat Backup</strong> so management-interface heartbeats serve as a fallback. Investigate and restore the primary HA1 link.</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>VM-Series Plugin Validation Fails</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>Validate returns authentication error</td><td>Client ID, Tenant ID, or Client Secret is incorrect</td><td>Re-verify the values copied from the Azure Portal. Regenerate the client secret if it has expired.</td></tr>
+      <tr><td>Validate returns authorization error</td><td>Service Principal lacks required permissions</td><td>Confirm the custom role is assigned to the Service Principal with the correct scope (VNet, VMs, NICs, NSGs, route tables). Check for any Azure Policy denying the permissions.</td></tr>
+      <tr><td>Validate succeeds but failover does not move IPs</td><td>Secondary IP configurations not present on the active peer's NICs</td><td>Verify secondary IPs exist on the untrust and trust NICs of the active firewall in the Azure Portal. The plugin can only move IPs that exist; it cannot create them.</td></tr>
+      <tr><td>Resource Mgr Endpoint URL causes failover to fail</td><td>Field set for non-Azure Stack deployment</td><td>Clear the <strong>Resource Mgr Endpoint URL</strong> field on Device &gt; VM-Series. This field is only for Azure Stack deployments and must be empty for standard Azure Cloud.</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>HA2 Session Synchronization Not Working</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>Sessions drop on failover (not restored from sync)</td><td>Session synchronization disabled or HA2 link down</td><td>Verify <strong>Enable Session Synchronization</strong> is checked in HA2 advanced settings. Check <code>show high-availability state</code> for HA2 link status.</td></tr>
+      <tr><td>HA2 link shows as down</td><td>HA2 NIC not attached or wrong transport mode</td><td>Verify the HA2 NIC is attached to both firewall VMs in the Azure Portal and is in the correct subnet. Confirm transport is set to <strong>UDP/29281</strong> (Layer 4) for Azure.</td></tr>
+      <tr><td>HA2 keep-alive log events but no failover</td><td>Keep-alive action is Log Only (expected for active/passive)</td><td>This is correct behavior. Log Only is the appropriate keep-alive action for active/passive HA pairs. No action is needed unless the HA2 link is persistently down.</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>SCM Push Fails or HA Configuration Not Applied</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Resolution</th></tr>
+      <tr><td>SCM push fails with "device not reachable"</td><td>Firewall not connected to SCM</td><td>Verify connectivity from the firewall management interface to SCM. Check <code>show panorama-status</code> on the firewall. Confirm TCP 443 is allowed outbound from the management subnet.</td></tr>
+      <tr><td>HA configuration does not appear on firewalls after push</td><td>Firewalls are in different SCM folders</td><td>Both HA peers must be in the <strong>same SCM folder</strong>. Move both firewalls to the same folder before reconfiguring HA.</td></tr>
+      <tr><td>Push succeeds but HA state remains non-synchronized</td><td>Group ID conflict with another HA pair on same broadcast domain</td><td>Ensure the Group ID is unique across all HA pairs that share the same broadcast domain. Change the Group ID to resolve the conflict and push again.</td></tr>
+    </table>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="download-md-btn" id="downloadMdBtn" onclick="downloadAsMarkdown()">&#8681; Markdown</button>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>
