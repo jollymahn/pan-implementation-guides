@@ -11,6 +11,13 @@
 var NEWS_ITEMS = [
   {
     badge: "New",
+    date: "Sep 10",
+    title: "AIRS Engagement Planner",
+    href: "guides/airs-planner/index.html",
+    tags: "AIRS, Project Plan, Prerequisites, Team Personas"
+  },
+  {
+    badge: "New",
     date: "Sep 9",
     title: "VM-Series Active/Passive HA on Azure",
     href: "guides/azure/vm-series-ha.html",
