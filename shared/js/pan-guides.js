@@ -498,6 +498,8 @@ const GLOBAL_NAV_GROUPS = [
   ]},
   { id: 'airs', label: 'AIRS', links: [
     { t: 'Overview', h: 'guides/airs/index.html' },
+    { label: 'Planning Tools' },
+    { t: 'Engagement Planner', h: 'guides/airs-planner/index.html', sub: true },
     { t: 'Network Intercept', h: 'guides/airs/airs-network-intercept.html', sub: true },
     { t: 'Cloud Deploy', h: 'guides/airs/airs-cloud-deployment.html', sub: true },
     { t: 'API Intercept', h: 'guides/airs/airs-api-intercept.html', sub: true },
