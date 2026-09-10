@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>LLM Provider API Key Management | AI Gateway | PAN Implementation Guides</title>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#why-key-vault" data-section="why-key-vault">Why Key Vault</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Setup</div>
+    <a href="#create-key-vault" data-section="create-key-vault">1. Create Key Vault</a>
+    <a href="#store-secrets" data-section="store-secrets">2. Store Provider Keys</a>
+    <a href="#create-identity" data-section="create-identity">3. Create Identity</a>
+    <a href="#grant-access" data-section="grant-access">4. Grant Access</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Operate</div>
+    <a href="#retrieve-secrets" data-section="retrieve-secrets">5. Retrieve at Runtime</a>
+    <a href="#rotation" data-section="rotation">6. Key Rotation</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#naming-convention" data-section="naming-convention">Naming Convention</a>
+    <a href="#rbac-matrix" data-section="rbac-matrix">RBAC Matrix</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  LLM API Key Management
+</div>
+
+<h1>LLM Provider API Key Management</h1>
+<p class="subtitle">Setting up secure key storage for customers who need a key management process before configuring the AIRS AI Gateway</p>
+
+<div class="cloud-links">
+  <a href="ai-gateway-deployment.html" class="cloud-link">AI Gateway Deployment Guide</a>
+  <a href="../../trd/ai-gateway/trd-ai-gateway.html" class="cloud-link">AI Gateway TRD</a>
+</div>
+
+<!-- ── Why Key Vault ───────────────────────────────────────────── -->
+<h2 id="why-key-vault">API Keys Are Required — Storage Method Is Up to You</h2>
+
+<div class="callout callout-warning">
+  <div class="callout-title">LLM provider API keys are a hard requirement for AI Gateway</div>
+  <p>The AIRS AI Gateway must have credentials for each LLM provider it routes to. Without valid API keys, the Gateway cannot forward requests. How you store and manage those keys is your choice.</p>
+</div>
+
+<p>If your organization already has a secrets management process (HashiCorp Vault, AWS Secrets Manager, CyberArk, or another Key Vault), use it. This guide is for customers who do not yet have a process in place and need to set one up before configuring the AI Gateway.</p>
+
+<p>This guide uses Azure Key Vault with Entra ID because it is the most common choice for customers already running in Azure, but the principles apply to any secrets manager: store one credential per provider, restrict read access to the Gateway's identity, and set up rotation alerts before keys expire.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Azure OpenAI is different from other providers</div>
+  <p>Azure OpenAI supports Entra ID authentication natively; no API key is needed at all. Instead of storing a key, you assign an Entra role to the AI Gateway's identity on the Azure OpenAI resource. This guide covers both approaches: keyless Entra auth for Azure OpenAI and Key Vault-backed keys for all other providers.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<div class="callout callout-note">
+  <div class="callout-title">Already have a secrets manager? Skip this guide.</div>
+  <p>If your organization uses HashiCorp Vault, AWS Secrets Manager, CyberArk, or any other secrets management platform, store your LLM provider keys there using your existing process. This guide only applies to customers setting up key management for the first time using Azure Key Vault.</p>
+</div>
+
+<p>To follow this guide you will need:</p>
+<ul>
+  <li>Azure subscription with Contributor access (for resource creation)</li>
+  <li>Azure CLI installed and signed in: <code>az login</code></li>
+  <li>Entra ID permissions to create Service Principals or Managed Identities</li>
+  <li>API keys already obtained from each LLM provider you plan to use</li>
+  <li>A resource group created or identified for the Key Vault</li>
+</ul>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Collect provider API keys before starting</div>
+  <p>Have your keys ready before creating the vault. You will need: an OpenAI API key, AWS IAM access key ID and secret, Anthropic API key, and/or a Google Cloud service account JSON. Azure OpenAI requires no key: only the endpoint URL and deployment names.</p>
+</div>
+
+<!-- ── Step 1: Create Key Vault ───────────────────────────────── -->
+<h2 id="create-key-vault">Step 1 &mdash; Create the Key Vault</h2>
+<p>Create a dedicated Key Vault for AI Gateway credentials. Using a dedicated vault isolates LLM keys from other secrets and makes it easy to scope access precisely.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>1.1 &mdash; Set variables</span></div>
+  <div class="collapsible-body">
+    <p>Set shell variables to keep the remaining commands consistent. Adjust to match your environment.</p>
+    <div class="code-block"><pre><code>SUBSCRIPTION_ID="00000000-0000-0000-0000-000000000000"
+RESOURCE_GROUP="rg-ai-gateway"
+LOCATION="eastus"
+VAULT_NAME="kv-ai-gateway-llm"   # must be globally unique, 3–24 chars</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <div class="callout callout-note">
+      <div class="callout-title">Vault name uniqueness</div>
+      <p>Key Vault names are globally unique across all Azure tenants. If the name is taken, append your org abbreviation or a short random suffix (for example, <code>kv-ai-gateway-llm-contoso</code>).</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>1.2 &mdash; Create the vault with RBAC access model</span></div>
+  <div class="collapsible-body">
+    <p>Create the Key Vault with RBAC-based access control (recommended over the legacy access policy model) and enable soft-delete and purge protection.</p>
+    <div class="code-block"><pre><code>az keyvault create \
+  --name "$VAULT_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --location "$LOCATION" \
+  --enable-rbac-authorization true \
+  --enable-soft-delete true \
+  --retention-days 90 \
+  --enable-purge-protection true</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p><em>Verify: the command returns a JSON object with <code>"provisioningState": "Succeeded"</code>. Note the vault URI — you will need it later:</em></p>
+    <div class="code-block"><pre><code>VAULT_URI="https://${VAULT_NAME}.vault.azure.net/"
+echo "Vault URI: $VAULT_URI"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>1.3 &mdash; Grant yourself admin access</span></div>
+  <div class="collapsible-body">
+    <p>Assign yourself the Key Vault Administrator role so you can create and manage secrets during setup. This is a one-time step for the person performing the initial configuration.</p>
+    <div class="code-block"><pre><code>MY_OBJECT_ID=$(az ad signed-in-user show --query id -o tsv)
+VAULT_ID=$(az keyvault show --name "$VAULT_NAME" --resource-group "$RESOURCE_GROUP" --query id -o tsv)
+
+az role assignment create \
+  --role "Key Vault Administrator" \
+  --assignee "$MY_OBJECT_ID" \
+  --scope "$VAULT_ID"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p><em>Verify: role assignment appears in the Azure Portal under the Key Vault's Access Control (IAM) blade, or run:</em></p>
+    <div class="code-block"><pre><code>az role assignment list --scope "$VAULT_ID" --query "[].{Role:roleDefinitionName, Principal:principalName}" -o table</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<!-- ── Step 2: Store Secrets ─────────────────────────────────── -->
+<h2 id="store-secrets">Step 2 &mdash; Store Provider API Keys</h2>
+<p>Store one secret per provider credential using a consistent naming convention. Set an expiry date on every secret so Key Vault can alert you before keys expire.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Naming convention</div>
+  <p>Use the format <code>llm-&lt;provider&gt;-&lt;credential-type&gt;</code>. This makes secrets scannable and predictable for the AI Gateway configuration. See the <a href="#naming-convention">reference table</a> at the bottom of this guide for the full list.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>2A &mdash; OpenAI</span></div>
+  <div class="collapsible-body">
+    <p>Store the OpenAI API key. Set an expiry 90 days out. OpenAI keys do not auto-expire, so the vault expiry is your rotation trigger.</p>
+    <div class="code-block"><pre><code>EXPIRY=$(date -u -d "+90 days" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v+90d +"%Y-%m-%dT%H:%M:%SZ")
+
+az keyvault secret set \
+  --vault-name "$VAULT_NAME" \
+  --name "llm-openai-api-key" \
+  --value "your-openai-api-key" \
+  --expires "$EXPIRY" \
+  --description "OpenAI API key for AIRS AI Gateway"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <div class="callout callout-note">
+      <div class="callout-title">Replace the placeholder</div>
+      <p>Replace <code>sk-proj-...</code> with your actual OpenAI API key. Avoid pasting keys into shell history — use <code>read -s OPENAI_KEY</code> to enter it interactively, then pass <code>--value "$OPENAI_KEY"</code>.</p>
+    </div>
+    <p><em>Verify:</em></p>
+    <div class="code-block"><pre><code>az keyvault secret show --vault-name "$VAULT_NAME" --name "llm-openai-api-key" --query "{name:name, expires:attributes.expires}" -o table</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>2B &mdash; Azure OpenAI (keyless Entra auth)</span></div>
+  <div class="collapsible-body">
+    <div class="callout callout-success">
+      <div class="callout-title">No API key needed for Azure OpenAI</div>
+      <p>Azure OpenAI supports Entra ID authentication natively. Instead of storing an API key, you assign the AI Gateway's identity the <strong>Cognitive Services OpenAI User</strong> role on the Azure OpenAI resource. This is more secure than key-based auth and eliminates a rotation burden.</p>
+    </div>
+    <p>Store the endpoint URL and deployment names as secrets so they are centrally managed alongside other provider config:</p>
+    <div class="code-block"><pre><code>az keyvault secret set \
+  --vault-name "$VAULT_NAME" \
+  --name "llm-azure-openai-endpoint" \
+  --value "https://my-instance.openai.azure.com/" \
+  --description "Azure OpenAI endpoint URL"
+
+az keyvault secret set \
+  --vault-name "$VAULT_NAME" \
+  --name "llm-azure-openai-deployment-gpt4o" \
+  --value "gpt-4o" \
+  --description "Azure OpenAI deployment name for GPT-4o"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p>The role assignment that replaces the API key is done in Step 4 (Grant Access). No expiry is needed on endpoint/deployment name secrets; they change only when you update the Azure OpenAI resource.</p>
+    <p><em>Verify the secrets were stored:</em></p>
+    <div class="code-block"><pre><code>az keyvault secret list --vault-name "$VAULT_NAME" --query "[?starts_with(name,'llm-azure-openai')].name" -o table</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>2C &mdash; AWS Bedrock</span></div>
+  <div class="collapsible-body">
+    <p>AWS Bedrock requires an IAM access key pair and a region. Store all three as separate secrets. Create a dedicated IAM user in AWS with only <code>bedrock:InvokeModel</code> permissions. Do not reuse admin credentials.</p>
+    <div class="code-block"><pre><code>az keyvault secret set \
+  --vault-name "$VAULT_NAME" \
+  --name "llm-aws-bedrock-access-key-id" \
+  --value "YOUR_AWS_ACCESS_KEY_ID" \
+  --expires "$EXPIRY" \
+  --description "AWS IAM access key ID for Bedrock"
+
+az keyvault secret set \
+  --vault-name "$VAULT_NAME" \
+  --name "llm-aws-bedrock-secret-access-key" \
+  --value "YOUR_AWS_SECRET_ACCESS_KEY" \
+  --expires "$EXPIRY" \
+  --description "AWS IAM secret access key for Bedrock"
+
+az keyvault secret set \
+  --vault-name "$VAULT_NAME" \
+  --name "llm-aws-bedrock-region" \
+  --value "us-east-1" \
+  --description "AWS region for Bedrock inference"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Least-privilege IAM policy</div>
+      <p>The AWS IAM user should have only the permissions required. Example policy:</p>
+    </div>
+    <div class="code-block"><pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": [
+      "bedrock:InvokeModel",
+      "bedrock:InvokeModelWithResponseStream"
+    ],
+    "Resource": "arn:aws:bedrock:us-east-1::foundation-model/*"
+  }]
+}</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p><em>Verify:</em></p>
+    <div class="code-block"><pre><code>az keyvault secret list --vault-name "$VAULT_NAME" --query "[?starts_with(name,'llm-aws-bedrock')].name" -o table</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>2D &mdash; Anthropic</span></div>
+  <div class="collapsible-body">
+    <p>Store the Anthropic API key. Anthropic keys are generated in the Anthropic Console and are not auto-expiring; use the vault expiry as your rotation signal.</p>
+    <div class="code-block"><pre><code>az keyvault secret set \
+  --vault-name "$VAULT_NAME" \
+  --name "llm-anthropic-api-key" \
+  --value "your-anthropic-api-key" \
+  --expires "$EXPIRY" \
+  --description "Anthropic API key for AIRS AI Gateway"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p><em>Verify:</em></p>
+    <div class="code-block"><pre><code>az keyvault secret show --vault-name "$VAULT_NAME" --name "llm-anthropic-api-key" --query "{name:name, expires:attributes.expires}" -o table</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>2E &mdash; Google Vertex AI</span></div>
+  <div class="collapsible-body">
+    <p>Google Vertex AI authenticates via a GCP service account. Create a dedicated service account in GCP with only <code>aiplatform.endpoints.predict</code> permission, download its JSON key file, and store it as a single secret. Also store the GCP project ID separately.</p>
+    <div class="code-block"><pre><code># Store the full service account JSON as a single secret
+SA_JSON=$(cat path/to/service-account-key.json)
+
+az keyvault secret set \
+  --vault-name "$VAULT_NAME" \
+  --name "llm-google-vertex-sa-key" \
+  --value "$SA_JSON" \
+  --expires "$EXPIRY" \
+  --description "GCP service account JSON for Vertex AI"
+
+az keyvault secret set \
+  --vault-name "$VAULT_NAME" \
+  --name "llm-google-vertex-project-id" \
+  --value "my-gcp-project-id" \
+  --description "GCP project ID for Vertex AI inference"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Delete the local JSON file after storing</div>
+      <p>Once the key is stored in Key Vault, delete the local <code>.json</code> file. It is a high-value credential and should not persist on disk or in source control.</p>
+    </div>
+    <p><em>Verify:</em></p>
+    <div class="code-block"><pre><code>az keyvault secret list --vault-name "$VAULT_NAME" --query "[?starts_with(name,'llm-google-vertex')].name" -o table</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<!-- ── Step 3: Create Identity ───────────────────────────────── -->
+<h2 id="create-identity">Step 3 &mdash; Create an Identity for the AI Gateway</h2>
+<p>The AI Gateway needs an Entra ID identity to authenticate to Key Vault at runtime. Use a User-Assigned Managed Identity if the Gateway runs on Azure (no credentials to manage). Use a Service Principal if the Gateway runs outside Azure.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>3A &mdash; User-Assigned Managed Identity (Azure-hosted, recommended)</span></div>
+  <div class="collapsible-body">
+    <p>Managed Identities are the preferred option for workloads running on Azure VMs, App Service, AKS, or Container Instances. There are no credentials to rotate; Azure handles authentication automatically.</p>
+    <div class="code-block"><pre><code>az identity create \
+  --name "id-ai-gateway" \
+  --resource-group "$RESOURCE_GROUP" \
+  --location "$LOCATION"
+
+# Capture the identity details for later steps
+MI_CLIENT_ID=$(az identity show --name "id-ai-gateway" --resource-group "$RESOURCE_GROUP" --query clientId -o tsv)
+MI_OBJECT_ID=$(az identity show --name "id-ai-gateway" --resource-group "$RESOURCE_GROUP" --query principalId -o tsv)
+
+echo "Client ID: $MI_CLIENT_ID"
+echo "Object ID: $MI_OBJECT_ID"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p>Assign the managed identity to the Azure resource running the AI Gateway (example for a VM):</p>
+    <div class="code-block"><pre><code>az vm identity assign \
+  --resource-group "$RESOURCE_GROUP" \
+  --name "vm-ai-gateway" \
+  --identities "/subscriptions/$SUBSCRIPTION_ID/resourcegroups/$RESOURCE_GROUP/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-ai-gateway"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p><em>Verify: the identity appears in the VM's Identity blade in the Azure Portal, or:</em></p>
+    <div class="code-block"><pre><code>az vm identity show --resource-group "$RESOURCE_GROUP" --name "vm-ai-gateway" -o table</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>3B &mdash; Service Principal (non-Azure or on-premises)</span></div>
+  <div class="collapsible-body">
+    <p>If the AI Gateway runs outside Azure, create a Service Principal and store its credentials securely. The SP authenticates to Entra ID to obtain a token, which is then used to access Key Vault.</p>
+    <div class="code-block"><pre><code>az ad sp create-for-rbac \
+  --name "sp-ai-gateway" \
+  --skip-assignment
+
+# Output includes appId (client ID), password (client secret), and tenant
+# Store these values securely — the password is shown only once</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Store the Service Principal secret immediately</div>
+      <p>The client secret shown in the output is displayed only once. Store it in a secure location (a separate, non-AI-Gateway-accessible vault or a password manager) before proceeding. Set a calendar reminder to rotate it before it expires (default: 1 year).</p>
+    </div>
+    <div class="code-block"><pre><code># Capture for use in the next step
+SP_OBJECT_ID=$(az ad sp show --id "sp-ai-gateway" --query id -o tsv)</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<!-- ── Step 4: Grant Access ──────────────────────────────────── -->
+<h2 id="grant-access">Step 4 &mdash; Grant Key Vault Access</h2>
+<p>Assign the AI Gateway identity the minimum required Key Vault role. For read-only access at runtime, use <strong>Key Vault Secrets User</strong>. Reserve Key Vault Secrets Officer (write) for the ops team doing rotations.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>4.1 &mdash; Assign Key Vault Secrets User to the AI Gateway identity</span></div>
+  <div class="collapsible-body">
+    <p>Use the Object ID from Step 3. Replace <code>$MI_OBJECT_ID</code> with <code>$SP_OBJECT_ID</code> if you created a Service Principal.</p>
+    <div class="code-block"><pre><code>az role assignment create \
+  --role "Key Vault Secrets User" \
+  --assignee "$MI_OBJECT_ID" \
+  --scope "$VAULT_ID"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p><em>Verify:</em></p>
+    <div class="code-block"><pre><code>az role assignment list \
+  --scope "$VAULT_ID" \
+  --query "[?roleDefinitionName=='Key Vault Secrets User'].{Principal:principalName, Role:roleDefinitionName}" \
+  -o table</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>4.2 &mdash; Azure OpenAI: grant Cognitive Services OpenAI User role</span></div>
+  <div class="collapsible-body">
+    <p>For Azure OpenAI, the role is assigned on the Azure OpenAI <em>resource</em> (not Key Vault). This replaces the API key: the AI Gateway identity authenticates to Entra ID and calls Azure OpenAI directly with a bearer token.</p>
+    <div class="code-block"><pre><code>AZURE_OAI_RESOURCE_ID=$(az cognitiveservices account show \
+  --name "my-azure-openai-instance" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query id -o tsv)
+
+az role assignment create \
+  --role "Cognitive Services OpenAI User" \
+  --assignee "$MI_OBJECT_ID" \
+  --scope "$AZURE_OAI_RESOURCE_ID"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p><em>Verify: role appears on the Azure OpenAI resource's IAM blade, or:</em></p>
+    <div class="code-block"><pre><code>az role assignment list \
+  --scope "$AZURE_OAI_RESOURCE_ID" \
+  --query "[?roleDefinitionName=='Cognitive Services OpenAI User'].{Principal:principalName}" \
+  -o table</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>4.3 &mdash; Grant the ops team rotation access</span></div>
+  <div class="collapsible-body">
+    <p>Assign <strong>Key Vault Secrets Officer</strong> to the security/ops team who will perform key rotations. This role can create, update, and delete secret versions without granting read access to secret values (that stays with the AI Gateway identity and Key Vault Secrets User).</p>
+    <div class="code-block"><pre><code>OPS_GROUP_ID=$(az ad group show --group "sg-ai-ops-team" --query id -o tsv)
+
+az role assignment create \
+  --role "Key Vault Secrets Officer" \
+  --assignee "$OPS_GROUP_ID" \
+  --scope "$VAULT_ID"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <div class="callout callout-note">
+      <div class="callout-title">Secrets Officer has full read and write access</div>
+      <p>Key Vault Secrets Officer includes <code>secrets/get</code>, so members of this role can read secret values as well as create, update, and delete versions. If your security policy requires rotation access without the ability to read values, create a custom role that excludes <code>Microsoft.KeyVault/vaults/secrets/getSecret/action</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 5: Retrieve at Runtime ───────────────────────────── -->
+<h2 id="retrieve-secrets">Step 5 &mdash; Retrieve Secrets at Runtime</h2>
+<p>The AI Gateway retrieves secrets from Key Vault using the Azure SDK at startup or on demand. The SDK uses <code>DefaultAzureCredential</code>, which automatically selects the Managed Identity when running on Azure or falls back to the Service Principal credentials when running outside Azure.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>5.1 &mdash; Python: retrieve all provider keys at startup</span></div>
+  <div class="collapsible-body">
+    <div class="code-block"><pre><code>from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
+VAULT_URI = "https://kv-ai-gateway-llm.vault.azure.net/"
+
+credential = DefaultAzureCredential()
+client = SecretClient(vault_url=VAULT_URI, credential=credential)
+
+# Retrieve provider keys
+openai_key       = client.get_secret("llm-openai-api-key").value
+anthropic_key    = client.get_secret("llm-anthropic-api-key").value
+aws_key_id       = client.get_secret("llm-aws-bedrock-access-key-id").value
+aws_secret       = client.get_secret("llm-aws-bedrock-secret-access-key").value
+aws_region       = client.get_secret("llm-aws-bedrock-region").value
+vertex_sa_json   = client.get_secret("llm-google-vertex-sa-key").value
+vertex_project   = client.get_secret("llm-google-vertex-project-id").value
+
+# Azure OpenAI uses the same credential object — no key needed
+azure_oai_endpoint = client.get_secret("llm-azure-openai-endpoint").value</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>5.2 &mdash; Azure OpenAI: keyless authentication</span></div>
+  <div class="collapsible-body">
+    <p>When using Azure OpenAI with Entra auth, pass the token from <code>DefaultAzureCredential</code> directly to the OpenAI client. No API key is used.</p>
+    <div class="code-block"><pre><code>from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from openai import AzureOpenAI
+
+credential = DefaultAzureCredential()
+
+# Create a token provider scoped to Cognitive Services
+token_provider = get_bearer_token_provider(
+    credential,
+    "https://cognitiveservices.azure.com/.default"
+)
+
+client = AzureOpenAI(
+    azure_endpoint=azure_oai_endpoint,
+    azure_ad_token_provider=token_provider,
+    api_version="2024-02-01"
+)
+
+response = client.chat.completions.create(
+    model="gpt-4o",   # deployment name stored as llm-azure-openai-deployment-gpt4o
+    messages=[{"role": "user", "content": "Hello"}]
+)</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>5.3 &mdash; Service Principal: set environment variables for DefaultAzureCredential</span></div>
+  <div class="collapsible-body">
+    <p>When running outside Azure with a Service Principal, <code>DefaultAzureCredential</code> reads credentials from environment variables. Set these on the host running the AI Gateway:</p>
+    <div class="code-block"><pre><code>export AZURE_TENANT_ID="your-tenant-id"
+export AZURE_CLIENT_ID="your-sp-client-id"
+export AZURE_CLIENT_SECRET="your-sp-client-secret"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Store these in your secrets manager, not in .env files</div>
+      <p>These three environment variables are the only credentials required to access all LLM keys. Treat them with the same care as root credentials. Use your deployment platform's native secrets injection (Kubernetes secrets, systemd credentials, etc.) rather than plain <code>.env</code> files.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 6: Key Rotation ──────────────────────────────────── -->
+<h2 id="rotation">Step 6 &mdash; Key Rotation and Expiry Alerting</h2>
+<p>Set a rotation cadence and configure Key Vault to alert before secrets expire. This is the step most teams skip. Do not skip it.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>6.1 &mdash; Configure expiry alerts via Azure Monitor</span></div>
+  <div class="collapsible-body">
+    <p>Enable Key Vault diagnostic logs and create an alert rule that fires 30 days before any secret expires.</p>
+    <div class="code-block"><pre><code># Enable diagnostic logs for Key Vault
+LOG_ANALYTICS_ID=$(az monitor log-analytics workspace show \
+  --workspace-name "law-ai-gateway" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query id -o tsv)
+
+az monitor diagnostic-settings create \
+  --name "kv-diag-ai-gateway" \
+  --resource "$VAULT_ID" \
+  --workspace "$LOG_ANALYTICS_ID" \
+  --logs '[{"category":"AuditEvent","enabled":true}]' \
+  --metrics '[{"category":"AllMetrics","enabled":true}]'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p>Create an alert for secrets expiring within 30 days:</p>
+    <div class="code-block"><pre><code>az monitor alert create \
+  --name "alert-llm-secret-expiry" \
+  --resource-group "$RESOURCE_GROUP" \
+  --target "$VAULT_ID" \
+  --condition "count 'AuditEvent | where OperationName == \"SecretNearExpiry\"' > 0" \
+  --description "One or more LLM provider API keys expire within 30 days"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>6.2 &mdash; Rotate a key (standard procedure)</span></div>
+  <div class="collapsible-body">
+    <p>Key rotation follows the same pattern for every provider: generate a new key in the provider console, store it as a new secret version, verify the Gateway picks it up, then disable the old version.</p>
+    <ol>
+      <li>Generate a new API key in the provider's console (OpenAI, Anthropic, AWS IAM, etc.). Do not revoke the old key yet.</li>
+      <li>Store the new key as a new version of the existing secret:</li>
+    </ol>
+    <div class="code-block"><pre><code>EXPIRY=$(date -u -d "+90 days" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v+90d +"%Y-%m-%dT%H:%M:%SZ")
+
+az keyvault secret set \
+  --vault-name "$VAULT_NAME" \
+  --name "llm-openai-api-key" \
+  --value "your-new-openai-api-key" \
+  --expires "$EXPIRY"</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <ol start="3">
+      <li>Verify the AI Gateway is using the new key (check Gateway logs for successful requests).</li>
+      <li>Disable or revoke the old key in the provider console.</li>
+      <li>Disable the previous secret version in Key Vault:</li>
+    </ol>
+    <div class="code-block"><pre><code># List versions to find the previous one
+az keyvault secret list-versions \
+  --vault-name "$VAULT_NAME" \
+  --name "llm-openai-api-key" \
+  --query "[].{Version:id, Enabled:attributes.enabled, Created:attributes.created}" \
+  -o table
+
+# Disable the old version (replace VERSION_ID with the previous version)
+az keyvault secret set-attributes \
+  --vault-name "$VAULT_NAME" \
+  --name "llm-openai-api-key" \
+  --version "VERSION_ID" \
+  --enabled false</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  </div>
+</div>
+
+<!-- ── Reference: Naming Convention ─────────────────────────── -->
+<h2 id="naming-convention">Reference &mdash; Secret Naming Convention</h2>
+
+<table>
+  <thead><tr><th>Provider</th><th>Secret Name</th><th>Value</th><th>Expiry</th></tr></thead>
+  <tbody>
+    <tr><td>OpenAI</td><td><code>llm-openai-api-key</code></td><td>API key (<code>sk-proj-...</code>)</td><td>90 days</td></tr>
+    <tr><td>Azure OpenAI</td><td><code>llm-azure-openai-endpoint</code></td><td>Resource endpoint URL</td><td>None</td></tr>
+    <tr><td>Azure OpenAI</td><td><code>llm-azure-openai-deployment-&lt;model&gt;</code></td><td>Deployment name</td><td>None</td></tr>
+    <tr><td>AWS Bedrock</td><td><code>llm-aws-bedrock-access-key-id</code></td><td>IAM access key ID</td><td>90 days</td></tr>
+    <tr><td>AWS Bedrock</td><td><code>llm-aws-bedrock-secret-access-key</code></td><td>IAM secret access key</td><td>90 days</td></tr>
+    <tr><td>AWS Bedrock</td><td><code>llm-aws-bedrock-region</code></td><td>Region (e.g., <code>us-east-1</code>)</td><td>None</td></tr>
+    <tr><td>Anthropic</td><td><code>llm-anthropic-api-key</code></td><td>API key (<code>sk-ant-...</code>)</td><td>90 days</td></tr>
+    <tr><td>Google Vertex AI</td><td><code>llm-google-vertex-sa-key</code></td><td>Service account JSON</td><td>90 days</td></tr>
+    <tr><td>Google Vertex AI</td><td><code>llm-google-vertex-project-id</code></td><td>GCP project ID</td><td>None</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Reference: RBAC Matrix ───────────────────────────────── -->
+<h2 id="rbac-matrix">Reference &mdash; RBAC Role Matrix</h2>
+
+<table>
+  <thead><tr><th>Identity</th><th>Key Vault Role</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td>AI Gateway (Managed Identity / SP)</td><td>Key Vault Secrets User</td><td>Read secrets at runtime. Cannot write or list all secrets.</td></tr>
+    <tr><td>Security / Ops team (Entra group)</td><td>Key Vault Secrets Officer</td><td>Create, update, disable, and read secret versions. Full secrets management for rotation workflows.</td></tr>
+    <tr><td>Initial setup admin (person)</td><td>Key Vault Administrator</td><td>Full control during setup. Remove or scope down after initial configuration.</td></tr>
+    <tr><td>AI Gateway (Managed Identity / SP)</td><td>Cognitive Services OpenAI User</td><td>Call Azure OpenAI without an API key. Assigned on the Azure OpenAI resource, not the vault.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Remove setup admin access after initial configuration</div>
+  <p>The Key Vault Administrator role granted in Step 1.3 is for initial setup only. Once secrets are stored and access is verified, remove or narrow this assignment to Key Vault Secrets Officer for the ongoing ops team. Running day-to-day with administrator access violates least-privilege principles.</p>
+</div>
+
+</main>
+</div><!-- .layout -->
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>
