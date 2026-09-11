@@ -463,6 +463,68 @@
   border: 1px solid var(--border);
 }
 
+/* ── Scope configuration panel ───────────────────────────────── */
+.scope-panel {
+  border: 1px solid #bfdbfe;
+  border-left: 4px solid var(--pan-navy);
+  border-radius: 8px;
+  padding: 1rem 1.25rem 1.25rem;
+  background: linear-gradient(135deg,#f0f7ff 0%,#fff 100%);
+  margin-bottom: 1.5rem;
+}
+.scope-panel-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--pan-navy);
+  margin-bottom: 1rem;
+}
+.scope-pillar-group { margin-bottom: 1rem; }
+.scope-pillar-group:last-child { margin-bottom: 0; }
+.scope-pillar-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--pan-navy);
+  margin-bottom: 0.6rem;
+}
+.scope-pillar-stripe { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.scope-inputs { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+.scope-input-row { display: flex; flex-direction: column; gap: 0.3rem; min-width: 160px; }
+.scope-input-label { font-size: 0.78rem; font-weight: 600; color: var(--fg-light); }
+.scope-stepper {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  width: fit-content;
+  background: #fff;
+}
+.scope-stepper button {
+  width: 30px; height: 30px; border: none;
+  background: var(--sidebar-bg); cursor: pointer;
+  font-size: 1rem; font-weight: 700; color: var(--pan-navy);
+  transition: background 0.15s;
+}
+.scope-stepper button:hover { background: #e2e8f0; }
+.scope-stepper button:disabled { opacity: 0.35; cursor: not-allowed; }
+.scope-stepper-val {
+  min-width: 36px; text-align: center;
+  font-size: 0.9rem; font-weight: 700; color: var(--pan-navy);
+  padding: 0 4px; line-height: 30px;
+  border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+}
+.scope-impact { font-size: 0.72rem; color: #059669; font-weight: 600; margin-top: 0.1rem; }
+.scope-impact.zero { color: var(--fg-light); font-weight: 400; }
+.scope-adj-row td { background: #f0fdf4 !important; border-top: 2px solid #22c55e !important; }
+.scope-adj-label { font-weight: 700; color: #059669; font-size: 0.85rem; }
+.scope-adj-detail { font-size: 0.78rem; color: var(--fg-light); margin-top: 0.15rem; }
+.scope-total { font-weight: 700; color: var(--pan-navy); font-size: 0.85rem; margin-top: 0.25rem; }
+
 /* ── Print styles ────────────────────────────────────────── */
 @media print {
   header, .pillar-selector-section, .planner-tab-bar { display: none; }
@@ -511,6 +573,9 @@
     <div class="pillar-grid" id="pillar-grid"></div>
     <div class="selected-pills" id="selected-pills"></div>
   </div>
+
+  <!-- Scope configuration (shown when qualifying pillars selected) -->
+  <div id="scope-config" style="display:none;"></div>
 
   <!-- Output -->
   <div id="planner-output" style="display:none;">
@@ -647,6 +712,14 @@ const PILLARS = {
       { role: 'Application Developer / Owner', req: false, knowledge: 'Application-specific AI usage patterns, acceptable latency impact, auth flow details', authority: 'Approve integration changes to their specific application', risk: 'Risk of misaligned detection policy for specific applications' },
       { role: 'K8s / DevOps Engineer', req: false, knowledge: 'Kubernetes cluster configuration, sidecar injection, DaemonSet deployment, namespace policies', authority: 'Approve and execute K8s deployment changes', risk: 'Blocks sidecar and DaemonSet integration methods' },
       { role: 'Cloud Account Admin', req: false, knowledge: 'Cloud account structure, IAM, managed AI service configuration (Bedrock, Azure AI Foundry)', authority: 'Onboard cloud accounts and configure managed AI service integrations', risk: 'Blocks cloud-managed AI service onboarding (conditional)' }
+    ],
+    scopeConfig: [
+      { key: 'points', label: 'Integration Points', min: 2, step: 1, base: 2,
+        calc: (v) => Math.max(0, v - 2) * 0.5,
+        hint: 'Base 2. Each additional integration point adds 0.5 day.' },
+      { key: 'cases', label: 'AI Use Cases', min: 2, step: 1, base: 2,
+        calc: (v) => Math.max(0, v - 2) * 0.5,
+        hint: 'Base 2. Each additional use case adds 0.5 day.' }
     ]
   },
 
@@ -702,6 +775,14 @@ const PILLARS = {
       { role: 'Security Lead', req: true, knowledge: 'Vulnerability categories to prioritize, risk thresholds, compliance obligations, remediation policy', authority: 'Approve gate policy (block vs. alert) and remediation SLAs', risk: 'Cannot set security policy or sign off on gate behavior' },
       { role: 'CI/CD Pipeline Owner', req: true, knowledge: 'CI/CD platform administration, pipeline modification rights, SDK deployment', authority: 'Approve and implement SDK integration into production pipelines', risk: 'Cannot deploy SDK to pipelines — blocks entire pillar' },
       { role: 'Data / Privacy Lead', req: false, knowledge: 'Data residency requirements, PII handling in models, regulatory constraints', authority: 'Approve data handling approach for model scanning', risk: 'Risk of compliance gap if models process PII or regulated data' }
+    ],
+    scopeConfig: [
+      { key: 'pipelines', label: 'CI/CD Pipelines', min: 4, step: 4, base: 4,
+        calc: (v) => Math.max(0, Math.floor((v - 4) / 4)),
+        hint: 'Base 4. Each additional group of 4 pipelines adds 1 day.' },
+      { key: 'runners', label: 'Runner Environments', min: 2, step: 2, base: 2,
+        calc: (v) => Math.max(0, ((v - 2) / 2)) * 0.5,
+        hint: 'Base 2. Each additional group of 2 runner environments adds 0.5 day.' }
     ]
   },
 
@@ -761,6 +842,14 @@ const PILLARS = {
       { role: 'Application Owner', req: false, knowledge: 'Business logic of the AI application, expected input/output patterns, known use case boundaries', authority: 'Approve testing against their specific application', risk: 'Risk of scope misalignment for applications not owned by AI/ML Lead' },
       { role: 'Network / Proxy Lead', req: false, knowledge: 'WAF configuration, proxy settings, SSL inspection rules, IP allowlisting procedures', authority: 'Allowlist AIRS source IPs if needed', risk: 'AIRS cannot reach targets behind WAF or proxy — blocks entire assessment' },
       { role: 'SOC / Security Operations', req: false, knowledge: 'Incident response procedures, SIEM integration, alert triage', authority: 'Coordinate timing to avoid triggering SOC incidents during scans', risk: 'Risk of SOC treating test traffic as a real incident' }
+    ],
+    scopeConfig: [
+      { key: 'targets', label: 'AI Targets', min: 2, step: 1, base: 2,
+        calc: (v) => Math.max(0, v - 2) * 0.5,
+        hint: 'Base 2. Each additional AI target adds 0.5 day.' },
+      { key: 'cycles', label: 'Scan Cycles', min: 2, step: 1, base: 2,
+        calc: (v) => Math.max(0, v - 2) * 0.5,
+        hint: 'Base 2. Each additional scan cycle adds 0.5 day.' }
     ]
   },
 
@@ -825,6 +914,13 @@ const PILLARS = {
 // ── State ────────────────────────────────────────────────────────────────────
 const selectedPillars = new Set();
 
+// Scope values — keyed by pillar id then config key, initialized to base values
+const scopeValues = {
+  'api-intercept':  { points: 2, cases: 2 },
+  'model-security': { pipelines: 4, runners: 2 },
+  'red-teaming':    { targets: 2, cycles: 2 }
+};
+
 // ── Pillar card rendering ────────────────────────────────────────────────────
 function renderPillarGrid() {
   const grid = document.getElementById('pillar-grid');
@@ -850,6 +946,72 @@ function togglePillar(id) {
   if (selectedPillars.has(id)) selectedPillars.delete(id);
   else selectedPillars.add(id);
   updateAll();
+}
+
+// ── Scope helpers ────────────────────────────────────────────────────────────
+function calcScopeExtra(pillarId) {
+  const p = PILLARS[pillarId];
+  if (!p.scopeConfig || !scopeValues[pillarId]) return 0;
+  return p.scopeConfig.reduce((sum, cfg) => {
+    return sum + cfg.calc(scopeValues[pillarId][cfg.key]);
+  }, 0);
+}
+
+function fmtDays(d) {
+  if (d === 0) return '+0 days';
+  if (d % 1 === 0) return `+${d} day${d !== 1 ? 's' : ''}`;
+  return `+${d} days`;
+}
+
+function renderScopeConfig() {
+  const el = document.getElementById('scope-config');
+  const qualifying = [...selectedPillars].filter(id => PILLARS[id].scopeConfig);
+  if (qualifying.length === 0) { el.style.display = 'none'; return; }
+
+  el.style.display = 'block';
+  let html = `<div class="scope-panel">
+    <div class="scope-panel-title">Scope Configuration &mdash; Adjust to match your environment</div>`;
+
+  qualifying.forEach(id => {
+    const p = PILLARS[id];
+    html += `<div class="scope-pillar-group">
+      <div class="scope-pillar-label">
+        <div class="scope-pillar-stripe" style="background:${p.color}"></div>
+        ${p.name}
+      </div>
+      <div class="scope-inputs">`;
+
+    p.scopeConfig.forEach(cfg => {
+      const val = scopeValues[id][cfg.key];
+      const extra = cfg.calc(val);
+      const impactClass = extra === 0 ? 'zero' : '';
+      html += `<div class="scope-input-row">
+        <div class="scope-input-label">${cfg.label}</div>
+        <div class="scope-stepper">
+          <button onclick="adjustScope('${id}','${cfg.key}',-${cfg.step})" ${val <= cfg.min ? 'disabled' : ''}>&#8722;</button>
+          <div class="scope-stepper-val">${val}</div>
+          <button onclick="adjustScope('${id}','${cfg.key}',${cfg.step})">&#43;</button>
+        </div>
+        <div class="scope-impact ${impactClass}">${extra === 0 ? 'No extra time (base)' : fmtDays(extra) + ' added'}</div>
+        <div style="font-size:0.7rem;color:var(--fg-light);margin-top:0.1rem;">${cfg.hint}</div>
+      </div>`;
+    });
+
+    html += '</div></div>';
+  });
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function adjustScope(pillarId, key, delta) {
+  const cfg = PILLARS[pillarId].scopeConfig.find(c => c.key === key);
+  const current = scopeValues[pillarId][key];
+  const next = current + delta;
+  if (next < cfg.min) return;
+  scopeValues[pillarId][key] = next;
+  renderScopeConfig();
+  renderProjectPlan();
 }
 
 function updateAll() {
@@ -881,6 +1043,7 @@ function updateAll() {
   } else {
     output.style.display = 'block';
     emptyState.style.display = 'none';
+    renderScopeConfig();
     renderProjectPlan();
     renderPrerequisites();
     renderPersonas();
@@ -950,6 +1113,25 @@ function renderProjectPlan() {
         <td><div class="phase-stakeholders">${stakeholders}</div></td>
       </tr>`;
     });
+
+    // Scope adjustment row (only for pillars with scopeConfig)
+    if (p.scopeConfig && scopeValues[id]) {
+      const extra = calcScopeExtra(id);
+      const details = p.scopeConfig.map(cfg => {
+        const v = scopeValues[id][cfg.key];
+        const d = cfg.calc(v);
+        return `${cfg.label}: ${v} (${d === 0 ? 'no extra time' : fmtDays(d)})`;
+      }).join(' &nbsp;&bull;&nbsp; ');
+      html += `<tr class="scope-adj-row">
+        <td class="phase-num-cell" style="color:#059669;font-size:0.78rem;">Scope<br>Adj.</td>
+        <td colspan="2">
+          <div class="scope-adj-label">${extra === 0 ? 'No scope adjustment' : fmtDays(extra) + ' scope adjustment'}</div>
+          <div class="scope-adj-detail">${details}</div>
+          <div class="scope-total">Estimated total: ${extra === 0 ? 'See phase durations above' : `Base duration + ${fmtDays(extra).replace('+','')}`}</div>
+        </td>
+      </tr>`;
+    }
+
     html += '</tbody></table></div>';
   });
 
