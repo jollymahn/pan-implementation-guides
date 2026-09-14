@@ -654,6 +654,14 @@ const PILLARS = {
       { role: 'Cloud Account Admin', req: true, knowledge: 'AWS/Azure account structure, IAM roles, cloud networking, trust relationships', authority: 'Grant permissions for cloud account onboarding and IAM role creation', risk: 'Cannot onboard cloud accounts or deploy firewall resources' },
       { role: 'Application / Service Owner', req: false, knowledge: 'Which AI services each app calls, traffic sensitivity, acceptable latency', authority: 'Approve traffic routing changes that affect their application', risk: 'Risk of policy misalignment with application requirements' },
       { role: 'K8s / Platform Engineer', req: false, knowledge: 'Kubernetes networking, CNI plugin, pod/namespace topology', authority: 'Approve K8s network plugin deployment', risk: 'Blocks K8s protection add-on (optional bolt-on only)' }
+    ],
+    scopeConfig: [
+      { key: 'firewallSets', label: 'Firewall Sets', min: 1, step: 1, base: 1,
+        calc: (v) => Math.round(Math.max(0, v - 1) * 3.6 * 10) / 10,
+        hint: 'Base 1. Each additional firewall set adds 30% to the project (+3.6 days).' },
+      { key: 'cloudProviders', label: 'Cloud Providers (AWS / Azure / GCP)', min: 1, step: 1, base: 1, max: 3,
+        calc: (v) => Math.max(0, v - 1) * 14,
+        hint: 'Base 1. Each additional cloud provider (AWS, Azure, GCP) adds 14 days.' }
     ]
   },
 
@@ -916,9 +924,10 @@ const selectedPillars = new Set();
 
 // Scope values — keyed by pillar id then config key, initialized to base values
 const scopeValues = {
-  'api-intercept':  { points: 2, cases: 2 },
-  'model-security': { pipelines: 4, runners: 2 },
-  'red-teaming':    { targets: 2, cycles: 2 }
+  'network-intercept': { firewallSets: 1, cloudProviders: 1 },
+  'api-intercept':     { points: 2, cases: 2 },
+  'model-security':    { pipelines: 4, runners: 2 },
+  'red-teaming':       { targets: 2, cycles: 2 }
 };
 
 // ── Pillar card rendering ────────────────────────────────────────────────────
@@ -990,7 +999,7 @@ function renderScopeConfig() {
         <div class="scope-stepper">
           <button onclick="adjustScope('${id}','${cfg.key}',-${cfg.step})" ${val <= cfg.min ? 'disabled' : ''}>&#8722;</button>
           <div class="scope-stepper-val">${val}</div>
-          <button onclick="adjustScope('${id}','${cfg.key}',${cfg.step})">&#43;</button>
+          <button onclick="adjustScope('${id}','${cfg.key}',${cfg.step})" ${cfg.max && val >= cfg.max ? 'disabled' : ''}>&#43;</button>
         </div>
         <div class="scope-impact ${impactClass}">${extra === 0 ? 'No extra time (base)' : fmtDays(extra) + ' added'}</div>
         <div style="font-size:0.7rem;color:var(--fg-light);margin-top:0.1rem;">${cfg.hint}</div>
@@ -1009,6 +1018,7 @@ function adjustScope(pillarId, key, delta) {
   const current = scopeValues[pillarId][key];
   const next = current + delta;
   if (next < cfg.min) return;
+  if (cfg.max && next > cfg.max) return;
   scopeValues[pillarId][key] = next;
   renderScopeConfig();
   renderProjectPlan();
