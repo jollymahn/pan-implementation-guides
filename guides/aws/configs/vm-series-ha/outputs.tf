@@ -15,28 +15,22 @@ output "fw2_mgmt_eip" {
 }
 
 ### HA Peer Configuration
-# Use these private IPs when configuring HA on each firewall:
-#   FW1: Device > High Availability > General > HA1: peer IP = fw2_ha1_ip
-#   FW2: Device > High Availability > General > HA1: peer IP = fw1_ha1_ip
+# HA1 uses the management interface — no dedicated ENI or static IP.
+# The HA1 peer address is the other firewall's management interface private IP.
+# Find it in the EC2 console under the management ENI (eth0) after apply.
+#
+# HA2 uses eth1/3 with a static private IP:
+#   FW1: Device > High Availability > HA2: peer IP = fw2_ha_ip
+#   FW2: Device > High Availability > HA2: peer IP = fw1_ha_ip
 
-output "fw1_ha1_ip" {
-  description = "FW1 HA1 interface private IP — enter as the HA1 peer address on FW2."
-  value       = var.fw1_private_ips.ha1
+output "fw1_ha_ip" {
+  description = "FW1 HA2 (session sync) interface private IP — enter as the HA2 peer address on FW2."
+  value       = var.fw1_private_ips.ha
 }
 
-output "fw2_ha1_ip" {
-  description = "FW2 HA1 interface private IP — enter as the HA1 peer address on FW1."
-  value       = var.fw2_private_ips.ha1
-}
-
-output "fw1_ha2_ip" {
-  description = "FW1 HA2 interface private IP — enter as the HA2 peer address on FW2."
-  value       = var.fw1_private_ips.ha2
-}
-
-output "fw2_ha2_ip" {
-  description = "FW2 HA2 interface private IP — enter as the HA2 peer address on FW1."
-  value       = var.fw2_private_ips.ha2
+output "fw2_ha_ip" {
+  description = "FW2 HA2 (session sync) interface private IP — enter as the HA2 peer address on FW1."
+  value       = var.fw2_private_ips.ha
 }
 
 ### Floating EIP
@@ -116,8 +110,7 @@ output "subnet_ids" {
     { for k, v in aws_subnet.mgmt : "mgmt-${k}" => v.id },
     { for k, v in aws_subnet.untrust : "untrust-${k}" => v.id },
     { for k, v in aws_subnet.trust : "trust-${k}" => v.id },
-    { for k, v in aws_subnet.ha1 : "ha1-${k}" => v.id },
-    { for k, v in aws_subnet.ha2 : "ha2-${k}" => v.id },
+    { for k, v in aws_subnet.ha : "ha-${k}" => v.id },
   )
 }
 
@@ -127,12 +120,11 @@ output "subnet_ids" {
 output "ha_config_summary" {
   description = "PAN-OS HA configuration reference values."
   value = {
-    "FW1 management URL" = "https://${aws_eip.mgmt_fw1.public_ip}"
-    "FW2 management URL" = "https://${aws_eip.mgmt_fw2.public_ip}"
-    "FW1 HA1 IP (set as peer on FW2)" = var.fw1_private_ips.ha1
-    "FW2 HA1 IP (set as peer on FW1)" = var.fw2_private_ips.ha1
-    "FW1 HA2 IP (set as peer on FW2)" = var.fw1_private_ips.ha2
-    "FW2 HA2 IP (set as peer on FW1)" = var.fw2_private_ips.ha2
+    "FW1 management URL"               = "https://${aws_eip.mgmt_fw1.public_ip}"
+    "FW2 management URL"               = "https://${aws_eip.mgmt_fw2.public_ip}"
+    "HA1 peer setup"                   = "HA1 port=management on each FW; peer IP = other FW's mgmt private IP (see EC2 console eth0)"
+    "FW1 HA2 IP (set as peer on FW2)"  = var.fw1_private_ips.ha
+    "FW2 HA2 IP (set as peer on FW1)"  = var.fw2_private_ips.ha
     "Floating EIP allocation ID"       = aws_eip.floating_untrust.id
     "Floating EIP public IP"           = aws_eip.floating_untrust.public_ip
     "Trust route table ID"             = aws_route_table.trust.id

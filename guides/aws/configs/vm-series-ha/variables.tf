@@ -55,7 +55,7 @@ variable "subnet_cidrs" {
   description = <<-EOF
   CIDR assignments for each subnet type per AZ. Keys are:
     mgmt_az1, mgmt_az2, untrust_az1, untrust_az2,
-    trust_az1, trust_az2, ha1_az1, ha1_az2, ha2_az1, ha2_az2
+    trust_az1, trust_az2, ha_az1, ha_az2
   EOF
   type        = map(string)
   default = {
@@ -65,43 +65,38 @@ variable "subnet_cidrs" {
     untrust_az2 = "10.0.11.0/24"
     trust_az1   = "10.0.20.0/24"
     trust_az2   = "10.0.21.0/24"
-    ha1_az1     = "10.0.30.0/24"
-    ha1_az2     = "10.0.31.0/24"
-    ha2_az1     = "10.0.40.0/24"
-    ha2_az2     = "10.0.41.0/24"
+    ha_az1      = "10.0.40.0/24"
+    ha_az2      = "10.0.41.0/24"
   }
 }
 
-# Static private IPs — keeps HA peer addresses predictable
+# Static private IPs — keeps HA2 peer addresses predictable.
+# Management interface (eth0) uses DHCP; its private IP becomes the HA1 peer address.
 variable "fw1_private_ips" {
-  description = "Static private IPs for FW1 data-plane and HA interfaces."
+  description = "Static private IPs for FW1 data-plane and HA2 interfaces (3 interfaces: untrust, trust, ha)."
   type = object({
     untrust = string
     trust   = string
-    ha1     = string
-    ha2     = string
+    ha      = string
   })
   default = {
     untrust = "10.0.10.10"
     trust   = "10.0.20.10"
-    ha1     = "10.0.30.10"
-    ha2     = "10.0.40.10"
+    ha      = "10.0.40.10"
   }
 }
 
 variable "fw2_private_ips" {
-  description = "Static private IPs for FW2 data-plane and HA interfaces."
+  description = "Static private IPs for FW2 data-plane and HA2 interfaces (3 interfaces: untrust, trust, ha)."
   type = object({
     untrust = string
     trust   = string
-    ha1     = string
-    ha2     = string
+    ha      = string
   })
   default = {
     untrust = "10.0.11.10"
     trust   = "10.0.21.10"
-    ha1     = "10.0.31.10"
-    ha2     = "10.0.41.10"
+    ha      = "10.0.41.10"
   }
 }
 
@@ -114,7 +109,7 @@ variable "panos_version" {
 }
 
 variable "instance_type" {
-  description = "EC2 instance type. m5.xlarge = 2 vCPU / 16 GiB (minimum for HA). m5.2xlarge or c5.2xlarge for production throughput."
+  description = "EC2 instance type. m5.xlarge supports exactly 4 ENIs, matching this 4-interface design (mgmt, untrust, trust, ha). Use m5.2xlarge or c5.2xlarge for higher throughput."
   type        = string
   default     = "m5.xlarge"
 }

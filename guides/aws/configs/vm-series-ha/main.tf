@@ -29,7 +29,7 @@ resource "aws_internet_gateway" "this" {
 
 ##############################################################################
 # Subnets
-# Five subnet types per AZ: mgmt, untrust, trust, ha1, ha2
+# Four subnet types per AZ: mgmt, untrust, trust, ha (HA2 session sync)
 ##############################################################################
 
 resource "aws_subnet" "mgmt" {
@@ -65,26 +65,15 @@ resource "aws_subnet" "trust" {
   tags              = { Name = "${var.name_prefix}trust-${each.key}" }
 }
 
-resource "aws_subnet" "ha1" {
+resource "aws_subnet" "ha" {
   for_each = {
-    az1 = { cidr = var.subnet_cidrs.ha1_az1, az = var.az1 }
-    az2 = { cidr = var.subnet_cidrs.ha1_az2, az = var.az2 }
+    az1 = { cidr = var.subnet_cidrs.ha_az1, az = var.az1 }
+    az2 = { cidr = var.subnet_cidrs.ha_az2, az = var.az2 }
   }
   vpc_id            = aws_vpc.security.id
   cidr_block        = each.value.cidr
   availability_zone = each.value.az
-  tags              = { Name = "${var.name_prefix}ha1-${each.key}" }
-}
-
-resource "aws_subnet" "ha2" {
-  for_each = {
-    az1 = { cidr = var.subnet_cidrs.ha2_az1, az = var.az1 }
-    az2 = { cidr = var.subnet_cidrs.ha2_az2, az = var.az2 }
-  }
-  vpc_id            = aws_vpc.security.id
-  cidr_block        = each.value.cidr
-  availability_zone = each.value.az
-  tags              = { Name = "${var.name_prefix}ha2-${each.key}" }
+  tags              = { Name = "${var.name_prefix}ha-${each.key}" }
 }
 
 ##############################################################################
@@ -138,27 +127,16 @@ resource "aws_route_table_association" "trust" {
   route_table_id = aws_route_table.trust.id
 }
 
-# HA1 and HA2 — VPC local routing only; no explicit routes needed.
-resource "aws_route_table" "ha1" {
+# HA — VPC local routing only; no explicit routes needed.
+resource "aws_route_table" "ha" {
   vpc_id = aws_vpc.security.id
-  tags   = { Name = "${var.name_prefix}rt-ha1" }
+  tags   = { Name = "${var.name_prefix}rt-ha" }
 }
 
-resource "aws_route_table_association" "ha1" {
-  for_each       = aws_subnet.ha1
+resource "aws_route_table_association" "ha" {
+  for_each       = aws_subnet.ha
   subnet_id      = each.value.id
-  route_table_id = aws_route_table.ha1.id
-}
-
-resource "aws_route_table" "ha2" {
-  vpc_id = aws_vpc.security.id
-  tags   = { Name = "${var.name_prefix}rt-ha2" }
-}
-
-resource "aws_route_table_association" "ha2" {
-  for_each       = aws_subnet.ha2
-  subnet_id      = each.value.id
-  route_table_id = aws_route_table.ha2.id
+  route_table_id = aws_route_table.ha.id
 }
 
 ##############################################################################
@@ -644,21 +622,13 @@ module "fw1" {
       source_dest_check  = false
       description        = "Trust (private)"
     }
-    ha1 = {
+    ha = {
       device_index       = 3
-      subnet_id          = aws_subnet.ha1["az1"].id
+      subnet_id          = aws_subnet.ha["az1"].id
       security_group_ids = [aws_security_group.ha.id]
-      private_ips        = [var.fw1_private_ips.ha1]
+      private_ips        = [var.fw1_private_ips.ha]
       source_dest_check  = false
-      description        = "HA1 control link"
-    }
-    ha2 = {
-      device_index       = 4
-      subnet_id          = aws_subnet.ha2["az1"].id
-      security_group_ids = [aws_security_group.ha.id]
-      private_ips        = [var.fw1_private_ips.ha2]
-      source_dest_check  = false
-      description        = "HA2 session sync"
+      description        = "HA2 session sync (eth1/3)"
     }
   }
 
@@ -718,21 +688,13 @@ module "fw2" {
       source_dest_check  = false
       description        = "Trust (private)"
     }
-    ha1 = {
+    ha = {
       device_index       = 3
-      subnet_id          = aws_subnet.ha1["az2"].id
+      subnet_id          = aws_subnet.ha["az2"].id
       security_group_ids = [aws_security_group.ha.id]
-      private_ips        = [var.fw2_private_ips.ha1]
+      private_ips        = [var.fw2_private_ips.ha]
       source_dest_check  = false
-      description        = "HA1 control link"
-    }
-    ha2 = {
-      device_index       = 4
-      subnet_id          = aws_subnet.ha2["az2"].id
-      security_group_ids = [aws_security_group.ha.id]
-      private_ips        = [var.fw2_private_ips.ha2]
-      source_dest_check  = false
-      description        = "HA2 session sync"
+      description        = "HA2 session sync (eth1/3)"
     }
   }
 

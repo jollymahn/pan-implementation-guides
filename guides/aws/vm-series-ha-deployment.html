@@ -142,7 +142,7 @@
 <p>Review the topology and interface model before beginning. The diagram below shows the full Security VPC layout across two Availability Zones. The sections that follow cover the subnet table, per-firewall interface assignments, and the sequence of EC2 API calls that PAN-OS executes on failover.</p>
 
 <p><em>Security VPC topology: two VM-Series firewalls in separate Availability Zones, connected by HA1 (heartbeat) and HA2 (session sync) links, with a floating EIP on the active firewall's untrust interface:</em></p>
-<img src="diagrams/aws-ha-security-vpc-topology.svg" alt="Security VPC topology showing FW1 (Active) in AZ1 and FW2 (Passive) in AZ2, each with five interfaces (management, untrust, trust, HA1, HA2). A floating Elastic IP sits on FW1's untrust interface and moves to FW2 on failover. Purple HA1 and HA2 links connect the two firewalls horizontally across AZs. Five subnet types per AZ are color-coded: blue for management, gold for untrust, green for trust, and purple for HA subnets." loading="lazy" style="max-width:100%;border:1px solid var(--border);border-radius:4px;margin:1rem 0;">
+<img src="diagrams/aws-ha-security-vpc-topology.svg" alt="Security VPC topology showing FW1 (Active) in AZ1 and FW2 (Passive) in AZ2, each with four interfaces: eth0 management (also HA1 heartbeat), ethernet1/1 untrust, ethernet1/2 trust, ethernet1/3 HA2 session sync. A floating Elastic IP on FW1 untrust moves to FW2 on failover. HA1 heartbeat runs over the management interface with no dedicated ENI. Four subnet types per AZ: blue for management, gold for untrust, green for trust, purple for HA2." loading="lazy" style="max-width:100%;border:1px solid var(--border);border-radius:4px;margin:1rem 0;">
 
 <h3 id="ha-interface-model">Interface and HA Model</h3>
 
@@ -152,7 +152,7 @@
     <span>Security VPC Subnet Layout</span>
   </div>
   <div class="collapsible-body">
-    <p>The Security VPC spans two Availability Zones. Each AZ contains five dedicated subnets, one per interface type. The default CIDR values are set in <code>variables.tf</code> and can be overridden in <code>terraform.tfvars</code>.</p>
+    <p>The Security VPC spans two Availability Zones. Each AZ contains four dedicated subnets, one per interface type. The management interface doubles as HA1, so no dedicated HA1 subnet is needed. The default CIDR values are set in <code>variables.tf</code> and can be overridden in <code>terraform.tfvars</code>.</p>
 
     <table>
       <thead>
@@ -187,25 +187,18 @@
           <td>Private-side traffic toward spoke VPCs or Transit Gateway. On failover, PAN-OS updates this route table to point to the newly-active firewall's trust ENI.</td>
         </tr>
         <tr>
-          <td><code>ha1</code></td>
-          <td><code>10.0.30.0/24</code></td>
-          <td><code>10.0.31.0/24</code></td>
-          <td>VPC local only</td>
-          <td>HA1 control link (heartbeat and hello packets). TCP port 28769. Uses VPC-local routing; no explicit route is needed.</td>
-        </tr>
-        <tr>
-          <td><code>ha2</code></td>
+          <td><code>ha</code></td>
           <td><code>10.0.40.0/24</code></td>
           <td><code>10.0.41.0/24</code></td>
           <td>VPC local only</td>
-          <td>HA2 session sync link. TCP port 28778. Higher-bandwidth than HA1; carries full session state. Uses VPC-local routing.</td>
+          <td>HA2 session sync (ethernet1/3). TCP 28778. Carries full session state so in-flight connections survive failover. HA1 heartbeat runs over the management interface — no dedicated HA1 subnet needed.</td>
         </tr>
       </tbody>
     </table>
 
     <div class="callout callout-note">
-      <div class="callout-title">HA1 and HA2 routing</div>
-      <p>The HA1 and HA2 subnets rely on the VPC's implicit local route to reach each other across AZs. No explicit route table entry is required. The <code>sg-ha</code> security group created by Terraform allows all traffic within the VPC CIDR (<code>10.0.0.0/16</code>) on the HA ENIs.</p>
+      <div class="callout-title">Why management as HA1?</div>
+      <p>Using the management interface for HA1 keeps the design within the 4-ENI limit of <code>m5.xlarge</code> (and most common instance types). A dedicated HA1 ENI would require a 5th interface slot, forcing an upgrade to <code>m5.4xlarge</code> or larger. The management plane is an ideal HA1 link: it is always up, always reachable between peers, and already has a dedicated security group and IGW route. The <code>sg-ha</code> security group allows all traffic within the VPC CIDR for the HA2 ENI.</p>
     </div>
   </div>
 </div>
@@ -216,7 +209,7 @@
     <span>Per-Firewall Interface Assignments</span>
   </div>
   <div class="collapsible-body">
-    <p>Each firewall has five ENIs. The assignments below use the AZ1 values for FW1. FW2 uses the AZ2 subnets and the <code>fw2_private_ips</code> defaults.</p>
+    <p>Each firewall has four ENIs — exactly matching the 4-ENI limit of <code>m5.xlarge</code>. HA1 heartbeat runs over the management interface; no dedicated HA1 ENI is required. Values below are for FW1 (AZ1); FW2 uses AZ2 subnets and <code>fw2_private_ips</code>.</p>
 
     <table>
       <thead>
@@ -234,13 +227,13 @@
       <tbody>
         <tr>
           <td><code>eth0</code></td>
-          <td>Management</td>
+          <td>Management <strong>+ HA1</strong></td>
           <td>0</td>
           <td>mgmt-az1</td>
           <td>DHCP</td>
           <td><strong>true</strong></td>
           <td><code>sg-mgmt</code></td>
-          <td>Management plane. EIP attached by Terraform. SSH (22), HTTPS (443).</td>
+          <td>Management plane and HA1 heartbeat/hello. EIP attached by Terraform. SSH (22), HTTPS (443). HA1 peer IP = other FW's management private IP.</td>
         </tr>
         <tr>
           <td><code>eth1</code></td>
@@ -266,28 +259,18 @@
           <td><code>eth3</code></td>
           <td>ethernet1/3</td>
           <td>3</td>
-          <td>ha1-az1</td>
-          <td><code>10.0.30.10</code></td>
-          <td>false</td>
-          <td><code>sg-ha</code></td>
-          <td>HA1 control link. Heartbeat and hello. TCP 28769.</td>
-        </tr>
-        <tr>
-          <td><code>eth4</code></td>
-          <td>ethernet1/4</td>
-          <td>4</td>
-          <td>ha2-az1</td>
+          <td>ha-az1</td>
           <td><code>10.0.40.10</code></td>
           <td>false</td>
           <td><code>sg-ha</code></td>
-          <td>HA2 session sync. TCP 28778.</td>
+          <td>HA2 session sync. TCP 28778. Bulk session state sync so in-flight connections survive failover.</td>
         </tr>
       </tbody>
     </table>
 
     <div class="callout callout-warning">
       <div class="callout-title">Important: source_dest_check on data-plane interfaces</div>
-      <p>AWS enables <code>source_dest_check</code> by default on all ENIs. This causes AWS to drop any packet whose source or destination IP does not match the ENI's assigned IP. For a firewall forwarding traffic on behalf of other hosts, this drops everything. The Terraform sets <code>source_dest_check = false</code> on ethernet1/1 through ethernet1/4. The management ENI (eth0) keeps it <strong>true</strong> because management traffic originates from the firewall itself.</p>
+      <p>AWS enables <code>source_dest_check</code> by default on all ENIs. This causes AWS to drop any packet whose source or destination IP does not match the ENI's assigned IP. For a firewall forwarding traffic on behalf of other hosts, this drops everything. The Terraform sets <code>source_dest_check = false</code> on ethernet1/1 through ethernet1/3. The management ENI (eth0) keeps it <strong>true</strong> because management traffic originates from the firewall itself.</p>
     </div>
   </div>
 </div>
@@ -583,7 +566,7 @@ aws sts get-caller-identity</code></pre>
             <tr><td><code>ethernet1/1</code></td><td>Layer3</td><td><code>untrust</code></td><td>DHCP Client</td></tr>
             <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td><code>trust</code></td><td>DHCP Client</td></tr>
             <tr><td><code>ethernet1/3</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
-            <tr><td><code>ethernet1/4</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
+            <tr><td><code>ethernet1/3</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
           </tbody>
         </table>
         <ol start="4">
@@ -707,7 +690,7 @@ aws sts get-caller-identity</code></pre>
             <tr><td><code>ethernet1/1</code></td><td>Layer3</td><td><code>untrust</code></td><td>DHCP Client</td></tr>
             <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td><code>trust</code></td><td>DHCP Client</td></tr>
             <tr><td><code>ethernet1/3</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
-            <tr><td><code>ethernet1/4</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
+            <tr><td><code>ethernet1/3</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
           </tbody>
         </table>
         <ol start="4">
@@ -961,7 +944,7 @@ bootstrap_options_fw2 = {
 
     <div class="callout callout-note">
       <div class="callout-title">Static IPs and why they matter</div>
-      <p>The variables <code>fw1_private_ips</code> and <code>fw2_private_ips</code> assign fixed private IPs to the untrust, trust, HA1, and HA2 ENIs. The defaults (<code>10.0.30.10</code> for FW1 HA1 and <code>10.0.31.10</code> for FW2 HA1) are used as the HA peer addresses in Phase 6. If you change these defaults, update the HA configuration in Phase 6 accordingly. The management interface (eth0) uses DHCP and does not need a static IP.</p>
+      <p>The variables <code>fw1_private_ips</code> and <code>fw2_private_ips</code> assign fixed private IPs to the untrust, trust, HA1, and HA2 ENIs. The defaults (<code>(DHCP — check EC2 console after deploy)</code> for FW1 HA1 and <code>(DHCP — check EC2 console after deploy)</code> for FW2 HA1) are used as the HA peer addresses in Phase 6. If you change these defaults, update the HA configuration in Phase 6 accordingly. The management interface (eth0) uses DHCP and does not need a static IP.</p>
     </div>
 
     <div class="callout callout-success">
@@ -992,7 +975,7 @@ terraform plan -out=ha.plan</code></pre>
         <tr><td><code>aws_vpc</code></td><td>1</td></tr>
         <tr><td><code>aws_internet_gateway</code></td><td>1</td></tr>
         <tr><td><code>aws_subnet</code></td><td>10 (5 types &times; 2 AZs)</td></tr>
-        <tr><td><code>aws_route_table</code></td><td>5 (mgmt, untrust, trust, ha1, ha2)</td></tr>
+        <tr><td><code>aws_route_table</code></td><td>4 (mgmt, untrust, trust, ha)</td></tr>
         <tr><td><code>aws_route_table_association</code></td><td>10</td></tr>
         <tr><td><code>aws_security_group</code></td><td>4 (mgmt, untrust, trust, ha)</td></tr>
         <tr><td><code>aws_eip</code></td><td>3 (mgmt-fw1, mgmt-fw2, floating-untrust)</td></tr>
@@ -1044,24 +1027,23 @@ terraform plan -out=ha.plan</code></pre>
       <pre><code>{
   "FW1 management URL"               = "https://3.91.x.x"
   "FW2 management URL"               = "https://54.82.x.x"
-  "FW1 HA1 IP (set as peer on FW2)"  = "10.0.30.10"
-  "FW2 HA1 IP (set as peer on FW1)"  = "10.0.31.10"
+  "HA1 peer setup"                   = "HA1 port=management on each FW; peer IP = other FW's mgmt private IP (see EC2 console eth0)"
   "FW1 HA2 IP (set as peer on FW2)"  = "10.0.40.10"
   "FW2 HA2 IP (set as peer on FW1)"  = "10.0.41.10"
-  "Floating EIP allocation ID"        = "eipalloc-0abc1234def56789"
-  "Floating EIP public IP"            = "34.201.x.x"
-  "Trust route table ID"              = "rtb-0abc1234def56789"
-  "FW1 untrust ENI ID"                = "eni-0abc1234def56789a"
-  "FW2 untrust ENI ID"                = "eni-0abc1234def56789b"
-  "FW1 trust ENI ID"                  = "eni-0abc1234def56789c"
-  "FW2 trust ENI ID"                  = "eni-0abc1234def56789d"
+  "Floating EIP allocation ID"       = "eipalloc-0abc1234def56789"
+  "Floating EIP public IP"           = "34.201.x.x"
+  "Trust route table ID"             = "rtb-0abc1234def56789"
+  "FW1 untrust ENI ID"               = "eni-0abc1234def56789a"
+  "FW2 untrust ENI ID"               = "eni-0abc1234def56789b"
+  "FW1 trust ENI ID"                 = "eni-0abc1234def56789c"
+  "FW2 trust ENI ID"                 = "eni-0abc1234def56789d"
 }</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Apply completes with <code>Apply complete! Resources: N added, 0 changed, 0 destroyed.</code> The <code>ha_config_summary</code> output shows real values for all 13 keys.</p>
+      <p>Apply completes with <code>Apply complete! Resources: N added, 0 changed, 0 destroyed.</code> The <code>ha_config_summary</code> output shows real values for all 12 keys.</p>
     </div>
   </div>
 </div>
@@ -1077,12 +1059,12 @@ terraform plan -out=ha.plan</code></pre>
       <li>Navigate to <strong>EC2 &gt; Instances</strong>. Filter by name prefix (<code>pan-ha-fw1</code>, <code>pan-ha-fw2</code>).</li>
       <li>Both instances show <strong>Instance state: Running</strong>.</li>
       <li>FW1 is in AZ1; FW2 is in AZ2 (check the <em>Availability zone</em> column).</li>
-      <li>Click an instance, then the <strong>Networking</strong> tab. Confirm 5 network interfaces are attached:
+      <li>Click an instance, then the <strong>Networking</strong> tab. Confirm 4 network interfaces are attached:
         <ul>
           <li><code>eth0</code>: description <em>Management</em>, in the mgmt subnet, with a public IPv4 (the management EIP)</li>
           <li><code>eth1</code>: description <em>Untrust (public)</em>, private IP matches <code>fw1_private_ips.untrust</code></li>
           <li><code>eth2</code>: description <em>Trust (private)</em></li>
-          <li><code>eth3</code>: description <em>HA1 control link</em></li>
+          <li><code>eth3</code>: description <em>HA2 session sync (eth1/3)</em></li>
           <li><code>eth4</code>: description <em>HA2 session sync</em></li>
         </ul>
       </li>
@@ -1091,7 +1073,7 @@ terraform plan -out=ha.plan</code></pre>
     </ol>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>Both instances: Running, correct AZ, 5 ENIs with correct descriptions, management EIP visible on eth0, IAM profile <code>pan-ha-vmseries-profile</code> attached, <code>init-cfg.txt</code> present in each S3 bucket.</p>
+      <p>Both instances: Running, correct AZ, 4 ENIs with correct descriptions, management EIP visible on eth0, IAM profile <code>pan-ha-vmseries-profile</code> attached, <code>init-cfg.txt</code> present in each S3 bucket.</p>
     </div>
   </div>
 </div>
@@ -1158,7 +1140,7 @@ terraform plan -out=ha.plan</code></pre>
         <tr><td>Enable HA</td><td>Checked</td><td>Enables the HA subsystem.</td></tr>
         <tr><td>Group ID</td><td><code>1</code></td><td>Must be identical on both firewalls. Range 1 to 63.</td></tr>
         <tr><td>Mode</td><td><code>Active-Passive</code></td><td>Cross-AZ HA uses Active-Passive mode.</td></tr>
-        <tr><td>Peer HA1 IP Address</td><td><em>FW2 HA1 IP from terraform output</em> (<code>10.0.31.10</code>)</td><td>The IP of FW2's HA1 interface. FW1 sends hello packets to this address.</td></tr>
+        <tr><td>Peer HA1 IP Address</td><td><em>FW2 HA1 IP from terraform output</em> (<code>(DHCP — check EC2 console after deploy)</code>)</td><td>The IP of FW2's HA1 interface. FW1 sends hello packets to this address.</td></tr>
         <tr><td>Backup Peer HA1 IP</td><td>(leave blank)</td><td>Not needed; HA2 provides session sync redundancy.</td></tr>
       </tbody>
     </table>
@@ -1178,7 +1160,13 @@ terraform plan -out=ha.plan</code></pre>
     <span>Step 6.2: Configure the HA1 Control Link on FW1</span>
   </div>
   <div class="collapsible-body">
-    <p>HA1 carries heartbeat and hello packets between the two firewalls on TCP port 28769. The Terraform-created security group <code>sg-ha</code> already allows this traffic within the VPC CIDR.</p>
+    <p>HA1 carries heartbeat and hello packets on TCP port 28769. This design uses the <strong>management interface</strong> as HA1 — no dedicated ENI required, and the management security group already allows all outbound traffic.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Why management as HA1?</div>
+      <p>Using <code>management</code> as HA1 keeps the design within <code>m5.xlarge</code>'s 4-ENI limit. The management plane is ideal: always up, always reachable between peers across AZs via IGW, and no additional ENI cost. PAN-OS sends HA1 heartbeat and hello packets to the peer's management private IP.</p>
+    </div>
+
     <ol>
       <li>Navigate to <strong>Device &gt; High Availability &gt; HA1</strong>.</li>
       <li>Configure:</li>
@@ -1186,11 +1174,10 @@ terraform plan -out=ha.plan</code></pre>
     <table>
       <thead><tr><th>Field</th><th>Value</th><th>Notes</th></tr></thead>
       <tbody>
-        <tr><td>Port</td><td><code>ethernet1/3</code></td><td>The HA1 ENI attached at device_index 3.</td></tr>
-        <tr><td>IP Address</td><td><em>FW1 HA1 IP from terraform output</em> (<code>10.0.30.10</code>)</td><td>The static private IP assigned by Terraform to FW1's HA1 ENI.</td></tr>
-        <tr><td>Netmask</td><td><code>255.255.255.0</code></td><td>Matches the <code>/24</code> ha1 subnet.</td></tr>
-        <tr><td>Gateway</td><td>(blank)</td><td>VPC routing handles cross-AZ reachability. No gateway is required.</td></tr>
-        <tr><td>Encryption</td><td>Enabled (optional)</td><td>Encrypts HA1 control traffic. Recommended for cross-AZ deployments. Requires matching setting on FW2.</td></tr>
+        <tr><td>Port</td><td><code>management</code></td><td>Uses the management interface (eth0) for HA1 heartbeat and hello.</td></tr>
+        <tr><td>IP Address</td><td>(blank — auto)</td><td>PAN-OS uses the management interface IP automatically. No manual entry needed.</td></tr>
+        <tr><td>Netmask</td><td>(blank — auto)</td><td>Inherited from the management interface.</td></tr>
+        <tr><td>Encryption</td><td>Enabled (optional)</td><td>Encrypts HA1 control traffic. Recommended. Requires matching setting on FW2.</td></tr>
       </tbody>
     </table>
     <ol start="3">
@@ -1198,7 +1185,7 @@ terraform plan -out=ha.plan</code></pre>
     </ol>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The HA1 tab shows port <code>ethernet1/3</code> and the correct static IP. No validation errors.</p>
+      <p>The HA1 tab shows port <code>management</code>. No validation errors.</p>
     </div>
   </div>
 </div>
@@ -1218,9 +1205,9 @@ terraform plan -out=ha.plan</code></pre>
       <thead><tr><th>Field</th><th>Value</th><th>Notes</th></tr></thead>
       <tbody>
         <tr><td>Transport</td><td><code>Ethernet</code></td><td>Uses a dedicated ENI. Do not use IP (UDP) transport in a VPC deployment.</td></tr>
-        <tr><td>Port</td><td><code>ethernet1/4</code></td><td>The HA2 ENI attached at device_index 4.</td></tr>
+        <tr><td>Port</td><td><code>ethernet1/3</code></td><td>The HA2 ENI attached at device_index 3.</td></tr>
         <tr><td>IP Address</td><td><em>FW1 HA2 IP from terraform output</em> (<code>10.0.40.10</code>)</td><td>Static private IP of FW1's HA2 ENI.</td></tr>
-        <tr><td>Netmask</td><td><code>255.255.255.0</code></td><td>Matches the <code>/24</code> ha2 subnet.</td></tr>
+        <tr><td>Netmask</td><td><code>255.255.255.0</code></td><td>Matches the <code>/24</code> ha subnet (10.0.40.0/24 for FW1, 10.0.41.0/24 for FW2).</td></tr>
         <tr><td>Enable Session Synchronization</td><td>Checked</td><td>Required for in-flight sessions to survive failover.</td></tr>
       </tbody>
     </table>
@@ -1229,7 +1216,7 @@ terraform plan -out=ha.plan</code></pre>
     </ol>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The HA2 tab shows transport Ethernet, port <code>ethernet1/4</code>, correct IP, and session synchronization enabled.</p>
+      <p>The HA2 tab shows transport Ethernet, port <code>ethernet1/3</code>, correct IP, and session synchronization enabled.</p>
     </div>
   </div>
 </div>
@@ -1325,9 +1312,9 @@ terraform plan -out=ha.plan</code></pre>
     <table>
       <thead><tr><th>Setting</th><th>On FW1</th><th>On FW2</th></tr></thead>
       <tbody>
-        <tr><td>Peer HA1 IP</td><td>FW2 HA1 IP (<code>10.0.31.10</code>)</td><td>FW1 HA1 IP (<code>10.0.30.10</code>)</td></tr>
-        <tr><td>HA1 Port IP</td><td><code>10.0.30.10</code> (FW1)</td><td><code>10.0.31.10</code> (FW2)</td></tr>
-        <tr><td>HA2 Port IP</td><td><code>10.0.40.10</code> (FW1)</td><td><code>10.0.41.10</code> (FW2)</td></tr>
+        <tr><td>HA1 Port</td><td><code>management</code></td><td><code>management</code></td></tr>
+        <tr><td>Peer HA1 IP</td><td>FW2 management private IP (EC2 console &gt; FW2 instance &gt; eth0 private IP)</td><td>FW1 management private IP (EC2 console &gt; FW1 instance &gt; eth0 private IP)</td></tr>
+        <tr><td>HA2 Port IP</td><td><code>10.0.40.10</code> (FW1 eth1/3)</td><td><code>10.0.41.10</code> (FW2 eth1/3)</td></tr>
         <tr><td>EIP ENI (Active device)</td><td>FW1 untrust ENI</td><td>FW2 untrust ENI</td></tr>
         <tr><td>EIP ENI (Passive device)</td><td>FW2 untrust ENI</td><td>FW1 untrust ENI</td></tr>
         <tr><td>Route Table ENI (Active)</td><td>FW1 trust ENI</td><td>FW2 trust ENI</td></tr>
@@ -1544,7 +1531,7 @@ terraform plan -out=ha.plan</code></pre>
     </ol>
     <div class="code-block">
       <pre><code>aws ec2 describe-network-interfaces \
-  --filters "Name=description,Values=HA1 control link" \
+  --filters "Name=description,Values=HA2 session sync*" \
   --query 'NetworkInterfaces[*].{ID:NetworkInterfaceId,IP:PrivateIpAddress}'</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
@@ -1552,7 +1539,7 @@ terraform plan -out=ha.plan</code></pre>
       <li><strong>Ping test from the firewall CLI:</strong></li>
     </ol>
     <div class="code-block">
-      <pre><code>ping source 10.0.30.10 host 10.0.31.10</code></pre>
+      <pre><code>ping source (DHCP — check EC2 console after deploy) host (DHCP — check EC2 console after deploy)</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
     <p>Run this on FW1. If ping fails, the security group or routing is the issue. If ping succeeds but HA1 is still Down, the issue is in the HA configuration (port or IP mismatch).</p>
