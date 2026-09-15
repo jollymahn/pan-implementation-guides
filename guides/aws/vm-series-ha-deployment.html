@@ -272,6 +272,18 @@
       <div class="callout-title">Important: source_dest_check on data-plane interfaces</div>
       <p>AWS enables <code>source_dest_check</code> by default on all ENIs. This causes AWS to drop any packet whose source or destination IP does not match the ENI's assigned IP. For a firewall forwarding traffic on behalf of other hosts, this drops everything. The Terraform sets <code>source_dest_check = false</code> on ethernet1/1 through ethernet1/3. The management ENI (eth0) keeps it <strong>true</strong> because management traffic originates from the firewall itself.</p>
     </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Adding a DMZ or additional data interface requires an instance upgrade</div>
+      <p>This deployment uses all four ENIs available on <code>m5.xlarge</code> and <code>m5.2xlarge</code> (both have a 4-ENI limit). A fifth interface for a DMZ zone would require upgrading to <code>m5.4xlarge</code> or <code>c5.4xlarge</code>, which support up to 8 ENIs.</p>
+      <p>If you add a DMZ interface:</p>
+      <ul>
+        <li>Add a DMZ subnet (one per AZ), security group, and ENI to the Terraform configuration.</li>
+        <li>Assign the interface at <code>device_index = 3</code> (ethernet1/3) and shift HA2 to <code>device_index = 4</code> (ethernet1/4), or place DMZ at device_index 4 — either order works as long as it is consistent on both firewalls.</li>
+        <li>Add the DMZ route table ID to the PAN-OS HA AWS settings in Phase 6 so PAN-OS updates it on failover alongside the trust route table.</li>
+        <li>Both firewalls must have an identical interface count and layout or PAN-OS will refuse to form the HA pair.</li>
+      </ul>
+    </div>
   </div>
 </div>
 
@@ -295,6 +307,12 @@
       <li><strong>Route table failover via EC2 API.</strong> The newly-active firewall calls <code>ec2:ReplaceRoute</code> on the trust route table, changing the next-hop for the configured CIDR to its own trust ENI (<code>eni-fw2-trust</code>). Spoke VPC traffic now reaches FW2.</li>
       <li><strong>Session restoration.</strong> The HA2 link (TCP 28778) continuously synchronized session state from the active to the passive firewall. After promotion, FW2 already holds the session table. Established TCP sessions survive the failover with minimal packet loss.</li>
     </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Trust interface: the route moves, not the IP</div>
+      <p>Unlike the untrust EIP (which physically migrates between ENIs), the trust interface's private IP never moves. Each firewall permanently owns its own trust ENI and private IP (10.0.20.10 on FW1, 10.0.21.10 on FW2). What changes on failover is the <strong>route table next-hop</strong>: PAN-OS updates the trust route table entry from <code>eni-fw1-trust</code> to <code>eni-fw2-trust</code>. This works because VPC route tables are region-scoped and can reference any ENI in the VPC, regardless of Availability Zone.</p>
+      <p>If spoke VPCs connect through a <strong>Transit Gateway</strong>, you must add the TGW attachment route tables to the HA AWS settings alongside the trust route table so PAN-OS updates them all on failover. Each route table that carries traffic toward the firewalls needs a separate entry in the PAN-OS HA configuration.</p>
+    </div>
 
     <div class="callout callout-note">
       <div class="callout-title">IAM permissions are the prerequisite for steps 3 and 4</div>
