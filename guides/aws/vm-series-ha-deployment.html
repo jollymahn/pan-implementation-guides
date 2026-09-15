@@ -123,7 +123,7 @@
   <div class="callout-title">Guide Approach</div>
   <p>This guide follows a <strong>management-first</strong> approach. All licensing, device groups, templates or folders, and security policy are configured on your management platform (<strong>Panorama</strong> or <strong>Strata Cloud Manager</strong>) before any AWS infrastructure is built. Firewalls bootstrap into a fully configured management plane on first boot, then form the HA pair.</p>
   <p><strong>Design model:</strong> Active/Passive HA pair across two Availability Zones in a dedicated Security VPC. Five interfaces per firewall: management, untrust (public), trust (private), HA1 (heartbeat), and HA2 (session sync). On failover, PAN-OS uses the firewall's IAM instance profile to move the floating EIP and update the trust-side route table.</p>
-  <p><strong>Deployment method:</strong> All AWS infrastructure is deployed with <strong>Terraform</strong> using the <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/aws/latest">PaloAltoNetworks SWFW Modules</a>. The root module for this guide lives at <code>write/AWS-HA-Deployment/vmseries-ha-active-passive/</code>.</p>
+  <p><strong>Deployment method:</strong> All AWS infrastructure is deployed with <strong>Terraform</strong> using the <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/aws/latest">PaloAltoNetworks SWFW Modules</a> (v2.2, sourced from the Terraform Registry). The Terraform configuration for this guide is included below in Phase 4.</p>
 </div>
 
 <div class="callout callout-note">
@@ -830,38 +830,38 @@ aws sts get-caller-identity</code></pre>
 <h2 id="prepare-terraform">Phase 4: Prepare Terraform Configuration</h2>
 
 <div class="callout callout-note">
-  <div class="callout-title">Terraform module source</div>
-  <p>This guide uses the <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/aws/latest">PaloAltoNetworks SWFW Modules</a> for the VM-Series instances. The root module at <code>write/AWS-HA-Deployment/vmseries-ha-active-passive/</code> sources the <code>vmseries</code> module via a local path pointing at the cloned repository. For production deployments, switch the source to the Terraform Registry with a pinned version (shown in Step 4.1).</p>
+  <div class="callout-title">Terraform configuration for this guide</div>
+  <p>The complete Terraform configuration is included in the public guide repository at <code>docs/guides/aws/configs/vm-series-ha/</code>. It uses the <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/aws/latest">PaloAltoNetworks SWFW Modules</a> sourced directly from the Terraform Registry (version ~&gt; 2.2) — no manual module cloning required. <code>terraform init</code> downloads everything automatically.</p>
 </div>
 
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 4.1: Clone the SWFW Modules Repository</span>
+    <span>Step 4.1: Download the Terraform Configuration</span>
   </div>
   <div class="collapsible-body">
-    <p>Clone the repository into the path expected by the root module. From the <code>write/</code> directory:</p>
+    <p>Clone the guide repository and change into the Terraform directory:</p>
     <div class="code-block">
-      <pre><code>git clone https://github.com/PaloAltoNetworks/terraform-aws-swfw-modules.git \
-  AWS-HA-Sources/AWS-HA-Deployment/terraform-aws-swfw-modules</code></pre>
+      <pre><code>git clone https://github.com/jollymahn/pan-implementation-guides.git
+cd pan-implementation-guides/guides/aws/configs/vm-series-ha</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
-    <p>The resulting path <code>write/AWS-HA-Sources/AWS-HA-Deployment/terraform-aws-swfw-modules/modules/vmseries/</code> is what the root module's <code>source</code> attribute resolves to at <code>terraform init</code> time.</p>
 
-    <div class="callout callout-note">
-      <div class="callout-title">Production: use the Terraform Registry instead</div>
-      <p>For production use, replace the local <code>source</code> in <code>main.tf</code> with the registry path and pin to a tested version:</p>
-      <div class="code-block">
-        <pre><code>source  = "PaloAltoNetworks/swfw-modules/aws//modules/vmseries"
-version = "~> 2.0"</code></pre>
-        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-      </div>
-      <p>Check the <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/aws/latest">registry</a> for the current stable version before pinning.</p>
-    </div>
+    <p>The directory contains five files:</p>
+    <table>
+      <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>main.tf</code></td><td>VPC, subnets, security groups, IAM, S3 bootstrap, and VM-Series instances</td></tr>
+        <tr><td><code>variables.tf</code></td><td>All input variables with defaults</td></tr>
+        <tr><td><code>outputs.tf</code></td><td>Management IPs, HA peer IPs, ENI IDs, and EIP IDs needed for Phase 6</td></tr>
+        <tr><td><code>versions.tf</code></td><td>Provider and Terraform version constraints</td></tr>
+        <tr><td><code>terraform.tfvars.example</code></td><td>Copy and fill in your values</td></tr>
+      </tbody>
+    </table>
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The directory <code>write/AWS-HA-Sources/AWS-HA-Deployment/terraform-aws-swfw-modules/modules/vmseries/</code> exists and contains <code>main.tf</code>, <code>variables.tf</code>, and <code>outputs.tf</code>.</p>
+      <p>Run <code>ls</code> in the directory and confirm the five files above are present.</p>
     </div>
   </div>
 </div>
@@ -874,8 +874,7 @@ version = "~> 2.0"</code></pre>
   <div class="collapsible-body">
     <p>Copy the example file and fill in your values:</p>
     <div class="code-block">
-      <pre><code>cd write/AWS-HA-Deployment/vmseries-ha-active-passive/
-cp terraform.tfvars.example terraform.tfvars</code></pre>
+      <pre><code>cp terraform.tfvars.example terraform.tfvars</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
@@ -965,7 +964,7 @@ bootstrap_options_fw2 = {
 
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p><code>terraform.tfvars</code> exists in the <code>vmseries-ha-active-passive/</code> directory with no placeholder values remaining. All required variables are set.</p>
+      <p><code>terraform.tfvars</code> exists in the <code>vm-series-ha/</code> directory with no placeholder values remaining. All required variables are set.</p>
     </div>
   </div>
 </div>
