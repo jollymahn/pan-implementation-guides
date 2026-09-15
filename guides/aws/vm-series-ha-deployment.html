@@ -1,0 +1,1676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>VM-Series Active/Passive HA on AWS | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">VM-Series HA on AWS</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../.."></nav>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+    <a href="#ha-interface-model">Interface &amp; HA Model</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prerequisites</div>
+    <a href="#prerequisites" data-section="prerequisites">CSP Portal Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Management Platform</div>
+    <a href="#management-config" data-section="management-config">Pick Path (Panorama / SCM)</a>
+    <a href="#review-checkpoint" data-section="review-checkpoint">Review Checkpoint</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Terraform</div>
+    <a href="#prepare-terraform" data-section="prepare-terraform">Prepare Configuration</a>
+    <a href="#deploy-infrastructure" data-section="deploy-infrastructure">Deploy &amp; Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">HA Configuration</div>
+    <a href="#ha-configuration" data-section="ha-configuration">Configure HA on PAN-OS</a>
+    <a href="#ha-aws-settings">AWS HA Settings</a>
+    <a href="#ha-floating-eip">Floating EIP Setup</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Verify</div>
+    <a href="#verification" data-section="verification">Post-Deployment</a>
+    <a href="#failover-test">Failover Test</a>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AWS</a>
+  <span class="sep">|</span>
+  VM-Series Active/Passive HA
+</div>
+
+<div class="article">
+
+<h1>VM-Series Active/Passive HA on AWS</h1>
+<p class="subtitle">End-to-end guide: two VM-Series firewalls configured as an Active/Passive HA pair across two Availability Zones, with IAM-based EIP and route table failover.</p>
+
+<div class="cloud-links">
+  <a href="vm-series-deployment.html">VM-Series GWLB Guide</a>
+  <a href="panorama-deployment.html">Panorama on AWS</a>
+  <a href="../cngfw/cloud-ngfw-aws.html">Cloud NGFW</a>
+</div>
+
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#management-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Mgmt Platform
+  </a>
+  <a href="#review-checkpoint" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Review
+  </a>
+  <a href="#prepare-terraform" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Terraform Prep
+  </a>
+  <a href="#deploy-infrastructure" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Deploy
+  </a>
+  <a href="#ha-configuration" class="progress-phase">
+    <span class="progress-phase-label">Phase 6</span>
+    HA Config
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 7</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This guide follows a <strong>management-first</strong> approach. All licensing, device groups, templates or folders, and security policy are configured on your management platform (<strong>Panorama</strong> or <strong>Strata Cloud Manager</strong>) before any AWS infrastructure is built. Firewalls bootstrap into a fully configured management plane on first boot, then form the HA pair.</p>
+  <p><strong>Design model:</strong> Active/Passive HA pair across two Availability Zones in a dedicated Security VPC. Five interfaces per firewall: management, untrust (public), trust (private), HA1 (heartbeat), and HA2 (session sync). On failover, PAN-OS uses the firewall's IAM instance profile to move the floating EIP and update the trust-side route table.</p>
+  <p><strong>Deployment method:</strong> All AWS infrastructure is deployed with <strong>Terraform</strong> using the <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/aws/latest">PaloAltoNetworks SWFW Modules</a>. The root module for this guide lives at <code>write/AWS-HA-Deployment/vmseries-ha-active-passive/</code>.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Alternative: VM-Series with GWLB (no HA pair required)</div>
+  <p>If you need horizontal scale rather than a paired standby, see the <a href="vm-series-deployment.html">VM-Series Combined Deployment guide</a>. That guide deploys VM-Series behind a Gateway Load Balancer, which provides inherent redundancy across AZs without requiring Active/Passive HA configuration on the firewalls. Choose <strong>Active/Passive HA</strong> when you need stateful session failover, a deterministic active node, or a BYOL per-pair license. Choose <strong>GWLB</strong> when you need elastic scale, automatic instance replacement, or pay-as-you-go licensing.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  ARCHITECTURE OVERVIEW                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>Review the topology and interface model before beginning. The diagram below shows the full Security VPC layout across two Availability Zones. The sections that follow cover the subnet table, per-firewall interface assignments, and the sequence of EC2 API calls that PAN-OS executes on failover.</p>
+
+<p><em>Security VPC topology: two VM-Series firewalls in separate Availability Zones, connected by HA1 (heartbeat) and HA2 (session sync) links, with a floating EIP on the active firewall's untrust interface:</em></p>
+<img src="diagrams/aws-ha-security-vpc-topology.svg" alt="Security VPC topology showing FW1 (Active) in AZ1 and FW2 (Passive) in AZ2, each with five interfaces (management, untrust, trust, HA1, HA2). A floating Elastic IP sits on FW1's untrust interface and moves to FW2 on failover. Purple HA1 and HA2 links connect the two firewalls horizontally across AZs. Five subnet types per AZ are color-coded: blue for management, gold for untrust, green for trust, and purple for HA subnets." loading="lazy" style="max-width:100%;border:1px solid var(--border);border-radius:4px;margin:1rem 0;">
+
+<h3 id="ha-interface-model">Interface and HA Model</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Security VPC Subnet Layout</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Security VPC spans two Availability Zones. Each AZ contains five dedicated subnets, one per interface type. The default CIDR values are set in <code>variables.tf</code> and can be overridden in <code>terraform.tfvars</code>.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Subnet</th>
+          <th>AZ1 CIDR</th>
+          <th>AZ2 CIDR</th>
+          <th>Route Table</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>mgmt</code></td>
+          <td><code>10.0.0.0/24</code></td>
+          <td><code>10.0.1.0/24</code></td>
+          <td>Default route via IGW</td>
+          <td>Out-of-band management (SSH, HTTPS). Admin access to firewall web UI and CLI.</td>
+        </tr>
+        <tr>
+          <td><code>untrust</code></td>
+          <td><code>10.0.10.0/24</code></td>
+          <td><code>10.0.11.0/24</code></td>
+          <td>Default route via IGW</td>
+          <td>Internet-facing traffic. The floating EIP attaches to the active firewall's untrust ENI.</td>
+        </tr>
+        <tr>
+          <td><code>trust</code></td>
+          <td><code>10.0.20.0/24</code></td>
+          <td><code>10.0.21.0/24</code></td>
+          <td>No default route (updated by HA failover)</td>
+          <td>Private-side traffic toward spoke VPCs or Transit Gateway. On failover, PAN-OS updates this route table to point to the newly-active firewall's trust ENI.</td>
+        </tr>
+        <tr>
+          <td><code>ha1</code></td>
+          <td><code>10.0.30.0/24</code></td>
+          <td><code>10.0.31.0/24</code></td>
+          <td>VPC local only</td>
+          <td>HA1 control link (heartbeat and hello packets). TCP port 28769. Uses VPC-local routing; no explicit route is needed.</td>
+        </tr>
+        <tr>
+          <td><code>ha2</code></td>
+          <td><code>10.0.40.0/24</code></td>
+          <td><code>10.0.41.0/24</code></td>
+          <td>VPC local only</td>
+          <td>HA2 session sync link. TCP port 28778. Higher-bandwidth than HA1; carries full session state. Uses VPC-local routing.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">HA1 and HA2 routing</div>
+      <p>The HA1 and HA2 subnets rely on the VPC's implicit local route to reach each other across AZs. No explicit route table entry is required. The <code>sg-ha</code> security group created by Terraform allows all traffic within the VPC CIDR (<code>10.0.0.0/16</code>) on the HA ENIs.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Per-Firewall Interface Assignments</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each firewall has five ENIs. The assignments below use the AZ1 values for FW1. FW2 uses the AZ2 subnets and the <code>fw2_private_ips</code> defaults.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Linux eth</th>
+          <th>PAN-OS Name</th>
+          <th>device_index</th>
+          <th>Subnet</th>
+          <th>Static IP (FW1)</th>
+          <th>source_dest_check</th>
+          <th>Security Group</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>eth0</code></td>
+          <td>Management</td>
+          <td>0</td>
+          <td>mgmt-az1</td>
+          <td>DHCP</td>
+          <td><strong>true</strong></td>
+          <td><code>sg-mgmt</code></td>
+          <td>Management plane. EIP attached by Terraform. SSH (22), HTTPS (443).</td>
+        </tr>
+        <tr>
+          <td><code>eth1</code></td>
+          <td>ethernet1/1</td>
+          <td>1</td>
+          <td>untrust-az1</td>
+          <td><code>10.0.10.10</code></td>
+          <td>false</td>
+          <td><code>sg-untrust</code></td>
+          <td>Internet-facing. Floating EIP associated here on the active firewall.</td>
+        </tr>
+        <tr>
+          <td><code>eth2</code></td>
+          <td>ethernet1/2</td>
+          <td>2</td>
+          <td>trust-az1</td>
+          <td><code>10.0.20.10</code></td>
+          <td>false</td>
+          <td><code>sg-trust</code></td>
+          <td>Private-side. Trust route table next-hop is updated to this ENI on failover.</td>
+        </tr>
+        <tr>
+          <td><code>eth3</code></td>
+          <td>ethernet1/3</td>
+          <td>3</td>
+          <td>ha1-az1</td>
+          <td><code>10.0.30.10</code></td>
+          <td>false</td>
+          <td><code>sg-ha</code></td>
+          <td>HA1 control link. Heartbeat and hello. TCP 28769.</td>
+        </tr>
+        <tr>
+          <td><code>eth4</code></td>
+          <td>ethernet1/4</td>
+          <td>4</td>
+          <td>ha2-az1</td>
+          <td><code>10.0.40.10</code></td>
+          <td>false</td>
+          <td><code>sg-ha</code></td>
+          <td>HA2 session sync. TCP 28778.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: source_dest_check on data-plane interfaces</div>
+      <p>AWS enables <code>source_dest_check</code> by default on all ENIs. This causes AWS to drop any packet whose source or destination IP does not match the ENI's assigned IP. For a firewall forwarding traffic on behalf of other hosts, this drops everything. The Terraform sets <code>source_dest_check = false</code> on ethernet1/1 through ethernet1/4. The management ENI (eth0) keeps it <strong>true</strong> because management traffic originates from the firewall itself.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>HA Failover Sequence</span>
+  </div>
+  <div class="collapsible-body">
+    <p>When the active firewall fails or is suspended, the following sequence executes automatically. Total elapsed time from detection to traffic restoration is typically 30 to 60 seconds.</p>
+
+    <ol>
+      <li><strong>HA1 heartbeat loss detected.</strong> The passive firewall misses the configured number of hello packets on the HA1 link (TCP 28769). Default heartbeat interval is 2000 ms; default hello interval is 8000 ms.</li>
+      <li><strong>Election.</strong> The passive firewall declares itself active after the promotion hold timer expires (default 2000 ms). No external coordinator is involved.</li>
+      <li><strong>EIP failover via EC2 API.</strong> The newly-active firewall calls the EC2 API using credentials from its IAM instance profile:
+        <ol type="a">
+          <li><code>ec2:DisassociateAddress</code> removes the floating EIP from the failed firewall's untrust ENI (<code>eni-fw1-untrust</code>).</li>
+          <li><code>ec2:AssociateAddress</code> attaches the floating EIP to its own untrust ENI (<code>eni-fw2-untrust</code>). Internet-bound traffic now arrives at FW2.</li>
+        </ol>
+      </li>
+      <li><strong>Route table failover via EC2 API.</strong> The newly-active firewall calls <code>ec2:ReplaceRoute</code> on the trust route table, changing the next-hop for the configured CIDR to its own trust ENI (<code>eni-fw2-trust</code>). Spoke VPC traffic now reaches FW2.</li>
+      <li><strong>Session restoration.</strong> The HA2 link (TCP 28778) continuously synchronized session state from the active to the passive firewall. After promotion, FW2 already holds the session table. Established TCP sessions survive the failover with minimal packet loss.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">IAM permissions are the prerequisite for steps 3 and 4</div>
+      <p>The Terraform creates an IAM instance profile with <code>ec2:AssociateAddress</code>, <code>ec2:DisassociateAddress</code>, and <code>ec2:ReplaceRoute</code> permissions. Without these, the EIP and route table will not update on failover and traffic will black-hole until corrected manually. Verify the profile is attached before completing Phase 6.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: PREREQUISITES                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1: AWS Account and IAM Permissions</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Terraform run requires an IAM principal with permissions to create all the resources in the deployment. The full permission set covers EC2, S3, IAM, KMS, and CloudWatch.</p>
+
+    <table>
+      <thead>
+        <tr><th>Service</th><th>Required Actions</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>EC2</td>
+          <td><code>ec2:*</code> (VPC, subnet, route table, IGW, security group, ENI, instance, EIP, KMS alias describe)</td>
+        </tr>
+        <tr>
+          <td>S3</td>
+          <td><code>s3:CreateBucket</code>, <code>s3:PutObject</code>, <code>s3:GetObject</code>, <code>s3:ListBucket</code>, <code>s3:PutBucketVersioning</code>, <code>s3:PutBucketEncryption</code>, <code>s3:PutPublicAccessBlock</code>, <code>s3:PutBucketOwnershipControls</code>, <code>s3:DeleteBucket</code>, <code>s3:DeleteObject</code></td>
+        </tr>
+        <tr>
+          <td>IAM</td>
+          <td><code>iam:CreateRole</code>, <code>iam:PutRolePolicy</code>, <code>iam:CreateInstanceProfile</code>, <code>iam:AddRoleToInstanceProfile</code>, <code>iam:PassRole</code>, <code>iam:GetRole</code>, <code>iam:GetRolePolicy</code>, <code>iam:DeleteRole</code>, <code>iam:DeleteRolePolicy</code>, <code>iam:DeleteInstanceProfile</code>, <code>iam:RemoveRoleFromInstanceProfile</code>, <code>iam:TagRole</code></td>
+        </tr>
+        <tr>
+          <td>KMS</td>
+          <td><code>kms:DescribeKey</code> (for EBS encryption key alias lookup)</td>
+        </tr>
+        <tr>
+          <td>CloudWatch</td>
+          <td><code>cloudwatch:PutMetricAlarm</code>, <code>cloudwatch:DescribeAlarms</code> (written to the instance IAM role, not the deployer)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>In a lab environment, attaching the <code>AdministratorAccess</code> managed policy to the deploying IAM user or role is the fastest path. In production, scope the policy to the actions above.</p>
+
+    <p>Also verify that the target region supports <code>m5.xlarge</code> (the default instance type) and that the account has not hit the EC2 instance limit or EIP limit (default 5 EIPs per region; this deployment allocates 3).</p>
+
+    <p>Confirm an EC2 key pair exists in the target region:</p>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-key-pairs --region us-east-1 --query 'KeyPairs[].KeyName'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The key pair name appears in the output. The AWS CLI returns successfully with your current credentials:</p>
+      <div class="code-block">
+        <pre><code>aws sts get-caller-identity</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>Output includes <code>Account</code>, <code>UserId</code>, and <code>Arn</code> with no error.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2: Accept VM-Series Marketplace Subscription</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Terraform does an AMI lookup by product code. If the account has not accepted the Marketplace subscription for that product code, the lookup returns zero results and the plan fails. Accept the subscription before running <code>terraform plan</code>.</p>
+
+    <ol>
+      <li>Navigate to <a href="https://aws.amazon.com/marketplace">AWS Marketplace</a>.</li>
+      <li>Search for <strong>PA-VM-AWS</strong>.</li>
+      <li>Select the listing matching your license model:
+        <ul>
+          <li><strong>BYOL:</strong> product code <code>6njl1pau431dv1qxipg63mvah</code> (default in <code>variables.tf</code>)</li>
+          <li><strong>Bundle 1 (VM-300):</strong> product code <code>6kxdw3bbmdeda3o6i1ggqt4km</code></li>
+          <li><strong>Bundle 2 (VM-500):</strong> product code <code>806j2of0qy5osgjjixq9gqc6g</code></li>
+        </ul>
+      </li>
+      <li>Click <strong>Continue to Subscribe</strong>.</li>
+      <li>Click <strong>Accept Terms</strong>. AWS may take a few minutes to activate the subscription.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: subscription is per-region</div>
+      <p>Marketplace subscriptions apply account-wide but AMI availability is region-specific. The AMI lookup in Terraform will still fail if the specific PAN-OS version string in <code>panos_version</code> has not been published for your region. If the plan returns "No AMI found," try a nearby region or adjust the version string.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>In the AWS Marketplace console, the listing shows <strong>Subscribed</strong> under the subscription status. You can also check via CLI:</p>
+      <div class="code-block">
+        <pre><code>aws ec2 describe-images \
+  --owners aws-marketplace \
+  --filters "Name=product-code,Values=6njl1pau431dv1qxipg63mvah" \
+            "Name=name,Values=PA-VM-AWS-11.1*" \
+  --query 'Images[0].Name' \
+  --region us-east-1</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>A non-empty AMI name is returned. An empty result or an error means the subscription is not active.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3: Verify Terraform Toolchain</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Check each tool before cloning the deployment repository.</p>
+
+    <p><strong>Terraform</strong> (1.5.0 or later):</p>
+    <div class="code-block">
+      <pre><code>terraform version</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>AWS CLI</strong> (v2 recommended):</p>
+    <div class="code-block">
+      <pre><code>aws --version
+aws sts get-caller-identity</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>Git</strong> (any recent version; needed to clone the SWFW modules repo in Phase 4):</p>
+    <div class="code-block">
+      <pre><code>git --version</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>terraform version</code> reports <code>Terraform v1.5.0</code> or later. <code>aws sts get-caller-identity</code> returns your account ID and ARN. <code>git --version</code> returns any version string without error.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: MANAGEMENT PLATFORM CONFIGURATION                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="management-config">Phase 2: Management Platform Configuration</h2>
+
+<p>Choose your management path below. Complete all steps in your chosen path before proceeding to Phase 3. Both paths result in the same end state: firewalls that bootstrap into a configured management plane and accept security policy on first boot.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which path should I pick?</div>
+  <ul>
+    <li><strong>Panorama</strong>: you have an existing Panorama deployment. Firewalls connect to Panorama via the <code>panorama-server</code> init-cfg parameter and receive a config push on first boot.</li>
+    <li><strong>SCM</strong>: you use Strata Cloud Manager. Firewalls register via the VM-Series auto-registration PIN and connect to SCM on first boot.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="mgmt">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="panorama">2A &middot; Panorama Path</button>
+    <button class="mgmt-tab" data-plane="scm">2B &middot; SCM Path</button>
+  </div>
+
+  <!-- 2A: Panorama Path -->
+  <div class="mgmt-panel active" data-plane="panorama">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2A.1: Create Device Group for HA Firewalls</span>
+      </div>
+      <div class="collapsible-body">
+        <p>A dedicated device group keeps the HA firewalls' security policy isolated from other deployments.</p>
+        <ol>
+          <li>In Panorama, navigate to <strong>Panorama &gt; Device Groups</strong>.</li>
+          <li>Click <strong>Add</strong>.</li>
+          <li>Set <strong>Name</strong> to <code>aws-ha-firewalls</code>.</li>
+          <li>Set <strong>Parent Device Group</strong> to <code>Shared</code> (or your existing hierarchy root).</li>
+          <li>Click <strong>OK</strong>.</li>
+          <li>Click <strong>Commit &gt; Commit to Panorama</strong>.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The device group <code>aws-ha-firewalls</code> appears in the Panorama device group tree under <strong>Panorama &gt; Device Groups</strong>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2A.2: Create Template Stack for HA Firewalls</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The template stack delivers interface, zone, and logging configuration to both firewalls. HA-specific settings (HA1/HA2 peer IPs, group ID) are configured per-firewall in Phase 6 because each peer has a unique HA1 IP that cannot be templated.</p>
+        <ol>
+          <li>Navigate to <strong>Panorama &gt; Templates</strong>.</li>
+          <li>Click <strong>Add</strong> to create a base template. Name it <code>aws-ha-base</code>. Click <strong>OK</strong>.</li>
+          <li>Click <strong>Add Stack</strong>. Name the stack <code>aws-ha-stack</code>.</li>
+          <li>In the stack, add <code>aws-ha-base</code> as a member template.</li>
+          <li>Click <strong>OK</strong>.</li>
+          <li>Click <strong>Commit &gt; Commit to Panorama</strong>.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The stack <code>aws-ha-stack</code> appears under <strong>Panorama &gt; Templates</strong> with <code>aws-ha-base</code> listed as a member.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2A.3: Generate VM Auth Key</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The VM auth key allows firewalls to authenticate to Panorama during bootstrap. The key is placed in <code>terraform.tfvars</code> as the <code>vm-auth-key</code> bootstrap option.</p>
+        <ol>
+          <li>Navigate to <strong>Panorama &gt; Device Deployment &gt; VM-Series Auth Key</strong>.</li>
+          <li>Click <strong>Generate</strong>.</li>
+          <li>Copy the key string immediately. It is displayed only once.</li>
+          <li>Note the expiration time. The default lifetime is <strong>24 hours</strong>. If the firewall bootstraps after the key expires, it cannot authenticate to Panorama and requires a rebuild. Either time your deployment to finish within 24 hours of key generation, or set a longer expiry before generating.</li>
+        </ol>
+        <div class="callout callout-warning">
+          <div class="callout-title">Important: expiry timing</div>
+          <p>Generate the auth key immediately before running <code>terraform apply</code>, not at the start of Phase 2. A key generated now but used hours later in Phase 5 may expire in a busy environment.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The key string is saved. It starts with the characters <code>LUFRPT</code> or similar and is several hundred characters long.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2A.4: Configure Security Zones and Interfaces in Template</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Configure zones and interface assignments in the <code>aws-ha-base</code> template. This configuration is pushed to both firewalls on bootstrap, giving them a consistent interface-to-zone map.</p>
+        <ol>
+          <li>In Panorama, select the <code>aws-ha-stack</code> context from the template drop-down.</li>
+          <li>Navigate to <strong>Network &gt; Zones</strong>. Create three zones:</li>
+        </ol>
+        <table>
+          <thead><tr><th>Zone Name</th><th>Type</th></tr></thead>
+          <tbody>
+            <tr><td><code>untrust</code></td><td>Layer3</td></tr>
+            <tr><td><code>trust</code></td><td>Layer3</td></tr>
+            <tr><td><code>ha</code></td><td>HA</td></tr>
+          </tbody>
+        </table>
+        <ol start="3">
+          <li>Navigate to <strong>Network &gt; Interfaces &gt; Ethernet</strong>. Configure each interface:</li>
+        </ol>
+        <table>
+          <thead><tr><th>Interface</th><th>Interface Type</th><th>Zone</th><th>IP Address</th></tr></thead>
+          <tbody>
+            <tr><td><code>ethernet1/1</code></td><td>Layer3</td><td><code>untrust</code></td><td>DHCP Client</td></tr>
+            <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td><code>trust</code></td><td>DHCP Client</td></tr>
+            <tr><td><code>ethernet1/3</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
+            <tr><td><code>ethernet1/4</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
+          </tbody>
+        </table>
+        <ol start="4">
+          <li>Click <strong>Commit &gt; Commit to Panorama</strong>.</li>
+        </ol>
+        <div class="callout callout-note">
+          <div class="callout-title">eth0 is management</div>
+          <p>The management interface (<code>eth0</code> on the EC2 instance, displayed as the <em>Management</em> interface in PAN-OS) does not appear in the Ethernet interface list and does not require a zone assignment.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Zones <code>untrust</code>, <code>trust</code>, and <code>ha</code> appear in the template. <code>ethernet1/1</code> and <code>ethernet1/2</code> show their assigned zones. The Panorama commit completes with no errors.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2A.5: Create Baseline Security Policy</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Create a minimum working security policy in the <code>aws-ha-firewalls</code> device group. At minimum, two rules are required: one to allow outbound traffic and one to deny everything else with logging.</p>
+        <ol>
+          <li>In Panorama, set the context to the <code>aws-ha-firewalls</code> device group.</li>
+          <li>Navigate to <strong>Policies &gt; Security</strong>.</li>
+          <li>Add the following rules in order:</li>
+        </ol>
+        <table>
+          <thead><tr><th>Name</th><th>Source Zone</th><th>Destination Zone</th><th>Application</th><th>Action</th><th>Log at</th></tr></thead>
+          <tbody>
+            <tr><td><code>allow-outbound</code></td><td><code>trust</code></td><td><code>untrust</code></td><td>any</td><td>Allow</td><td>Session end</td></tr>
+            <tr><td><code>deny-all</code></td><td>any</td><td>any</td><td>any</td><td>Deny</td><td>Session start</td></tr>
+          </tbody>
+        </table>
+        <ol start="4">
+          <li>Click <strong>Commit &gt; Commit and Push</strong>. Select the <code>aws-ha-firewalls</code> device group. Click <strong>OK</strong>.</li>
+        </ol>
+        <div class="callout callout-note">
+          <div class="callout-title">Iron Skillet for production security profiles</div>
+          <p>The two rules above are the minimum to pass traffic. For production deployments, load the <a href="https://github.com/PaloAltoNetworks/iron-skillet">Iron Skillet</a> day-one configuration, which pre-builds security profiles, profile groups, log forwarding profiles, and best-practice rules. Load it via <code>panorama/snippets/</code> before pushing to the device group.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The push job completes successfully. Both rules appear in the device group policy. If no firewalls are connected yet, the push will show the device group as pending; that is normal at this stage.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /panorama panel -->
+
+  <!-- 2B: SCM Path -->
+  <div class="mgmt-panel" data-plane="scm">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2B.1: Create a Folder for HA Firewalls in SCM</span>
+      </div>
+      <div class="collapsible-body">
+        <p>SCM uses folders to scope configuration. Create a dedicated folder for the HA pair.</p>
+        <ol>
+          <li>In SCM, navigate to <strong>Manage &gt; Configuration &gt; NGFW and Prisma Access &gt; Folders</strong>.</li>
+          <li>Click <strong>Create Folder</strong>.</li>
+          <li>Set <strong>Name</strong> to <code>aws-ha-firewalls</code>.</li>
+          <li>Set the parent folder in your hierarchy (for example, <code>Global</code> or a region-specific folder).</li>
+          <li>Click <strong>Save</strong>.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The folder <code>aws-ha-firewalls</code> appears in the SCM configuration tree.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2B.2: Generate VM-Series Auto-Registration PIN</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The auto-registration PIN lets the firewall establish its identity with SCM during bootstrap. Both the PIN ID and PIN value are required in <code>terraform.tfvars</code>.</p>
+        <ol>
+          <li>In SCM, navigate to <strong>Manage &gt; Device Setup &gt; Device Certificates</strong>.</li>
+          <li>Click the <strong>VM-Series</strong> tab.</li>
+          <li>Click <strong>Generate PIN</strong>.</li>
+          <li>Copy both the <strong>PIN ID</strong> and <strong>PIN Value</strong>. These map to <code>vm-series-auto-registration-pin-id</code> and <code>vm-series-auto-registration-pin-value</code> in <code>terraform.tfvars</code>.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Both the PIN ID and PIN value are saved. They are shown together on the same page immediately after generation.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2B.3: Configure Security Zones and Interfaces in SCM</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Configure zones and interfaces scoped to the <code>aws-ha-firewalls</code> folder.</p>
+        <ol>
+          <li>In SCM, navigate to <strong>Manage &gt; Configuration &gt; NGFW and Prisma Access</strong> and select the <code>aws-ha-firewalls</code> folder.</li>
+          <li>Navigate to <strong>Network &gt; Zones</strong>. Create three zones:</li>
+        </ol>
+        <table>
+          <thead><tr><th>Zone Name</th><th>Type</th></tr></thead>
+          <tbody>
+            <tr><td><code>untrust</code></td><td>Layer3</td></tr>
+            <tr><td><code>trust</code></td><td>Layer3</td></tr>
+            <tr><td><code>ha</code></td><td>HA</td></tr>
+          </tbody>
+        </table>
+        <ol start="3">
+          <li>Navigate to <strong>Network &gt; Interfaces</strong>. Configure:</li>
+        </ol>
+        <table>
+          <thead><tr><th>Interface</th><th>Type</th><th>Zone</th><th>IP</th></tr></thead>
+          <tbody>
+            <tr><td><code>ethernet1/1</code></td><td>Layer3</td><td><code>untrust</code></td><td>DHCP Client</td></tr>
+            <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td><code>trust</code></td><td>DHCP Client</td></tr>
+            <tr><td><code>ethernet1/3</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
+            <tr><td><code>ethernet1/4</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
+          </tbody>
+        </table>
+        <ol start="4">
+          <li>Click <strong>Push Config</strong>.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Zones and interfaces are saved and the push job completes. No firewalls are connected yet; the pending status is expected.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2B.4: Create Baseline Security Policy in SCM</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Create the minimum security policy in the <code>aws-ha-firewalls</code> folder context.</p>
+        <ol>
+          <li>In SCM, with <code>aws-ha-firewalls</code> selected, navigate to <strong>Security Services &gt; Security Policy</strong>.</li>
+          <li>Add the following rules:</li>
+        </ol>
+        <table>
+          <thead><tr><th>Name</th><th>Source Zone</th><th>Destination Zone</th><th>Application</th><th>Action</th><th>Log at</th></tr></thead>
+          <tbody>
+            <tr><td><code>allow-outbound</code></td><td><code>trust</code></td><td><code>untrust</code></td><td>any</td><td>Allow</td><td>Session end</td></tr>
+            <tr><td><code>deny-all</code></td><td>any</td><td>any</td><td>any</td><td>Deny</td><td>Session start</td></tr>
+          </tbody>
+        </table>
+        <ol start="3">
+          <li>Click <strong>Push Config</strong>.</li>
+        </ol>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Both rules appear in the SCM security policy for the <code>aws-ha-firewalls</code> folder. Push job completes with no errors.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /scm panel -->
+</div><!-- /mgmt-tabs -->
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: REVIEW CHECKPOINT                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="review-checkpoint">Phase 3: Review Checkpoint</h2>
+
+<p>Do not proceed to Terraform until every item below is checked. Firewalls that bootstrap without a ready management plane will come up unconfigured and require a full rebuild.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Pre-Terraform Checklist</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Panorama path</th>
+          <th>SCM path</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Management container created</td>
+          <td>Device group <code>aws-ha-firewalls</code> exists in Panorama</td>
+          <td>Folder <code>aws-ha-firewalls</code> exists in SCM</td>
+        </tr>
+        <tr>
+          <td>Template/zones configured</td>
+          <td>Stack <code>aws-ha-stack</code> exists with zones <code>untrust</code>, <code>trust</code>, <code>ha</code> and interfaces assigned</td>
+          <td>Zones <code>untrust</code>, <code>trust</code>, <code>ha</code> and interfaces configured in folder context</td>
+        </tr>
+        <tr>
+          <td>Auth credential ready</td>
+          <td>VM auth key generated and <strong>not yet expired</strong>. Generate it immediately before Step 5.1 if timing is tight.</td>
+          <td>Auto-registration PIN ID and PIN value saved</td>
+        </tr>
+        <tr>
+          <td>Security policy committed</td>
+          <td>Device group policy includes <code>allow-outbound</code> and <code>deny-all</code>, committed to Panorama</td>
+          <td>Folder policy includes <code>allow-outbound</code> and <code>deny-all</code>, pushed in SCM</td>
+        </tr>
+        <tr>
+          <td>AWS key pair exists</td>
+          <td colspan="2">Key pair present in the target region (<code>aws ec2 describe-key-pairs</code> returns the name)</td>
+        </tr>
+        <tr>
+          <td>Marketplace subscription accepted</td>
+          <td colspan="2">Subscription status is <strong>Subscribed</strong> for the BYOL or Bundle listing (Step 1.2)</td>
+        </tr>
+        <tr>
+          <td>Terraform toolchain ready</td>
+          <td colspan="2">Terraform &ge; 1.5.0, AWS CLI v2, git all return without error</td>
+        </tr>
+        <tr>
+          <td>AWS credentials valid</td>
+          <td colspan="2"><code>aws sts get-caller-identity</code> returns account ID without error</td>
+        </tr>
+        <tr>
+          <td>tfvars values identified</td>
+          <td><code>panorama-server</code>, <code>vm-auth-key</code>, <code>tplname</code>, <code>dgname</code> ready to paste</td>
+          <td><code>vm-series-auto-registration-pin-id</code> and <code>vm-series-auto-registration-pin-value</code> ready to paste</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All rows in the table above are confirmed. Proceed to Phase 4.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: PREPARE TERRAFORM                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="prepare-terraform">Phase 4: Prepare Terraform Configuration</h2>
+
+<div class="callout callout-note">
+  <div class="callout-title">Terraform module source</div>
+  <p>This guide uses the <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/aws/latest">PaloAltoNetworks SWFW Modules</a> for the VM-Series instances. The root module at <code>write/AWS-HA-Deployment/vmseries-ha-active-passive/</code> sources the <code>vmseries</code> module via a local path pointing at the cloned repository. For production deployments, switch the source to the Terraform Registry with a pinned version (shown in Step 4.1).</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1: Clone the SWFW Modules Repository</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Clone the repository into the path expected by the root module. From the <code>write/</code> directory:</p>
+    <div class="code-block">
+      <pre><code>git clone https://github.com/PaloAltoNetworks/terraform-aws-swfw-modules.git \
+  AWS-HA-Sources/AWS-HA-Deployment/terraform-aws-swfw-modules</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The resulting path <code>write/AWS-HA-Sources/AWS-HA-Deployment/terraform-aws-swfw-modules/modules/vmseries/</code> is what the root module's <code>source</code> attribute resolves to at <code>terraform init</code> time.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Production: use the Terraform Registry instead</div>
+      <p>For production use, replace the local <code>source</code> in <code>main.tf</code> with the registry path and pin to a tested version:</p>
+      <div class="code-block">
+        <pre><code>source  = "PaloAltoNetworks/swfw-modules/aws//modules/vmseries"
+version = "~> 2.0"</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>Check the <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/aws/latest">registry</a> for the current stable version before pinning.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The directory <code>write/AWS-HA-Sources/AWS-HA-Deployment/terraform-aws-swfw-modules/modules/vmseries/</code> exists and contains <code>main.tf</code>, <code>variables.tf</code>, and <code>outputs.tf</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.2: Configure terraform.tfvars</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Copy the example file and fill in your values:</p>
+    <div class="code-block">
+      <pre><code>cd write/AWS-HA-Deployment/vmseries-ha-active-passive/
+cp terraform.tfvars.example terraform.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Edit <code>terraform.tfvars</code>. The required variables are shown below, followed by two complete filled examples.</p>
+
+    <table>
+      <thead>
+        <tr><th>Variable</th><th>Required</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>region</code></td><td>Yes</td><td>AWS region, e.g. <code>us-east-1</code></td></tr>
+        <tr><td><code>az1</code></td><td>Yes</td><td>AZ for FW1 (Active), e.g. <code>us-east-1a</code></td></tr>
+        <tr><td><code>az2</code></td><td>Yes</td><td>AZ for FW2 (Passive), e.g. <code>us-east-1b</code></td></tr>
+        <tr><td><code>ssh_key_name</code></td><td>Yes</td><td>Name of an existing EC2 key pair in the region</td></tr>
+        <tr><td><code>mgmt_cidrs</code></td><td>Yes</td><td>CIDR list allowed to reach SSH/HTTPS on management interfaces. Restrict to your admin IP.</td></tr>
+        <tr><td><code>bootstrap_options_fw1</code></td><td>Yes</td><td>Bootstrap parameters for FW1 init-cfg.txt</td></tr>
+        <tr><td><code>bootstrap_options_fw2</code></td><td>Yes</td><td>Bootstrap parameters for FW2 init-cfg.txt</td></tr>
+        <tr><td><code>panos_version</code></td><td>No</td><td>Defaults to <code>11.1.4-h7</code></td></tr>
+        <tr><td><code>instance_type</code></td><td>No</td><td>Defaults to <code>m5.xlarge</code>. Use <code>m5.2xlarge</code> for &gt;500 Mbps.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Important: restrict mgmt_cidrs</div>
+      <p>Never set <code>mgmt_cidrs = ["0.0.0.0/0"]</code> in production. The security group for the management subnet allows SSH (22) and HTTPS (443). Exposing those ports to the internet invites brute-force attempts. Set it to your admin IP or VPN egress CIDR: <code>mgmt_cidrs = ["203.0.113.50/32"]</code>.</p>
+    </div>
+
+    <p><strong>Panorama-managed example:</strong></p>
+    <div class="code-block">
+      <pre><code>region       = "us-east-1"
+az1          = "us-east-1a"
+az2          = "us-east-1b"
+ssh_key_name = "my-keypair"
+mgmt_cidrs   = ["203.0.113.50/32"]
+panos_version = "11.1.4-h7"
+
+bootstrap_options_fw1 = {
+  hostname        = "pan-fw1"
+  panorama-server = "192.0.2.10"
+  tplname         = "aws-ha-stack"
+  dgname          = "aws-ha-firewalls"
+  vm-auth-key     = "LUFRPT1..."
+  dns-primary     = "169.254.169.253"
+  dns-secondary   = "8.8.8.8"
+}
+
+bootstrap_options_fw2 = {
+  hostname        = "pan-fw2"
+  panorama-server = "192.0.2.10"
+  tplname         = "aws-ha-stack"
+  dgname          = "aws-ha-firewalls"
+  vm-auth-key     = "LUFRPT1..."
+  dns-primary     = "169.254.169.253"
+  dns-secondary   = "8.8.8.8"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>SCM-managed example:</strong></p>
+    <div class="code-block">
+      <pre><code>region       = "us-east-1"
+az1          = "us-east-1a"
+az2          = "us-east-1b"
+ssh_key_name = "my-keypair"
+mgmt_cidrs   = ["203.0.113.50/32"]
+
+bootstrap_options_fw1 = {
+  hostname                              = "pan-fw1"
+  vm-series-auto-registration-pin-id    = "abc12345"
+  vm-series-auto-registration-pin-value = "secretpinvalue"
+  dns-primary                           = "169.254.169.253"
+}
+
+bootstrap_options_fw2 = {
+  hostname                              = "pan-fw2"
+  vm-series-auto-registration-pin-id    = "abc12345"
+  vm-series-auto-registration-pin-value = "secretpinvalue"
+  dns-primary                           = "169.254.169.253"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Static IPs and why they matter</div>
+      <p>The variables <code>fw1_private_ips</code> and <code>fw2_private_ips</code> assign fixed private IPs to the untrust, trust, HA1, and HA2 ENIs. The defaults (<code>10.0.30.10</code> for FW1 HA1 and <code>10.0.31.10</code> for FW2 HA1) are used as the HA peer addresses in Phase 6. If you change these defaults, update the HA configuration in Phase 6 accordingly. The management interface (eth0) uses DHCP and does not need a static IP.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>terraform.tfvars</code> exists in the <code>vmseries-ha-active-passive/</code> directory with no placeholder values remaining. All required variables are set.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.3: Run terraform init and plan</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Initialize the working directory and generate a plan file:</p>
+    <div class="code-block">
+      <pre><code>terraform init
+terraform plan -out=ha.plan</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Review the plan output. The following resource types and counts confirm the plan is correct:</p>
+
+    <table>
+      <thead><tr><th>Resource Type</th><th>Expected Count</th></tr></thead>
+      <tbody>
+        <tr><td><code>aws_vpc</code></td><td>1</td></tr>
+        <tr><td><code>aws_internet_gateway</code></td><td>1</td></tr>
+        <tr><td><code>aws_subnet</code></td><td>10 (5 types &times; 2 AZs)</td></tr>
+        <tr><td><code>aws_route_table</code></td><td>5 (mgmt, untrust, trust, ha1, ha2)</td></tr>
+        <tr><td><code>aws_route_table_association</code></td><td>10</td></tr>
+        <tr><td><code>aws_security_group</code></td><td>4 (mgmt, untrust, trust, ha)</td></tr>
+        <tr><td><code>aws_eip</code></td><td>3 (mgmt-fw1, mgmt-fw2, floating-untrust)</td></tr>
+        <tr><td><code>aws_iam_role</code></td><td>1</td></tr>
+        <tr><td><code>aws_iam_role_policy</code></td><td>3 (bootstrap-s3, ha-failover, cloudwatch)</td></tr>
+        <tr><td><code>aws_iam_instance_profile</code></td><td>1</td></tr>
+        <tr><td><code>aws_s3_bucket</code></td><td>2 (fw1-bootstrap, fw2-bootstrap)</td></tr>
+        <tr><td><code>aws_s3_object</code></td><td>12 (5 dir placeholders + 1 init-cfg.txt per bucket)</td></tr>
+        <tr><td><code>aws_network_interface</code></td><td>10 (5 per FW)</td></tr>
+        <tr><td><code>aws_instance</code></td><td>2</td></tr>
+        <tr><td><code>aws_eip_association</code></td><td>2 (mgmt EIPs only; floating EIP is not associated by Terraform)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The plan completes with no errors and the message <code>Plan: N to add, 0 to change, 0 to destroy</code>. The resource counts in the plan match the table above (total approximately 55 to 65 resources depending on random suffix resources).</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: DEPLOY AND VERIFY INFRASTRUCTURE                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="deploy-infrastructure">Phase 5: Deploy and Verify Infrastructure</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.1: Apply the Terraform Plan</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>terraform apply ha.plan</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Expected apply time: 10 to 12 minutes. The two <code>aws_instance</code> resources take the longest.</p>
+
+    <p>After apply completes, capture the HA configuration reference values. Save this output; every value is needed in Phase 6:</p>
+    <div class="code-block">
+      <pre><code>terraform output ha_config_summary</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>The output looks like this:</p>
+    <div class="code-block">
+      <pre><code>{
+  "FW1 management URL"               = "https://3.91.x.x"
+  "FW2 management URL"               = "https://54.82.x.x"
+  "FW1 HA1 IP (set as peer on FW2)"  = "10.0.30.10"
+  "FW2 HA1 IP (set as peer on FW1)"  = "10.0.31.10"
+  "FW1 HA2 IP (set as peer on FW2)"  = "10.0.40.10"
+  "FW2 HA2 IP (set as peer on FW1)"  = "10.0.41.10"
+  "Floating EIP allocation ID"        = "eipalloc-0abc1234def56789"
+  "Floating EIP public IP"            = "34.201.x.x"
+  "Trust route table ID"              = "rtb-0abc1234def56789"
+  "FW1 untrust ENI ID"                = "eni-0abc1234def56789a"
+  "FW2 untrust ENI ID"                = "eni-0abc1234def56789b"
+  "FW1 trust ENI ID"                  = "eni-0abc1234def56789c"
+  "FW2 trust ENI ID"                  = "eni-0abc1234def56789d"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Apply completes with <code>Apply complete! Resources: N added, 0 changed, 0 destroyed.</code> The <code>ha_config_summary</code> output shows real values for all 13 keys.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.2: Verify EC2 Instances and Network Interfaces</span>
+  </div>
+  <div class="collapsible-body">
+    <p>In the EC2 console, confirm each of the following for both firewall instances:</p>
+    <ol>
+      <li>Navigate to <strong>EC2 &gt; Instances</strong>. Filter by name prefix (<code>pan-ha-fw1</code>, <code>pan-ha-fw2</code>).</li>
+      <li>Both instances show <strong>Instance state: Running</strong>.</li>
+      <li>FW1 is in AZ1; FW2 is in AZ2 (check the <em>Availability zone</em> column).</li>
+      <li>Click an instance, then the <strong>Networking</strong> tab. Confirm 5 network interfaces are attached:
+        <ul>
+          <li><code>eth0</code>: description <em>Management</em>, in the mgmt subnet, with a public IPv4 (the management EIP)</li>
+          <li><code>eth1</code>: description <em>Untrust (public)</em>, private IP matches <code>fw1_private_ips.untrust</code></li>
+          <li><code>eth2</code>: description <em>Trust (private)</em></li>
+          <li><code>eth3</code>: description <em>HA1 control link</em></li>
+          <li><code>eth4</code>: description <em>HA2 session sync</em></li>
+        </ul>
+      </li>
+      <li>Click the <strong>Security</strong> tab. Confirm the IAM instance profile is <code>pan-ha-vmseries-profile</code>.</li>
+      <li>In <strong>S3</strong>, open the bootstrap bucket for each firewall (<code>pan-ha-fw1-bootstrap-&lt;suffix&gt;</code>). Confirm <code>config/init-cfg.txt</code> exists and its content matches the <code>bootstrap_options</code> set in <code>terraform.tfvars</code>.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both instances: Running, correct AZ, 5 ENIs with correct descriptions, management EIP visible on eth0, IAM profile <code>pan-ha-vmseries-profile</code> attached, <code>init-cfg.txt</code> present in each S3 bucket.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.3: Wait for PAN-OS Bootstrap to Complete</span>
+  </div>
+  <div class="collapsible-body">
+    <p>PAN-OS bootstrap takes 10 to 15 minutes from instance launch. The firewall reads <code>init-cfg.txt</code> from S3, applies the settings, and then initiates contact with Panorama or SCM.</p>
+
+    <p><strong>Check HTTPS access:</strong> open a browser to the management EIP URL from <code>terraform output</code>. When PAN-OS is ready, the web UI login page loads. Accept the self-signed certificate warning.</p>
+
+    <p><strong>Check the bootstrap log</strong> via EC2 console: select the instance, click <strong>Actions &gt; Monitor and troubleshoot &gt; Get system log</strong>. Scroll to the end. Look for:</p>
+    <div class="code-block">
+      <pre><code>Bootstrap: completed successfully</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>If Panorama-managed:</strong> in Panorama, navigate to <strong>Panorama &gt; Managed Devices &gt; Summary</strong>. Both firewalls appear in the device list with <em>Connected</em> status after bootstrap completes.</p>
+
+    <p><strong>Check from the firewall CLI</strong> (SSH to the management EIP, user <code>admin</code>):</p>
+    <div class="code-block">
+      <pre><code>show system bootstrap status</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The output shows the status of each bootstrap phase: S3 config download, init-cfg parsing, content update, and license activation.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>HTTPS login page loads on both management EIPs. If Panorama-managed, both firewalls show as <em>Connected</em> in Panorama. If SCM-managed, both devices appear in SCM under <strong>Manage &gt; Devices</strong>. The bootstrap log shows <code>Bootstrap: completed successfully</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 6: CONFIGURE HA ON PAN-OS                             -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="ha-configuration">Phase 6: Configure HA on PAN-OS</h2>
+
+<p>HA configuration is performed on each firewall individually via the web UI. Use the values from <code>terraform output ha_config_summary</code> saved in Phase 5. Configure and commit FW1 completely before touching FW2.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Important: configure FW1 first, then FW2</div>
+  <p>Configure and commit HA on FW1 completely before starting on FW2. The HA pair will not form until both firewalls have compatible configurations. Configuring in sequence avoids partial-state confusion and makes it easier to diagnose problems if something is wrong.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.1: Enable HA and Set Mode on FW1</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Log in to FW1 at the management EIP URL.</li>
+      <li>Navigate to <strong>Device &gt; High Availability &gt; General</strong>.</li>
+      <li>Configure the following fields:</li>
+    </ol>
+    <table>
+      <thead><tr><th>Field</th><th>Value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Enable HA</td><td>Checked</td><td>Enables the HA subsystem.</td></tr>
+        <tr><td>Group ID</td><td><code>1</code></td><td>Must be identical on both firewalls. Range 1 to 63.</td></tr>
+        <tr><td>Mode</td><td><code>Active-Passive</code></td><td>Cross-AZ HA uses Active-Passive mode.</td></tr>
+        <tr><td>Peer HA1 IP Address</td><td><em>FW2 HA1 IP from terraform output</em> (<code>10.0.31.10</code>)</td><td>The IP of FW2's HA1 interface. FW1 sends hello packets to this address.</td></tr>
+        <tr><td>Backup Peer HA1 IP</td><td>(leave blank)</td><td>Not needed; HA2 provides session sync redundancy.</td></tr>
+      </tbody>
+    </table>
+    <ol start="4">
+      <li>Click <strong>OK</strong>. Do not commit yet.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The General tab saves without validation errors. The HA General configuration is shown with Enable HA checked and Group ID 1.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.2: Configure the HA1 Control Link on FW1</span>
+  </div>
+  <div class="collapsible-body">
+    <p>HA1 carries heartbeat and hello packets between the two firewalls on TCP port 28769. The Terraform-created security group <code>sg-ha</code> already allows this traffic within the VPC CIDR.</p>
+    <ol>
+      <li>Navigate to <strong>Device &gt; High Availability &gt; HA1</strong>.</li>
+      <li>Configure:</li>
+    </ol>
+    <table>
+      <thead><tr><th>Field</th><th>Value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Port</td><td><code>ethernet1/3</code></td><td>The HA1 ENI attached at device_index 3.</td></tr>
+        <tr><td>IP Address</td><td><em>FW1 HA1 IP from terraform output</em> (<code>10.0.30.10</code>)</td><td>The static private IP assigned by Terraform to FW1's HA1 ENI.</td></tr>
+        <tr><td>Netmask</td><td><code>255.255.255.0</code></td><td>Matches the <code>/24</code> ha1 subnet.</td></tr>
+        <tr><td>Gateway</td><td>(blank)</td><td>VPC routing handles cross-AZ reachability. No gateway is required.</td></tr>
+        <tr><td>Encryption</td><td>Enabled (optional)</td><td>Encrypts HA1 control traffic. Recommended for cross-AZ deployments. Requires matching setting on FW2.</td></tr>
+      </tbody>
+    </table>
+    <ol start="3">
+      <li>Click <strong>OK</strong>. Do not commit yet.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The HA1 tab shows port <code>ethernet1/3</code> and the correct static IP. No validation errors.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.3: Configure the HA2 Session Sync Link on FW1</span>
+  </div>
+  <div class="collapsible-body">
+    <p>HA2 carries session state synchronization on TCP port 28778. It is higher-bandwidth than HA1 because it replicates the full session table from the active to the passive firewall in real time.</p>
+    <ol>
+      <li>Navigate to <strong>Device &gt; High Availability &gt; HA2</strong>.</li>
+      <li>Configure:</li>
+    </ol>
+    <table>
+      <thead><tr><th>Field</th><th>Value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Transport</td><td><code>Ethernet</code></td><td>Uses a dedicated ENI. Do not use IP (UDP) transport in a VPC deployment.</td></tr>
+        <tr><td>Port</td><td><code>ethernet1/4</code></td><td>The HA2 ENI attached at device_index 4.</td></tr>
+        <tr><td>IP Address</td><td><em>FW1 HA2 IP from terraform output</em> (<code>10.0.40.10</code>)</td><td>Static private IP of FW1's HA2 ENI.</td></tr>
+        <tr><td>Netmask</td><td><code>255.255.255.0</code></td><td>Matches the <code>/24</code> ha2 subnet.</td></tr>
+        <tr><td>Enable Session Synchronization</td><td>Checked</td><td>Required for in-flight sessions to survive failover.</td></tr>
+      </tbody>
+    </table>
+    <ol start="3">
+      <li>Click <strong>OK</strong>. Do not commit yet.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The HA2 tab shows transport Ethernet, port <code>ethernet1/4</code>, correct IP, and session synchronization enabled.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.4: Configure Active/Passive Settings on FW1</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Navigate to <strong>Device &gt; High Availability &gt; Active/Passive Settings</strong>.</li>
+      <li>Configure:</li>
+    </ol>
+    <table>
+      <thead><tr><th>Field</th><th>Value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Passive Link State</td><td><code>Auto</code></td><td>Keeps all interfaces on the passive firewall in a down state, preventing network loops and ensuring traffic is not mis-routed to the standby.</td></tr>
+        <tr><td>Monitor Fail Condition</td><td><code>Any</code></td><td>Triggers failover if any monitored path or interface goes down.</td></tr>
+      </tbody>
+    </table>
+    <p>Leave timer values at their defaults unless you have a specific reason to adjust them:</p>
+    <table>
+      <thead><tr><th>Timer</th><th>Default</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Promotion Hold Time</td><td>2000 ms</td><td>How long the passive firewall waits after detecting a failure before promoting itself to active.</td></tr>
+        <tr><td>Hello Interval</td><td>8000 ms</td><td>Interval between HA hello packets.</td></tr>
+        <tr><td>Heartbeat Interval</td><td>2000 ms</td><td>Interval between HA heartbeat pings.</td></tr>
+        <tr><td>Preemptive</td><td>Disabled</td><td>Leave disabled unless you specifically want the higher-priority firewall to reclaim active status after recovery.</td></tr>
+      </tbody>
+    </table>
+    <ol start="3">
+      <li>Click <strong>OK</strong>. Do not commit yet.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Active/Passive settings saved. Passive Link State shows <code>Auto</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible" id="ha-aws-settings">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.5: Configure AWS HA Settings on FW1</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This is the critical section. These settings tell PAN-OS which EC2 resources to update when it becomes active after a failover. All values come from <code>terraform output ha_config_summary</code>.</p>
+    <ol>
+      <li>On the <strong>Active/Passive Settings</strong> page, scroll to the <strong>AWS HA</strong> section (or navigate to <strong>Device &gt; High Availability &gt; Active/Passive Settings &gt; AWS HA</strong>).</li>
+      <li>Check <strong>Enable AWS HA</strong>.</li>
+      <li>Configure the EIP failover fields:</li>
+    </ol>
+    <table>
+      <thead><tr><th>Field</th><th>Value from terraform output</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>EIP Allocation ID</td><td><em>Floating EIP allocation ID</em> (<code>eipalloc-...</code>)</td><td>Identifies which EIP to move. Use the allocation ID, not the IP address.</td></tr>
+        <tr><td>ENI ID (Active device)</td><td><em>FW1 untrust ENI ID</em> (<code>eni-...</code>)</td><td>The untrust ENI on this firewall (FW1). The EIP is removed from this ENI when FW1 is the failed peer.</td></tr>
+        <tr><td>ENI ID (Passive device)</td><td><em>FW2 untrust ENI ID</em> (<code>eni-...</code>)</td><td>The untrust ENI on FW2. The EIP is attached to this ENI when FW2 becomes active.</td></tr>
+      </tbody>
+    </table>
+    <ol start="4">
+      <li>Configure the Route Table failover fields:</li>
+    </ol>
+    <table>
+      <thead><tr><th>Field</th><th>Value from terraform output</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Enable Route Table Updates</td><td>Checked</td><td>Enables the <code>ec2:ReplaceRoute</code> call on failover.</td></tr>
+        <tr><td>Route Table ID</td><td><em>Trust route table ID</em> (<code>rtb-...</code>)</td><td>The route table attached to the trust subnets. Its routes are updated to point to the active FW's trust ENI.</td></tr>
+        <tr><td>ENI ID (Active device)</td><td><em>FW1 trust ENI ID</em> (<code>eni-...</code>)</td><td>The trust ENI on FW1. Route table next-hop is set to this ENI when FW1 is active.</td></tr>
+        <tr><td>ENI ID (Passive device)</td><td><em>FW2 trust ENI ID</em> (<code>eni-...</code>)</td><td>The trust ENI on FW2. Route table next-hop is changed to this ENI when FW2 becomes active.</td></tr>
+      </tbody>
+    </table>
+    <ol start="5">
+      <li>Click <strong>OK</strong>.</li>
+      <li>Click <strong>Commit</strong>. Wait for the commit to complete.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Commit completes with no errors. The AWS HA section shows Enable checked and all six fields populated with non-empty values.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.6: Configure HA on FW2 (Passive Peer)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Repeat Steps 6.1 through 6.5 on FW2, using the swapped values shown in the table below. The logic is symmetric: every "active" field on FW2 refers to FW2's own ENIs, and every "passive" field refers to FW1's ENIs.</p>
+
+    <table>
+      <thead><tr><th>Setting</th><th>On FW1</th><th>On FW2</th></tr></thead>
+      <tbody>
+        <tr><td>Peer HA1 IP</td><td>FW2 HA1 IP (<code>10.0.31.10</code>)</td><td>FW1 HA1 IP (<code>10.0.30.10</code>)</td></tr>
+        <tr><td>HA1 Port IP</td><td><code>10.0.30.10</code> (FW1)</td><td><code>10.0.31.10</code> (FW2)</td></tr>
+        <tr><td>HA2 Port IP</td><td><code>10.0.40.10</code> (FW1)</td><td><code>10.0.41.10</code> (FW2)</td></tr>
+        <tr><td>EIP ENI (Active device)</td><td>FW1 untrust ENI</td><td>FW2 untrust ENI</td></tr>
+        <tr><td>EIP ENI (Passive device)</td><td>FW2 untrust ENI</td><td>FW1 untrust ENI</td></tr>
+        <tr><td>Route Table ENI (Active)</td><td>FW1 trust ENI</td><td>FW2 trust ENI</td></tr>
+        <tr><td>Route Table ENI (Passive)</td><td>FW2 trust ENI</td><td>FW1 trust ENI</td></tr>
+      </tbody>
+    </table>
+
+    <p>All other settings (Group ID = <code>1</code>, Mode = <code>Active-Passive</code>, EIP Allocation ID, Route Table ID, HA ports, timers) are identical on both firewalls.</p>
+
+    <p>After completing all HA tabs on FW2, click <strong>Commit</strong>.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>FW2 commit completes with no errors. Within 30 to 60 seconds of both commits completing, navigate to <strong>Device &gt; High Availability &gt; Summary</strong> on either firewall. The local state and peer state should begin updating.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible" id="ha-floating-eip">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.7: Associate the Floating EIP with FW1's Untrust Interface</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Terraform created the floating EIP but did not associate it with any interface. This is intentional: if Terraform managed the association, every <code>terraform apply</code> run after a failover would try to re-associate the EIP back to FW1, fighting PAN-OS. Associate the EIP once, manually, after the HA pair forms and FW1 shows <strong>Active</strong>.</p>
+
+    <p><strong>Via AWS CLI:</strong></p>
+    <div class="code-block">
+      <pre><code>aws ec2 associate-address \
+  --allocation-id eipalloc-0abc1234def56789 \
+  --network-interface-id eni-0abc1234def56789a \
+  --private-ip-address 10.0.10.10 \
+  --region us-east-1</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Replace the allocation ID, ENI ID, and private IP with the actual values from <code>terraform output ha_config_summary</code>.</p>
+
+    <p><strong>Via AWS Console:</strong> navigate to <strong>EC2 &gt; Elastic IPs</strong>. Select the floating EIP (the one with no associated instance). Click <strong>Actions &gt; Associate Elastic IP address</strong>. Set Resource type to <em>Network interface</em>, select FW1's untrust ENI, select the private IP <code>10.0.10.10</code>, click <strong>Associate</strong>.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>In <strong>EC2 &gt; Elastic IPs</strong>, the floating EIP shows FW1's untrust ENI in the <em>Associated instance</em> or <em>Network interface</em> column. The association takes effect immediately.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  PHASE 7: POST-DEPLOYMENT VERIFICATION                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="verification">Phase 7: Post-Deployment Verification</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 7.1: Verify HA Pair Formed Successfully</span>
+  </div>
+  <div class="collapsible-body">
+    <p>On FW1, navigate to <strong>Device &gt; High Availability &gt; Summary</strong>. The dashboard shows the current state of both peers.</p>
+
+    <p>Expected state when healthy:</p>
+    <table>
+      <thead><tr><th>Field</th><th>FW1 (Active)</th><th>FW2 (Passive)</th></tr></thead>
+      <tbody>
+        <tr><td>Local State</td><td><strong>Active</strong></td><td><strong>Passive</strong></td></tr>
+        <tr><td>Peer State</td><td>Passive</td><td>Active</td></tr>
+        <tr><td>HA1 Status</td><td>Up</td><td>Up</td></tr>
+        <tr><td>HA2 Status</td><td>Up</td><td>Up</td></tr>
+        <tr><td>Configuration Sync</td><td>Synchronized</td><td>Synchronized</td></tr>
+        <tr><td>Running Sync</td><td>Running</td><td>Running</td></tr>
+      </tbody>
+    </table>
+
+    <p>Confirm via CLI (SSH to FW1 management EIP):</p>
+    <div class="code-block">
+      <pre><code>show high-availability all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Look for:</p>
+    <div class="code-block">
+      <pre><code>Group 1:
+  Mode: Active-Passive
+  Local state: Active
+  Peer state: Passive
+  HA1 link: Up
+  HA2 link: Up
+  Running sync: Running</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>FW1 shows <strong>Active</strong>, FW2 shows <strong>Passive</strong>. Both HA1 and HA2 links show <strong>Up</strong> on both firewalls. Configuration sync shows <strong>Synchronized</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible" id="failover-test">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 7.2: Trigger a Controlled Failover</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Suspend FW1 to force a failover to FW2. This tests the full EIP move and route table update without causing an uncontrolled failure.</p>
+
+    <ol>
+      <li>On FW1 CLI, suspend the active state:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>request high-availability state suspend</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <ol start="2">
+      <li>Wait 30 to 60 seconds.</li>
+      <li>On FW2 CLI, verify it has become active:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>show high-availability all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>FW2 should now show <code>Local state: Active</code>.</p>
+
+    <ol start="4">
+      <li>In <strong>EC2 &gt; Elastic IPs</strong>, verify the floating EIP is now associated with FW2's untrust ENI.</li>
+      <li>Verify the trust route table updated:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-route-tables \
+  --route-table-ids rtb-0abc1234def56789 \
+  --query 'RouteTables[0].Routes' \
+  --region us-east-1</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The routes should now show FW2's trust ENI ID as the <code>NetworkInterfaceId</code> next-hop.</p>
+
+    <ol start="6">
+      <li>Resume FW1 to return it to the passive role:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>request high-availability state functional</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>FW2 shows <strong>Active</strong> after the suspend command. The floating EIP is associated with FW2's untrust ENI in the EC2 console. The trust route table next-hop shows FW2's trust ENI ID. After <code>request high-availability state functional</code>, FW1 returns to <strong>Passive</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 7.3: Verify Traffic Flows Through the Active Firewall</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Once spoke VPCs or test instances are routed through the trust subnets, confirm that traffic passes through the active firewall.</p>
+    <ol>
+      <li>From a test instance in a spoke VPC, generate traffic toward the internet or another spoke (ping, curl, traceroute).</li>
+      <li>On the active firewall, check the session table:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>show session all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Active sessions appear in the output with source and destination IPs matching the test traffic.</p>
+
+    <ol start="3">
+      <li>On the passive firewall, confirm sessions are synchronized:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>show session all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The same sessions appear on the passive firewall (with a <code>SYNCED</code> flag), confirming HA2 session sync is working.</p>
+
+    <ol start="4">
+      <li>In the PAN-OS web UI on the active firewall, navigate to <strong>Monitor &gt; Logs &gt; Traffic</strong>. Confirm traffic log entries appear for the test flows.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Active firewall session table shows test sessions. Passive firewall shows synchronized copies of those sessions. Traffic logs show entries in <strong>Monitor &gt; Logs &gt; Traffic</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  TROUBLESHOOTING                                              -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>HA Pair Not Forming (HA1 Down)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The most common cause is the <code>sg-ha</code> security group not allowing traffic on TCP 28769 between the HA1 subnets. The Terraform creates <code>sg-ha</code> with an ingress rule allowing all traffic within the VPC CIDR, which covers TCP 28769. If the HA1 link shows Down, check in order:</p>
+    <ol>
+      <li><strong>Security group rule present:</strong></li>
+    </ol>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-security-groups \
+  --filters "Name=group-name,Values=pan-ha-sg-ha" \
+  --query 'SecurityGroups[0].IpPermissions'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The output must include a rule with <code>IpProtocol: -1</code> (all traffic) or a rule specifically for TCP 28769.</p>
+    <ol start="2">
+      <li><strong>Group ID mismatch:</strong> confirm Group ID is <code>1</code> on both firewalls via <strong>Device &gt; High Availability &gt; General</strong>.</li>
+      <li><strong>Wrong peer HA1 IP:</strong> confirm that the Peer HA1 IP on FW1 matches the <em>actual static private IP</em> on FW2's HA1 ENI. Verify the ENI's private IP in the EC2 console or via:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-network-interfaces \
+  --filters "Name=description,Values=HA1 control link" \
+  --query 'NetworkInterfaces[*].{ID:NetworkInterfaceId,IP:PrivateIpAddress}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="4">
+      <li><strong>Ping test from the firewall CLI:</strong></li>
+    </ol>
+    <div class="code-block">
+      <pre><code>ping source 10.0.30.10 host 10.0.31.10</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Run this on FW1. If ping fails, the security group or routing is the issue. If ping succeeds but HA1 is still Down, the issue is in the HA configuration (port or IP mismatch).</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Floating EIP Not Moving on Failover</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The EIP move requires <code>ec2:AssociateAddress</code> and <code>ec2:DisassociateAddress</code> in the instance profile. Check in order:</p>
+    <ol>
+      <li><strong>Verify the IAM policy on the instance role:</strong></li>
+    </ol>
+    <div class="code-block">
+      <pre><code>aws iam get-role-policy \
+  --role-name pan-ha-vmseries-role \
+  --policy-name pan-ha-ha-failover</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The output must include <code>ec2:AssociateAddress</code> and <code>ec2:DisassociateAddress</code> in the <code>EIPFailover</code> statement.</p>
+    <ol start="2">
+      <li><strong>EIP Allocation ID format:</strong> the field in PAN-OS AWS HA settings must be the allocation ID in the format <code>eipalloc-...</code>, not the public IP address. Verify via:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-addresses --query 'Addresses[*].{IP:PublicIp,ID:AllocationId}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="3">
+      <li><strong>ENI IDs not swapped:</strong> on FW1, the Active ENI ID must be FW1's untrust ENI and the Passive ENI ID must be FW2's. If these are reversed, the failover will try to disassociate from the wrong interface and fail silently.</li>
+      <li><strong>Check HA state on the firewall:</strong></li>
+    </ol>
+    <div class="code-block">
+      <pre><code>show high-availability all</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Look for an <code>AWS HA</code> section in the output. If it shows errors related to the EC2 API call, the IAM permissions or ENI IDs are the issue.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Route Table Not Updating on Failover</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The route table update requires <code>ec2:ReplaceRoute</code> scoped to route tables in the account and region. Check in order:</p>
+    <ol>
+      <li><strong>Verify <code>ec2:ReplaceRoute</code> is in the IAM policy:</strong></li>
+    </ol>
+    <div class="code-block">
+      <pre><code>aws iam get-role-policy \
+  --role-name pan-ha-vmseries-role \
+  --policy-name pan-ha-ha-failover</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The <code>RouteTableFailover</code> statement must include <code>ec2:ReplaceRoute</code>.</p>
+    <ol start="2">
+      <li><strong>Verify the route table ID:</strong> confirm the Route Table ID in PAN-OS AWS HA settings matches the trust route table created by Terraform:</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-route-tables \
+  --filters "Name=tag:Name,Values=pan-ha-rt-trust" \
+  --query 'RouteTables[0].RouteTableId'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol start="3">
+      <li><strong>Check what routes are currently in the table:</strong></li>
+    </ol>
+    <div class="code-block">
+      <pre><code>aws ec2 describe-route-tables \
+  --route-table-ids rtb-0abc1234def56789 \
+  --query 'RouteTables[0].Routes'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>After a failover, the <code>NetworkInterfaceId</code> next-hop should match the newly-active firewall's trust ENI ID.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Bootstrap Failed: Firewall Not Connecting to Management Platform</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Check in order:</p>
+    <ol>
+      <li><strong>Verify S3 permissions:</strong> the firewall reads its bootstrap bucket at first boot. If the IAM instance profile is missing <code>s3:GetObject</code> on the bucket, or the bucket name in user_data does not match the actual bucket name, bootstrap will fail silently.</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>aws s3 ls s3://pan-ha-fw1-bootstrap-&lt;suffix&gt;/config/</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Confirm <code>init-cfg.txt</code> appears in the output.</p>
+    <ol start="2">
+      <li><strong>Check the EC2 system log:</strong> in the EC2 console, select the instance, click <strong>Actions &gt; Monitor and troubleshoot &gt; Get system log</strong>. Search for <code>bootstrap</code> or <code>Error</code> strings.</li>
+      <li><strong>If Panorama-managed, check the auth key:</strong> if the auth key expired before the instance finished bootstrapping, the firewall connects to Panorama but cannot authenticate. Generate a new auth key and update the S3 <code>init-cfg.txt</code> object, then reboot the instance.</li>
+      <li><strong>Check Panorama reachability from the management subnet:</strong> the management subnet route table has a default route via the IGW. Confirm Panorama's IP or FQDN is reachable from the management subnet's IP space. If Panorama is on-premises, a VPN or Direct Connect attachment is required.</li>
+      <li><strong>Check bootstrap status from the firewall CLI</strong> (if the firewall is SSH-accessible):</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>show system bootstrap status</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The output lists each bootstrap phase with a pass or fail status. The failing phase identifies where to focus the investigation.</p>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="download-md-btn" id="downloadMdBtn" onclick="downloadAsMarkdown()">&#8681; Markdown</button>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>
