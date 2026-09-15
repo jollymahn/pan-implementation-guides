@@ -11,6 +11,13 @@
 var NEWS_ITEMS = [
   {
     badge: "New",
+    date: "Sep 15",
+    title: "VM-Series Active/Passive HA on AWS",
+    href: "guides/aws/vm-series-ha-deployment.html",
+    tags: "VM-Series, HA, AWS, Cross-AZ, Terraform"
+  },
+  {
+    badge: "New",
     date: "Sep 10",
     title: "AIRS Engagement Planner",
     href: "guides/airs-planner/index.html",
