@@ -511,6 +511,7 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'Overview', h: 'guides/ai-gateway/index.html', sub: true },
     { t: 'Deployment Guide', h: 'guides/ai-gateway/ai-gateway-deployment.html', sub: true },
     { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html', sub: true },
+    { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html', sub: true },
     { label: 'AI Integrations' },
     { t: 'Overview', h: 'guides/airs-integrations/index.html', sub: true },
     { t: 'Claude Code', h: 'guides/airs-integrations/claude-code.html', sub: true },
