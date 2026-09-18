@@ -585,16 +585,16 @@ module "fw1" {
   source  = "PaloAltoNetworks/swfw-modules/aws//modules/vmseries"
   version = "~> 2.2"
 
-  name                 = "${var.name_prefix}fw1"
-  vmseries_version     = var.panos_version
+  name                  = "${var.name_prefix}fw1"
+  vmseries_version      = var.panos_version
   vmseries_product_code = var.vmseries_product_code
-  instance_type        = var.instance_type
-  ssh_key_name         = var.ssh_key_name
-  iam_instance_profile = aws_iam_instance_profile.vmseries.name
-  ebs_encrypted        = true
-  ebs_kms_key_alias    = var.ebs_kms_key_alias
-  ebs_volume_type      = "gp3"
-  enable_monitoring    = true
+  instance_type         = var.instance_type
+  ssh_key_name          = var.ssh_key_name
+  iam_instance_profile  = aws_iam_instance_profile.vmseries.name
+  ebs_encrypted         = true
+  ebs_kms_key_alias     = var.ebs_kms_key_alias
+  ebs_volume_type       = "gp3"
+  enable_monitoring     = true
 
   interfaces = {
     mgmt = {
@@ -606,29 +606,31 @@ module "fw1" {
       source_dest_check  = true
       description        = "Management"
     }
-    untrust = {
-      device_index       = 1
-      subnet_id          = aws_subnet.untrust["az1"].id
-      security_group_ids = [aws_security_group.untrust.id]
-      private_ips        = [var.fw1_private_ips.untrust]
-      source_dest_check  = false
-      description        = "Untrust (public)"
-    }
-    trust = {
-      device_index       = 2
-      subnet_id          = aws_subnet.trust["az1"].id
-      security_group_ids = [aws_security_group.trust.id]
-      private_ips        = [var.fw1_private_ips.trust]
-      source_dest_check  = false
-      description        = "Trust (private)"
-    }
+    # PAN-OS requires HA2 on ethernet1/1 for VM-Series on AWS, so the HA ENI
+    # takes device_index 1 and the data interfaces shift down one slot.
     ha = {
-      device_index       = 3
+      device_index       = 1
       subnet_id          = aws_subnet.ha["az1"].id
       security_group_ids = [aws_security_group.ha.id]
       private_ips        = [var.fw1_private_ips.ha]
       source_dest_check  = false
-      description        = "HA2 session sync (eth1/3)"
+      description        = "HA2 session sync (eth1/1)"
+    }
+    untrust = {
+      device_index       = 2
+      subnet_id          = aws_subnet.untrust["az1"].id
+      security_group_ids = [aws_security_group.untrust.id]
+      private_ips        = [var.fw1_private_ips.untrust]
+      source_dest_check  = false
+      description        = "Untrust (public, eth1/2)"
+    }
+    trust = {
+      device_index       = 3
+      subnet_id          = aws_subnet.trust["az1"].id
+      security_group_ids = [aws_security_group.trust.id]
+      private_ips        = [var.fw1_private_ips.trust]
+      source_dest_check  = false
+      description        = "Trust (private, eth1/3)"
     }
   }
 
@@ -651,16 +653,16 @@ module "fw2" {
   source  = "PaloAltoNetworks/swfw-modules/aws//modules/vmseries"
   version = "~> 2.2"
 
-  name                 = "${var.name_prefix}fw2"
-  vmseries_version     = var.panos_version
+  name                  = "${var.name_prefix}fw2"
+  vmseries_version      = var.panos_version
   vmseries_product_code = var.vmseries_product_code
-  instance_type        = var.instance_type
-  ssh_key_name         = var.ssh_key_name
-  iam_instance_profile = aws_iam_instance_profile.vmseries.name
-  ebs_encrypted        = true
-  ebs_kms_key_alias    = var.ebs_kms_key_alias
-  ebs_volume_type      = "gp3"
-  enable_monitoring    = true
+  instance_type         = var.instance_type
+  ssh_key_name          = var.ssh_key_name
+  iam_instance_profile  = aws_iam_instance_profile.vmseries.name
+  ebs_encrypted         = true
+  ebs_kms_key_alias     = var.ebs_kms_key_alias
+  ebs_volume_type       = "gp3"
+  enable_monitoring     = true
 
   interfaces = {
     mgmt = {
@@ -672,29 +674,31 @@ module "fw2" {
       source_dest_check  = true
       description        = "Management"
     }
-    untrust = {
-      device_index       = 1
-      subnet_id          = aws_subnet.untrust["az2"].id
-      security_group_ids = [aws_security_group.untrust.id]
-      private_ips        = [var.fw2_private_ips.untrust]
-      source_dest_check  = false
-      description        = "Untrust (public)"
-    }
-    trust = {
-      device_index       = 2
-      subnet_id          = aws_subnet.trust["az2"].id
-      security_group_ids = [aws_security_group.trust.id]
-      private_ips        = [var.fw2_private_ips.trust]
-      source_dest_check  = false
-      description        = "Trust (private)"
-    }
+    # PAN-OS requires HA2 on ethernet1/1 for VM-Series on AWS, so the HA ENI
+    # takes device_index 1 and the data interfaces shift down one slot.
     ha = {
-      device_index       = 3
+      device_index       = 1
       subnet_id          = aws_subnet.ha["az2"].id
       security_group_ids = [aws_security_group.ha.id]
       private_ips        = [var.fw2_private_ips.ha]
       source_dest_check  = false
-      description        = "HA2 session sync (eth1/3)"
+      description        = "HA2 session sync (eth1/1)"
+    }
+    untrust = {
+      device_index       = 2
+      subnet_id          = aws_subnet.untrust["az2"].id
+      security_group_ids = [aws_security_group.untrust.id]
+      private_ips        = [var.fw2_private_ips.untrust]
+      source_dest_check  = false
+      description        = "Untrust (public, eth1/2)"
+    }
+    trust = {
+      device_index       = 3
+      subnet_id          = aws_subnet.trust["az2"].id
+      security_group_ids = [aws_security_group.trust.id]
+      private_ips        = [var.fw2_private_ips.trust]
+      source_dest_check  = false
+      description        = "Trust (private, eth1/3)"
     }
   }
 

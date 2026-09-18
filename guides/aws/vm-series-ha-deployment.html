@@ -124,7 +124,7 @@
 <div class="callout callout-note">
   <div class="callout-title">Guide Approach</div>
   <p>This guide follows a <strong>management-first</strong> approach. All licensing, device groups, templates or folders, and security policy are configured on your management platform (<strong>Panorama</strong> or <strong>Strata Cloud Manager</strong>) before any AWS infrastructure is built. Firewalls bootstrap into a fully configured management plane on first boot, then form the HA pair.</p>
-  <p><strong>Design model:</strong> Active/Passive HA pair across two Availability Zones in a dedicated Security VPC. Five interfaces per firewall: management, untrust (public), trust (private), HA1 (heartbeat), and HA2 (session sync). On failover, PAN-OS uses the firewall's IAM instance profile to move the floating EIP and update the trust-side route table.</p>
+  <p><strong>Design model:</strong> Active/Passive HA pair across two Availability Zones in a dedicated Security VPC. Four interfaces per firewall: management (which also carries the HA1 heartbeat), HA2 session sync on <code>ethernet1/1</code>, untrust (public) on <code>ethernet1/2</code>, and trust (private) on <code>ethernet1/3</code>. On failover, PAN-OS uses the firewall's IAM instance profile to move the floating EIP and update the trust-side route table.</p>
   <p><strong>Deployment method:</strong> All AWS infrastructure is deployed with <strong>Terraform</strong> using the <a href="https://registry.terraform.io/modules/PaloAltoNetworks/swfw-modules/aws/latest">PaloAltoNetworks SWFW Modules</a> (v2.2, sourced from the Terraform Registry). The Terraform configuration for this guide is included below in Phase 4.</p>
 </div>
 
@@ -142,7 +142,7 @@
 <p>Review the topology and interface model before beginning. The diagram below shows the full Security VPC layout across two Availability Zones. The sections that follow cover the subnet table, per-firewall interface assignments, and the sequence of EC2 API calls that PAN-OS executes on failover.</p>
 
 <p><em>Security VPC topology: two VM-Series firewalls in separate Availability Zones, connected by HA1 (heartbeat) and HA2 (session sync) links, with a floating EIP on the active firewall's untrust interface:</em></p>
-<img src="diagrams/aws-ha-security-vpc-topology.svg" alt="Security VPC topology showing FW1 (Active) in AZ1 and FW2 (Passive) in AZ2, each with four interfaces: eth0 management (also HA1 heartbeat), ethernet1/1 untrust, ethernet1/2 trust, ethernet1/3 HA2 session sync. A floating Elastic IP on FW1 untrust moves to FW2 on failover. HA1 heartbeat runs over the management interface with no dedicated ENI. Four subnet types per AZ: blue for management, gold for untrust, green for trust, purple for HA2." loading="lazy" style="max-width:100%;border:1px solid var(--border);border-radius:4px;margin:1rem 0;">
+<img src="diagrams/aws-ha-security-vpc-topology.svg" alt="Security VPC topology showing FW1 (Active) in AZ1 and FW2 (Passive) in AZ2, each with four interfaces: eth0 management (also HA1 heartbeat), ethernet1/1 HA2 session sync, ethernet1/2 untrust, ethernet1/3 trust. A floating Elastic IP on FW1 untrust moves to FW2 on failover. HA1 heartbeat runs over the management interface with no dedicated ENI. Four subnet types per AZ: blue for management, gold for untrust, green for trust, purple for HA2." loading="lazy" style="max-width:100%;border:1px solid var(--border);border-radius:4px;margin:1rem 0;">
 
 <h3 id="ha-interface-model">Interface and HA Model</h3>
 
@@ -191,7 +191,7 @@
           <td><code>10.0.40.0/24</code></td>
           <td><code>10.0.41.0/24</code></td>
           <td>VPC local only</td>
-          <td>HA2 session sync (ethernet1/3). TCP 28778. Carries full session state so in-flight connections survive failover. HA1 heartbeat runs over the management interface — no dedicated HA1 subnet needed.</td>
+          <td>HA2 session sync (ethernet1/1). IP protocol 99 or UDP 29281. Carries full session state so in-flight connections survive failover. HA1 heartbeat runs over the management interface — no dedicated HA1 subnet needed.</td>
         </tr>
       </tbody>
     </table>
@@ -237,8 +237,18 @@
         </tr>
         <tr>
           <td><code>eth1</code></td>
-          <td>ethernet1/1</td>
+          <td>ethernet1/1 <strong>(HA2)</strong></td>
           <td>1</td>
+          <td>ha-az1</td>
+          <td><code>10.0.40.10</code></td>
+          <td>false</td>
+          <td><code>sg-ha</code></td>
+          <td>HA2 session sync. IP protocol 99 or UDP 29281. Bulk session state sync so in-flight connections survive failover. PAN-OS requires HA2 on <code>ethernet1/1</code> for VM-Series on AWS.</td>
+        </tr>
+        <tr>
+          <td><code>eth2</code></td>
+          <td>ethernet1/2</td>
+          <td>2</td>
           <td>untrust-az1</td>
           <td><code>10.0.10.10</code></td>
           <td>false</td>
@@ -246,27 +256,23 @@
           <td>Internet-facing. Floating EIP associated here on the active firewall.</td>
         </tr>
         <tr>
-          <td><code>eth2</code></td>
-          <td>ethernet1/2</td>
-          <td>2</td>
+          <td><code>eth3</code></td>
+          <td>ethernet1/3</td>
+          <td>3</td>
           <td>trust-az1</td>
           <td><code>10.0.20.10</code></td>
           <td>false</td>
           <td><code>sg-trust</code></td>
           <td>Private-side. Trust route table next-hop is updated to this ENI on failover.</td>
         </tr>
-        <tr>
-          <td><code>eth3</code></td>
-          <td>ethernet1/3</td>
-          <td>3</td>
-          <td>ha-az1</td>
-          <td><code>10.0.40.10</code></td>
-          <td>false</td>
-          <td><code>sg-ha</code></td>
-          <td>HA2 session sync. TCP 28778. Bulk session state sync so in-flight connections survive failover.</td>
-        </tr>
       </tbody>
     </table>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">HA2 must be ethernet1/1</div>
+      <p>This is a hard PAN-OS requirement on AWS, not a design preference. Palo Alto Networks documentation states that <code>ethernet1/1</code> must be assigned as the HA2 link to deploy the VM-Series firewall on AWS in HA. The HA ENI is therefore attached at <code>device_index = 1</code>, which pushes untrust to <code>ethernet1/2</code> and trust to <code>ethernet1/3</code>.</p>
+      <p>If you place HA2 on any other interface, the HA pair will not synchronize sessions correctly. See <a href="https://docs.paloaltonetworks.com/vm-series/deployment/public-cloud/set-up-the-vm-series-firewall-on-aws/high-availability-for-vm-series-firewall-on-aws" target="_blank" rel="noopener">High Availability for VM-Series Firewall on AWS</a>.</p>
+    </div>
 
     <div class="callout callout-warning">
       <div class="callout-title">Important: source_dest_check on data-plane interfaces</div>
@@ -279,7 +285,7 @@
       <p>If you add a DMZ interface:</p>
       <ul>
         <li>Add a DMZ subnet (one per AZ), security group, and ENI to the Terraform configuration.</li>
-        <li>Assign the interface at <code>device_index = 3</code> (ethernet1/3) and shift HA2 to <code>device_index = 4</code> (ethernet1/4), or place DMZ at device_index 4 — either order works as long as it is consistent on both firewalls.</li>
+        <li>Assign the DMZ interface at <code>device_index = 4</code> (ethernet1/4). Leave HA2 on <code>device_index = 1</code> (ethernet1/1): it cannot be moved, so the DMZ has to take the next free slot after trust.</li>
         <li>Add the DMZ route table ID to the PAN-OS HA AWS settings in Phase 6 so PAN-OS updates it on failover alongside the trust route table.</li>
         <li>Both firewalls must have an identical interface count and layout or PAN-OS will refuse to form the HA pair.</li>
       </ul>
@@ -305,7 +311,7 @@
         </ol>
       </li>
       <li><strong>Route table failover via EC2 API.</strong> The newly-active firewall calls <code>ec2:ReplaceRoute</code> on the trust route table, changing the next-hop for the configured CIDR to its own trust ENI (<code>eni-fw2-trust</code>). Spoke VPC traffic now reaches FW2.</li>
-      <li><strong>Session restoration.</strong> The HA2 link (TCP 28778) continuously synchronized session state from the active to the passive firewall. After promotion, FW2 already holds the session table. Established TCP sessions survive the failover with minimal packet loss.</li>
+      <li><strong>Session restoration.</strong> The HA2 link continuously synchronized session state from the active to the passive firewall. After promotion, FW2 already holds the session table. Established TCP sessions survive the failover with minimal packet loss.</li>
     </ol>
 
     <div class="callout callout-note">
@@ -581,10 +587,9 @@ aws sts get-caller-identity</code></pre>
         <table>
           <thead><tr><th>Interface</th><th>Interface Type</th><th>Zone</th><th>IP Address</th></tr></thead>
           <tbody>
-            <tr><td><code>ethernet1/1</code></td><td>Layer3</td><td><code>untrust</code></td><td>DHCP Client</td></tr>
-            <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td><code>trust</code></td><td>DHCP Client</td></tr>
-            <tr><td><code>ethernet1/3</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
-            <tr><td><code>ethernet1/3</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
+            <tr><td><code>ethernet1/1</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
+            <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td><code>untrust</code></td><td>DHCP Client</td></tr>
+            <tr><td><code>ethernet1/3</code></td><td>Layer3</td><td><code>trust</code></td><td>DHCP Client</td></tr>
           </tbody>
         </table>
         <ol start="4">
@@ -596,7 +601,7 @@ aws sts get-caller-identity</code></pre>
         </div>
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>Zones <code>untrust</code>, <code>trust</code>, and <code>ha</code> appear in the template. <code>ethernet1/1</code> and <code>ethernet1/2</code> show their assigned zones. The Panorama commit completes with no errors.</p>
+          <p>Zones <code>untrust</code>, <code>trust</code>, and <code>ha</code> appear in the template. <code>ethernet1/2</code> and <code>ethernet1/3</code> show their assigned zones, and <code>ethernet1/1</code> shows interface type HA. The Panorama commit completes with no errors.</p>
         </div>
       </div>
     </div>
@@ -705,10 +710,9 @@ aws sts get-caller-identity</code></pre>
         <table>
           <thead><tr><th>Interface</th><th>Type</th><th>Zone</th><th>IP</th></tr></thead>
           <tbody>
-            <tr><td><code>ethernet1/1</code></td><td>Layer3</td><td><code>untrust</code></td><td>DHCP Client</td></tr>
-            <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td><code>trust</code></td><td>DHCP Client</td></tr>
-            <tr><td><code>ethernet1/3</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
-            <tr><td><code>ethernet1/3</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
+            <tr><td><code>ethernet1/1</code></td><td>HA</td><td><code>ha</code></td><td>(configured in Phase 6)</td></tr>
+            <tr><td><code>ethernet1/2</code></td><td>Layer3</td><td><code>untrust</code></td><td>DHCP Client</td></tr>
+            <tr><td><code>ethernet1/3</code></td><td>Layer3</td><td><code>trust</code></td><td>DHCP Client</td></tr>
           </tbody>
         </table>
         <ol start="4">
@@ -962,7 +966,7 @@ bootstrap_options_fw2 = {
 
     <div class="callout callout-note">
       <div class="callout-title">Static IPs and why they matter</div>
-      <p>The variables <code>fw1_private_ips</code> and <code>fw2_private_ips</code> assign fixed private IPs to the untrust, trust, and HA2 (ethernet1/3) ENIs. The HA2 peer address is set from these values in Phase 6. The management interface (eth0) uses DHCP; its private IP becomes the HA1 peer address and is found in the EC2 console after deployment.</p>
+      <p>The variables <code>fw1_private_ips</code> and <code>fw2_private_ips</code> assign fixed private IPs to the HA2 (ethernet1/1), untrust (ethernet1/2), and trust (ethernet1/3) ENIs. The HA2 peer address is set from these values in Phase 6. The management interface (eth0) uses DHCP; its private IP becomes the HA1 peer address and is found in the EC2 console after deployment.</p>
     </div>
 
     <div class="callout callout-success">
@@ -1080,10 +1084,9 @@ terraform plan -out=ha.plan</code></pre>
       <li>Click an instance, then the <strong>Networking</strong> tab. Confirm 4 network interfaces are attached:
         <ul>
           <li><code>eth0</code>: description <em>Management</em>, in the mgmt subnet, with a public IPv4 (the management EIP)</li>
-          <li><code>eth1</code>: description <em>Untrust (public)</em>, private IP matches <code>fw1_private_ips.untrust</code></li>
-          <li><code>eth2</code>: description <em>Trust (private)</em></li>
-          <li><code>eth3</code>: description <em>HA2 session sync (eth1/3)</em></li>
-          <li><code>eth4</code>: description <em>HA2 session sync</em></li>
+          <li><code>eth1</code>: description <em>HA2 session sync (eth1/1)</em>, private IP matches <code>fw1_private_ips.ha</code></li>
+          <li><code>eth2</code>: description <em>Untrust (public, eth1/2)</em>, private IP matches <code>fw1_private_ips.untrust</code></li>
+          <li><code>eth3</code>: description <em>Trust (private, eth1/3)</em>, private IP matches <code>fw1_private_ips.trust</code></li>
         </ul>
       </li>
       <li>Click the <strong>Security</strong> tab. Confirm the IAM instance profile is <code>pan-ha-vmseries-profile</code>.</li>
@@ -1214,7 +1217,7 @@ terraform plan -out=ha.plan</code></pre>
     <span>Step 6.3: Configure the HA2 Session Sync Link on FW1</span>
   </div>
   <div class="collapsible-body">
-    <p>HA2 carries session state synchronization on TCP port 28778. It is higher-bandwidth than HA1 because it replicates the full session table from the active to the passive firewall in real time.</p>
+    <p>HA2 carries session state synchronization. It is higher-bandwidth than HA1 because it replicates the full session table from the active to the passive firewall in real time. On AWS the HA2 link runs over IP (protocol number 99) or UDP (port 29281). Ethernet transport is not usable because it needs Layer 2 adjacency that a VPC does not provide.</p>
     <ol>
       <li>Navigate to <strong>Device &gt; High Availability &gt; HA2</strong>.</li>
       <li>Configure:</li>
@@ -1222,10 +1225,11 @@ terraform plan -out=ha.plan</code></pre>
     <table>
       <thead><tr><th>Field</th><th>Value</th><th>Notes</th></tr></thead>
       <tbody>
-        <tr><td>Transport</td><td><code>Ethernet</code></td><td>Uses a dedicated ENI. Do not use IP (UDP) transport in a VPC deployment.</td></tr>
-        <tr><td>Port</td><td><code>ethernet1/3</code></td><td>The HA2 ENI attached at device_index 3.</td></tr>
-        <tr><td>IP Address</td><td><em>FW1 HA2 IP from terraform output</em> (<code>10.0.40.10</code>)</td><td>Static private IP of FW1's HA2 ENI.</td></tr>
+        <tr><td>Transport</td><td><code>IP</code></td><td>IP protocol number 99. Select <code>UDP</code> (port 29281) instead if you want the firewall to checksum the whole packet rather than just the header. Ethernet transport is not an option on AWS: it needs Layer 2 adjacency that a VPC does not provide.</td></tr>
+        <tr><td>Port</td><td><code>ethernet1/1</code></td><td>The HA2 ENI attached at device_index 1. PAN-OS requires HA2 on ethernet1/1 for VM-Series on AWS.</td></tr>
+        <tr><td>IP Address</td><td><em>FW1 HA2 IP from terraform output</em> (<code>10.0.40.10</code>)</td><td>Static private IP of FW1's HA2 ENI. It must match the IP assigned to the ENI in the EC2 console.</td></tr>
         <tr><td>Netmask</td><td><code>255.255.255.0</code></td><td>Matches the <code>/24</code> ha subnet (10.0.40.0/24 for FW1, 10.0.41.0/24 for FW2).</td></tr>
+        <tr><td>Gateway</td><td><code>10.0.40.1</code></td><td>Required here because this build spans two Availability Zones, so the two HA2 interfaces sit in different subnets and need a router between them. Use the VPC router address of the firewall's own ha subnet: <code>10.0.40.1</code> on FW1, <code>10.0.41.1</code> on FW2. In a same-AZ build where both HA2 interfaces share one subnet, leave this blank.</td></tr>
         <tr><td>Enable Session Synchronization</td><td>Checked</td><td>Required for in-flight sessions to survive failover.</td></tr>
       </tbody>
     </table>
@@ -1234,7 +1238,7 @@ terraform plan -out=ha.plan</code></pre>
     </ol>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
-      <p>The HA2 tab shows transport Ethernet, port <code>ethernet1/3</code>, correct IP, and session synchronization enabled.</p>
+      <p>The HA2 tab shows transport IP, port <code>ethernet1/1</code>, the correct IP and gateway, and session synchronization enabled.</p>
     </div>
   </div>
 </div>
@@ -1332,7 +1336,7 @@ terraform plan -out=ha.plan</code></pre>
       <tbody>
         <tr><td>HA1 Port</td><td><code>management</code></td><td><code>management</code></td></tr>
         <tr><td>Peer HA1 IP</td><td>FW2 management private IP (EC2 console &gt; FW2 instance &gt; eth0 private IP)</td><td>FW1 management private IP (EC2 console &gt; FW1 instance &gt; eth0 private IP)</td></tr>
-        <tr><td>HA2 Port IP</td><td><code>10.0.40.10</code> (FW1 eth1/3)</td><td><code>10.0.41.10</code> (FW2 eth1/3)</td></tr>
+        <tr><td>HA2 Port IP</td><td><code>10.0.40.10</code> (FW1 ethernet1/1)</td><td><code>10.0.41.10</code> (FW2 ethernet1/1)</td></tr>
         <tr><td>EIP ENI (Active device)</td><td>FW1 untrust ENI</td><td>FW2 untrust ENI</td></tr>
         <tr><td>EIP ENI (Passive device)</td><td>FW2 untrust ENI</td><td>FW1 untrust ENI</td></tr>
         <tr><td>Route Table ENI (Active)</td><td>FW1 trust ENI</td><td>FW2 trust ENI</td></tr>

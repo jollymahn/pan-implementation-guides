@@ -19,7 +19,8 @@ output "fw2_mgmt_eip" {
 # The HA1 peer address is the other firewall's management interface private IP.
 # Find it in the EC2 console under the management ENI (eth0) after apply.
 #
-# HA2 uses eth1/3 with a static private IP:
+# HA2 uses eth1/1 with a static private IP (PAN-OS requires HA2 on ethernet1/1
+# for VM-Series on AWS):
 #   FW1: Device > High Availability > HA2: peer IP = fw2_ha_ip
 #   FW2: Device > High Availability > HA2: peer IP = fw1_ha_ip
 
@@ -120,17 +121,17 @@ output "subnet_ids" {
 output "ha_config_summary" {
   description = "PAN-OS HA configuration reference values."
   value = {
-    "FW1 management URL"               = "https://${aws_eip.mgmt_fw1.public_ip}"
-    "FW2 management URL"               = "https://${aws_eip.mgmt_fw2.public_ip}"
-    "HA1 peer setup"                   = "HA1 port=management on each FW; peer IP = other FW's mgmt private IP (see EC2 console eth0)"
-    "FW1 HA2 IP (set as peer on FW2)"  = var.fw1_private_ips.ha
-    "FW2 HA2 IP (set as peer on FW1)"  = var.fw2_private_ips.ha
-    "Floating EIP allocation ID"       = aws_eip.floating_untrust.id
-    "Floating EIP public IP"           = aws_eip.floating_untrust.public_ip
-    "Trust route table ID"             = aws_route_table.trust.id
-    "FW1 untrust ENI ID"               = module.fw1.interfaces["untrust"].id
-    "FW2 untrust ENI ID"               = module.fw2.interfaces["untrust"].id
-    "FW1 trust ENI ID"                 = module.fw1.interfaces["trust"].id
-    "FW2 trust ENI ID"                 = module.fw2.interfaces["trust"].id
+    "FW1 management URL"              = "https://${aws_eip.mgmt_fw1.public_ip}"
+    "FW2 management URL"              = "https://${aws_eip.mgmt_fw2.public_ip}"
+    "HA1 peer setup"                  = "HA1 port=management on each FW; peer IP = other FW's mgmt private IP (see EC2 console eth0)"
+    "FW1 HA2 IP (set as peer on FW2)" = var.fw1_private_ips.ha
+    "FW2 HA2 IP (set as peer on FW1)" = var.fw2_private_ips.ha
+    "Floating EIP allocation ID"      = aws_eip.floating_untrust.id
+    "Floating EIP public IP"          = aws_eip.floating_untrust.public_ip
+    "Trust route table ID"            = aws_route_table.trust.id
+    "FW1 untrust ENI ID"              = module.fw1.interfaces["untrust"].id
+    "FW2 untrust ENI ID"              = module.fw2.interfaces["untrust"].id
+    "FW1 trust ENI ID"                = module.fw1.interfaces["trust"].id
+    "FW2 trust ENI ID"                = module.fw2.interfaces["trust"].id
   }
 }
