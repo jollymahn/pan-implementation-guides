@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>AI Gateway Hybrid Infrastructure | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+    <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+      <button class="header-search-btn" onclick="openSearch()">
+        <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+        Search <kbd>&#8984;K</kbd>
+      </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../.."></nav>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<div class="sidebar-backdrop"></div>
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture" data-section="architecture">Hybrid Architecture</a>
+    <a href="#components" data-section="components">Data Plane Components</a>
+    <a href="#platform-support" data-section="platform-support">Platform Support</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Plan</div>
+    <a href="#sizing" data-section="sizing">Sizing</a>
+    <a href="#connectivity" data-section="connectivity">Connectivity</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prerequisites</div>
+    <a href="#prereq-aws" data-section="prereq-aws">AWS (EKS)</a>
+    <a href="#prereq-azure" data-section="prereq-azure">Azure (AKS)</a>
+    <a href="#prereq-gcp" data-section="prereq-gcp">GCP (GKE)</a>
+    <a href="#serverless" data-section="serverless">ECS and Container Apps</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Operate</div>
+    <a href="#registration" data-section="registration">Registration and Workspaces</a>
+    <a href="#day2" data-section="day2">Operations</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#reference" data-section="reference">Reference</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  Hybrid Infrastructure
+</div>
+
+<div class="article">
+
+<h1>AI Gateway Hybrid Infrastructure</h1>
+<p class="subtitle">Plan, size, and prepare the infrastructure for a Prisma AIRS AI Gateway hybrid data plane on EKS, AKS, GKE, ECS, or Azure Container Apps, covering the two-plane architecture, component inventory, published sizing, connectivity in both directions, and per-platform prerequisites</p>
+
+<div class="cloud-links">
+  <a href="ai-gateway-deployment.html">Deployment Guide</a>
+  <a href="llm-api-key-management.html">LLM API Key Management</a>
+  <a href="../airs/index.html">Prisma AIRS</a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This is a companion to the <a href="ai-gateway-deployment.html">AI Gateway Deployment Guide</a>. It covers only the infrastructure a hybrid data plane needs: what runs in your environment, how big it has to be, what it talks to in both directions, and what each platform requires before you deploy.</p>
+  <p>It does not repeat licensing, activation, or Strata Cloud Manager (SCM) configuration. Those live in the deployment guide, and you need them regardless of which platform you land on.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Complete these first</div>
+  <p>Everything below assumes you have already finished <a href="ai-gateway-deployment.html#license-activate">Phase 1 (License and Activate)</a> and <a href="ai-gateway-deployment.html#enable-gateway">Phase 2 (Enable the Gateway)</a> in the deployment guide. You also need the Docker credentials and Client Auth Key that the Palo Alto Networks team issues against your Organisation ID. Without those the install will come up but never pull images or sync.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     1. Hybrid Architecture
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="architecture">Hybrid Architecture</h2>
+
+<p>Prisma AIRS AI Gateway is deployed as a two-plane system. AI traffic is processed inside your own environment. Administration, analytics, and log presentation run in the management plane behind Strata Cloud Manager. The split determines what leaves your network, which is usually the first question a security or privacy review asks.</p>
+
+<p>The diagram below is the reference topology on AWS. Azure and GCP versions appear in their prerequisite sections, and the numbered flows are consistent across all three.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">The diagrams show the platform-page deployment path</div>
+  <p>All three draw the inbound management plane connection, which belongs to the <code>portkey-ai/gateway</code> chart installed from the EKS, AKS, or GKE pages. A gateway registered through the SCM wizard and installed with <code>airs-gw</code> has no inbound path at all. Read <a href="#platform-support">Two integration paths, two charts</a> before you use a diagram as a design.</p>
+</div>
+
+<img src="diagrams/aigw-hybrid-aws-vpc.svg" alt="AI Gateway hybrid data plane on AWS: applications call an internal load balancer, which balances across gateway pods on EKS worker nodes in two Availability Zones. The pods read config from ElastiCache, write logs to S3, and exchange traffic with the management plane over PrivateLink or the internet in both directions." loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>What runs where</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The data plane processes every LLM request. The management plane is where you author configuration and read analytics. The Strata Cloud Manager API Gateway sits at the boundary and is the sole authentication authority for anything entering the management plane.</p>
+
+    <table>
+      <thead>
+        <tr><th>Customer environment</th><th>Role</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>AI Gateway</td><td>LLM reverse proxy. Routes to providers, enforces rate limits and quotas, applies guardrails, produces analytics and raw log data. Stateless containers that scale horizontally.</td></tr>
+        <tr><td>Cache Store</td><td>Local Redis holding configuration objects, so requests are served without a round trip to the management plane.</td></tr>
+        <tr><td>Log Storage</td><td>Blob store holding the full request and response payload for every LLM call.</td></tr>
+        <tr><td>LLM Providers</td><td>The upstream models the gateway routes to, whether public, private, or self-hosted.</td></tr>
+      </tbody>
+    </table>
+
+    <table>
+      <thead>
+        <tr><th>Management plane</th><th>Role</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>SCM API Gateway</td><td>Terminates mTLS, authenticates end users, injects identity headers. Sole authentication authority.</td></tr>
+        <tr><td>Backend</td><td>Owns all writes to MySQL. Reads ClickHouse for analytics, reads the blob store for log detail views, manages cache invalidation.</td></tr>
+        <tr><td>Dashboard</td><td>The SCM web interface for configuration, logs, and analytics.</td></tr>
+        <tr><td>MySQL</td><td>Organisations, workspaces, API keys, routing configs, guardrail definitions, entitlements, tenant mappings. The gateway never connects to it directly.</td></tr>
+        <tr><td>ClickHouse</td><td>Request metrics and guardrail results written by the gateway; audit logs written by the Backend.</td></tr>
+        <tr><td>Redis</td><td>Management plane cache for auth context, configs, rate limit counters, and circuit breaker state.</td></tr>
+        <tr><td>Blob Store</td><td>Object storage for full request and response bodies, read by the Backend to serve log detail views.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Log storage location is configurable</div>
+      <p>Both tables list a blob store. Where the raw payloads actually land depends on your <code>LOG_STORE</code> setting: pointed at your own bucket, the bodies stay in your account and the Backend reads them across the link when an operator opens a log entry. Set to <code>control_plane</code>, they go to the management plane instead. Decide this deliberately, because it is the single setting that governs where prompt content rests.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Identity and authentication</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Session cookies are not used on management plane routes. Identity is established through three headers the SCM API Gateway injects into every request it forwards.</p>
+
+    <table>
+      <thead>
+        <tr><th>Header</th><th>Carries</th><th>Used for</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Tenant ID</td><td>The Palo Alto Tenant/TSG identifier</td><td>Resolved in MySQL to an internal organisation identity. Unrecognised tenants are rejected before any business logic runs.</td></tr>
+        <tr><td>User Subject</td><td>Opaque user identity from the Palo Alto JWT</td><td>Caller identity for audit entries. Never persisted in a Backend user store, because SCM owns user lifecycle entirely.</td></tr>
+        <tr><td>Scope Access</td><td>The workspace scopes the caller may access</td><td>Evaluated per request. Workspace membership tables are not consulted, so access is entirely scope based.</td></tr>
+      </tbody>
+    </table>
+
+    <p>The load balancer in front of the Backend terminates mTLS and forwards the verified client certificate subject. The Backend then re-verifies the certificate CN, so gateway-injected identity headers are trusted only when the caller is genuinely the SCM API Gateway.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Request lifecycle</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Only the synchronous path affects response latency. Everything else runs after the client already has its answer.</p>
+
+    <p><strong>Synchronous:</strong></p>
+    <ol>
+      <li><strong>Entry</strong> &mdash; the application sends an LLM request to the gateway in your environment.</li>
+      <li><strong>Auth and config hydration</strong> &mdash; the gateway checks Redis for the API key, organisation context, and routing configuration. A cache miss calls the Backend over the link, which reads MySQL and returns the hydrated object for the gateway to cache.</li>
+      <li><strong>LLM proxying</strong> &mdash; the gateway forwards the request, with any configured transformations, to the target provider. The response streams back through the gateway.</li>
+      <li><strong>Response return</strong> &mdash; the client's request ends here.</li>
+    </ol>
+
+    <p><strong>Asynchronous, non-blocking:</strong></p>
+    <ol>
+      <li><strong>Metrics to ClickHouse</strong> &mdash; token counts, cost, latency, model, provider, cache status, and trace identifiers, plus a pointer to the full log body. Batched.</li>
+      <li><strong>Raw log to blob store</strong> &mdash; the complete request and response payload as a structured document. The file path matches the pointer in the ClickHouse record, which is how the Backend cross-references the two when serving log details.</li>
+      <li><strong>Usage sync</strong> &mdash; updated usage counters, API key exhaustion events, and quota state.</li>
+    </ol>
+
+    <p>Because config is cached locally, the gateway keeps serving traffic when the management plane is unreachable. It stops receiving configuration updates, not requests.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Data residency and encryption</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This is the section to bring to a data protection review.</p>
+
+    <ul>
+      <li><strong>Prompt content and LLM responses</strong> &mdash; remain within your network.</li>
+      <li><strong>Crossing the boundary</strong> &mdash; only anonymised metrics.</li>
+      <li><strong>Log storage location</strong> &mdash; configurable, per the note above.</li>
+      <li><strong>In transit</strong> &mdash; TLS 1.3 between planes.</li>
+      <li><strong>At rest</strong> &mdash; all management plane data encrypted, with envelope encryption for sensitive fields.</li>
+      <li><strong>BYOK</strong> &mdash; optional, with AWS KMS.</li>
+      <li><strong>Access control</strong> &mdash; network-level controls restrict management plane access to authorised IPs, administrative functions use scope-based access control, all administrative actions are audit logged, and access tokens are short lived with automatic rotation.</li>
+    </ul>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Region placement is still an open question</div>
+      <p>The published architecture does not state whether the SCM tenant can be placed in the same region as your data plane, or whether hybrid deployments are constrained to a single management plane region. For a deployment with EU data residency obligations, confirm this with your account team before you design around it. See <a href="#reference">Open Questions</a>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     2. Data Plane Components
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="components">Data Plane Components</h2>
+
+<p>The gateway itself is the only mandatory component. Everything else is a choice between a bundled instance and a managed service, and in most production designs you want the managed service.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Component inventory</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Component</th><th>Required</th><th>Options</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>AI Gateway</td><td>Yes</td><td>Stateless containers. Scales horizontally.</td></tr>
+        <tr><td>Cache Store</td><td>Yes</td><td>Built-in Redis, Amazon ElastiCache for Redis OSS or Valkey, Azure Cache for Redis, GCP Memorystore. Must sit in the same VPC or VNet as the gateway.</td></tr>
+        <tr><td>Log Store</td><td>Optional</td><td>Amazon S3, Azure Blob Storage, Google Cloud Storage, any S3-compatible store, MongoDB, or Wasabi.</td></tr>
+        <tr><td>Analytics Store</td><td>Managed</td><td>ClickHouse in the management plane. Exportable to any OpenTelemetry-compatible collector.</td></tr>
+        <tr><td>Semantic Cache Store</td><td>Optional</td><td>Milvus or Pinecone, only if you want semantic caching.</td></tr>
+        <tr><td>Data Service</td><td>Optional</td><td>Batch processing, fine-tuning, and log exports.</td></tr>
+        <tr><td>MCP Gateway</td><td>Optional</td><td>Enabled through <code>values.yaml</code>.</td></tr>
+      </tbody>
+    </table>
+
+    <p>Sizing the log store is straightforward: each log document is roughly 10 kB uncompressed. Multiply by your request volume and retention window.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Log object path format</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Set <code>LOG_STORE_FILE_PATH_FORMAT</code> to control how log files are laid out in the bucket.</p>
+
+    <table>
+      <thead>
+        <tr><th>Value</th><th>Format</th><th>Example path</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>v1</code> (default)</td><td>Flat</td><td><code>30/&lt;organisation-id&gt;/&lt;log-id&gt;.json</code></td></tr>
+        <tr><td><code>v2</code></td><td>Time-hierarchical</td><td><code>30/&lt;organisation-id&gt;/&lt;workspace-slug&gt;/&lt;year&gt;/&lt;month&gt;/&lt;day&gt;/&lt;hour&gt;/&lt;log-id&gt;.json</code></td></tr>
+      </tbody>
+    </table>
+
+    <p>Choose <code>v2</code> if you intend to apply lifecycle rules or query by time period, which most retention policies need. Two constraints apply: changing the value affects only newly written logs, since existing objects are not migrated, and <code>v2</code> is not supported for air-gapped deployments where <code>LOG_STORE</code> is set to <code>control_plane</code>.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     3. Platform Support
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="platform-support">Platform Support</h2>
+
+<p>Five platforms are documented, across two different delivery mechanisms. Which mechanism applies is the first thing to establish, because it changes the whole deployment workflow.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Supported platforms and delivery method</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Platform</th><th>Delivery</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Amazon EKS</td><td>Helm chart</td><td>Also available through AWS Marketplace.</td></tr>
+        <tr><td>Azure AKS</td><td>Helm chart</td><td>Also available through Azure Marketplace.</td></tr>
+        <tr><td>Google GKE</td><td>Helm chart</td><td>Requires a <code>REGIONAL_MANAGED_PROXY</code> subnet.</td></tr>
+        <tr><td>Amazon ECS</td><td>Terraform</td><td>Container tasks, no Kubernetes involved.</td></tr>
+        <tr><td>Azure Container Apps</td><td>Terraform</td><td>Container replicas, no Kubernetes involved.</td></tr>
+        <tr><td>Any conformant Kubernetes cluster</td><td>Helm chart</td><td>Private cloud and on-premises included. No platform-specific page exists, so the cloud pages are the model.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Serverless containers are supported</div>
+      <p>ECS and Azure Container Apps are both documented deployment targets with their own Terraform-based instructions. You do not need a Kubernetes cluster to run the gateway. See <a href="#serverless">ECS and Container Apps</a> for what changes when you go that route.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Three clouds have pages, but the support statement is broader</div>
+      <p>EKS, AKS, GKE, ECS, and Container Apps are the only platforms with step-by-step pages. That is a documentation boundary, not a support boundary: Palo Alto Networks states that the data plane runs in any public cloud, private cloud, or on-premises Kubernetes cluster. See <a href="#platform-support">On-premises and private cloud clusters</a> below.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>On-premises and private cloud clusters</span>
+  </div>
+  <div class="collapsible-body">
+    <p>On-premises Kubernetes is supported. The Palo Alto Networks administration documentation describes hybrid as hosting the data plane in your own environment, naming any public cloud, private cloud, or on-premises Kubernetes cluster. The data plane is an ordinary container workload delivered as a Helm chart, so vSphere with Tanzu, TKG, OpenShift, RKE2, Rancher, k3s, and self-built clusters on bare metal are all valid targets.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Supported, but not separately documented</div>
+      <p>No on-premises page exists, so there is no vendor-published procedure to follow and no distribution-specific guidance on storage drivers or ingress controllers. Work from the requirements below and the cloud pages, and confirm the specifics with your account team before committing a customer to a date.</p>
+    </div>
+
+    <p>What the cluster has to provide, independent of platform:</p>
+
+    <table>
+      <thead>
+        <tr><th>Requirement</th><th>Detail</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Conformant Kubernetes</td><td>Any distribution that passes upstream conformance. No minimum managed-service tier and no cloud-specific integration.</td></tr>
+        <tr><td>Helm v3</td><td>With enough RBAC to create the release's resources in the target namespace.</td></tr>
+        <tr><td>Two worker nodes minimum</td><td>At least 2 vCPU and 4 GiB each, matching the published cloud minimums. Spread them across failure domains if your platform has them.</td></tr>
+        <tr><td>Egress to the management plane</td><td>HTTPS on 443. Which hostnames depends on your integration path: see <a href="#connectivity">Connectivity</a>.</td></tr>
+        <tr><td>Image pull access</td><td><code>registry.portkey.ai</code> for the gateway image. Bundled optional components pull from <code>docker.io</code> and <code>quay.io</code>, so a mirrored cluster needs all three mirrored.</td></tr>
+        <tr><td>An object store</td><td>Any S3-compatible endpoint, including in-cluster MinIO. Nothing requires it to be a cloud service.</td></tr>
+        <tr><td>A Redis the pods can reach</td><td>The chart can deploy its own, or point it at one you run.</td></tr>
+        <tr><td>A load balancer or ingress</td><td>To publish the gateway endpoint to your own workloads. The idle timeout must exceed your longest generation.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Storage is where the environment actually matters</div>
+      <p>The Kubernetes platform underneath changes nothing in the chart values. Storage does, because each provider has its own service names, environment variables, and authentication model. Pick the backend you already own rather than the one matching your cluster's location: nothing stops an on-premises cluster from writing to S3, or an EKS cluster from writing to in-cluster MinIO.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Two integration paths, two charts</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This is the single most important thing to settle before you write any <code>values.yaml</code>, because the two paths differ in more than the chart name. They differ in how the planes reach each other, which endpoints you allow, and whether you need to involve Palo Alto Networks to complete the integration.</p>
+
+    <table>
+      <thead>
+        <tr><th></th><th>SCM Gateway Registration</th><th>Platform deployment pages</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Chart</td><td><code>airs-gw</code></td><td><code>portkey-ai/gateway</code></td></tr>
+        <tr><td>Source</td><td><code>Portkey-AI/airs-gw-helm</code>, <code>charts/airs-gw</code></td><td><code>https://portkey-ai.github.io/helm</code></td></tr>
+        <tr><td>How you get <code>values.yaml</code></td><td>Generated by the wizard in SCM</td><td>You write it from the platform page</td></tr>
+        <tr><td>Connectivity</td><td>Outbound only, to <code>api.portkey.ai</code></td><td>Outbound and inbound, per <a href="#connectivity">Connectivity</a></td></tr>
+        <tr><td>Palo Alto Networks involvement</td><td>None, self-service</td><td>Required, to authorise and initiate the inbound link</td></tr>
+        <tr><td>Documented in</td><td><a href="ai-gateway-deployment.html#enable-gateway">AI Gateway deployment guide</a>, Phase 2</td><td>This guide, and <code>self-hosting/hybrid-deployments/</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Establish which path you are on before reading any further</div>
+      <p>If your tenant offers <strong>Add New Gateway</strong> under Gateway Registration, you are on the first path and the deployment guide is your instructions. Everything in this guide about PrivateLink, IP allow-lists, and the management plane's AWS principal belongs to the second path and does not apply to you. The cluster requirements, sizing, and storage sections apply to both.</p>
+    </div>
+
+    <div class="code-block">
+      <pre><code>helm repo add portkey-ai https://portkey-ai.github.io/helm
+
+helm upgrade --install portkey-ai portkey-ai/gateway \
+  -f ./values.yaml \
+  -n portkeyai \
+  --create-namespace</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     4. Sizing
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="sizing">Sizing</h2>
+
+<p>Sizing recommendations are published per platform. They are minimums for a working deployment, not throughput-validated figures, so treat them as the floor and load test against your own traffic before committing to a production shape.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Published sizing by platform</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Platform</th><th>Unit</th><th>Minimum</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>EKS</td><td>Worker node</td><td><code>t4g.medium</code>, at least 2 vCPU and 4 GiB</td></tr>
+        <tr><td>AKS</td><td>Worker node</td><td><code>B2ms</code>, at least 2 vCPU and 4 GiB</td></tr>
+        <tr><td>GKE</td><td>Worker node</td><td>At least 2 vCPU and 4 GiB</td></tr>
+        <tr><td>ECS</td><td>Task</td><td>At least 1 vCPU (1024 CPU units) and 2 GiB</td></tr>
+        <tr><td>Azure Container Apps</td><td>Replica</td><td>At least 1 vCPU and 2 GiB</td></tr>
+      </tbody>
+    </table>
+
+    <p>Note the difference in unit. On the Kubernetes platforms the figure describes a worker node; on the serverless platforms it describes a single task or replica. They are not directly comparable.</p>
+
+    <ul>
+      <li><strong>Node count</strong> &mdash; at least 2 worker nodes on all three Kubernetes platforms.</li>
+      <li><strong>Availability</strong> &mdash; one node per Availability Zone is the documented best practice, and for ECS and Container Apps the equivalent is tasks or replicas spread across zones with autoscaling enabled.</li>
+      <li><strong>Log volume</strong> &mdash; roughly 10 kB per log document, uncompressed.</li>
+      <li><strong>Cache placement</strong> &mdash; the cache store must sit in the same VPC or VNet as the gateway.</li>
+    </ul>
+
+    <div class="callout callout-note">
+      <div class="callout-title">What is not published</div>
+      <p>There are no requests-per-second figures tied to these sizes, no guidance on how the numbers scale with concurrency or payload size, and no separate sizing for the optional Data Service or a self-hosted semantic cache. Measure those yourself.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     5. Connectivity
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="connectivity">Connectivity</h2>
+
+<p>Traffic flows in both directions between the planes, and the two directions are configured separately. Getting only the outbound half in place is a common way to end up with a gateway that serves traffic but never appears in Strata Cloud Manager.</p>
+
+<div class="callout callout-danger">
+  <div class="callout-title">This section describes the platform-page path only</div>
+  <p>Everything below applies to the <code>portkey-ai/gateway</code> chart installed from the EKS, AKS, or GKE pages. If you registered your gateway through the SCM wizard and installed <code>airs-gw</code>, the connectivity model is different and simpler: outbound only, HTTPS on 443 to <code>api.portkey.ai</code> for configuration and analytics and to <code>registry.portkey.ai</code> for the image. No inbound rule, no public load balancer, and no private link back to Palo Alto Networks is required. Check <a href="#platform-support">Two integration paths, two charts</a> if you are not sure which you are on.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Outbound: data plane to management plane</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two options, per cloud.</p>
+
+    <table>
+      <thead>
+        <tr><th>Cloud</th><th>Private option</th><th>Internet option</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>AWS</td><td>AWS PrivateLink</td><td rowspan="3">Reach <code>https://aigw.portkey.ai</code> and <code>https://albus.portkey.ai</code></td></tr>
+        <tr><td>Azure</td><td>Azure Private Link</td></tr>
+        <tr><td>GCP</td><td>Private Service Connect</td></tr>
+      </tbody>
+    </table>
+
+    <p>On AWS the PrivateLink service name is <code>com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95</code>. If your gateway runs outside <code>us-east-1</code>, enable a cross-region endpoint pointing at <code>us-east-1</code>. Your AWS account ARN has to be whitelisted by the Palo Alto Networks team first, and you need private DNS enabled on the endpoint afterwards.</p>
+
+    <p>Once the endpoint is available, point the gateway at the PrivateLink base paths:</p>
+
+    <div class="code-block">
+      <pre><code>environment:
+  create: true
+  secret: true
+  data:
+      ALBUS_BASEPATH: "https://aws-cp.portkey.ai/albus"
+      CONTROL_PLANE_BASEPATH: "https://aws-cp.portkey.ai/api/v1"
+      SOURCE_SYNC_API_BASEPATH: "https://aws-cp.portkey.ai/api/v1/sync"
+      CONFIG_READER_PATH: "https://aws-cp.portkey.ai/api/model-configs"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Kubernetes allows full egress by default. If your cluster applies restrictive NetworkPolicies, the gateway needs an egress allowance covering both the management plane and your LLM providers:</p>
+
+    <div class="code-block">
+      <pre><code>apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-all-egress
+  namespace: portkeyai
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Narrow that CIDR to your actual provider and management plane destinations if your security posture requires it. The example is deliberately permissive so the first deployment works.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Inbound: management plane to data plane</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The management plane also initiates connections to your gateway. This surprises people who assume a hybrid data plane is outbound-only, and it has to be designed for rather than discovered late.</p>
+
+    <ul>
+      <li><strong>Private link</strong> &mdash; AWS PrivateLink, Azure Private Link, or GCP Private Service Connect, depending on cloud.</li>
+      <li><strong>IP whitelisting</strong> &mdash; requires a publicly reachable endpoint on your side.</li>
+    </ul>
+
+    <p><strong>Private link on AWS.</strong> You need a Network Load Balancer, internal or internet-facing, exposing the gateway outside the cluster. Create an endpoint service against that NLB, optionally verify domain ownership if you use a private DNS name, then authorise the management plane account to connect by allowing the principal <code>arn:aws:iam::299329113195:root</code>. Hand the Palo Alto Networks team the service name, DNS names, private DNS name, region, and listener port, then approve the connection request when it appears under Endpoint connections.</p>
+
+    <p><strong>IP whitelisting.</strong> Add an inbound rule to the load balancer security group permitting the management plane addresses on the NLB listener port, then give the Palo Alto Networks team your public endpoint.</p>
+
+    <table>
+      <thead>
+        <tr><th>Management plane source addresses</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>54.81.226.149</code></td></tr>
+        <tr><td><code>34.200.113.35</code></td></tr>
+        <tr><td><code>44.221.117.129</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Verify these addresses before you build a firewall rule</div>
+      <p>Published IP lists go stale. Confirm the current set with your account team, and prefer the private link option where you can, since it removes the dependency on an address list entirely.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Verify the integration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Do not rely on pod status. A gateway that starts cleanly and passes health checks can still be failing to reach the management plane.</p>
+
+    <ol>
+      <li>Send a test request to the gateway with <code>curl</code>.</li>
+      <li>Open Strata Cloud Manager and go to <strong>Logs</strong>.</li>
+      <li>Confirm the request appears and that you can open it and see full details.</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>curl '&lt;GATEWAY_BASE_URL&gt;/v1/chat/completions' \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer &lt;OPENAI_API_KEY&gt;" \
+  -H "x-portkey-provider: openai" \
+  -H "x-portkey-api-key: &lt;PORTKEY_API_KEY&gt;" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "What is a fractal?"}]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>If the request succeeds but never appears in Logs, the outbound path is working and the log or sync path is not. If the log detail view is empty but the entry exists, check the log store configuration rather than connectivity.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     6. AWS prerequisites
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="prereq-aws">Prerequisites: AWS (EKS)</h2>
+
+<p>The AWS topology is the one drawn in <a href="#architecture">Hybrid Architecture</a>. The checklist below is that diagram expressed as things to build before you deploy.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>AWS checklist</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li><strong>EKS cluster</strong> &mdash; at least 2 worker nodes, ideally one per Availability Zone.</li>
+      <li><strong>Tooling</strong> &mdash; AWS CLI, kubectl, Helm v3 or above, and eksctl.</li>
+      <li><strong>S3 bucket</strong> &mdash; for LLM access logs, with encryption at rest and a lifecycle policy matching your retention requirement.</li>
+      <li><strong>Bucket access</strong> &mdash; either IAM Roles for Service Accounts (IRSA) or EKS Pod Identity. Both avoid static credentials.</li>
+      <li><strong>Cache store</strong> &mdash; ElastiCache for Redis OSS or Valkey in the same VPC, or the built-in Redis.</li>
+      <li><strong>External access</strong> &mdash; an Application Load Balancer with a Kubernetes Ingress, or a Network Load Balancer. PrivateLink for inbound requires an NLB specifically.</li>
+      <li><strong>Connectivity</strong> &mdash; outbound and inbound paths per <a href="#connectivity">Connectivity</a>. The inbound half applies only on the platform-page path; a gateway registered through the SCM wizard needs outbound only.</li>
+      <li><strong>Credentials from Palo Alto Networks</strong> &mdash; Docker credentials for the gateway images and the Client Auth Key, issued against your Organisation ID.</li>
+    </ul>
+
+    <p>With IRSA, the service account carries the role ARN annotation and the log store is configured in the same file:</p>
+
+    <div class="code-block">
+      <pre><code>serviceAccount:
+  create: true
+  automount: true
+  name: &lt;SERVICE_ACCOUNT_NAME&gt;
+  annotations:
+    eks.amazonaws.com/role-arn: &lt;ROLE_ARN&gt;
+
+environment:
+  data:
+    LOG_STORE: s3_assume
+    LOG_STORE_REGION: "&lt;AWS_BUCKET_REGION&gt;"
+    LOG_STORE_GENERATIONS_BUCKET: "&lt;AWS_BUCKET_NAME&gt;"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>For EKS Pod Identity the configuration is the same minus the annotation, since the association is made outside the chart. The service account name must match the one you referenced when creating the IAM role.</p>
+
+    <p><em>Verify before moving on:</em> <code>kubectl get pods -n portkeyai</code> should show every pod <code>Running</code>, and a test request should appear in SCM Logs.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     7. Azure prerequisites
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="prereq-azure">Prerequisites: Azure (AKS)</h2>
+
+<p>The same topology with Azure equivalents substituted. The boundary behaves identically in both directions.</p>
+
+<img src="diagrams/aigw-hybrid-azure-vnet.svg" alt="AI Gateway hybrid data plane on Azure: applications call an internal load balancer, which balances across gateway pods on AKS worker nodes in two availability zones. The pods read config from Azure Cache for Redis, write logs to Blob Storage, and exchange traffic with the management plane over Azure Private Link or the internet in both directions." loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Azure checklist</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li><strong>AKS cluster</strong> &mdash; at least 2 worker nodes, ideally one per availability zone.</li>
+      <li><strong>Workload Identity</strong> &mdash; optional, needed only if you want Blob Storage access without stored secrets. Requires the OIDC issuer and Workload Identity both enabled on the cluster.</li>
+      <li><strong>Tooling</strong> &mdash; Azure CLI, kubectl, and Helm v3 or above.</li>
+      <li><strong>Storage account and container</strong> &mdash; for logs, with encryption at rest and a lifecycle rule for retention.</li>
+      <li><strong>Cache store</strong> &mdash; Azure Cache for Redis in the same VNet, or the built-in Redis.</li>
+      <li><strong>Connectivity</strong> &mdash; Azure Private Link or internet outbound, Azure Private Link or IP whitelisting inbound. Private Link inbound needs a dedicated subnet for the Private Link Service. The inbound half applies only on the platform-page path.</li>
+      <li><strong>Credentials from Palo Alto Networks</strong> &mdash; as for AWS.</li>
+    </ul>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Azure Marketplace</div>
+      <p>The gateway is listed on Azure Marketplace, which lets you deploy from the Azure console and streamlines procurement. Worth checking before you build the cluster by hand, particularly if procurement is the long pole.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     8. GCP prerequisites
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="prereq-gcp">Prerequisites: GCP (GKE)</h2>
+
+<p>GKE follows the same pattern as EKS and AKS, with one networking requirement that catches people out on the first deployment.</p>
+
+<img src="diagrams/aigw-hybrid-gcp-vpc.svg" alt="AI Gateway hybrid data plane on GCP: applications call an internal load balancer, which balances across gateway pods on GKE worker nodes in two zones. The pods read config from Memorystore, write logs to Cloud Storage, and exchange traffic with the management plane over Private Service Connect or the internet in both directions." loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>GCP checklist</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li><strong>GKE cluster</strong> &mdash; at least 2 worker nodes, ideally one per zone.</li>
+      <li><strong>Proxy-only subnet</strong> &mdash; the VPC hosting the cluster must have an <code>ACTIVE</code> subnet with purpose <code>REGIONAL_MANAGED_PROXY</code>. Without it the regional load balancer cannot be created.</li>
+      <li><strong>Tooling</strong> &mdash; gcloud CLI, kubectl, and Helm v3 or above.</li>
+      <li><strong>Cloud Storage bucket</strong> &mdash; for logs, reached with Workload Identity.</li>
+      <li><strong>Cache store</strong> &mdash; Memorystore for Redis or Valkey in the same VPC, or the built-in Redis.</li>
+      <li><strong>Connectivity</strong> &mdash; Private Service Connect or internet outbound, Private Service Connect or IP whitelisting inbound. The inbound half applies only on the platform-page path.</li>
+      <li><strong>Credentials from Palo Alto Networks</strong> &mdash; as for AWS.</li>
+    </ul>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Create the proxy-only subnet first</div>
+      <p>The <code>REGIONAL_MANAGED_PROXY</code> subnet is a prerequisite of the VPC, not of the chart, so nothing in the Helm output will tell you it is missing. The symptom is a load balancer that never provisions.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     9. ECS and Container Apps
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="serverless">ECS and Container Apps</h2>
+
+<p>Both serverless container platforms are deployed with Terraform rather than Helm, so the workflow differs from the Kubernetes platforms in more than just the target.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Amazon ECS</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li><strong>Sizing</strong> &mdash; ECS tasks with at least 1 vCPU (1024 CPU units) and 2 GiB per task.</li>
+      <li><strong>Availability</strong> &mdash; run tasks across multiple Availability Zones with autoscaling enabled.</li>
+      <li><strong>AWS permissions</strong> &mdash; to create ECS, EC2, VPC, ELB, IAM, S3, Secrets Manager, and CloudWatch resources.</li>
+      <li><strong>Tooling</strong> &mdash; AWS CLI with credentials configured, and Terraform v1.13 or later.</li>
+      <li><strong>Log store</strong> &mdash; Amazon S3 or any S3-compatible store, optional.</li>
+      <li><strong>Cache store</strong> &mdash; built-in Redis, or ElastiCache for Redis OSS or Valkey in the same VPC.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Azure Container Apps</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li><strong>Sizing</strong> &mdash; Container Apps with at least 1 vCPU and 2 GiB per replica.</li>
+      <li><strong>Availability</strong> &mdash; autoscaling across multiple Availability Zones.</li>
+      <li><strong>Azure permissions</strong> &mdash; to create Container Apps, Key Vault, Storage, VNet, and Application Gateway resources.</li>
+      <li><strong>Tooling</strong> &mdash; Azure CLI with credentials configured, and Terraform v1.5 or later.</li>
+      <li><strong>Secrets</strong> &mdash; Docker credentials, the Client Auth Key, and your Organisation ID are stored in Key Vault rather than passed as chart values.</li>
+      <li><strong>Log store</strong> &mdash; Azure Blob Storage or any S3-compatible store, optional.</li>
+      <li><strong>Cache store</strong> &mdash; built-in Redis or Azure Managed Redis.</li>
+    </ul>
+
+    <p>The Key Vault entries the Terraform configuration expects are <code>docker-username</code>, <code>docker-password</code>, <code>portkey-client-auth</code>, and <code>organisations-to-sync</code>. Create the vault with RBAC authorisation enabled and grant yourself the Key Vault Administrator role before writing them.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     10. Registration and Workspaces
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="registration">Registration and Workspaces</h2>
+
+<p>Registration is what connects a self-hosted gateway to the management plane, and workspaces are what decide who may route through it. The two are configured together.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Gateway registration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Registration enables configuration sync, analytics, and workspace access control. Once registered, the data plane can pull prompt templates, routing configs, integrations, and API keys.</p>
+
+    <p>Open <strong>AI Security &rarr; AI Gateway &rarr; Admin Settings</strong> and select the <strong>Gateway Registration</strong> tab. Click <strong>Add New Gateway</strong>, at the right-hand end of the header row showing the Total Gateways count. The wizard has three stages:</p>
+
+    <ol>
+      <li><strong>Register Gateway</strong> &mdash; enter a Gateway Name and a Gateway Type of Production or Non Production.</li>
+      <li><strong>Workspace Provisioning</strong> &mdash; choose Allow All Workspaces, or Allow Specific Workspaces and toggle each one on. Specific workspaces is the right choice when you need separate gateways per team, business unit, or compliance boundary.</li>
+      <li><strong>Configure Gateway Deployment</strong> &mdash; download the generated <code>values.yaml</code>, then click Done.</li>
+    </ol>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">The generated values.yaml is shown once</div>
+      <p>It is not retrievable after you navigate away from that screen. Download it and store it in a secret manager before you go anywhere else. It carries your image pull credentials and environment secrets, so treat it as credentials and never commit it.</p>
+    </div>
+
+    <p>After the wizard closes, the gateway appears in the list with a copyable Slug Name (for example <code>dp-ai-gateway-5aa51a</code>), its Type, a Connection Status, whether it is the Default, and Last Sync. Connection Status reads <strong>Unknown</strong> with Last Sync showing <code>--</code> until running pods check in, which they then repeat roughly every 30 seconds. That is the normal state for the whole gap between finishing the wizard and completing the install.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Total Gateways counts hybrid gateways only</div>
+      <p>The counter reads zero on a tenant already serving traffic through the SaaS gateway, because the SaaS gateway is a separate row above the list rather than an entry in it. An empty list does not mean AI Gateway is unlicensed or inactive. Deploying hybrid does not disable the SaaS gateway; both run in parallel until you switch that row's toggle off.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">This flow installs airs-gw, not portkey-ai/gateway</div>
+      <p>The <code>values.yaml</code> the wizard generates targets the <code>airs-gw</code> chart and points at <code>registry.portkey.ai</code>. It is not a drop-in for the <code>values.yaml</code> the platform pages in this guide describe. The screen's Configuration Reference and Deployment guide links both resolve into the public <a href="https://github.com/Portkey-AI/airs-gw-helm" target="_blank" rel="noopener">Portkey-AI/airs-gw-helm</a> repository, which stays readable after the wizard closes.</p>
+    </div>
+
+    <p>For the full click-by-click walkthrough of this wizard, with screenshots taken from a live tenant, see Phase 2 of the <a href="ai-gateway-deployment.html">AI Gateway deployment guide</a>.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>What a workspace is</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Workspaces are sub-organisations that separate data, teams, scope, and visibility inside one organisation. They are the unit of multi-tenancy within a tenant.</p>
+
+    <ul>
+      <li><strong>Team management</strong> &mdash; members are added with a role of manager or member.</li>
+      <li><strong>Dedicated API keys</strong> &mdash; each workspace has its own, either Service Account type for automation or User type for individuals. Both are scoped to the workspace and can only act within it.</li>
+      <li><strong>Completion API scoping</strong> &mdash; completion APIs are always scoped by workspace and reachable only with a workspace API key.</li>
+      <li><strong>Admin control</strong> &mdash; only org admins create workspaces; managers can then add API keys and members.</li>
+      <li><strong>Targeting from the org level</strong> &mdash; admin keys can specify a <code>workspace_id</code> to act on a particular workspace.</li>
+    </ul>
+
+    <p>Access is enforced through the Scope Access header described in <a href="#architecture">Identity and authentication</a>, evaluated per request. Membership tables are never consulted at request time.</p>
+
+    <p>Deleting a workspace requires removing every resource inside it first, including prompts, prompt partials, providers, configs, and guardrails. The default Shared Team Workspace cannot be deleted, and deletion elsewhere is permanent.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     11. Operations
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="day2">Operations</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Monitoring</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two independent paths, and you want both.</p>
+
+    <ul>
+      <li><strong>Prometheus metrics</strong> &mdash; the gateway exposes a Prometheus endpoint for infrastructure-level monitoring in your own stack.</li>
+      <li><strong>Analytics export</strong> &mdash; ClickHouse analytics can be exported to any OpenTelemetry-compatible collector, which is how you get gateway telemetry into an existing observability platform.</li>
+    </ul>
+
+    <p>The SCM dashboard covers request-level analytics. It does not replace infrastructure monitoring of the pods, nodes, cache, and load balancer, which stays your responsibility.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Cache behavior and FIPS</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li><strong>Cache behavior</strong> &mdash; documented separately, covering what is cached, for how long, and how invalidation propagates from the management plane.</li>
+      <li><strong>FIPS-compliant images</strong> &mdash; available for deployments with FIPS 140 obligations. Confirm availability for your entitlement and platform.</li>
+      <li><strong>Air-gapped</strong> &mdash; setting <code>LOG_STORE</code> to <code>control_plane</code> appears in the documentation in the context of air-gapped deployments, and the <code>v2</code> log path format is explicitly unsupported in that mode. A full air-gapped deployment procedure is not published.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Upgrades</span>
+  </div>
+  <div class="collapsible-body">
+    <p>On the Kubernetes platforms an upgrade is a Helm upgrade against the same release and values file:</p>
+
+    <div class="code-block">
+      <pre><code>helm repo update
+
+helm upgrade --install portkey-ai portkey-ai/gateway \
+  -f ./values.yaml \
+  -n portkeyai</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Cluster upgrades are separate and remain entirely yours. The managed control plane version, the node pool version, and the gateway chart version all move independently, and nothing in the product coordinates them.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Lifecycle policy is not published</div>
+      <p>The supported Kubernetes version range, whether a chart compatibility matrix exists, whether a minimum data plane version is required to keep syncing, the deprecation and end-of-life policy, and whether rollback to a previous chart version is safe are all unpublished. Get these from your account team before you build a patching schedule around assumptions. See <a href="#reference">Open Questions</a>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     12. Reference
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="reference">Reference</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Endpoints and addresses</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Purpose</th><th>Value</th><th>Path</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Outbound, configuration and analytics</td><td><code>api.portkey.ai</code> on 443</td><td>SCM registration</td></tr>
+        <tr><td>Image pull</td><td><code>registry.portkey.ai</code></td><td>SCM registration</td></tr>
+        <tr><td>Outbound over the internet</td><td><code>https://aigw.portkey.ai</code>, <code>https://albus.portkey.ai</code></td><td>Platform pages</td></tr>
+        <tr><td>Outbound over AWS PrivateLink</td><td><code>https://aws-cp.portkey.ai</code></td><td>Platform pages</td></tr>
+        <tr><td>AWS PrivateLink service name</td><td><code>com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95</code></td><td>Platform pages</td></tr>
+        <tr><td>Management plane AWS principal</td><td><code>arn:aws:iam::299329113195:root</code></td><td>Platform pages</td></tr>
+        <tr><td>Management plane source addresses</td><td><code>54.81.226.149</code>, <code>34.200.113.35</code>, <code>44.221.117.129</code></td><td>Platform pages</td></tr>
+        <tr><td>Helm repository</td><td><code>https://portkey-ai.github.io/helm</code></td><td>Platform pages</td></tr>
+        <tr><td>Default namespace</td><td><code>portkeyai</code></td><td>Platform pages</td></tr>
+      </tbody>
+    </table>
+
+    <p>The two groups are not interchangeable. Allowing the platform-page endpoints on a gateway installed from the SCM wizard does nothing useful, and vice versa.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Which source wins when they disagree</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Prisma AIRS AI Gateway is Portkey, acquired by Palo Alto Networks and integrated with Strata Cloud Manager. Documentation from before and after that integration is still in circulation, and the two disagree on real things: button labels, endpoint names, which chart you install, and whether the management plane ever connects inbound. Resolve conflicts in this order:</p>
+
+    <ol>
+      <li><strong>The tenant itself.</strong> A screenshot from a live SCM tenant beats any document. The <a href="ai-gateway-deployment.html">AI Gateway deployment guide</a> is written this way and is the closest thing to ground truth we hold.</li>
+      <li><strong><code>docs.paloaltonetworks.com</code>.</strong> The Prisma AIRS administration documentation, for support statements, scale, and availability.</li>
+      <li><strong><code>docs.portkey.ai</code>.</strong> Detailed and largely current, and the only source for the platform-specific deployment procedures, but it carries pre-acquisition terminology and describes the <code>portkey-ai/gateway</code> path rather than the SCM wizard.</li>
+    </ol>
+
+    <p>Most of this guide is sourced from the third. Where the first two contradict it, they have been applied and the conflict noted in place.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Open questions for the product team</span>
+  </div>
+  <div class="collapsible-body">
+    <p>These are not documented anywhere in the published material. Each one changes a design decision, so get answers before committing a customer to an architecture.</p>
+
+    <ul>
+      <li><strong>Two integration paths</strong> &mdash; are the SCM Gateway Registration path and the platform deployment pages converging, and which should a new customer be put on? They differ on chart, endpoints, and whether the management plane connects inbound.</li>
+      <li><strong>On-premises procedure</strong> &mdash; support is confirmed for any conformant Kubernetes cluster, but no on-premises page exists. Is one planned, and is there distribution-specific guidance on storage classes and ingress that the cloud pages do not surface?</li>
+      <li><strong>Region and data residency</strong> &mdash; can the SCM tenant be placed in the same region as the data plane, and does hybrid satisfy EU data residency obligations?</li>
+      <li><strong>Upgrade lifecycle</strong> &mdash; supported Kubernetes version range, chart compatibility matrix, minimum data plane version for sync, deprecation policy, and rollback safety.</li>
+      <li><strong>Throughput sizing</strong> &mdash; requests per second at the published node and task sizes, and how that scales with concurrency and payload size.</li>
+      <li><strong>Air-gapped</strong> &mdash; is there a supported fully disconnected mode beyond the <code>LOG_STORE: control_plane</code> references?</li>
+      <li><strong>Streaming and inspection</strong> &mdash; behaviour of streaming responses through an inspecting proxy, and any published position on TLS inspection of the management plane path.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Source documentation</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This guide is derived from the published Prisma AIRS AI Gateway self-hosting documentation. The local reference copies live in <code>pan-docs-reference/docs/portkey/aigw/</code>.</p>
+
+    <ul>
+      <li><strong>Architecture</strong> &mdash; <code>self-hosting/hybrid-deployments/architecture</code></li>
+      <li><strong>Platform guides</strong> &mdash; <code>self-hosting/hybrid-deployments/</code> for <code>aws/eks</code>, <code>aws/ecs</code>, <code>aws/marketplace</code>, <code>azure/aks</code>, <code>azure/aca</code>, and <code>gcp</code></li>
+      <li><strong>Registration</strong> &mdash; <code>self-hosting/hybrid-deployments/gateway-registration</code></li>
+      <li><strong>Components</strong> &mdash; <code>product/enterprise-offering/components</code></li>
+      <li><strong>Workspaces</strong> &mdash; <code>product/enterprise-offering/org-management/workspaces</code></li>
+      <li><strong>Operations</strong> &mdash; <code>self-hosting/prometheus-metrics</code>, <code>self-hosting/cache-behavior</code>, <code>self-hosting/fips-compliant-images</code></li>
+    </ul>
+
+    <p>Two Palo Alto Networks sources override the above wherever they conflict, per <a href="#reference">Which source wins when they disagree</a>:</p>
+
+    <ul>
+      <li><strong>Administration documentation</strong> &mdash; <code>pan-docs-reference/docs/ai-runtime-security/administration/configure-ai-gateway.md</code>, for the hybrid support statement and the scale and availability attributes.</li>
+      <li><strong>Tenant-verified walkthrough</strong> &mdash; Phase 2 of <a href="ai-gateway-deployment.html">ai-gateway-deployment.html</a>, for the registration wizard, the <code>airs-gw</code> chart, and the outbound-only connectivity model.</li>
+    </ul>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="download-md-btn" id="downloadMdBtn" onclick="downloadAsMarkdown()">&#8681; Markdown</button>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>

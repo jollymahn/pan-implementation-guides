@@ -510,6 +510,7 @@ const GLOBAL_NAV_GROUPS = [
     { label: 'AI Gateway' },
     { t: 'Overview', h: 'guides/ai-gateway/index.html', sub: true },
     { t: 'Deployment Guide', h: 'guides/ai-gateway/ai-gateway-deployment.html', sub: true },
+    { t: 'Hybrid Infrastructure', h: 'guides/ai-gateway/hybrid-infrastructure.html', sub: true },
     { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html', sub: true },
     { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html', sub: true },
     { label: 'AI Integrations' },
