@@ -696,9 +696,14 @@ environment:
      ══════════════════════════════════════════════════════════════ -->
 <h2 id="serverless">ECS and Container Apps</h2>
 
-<p>Both serverless container platforms are deployed with Terraform rather than Helm, so the workflow differs from the Kubernetes platforms in more than just the target. The Terraform source location is not stated in the published pages; request it from your account team before scheduling either deployment, and expect the usual <code>terraform init</code>, <code>plan</code>, <code>apply</code> sequence once you have it.</p>
-<!-- TODO: verify where the ECS and Container Apps Terraform configurations are published (repository URL and module paths) and replace the "request it from your account team" sentence (WB-24, WO-16) -->
-<!-- TODO: verify whether the Terraform minimums really differ (v1.13 for ECS, v1.5 for Container Apps) and whether "Azure Cache for Redis" (AKS checklist) and "Azure Managed Redis" (Container Apps) are two products or one; state the difference in place or unify the names (L-8, WB-25) -->
+<p>Both serverless container platforms are deployed with Terraform rather than Helm, so the workflow differs from the Kubernetes platforms in more than just the target. The modules are published in the <a href="https://github.com/Portkey-AI/portkey-gateway-infrastructure" target="_blank" rel="noopener">portkey-gateway-infrastructure</a> repository, at <code>//terraform/ecs</code> and <code>//terraform/aca</code>. Each carries its own version tags, so do not copy a <code>ref</code> between them.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Full procedure in a separate guide</div>
+  <p>This section is the planning checklist. The step-by-step deployment, with architecture diagrams, the module configuration for each platform, ingress options, both directions of management plane connectivity, and verification, is in <a href="serverless-deployment.html">AI Gateway on ECS and Container Apps</a>.</p>
+</div>
+
+<p>The Terraform minimums genuinely differ between the two: v1.13 for ECS and v1.5 for Container Apps. On the cache store, Azure Managed Redis is the current name for the managed service; where the AKS material says Azure Cache for Redis it means the same product under its former name.</p>
 
 <div class="collapsible">
   <div class="collapsible-header">
@@ -711,12 +716,11 @@ environment:
       <li><strong>Availability</strong> &mdash; run tasks across multiple Availability Zones with autoscaling enabled.</li>
       <li><strong>AWS permissions</strong> &mdash; to create ECS, EC2, VPC, ELB, IAM, S3, Secrets Manager, and CloudWatch resources. Run Terraform from a role scoped to those services, not from an administrator identity.</li>
       <li><strong>Tooling</strong> &mdash; AWS CLI with credentials configured, and Terraform v1.13 or later.</li>
-      <li><strong>State and re-runs</strong> &mdash; configure a remote backend (S3 with DynamoDB locking) before the first apply so a failed run can be resumed; <code>terraform apply</code> is safe to re-run against the same state, and <code>terraform destroy</code> removes everything the configuration created. If local state was lost after a partial apply, import or delete the orphaned resources before re-applying. Terraform state holds the secret values in plain text, so keep it in an encrypted, access-controlled backend.</li>
-      <li><strong>Secrets</strong> &mdash; the permission list implies the Terraform configuration stores the Docker credentials and Client Auth Key in AWS Secrets Manager and grants the task execution role read on those secrets; confirm against the ECS platform page, and grant nothing broader.</li>
-      <!-- TODO: verify where the ECS Terraform configuration stores the Docker credentials and Client Auth Key and which role reads them (WN-16) -->
+      <li><strong>State and re-runs</strong> &mdash; configure a remote backend before the first apply so a failed run can be resumed; <code>terraform apply</code> is safe to re-run against the same state, and <code>terraform destroy</code> removes everything the configuration created. If local state was lost after a partial apply, import or delete the orphaned resources before re-applying. State holds resource identifiers and configuration, so keep it in an encrypted, access-controlled backend.</li>
+      <li><strong>Secrets</strong> &mdash; you create the Docker credentials and the Client Auth Key in AWS Secrets Manager yourself, before Terraform runs. The module is given the secret ARNs, not the values, and the task definition resolves each ARN at task start, so raw secret values do not enter Terraform state.</li>
       <li><strong>Log store</strong> &mdash; Amazon S3 or any S3-compatible store, optional.</li>
       <li><strong>Cache store</strong> &mdash; built-in Redis, or ElastiCache for Redis OSS or Valkey in the same VPC.</li>
-      <li><strong>Connectivity</strong> &mdash; the ECS deployment follows the platform-page connectivity model in <a href="#connectivity">Connectivity</a>: outbound to the management plane endpoints and, if the Palo Alto Networks team requires it, inbound through the NLB the Terraform creates. Confirm with your account team which applies before you apply the plan.</li>
+      <li><strong>Connectivity</strong> &mdash; the ECS deployment follows the platform-page connectivity model in <a href="#connectivity">Connectivity</a>: outbound to the management plane endpoints, and inbound as well, either as a VPC endpoint service or an IP allow-list. Inbound is required on this path, not optional. An endpoint service can only be built on an NLB, so choosing an ALB means adding an NLB in front of it.</li>
     </ul>
   </div>
 </div>
@@ -735,10 +739,11 @@ environment:
       <li><strong>Secrets</strong> &mdash; Docker credentials, the Client Auth Key, and your Organisation ID are stored in Key Vault rather than passed as chart values.</li>
       <li><strong>Log store</strong> &mdash; Azure Blob Storage or any S3-compatible store, optional.</li>
       <li><strong>Cache store</strong> &mdash; built-in Redis or Azure Managed Redis.</li>
-      <li><strong>Connectivity</strong> &mdash; the Container Apps deployment follows the platform-page connectivity model in <a href="#connectivity">Connectivity</a>: outbound to the management plane endpoints and, if the Palo Alto Networks team requires it, inbound through the load balancer the Terraform creates. Confirm with your account team which applies before you apply the plan.</li>
+      <li><strong>Connectivity</strong> &mdash; the Container Apps deployment follows the platform-page connectivity model in <a href="#connectivity">Connectivity</a>: outbound to the management plane endpoints, and inbound as well, either as a private endpoint or an IP allow-list. Inbound is required on this path, not optional. Inbound targets the Container Apps environment itself rather than a load balancer, so it works with the built-in ingress.</li>
+      <li><strong>Network</strong> &mdash; a VNet is optional, which is unique among the supported platforms. It becomes mandatory for zone redundancy, Application Gateway, and outbound Private Link.</li>
     </ul>
 
-    <p>The Key Vault entries the Terraform configuration expects are <code>docker-username</code>, <code>docker-password</code>, <code>portkey-client-auth</code>, and <code>organisations-to-sync</code>. Create the vault with RBAC authorisation enabled and grant yourself Key Vault Secrets Officer to write the four entries. The Container App reads them at runtime through a managed identity, which needs Key Vault Secrets User on the vault and nothing more; confirm against the Container Apps page which identity the Terraform configuration assigns. Terraform state will contain these values; keep state in an encrypted backend with access limited to the deploying identity.</p>
+    <p>The Key Vault entries the Terraform configuration expects are <code>docker-username</code>, <code>docker-password</code>, <code>portkey-client-auth</code>, and <code>organisations-to-sync</code>. Create the vault with RBAC authorisation enabled and grant yourself Key Vault Administrator to write the four entries. The module is given the secret <em>names</em> and the vault to resolve them against, not the values, so raw secret values do not enter Terraform state. Keep state in an encrypted backend regardless, because it still carries resource identifiers and configuration.</p>
     <!-- TODO: verify which managed identity (system-assigned or user-assigned) the Container Apps Terraform configuration uses to read Key Vault and the role it grants (WN-17) -->
 
     <p>If a previous attempt created a vault with the same name and you deleted it, recover it (<code>az keyvault recover --name &lt;vault&gt;</code>) or purge it (<code>az keyvault purge --name &lt;vault&gt;</code>) before creating it again; soft-delete keeps the name reserved. To tear the deployment down, run <code>terraform destroy</code>, then recover or purge the vault if you intend to reuse the name.</p>

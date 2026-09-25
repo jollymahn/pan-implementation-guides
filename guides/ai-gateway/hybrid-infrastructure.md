@@ -384,7 +384,11 @@ GKE follows the same pattern as EKS and AKS, with one networking requirement tha
 
 ## ECS and Container Apps
 
-Both serverless container platforms are deployed with Terraform rather than Helm, so the workflow differs from the Kubernetes platforms in more than just the target.
+Both serverless container platforms are deployed with Terraform rather than Helm, so the workflow differs from the Kubernetes platforms in more than just the target. The modules are published in the [portkey-gateway-infrastructure](https://github.com/Portkey-AI/portkey-gateway-infrastructure) repository, at `//terraform/ecs` and `//terraform/aca`. Each carries its own version tags, so do not copy a `ref` between them.
+
+> **Note &mdash; full procedure in a separate guide:** This section is the planning checklist. The step-by-step deployment, with architecture diagrams, the module configuration for each platform, ingress options, both directions of management plane connectivity, and verification, is in [AI Gateway on ECS and Container Apps](serverless-deployment.md).
+
+The Terraform minimums genuinely differ between the two: v1.13 for ECS and v1.5 for Container Apps. On the cache store, Azure Managed Redis is the current name for the managed service; where the AKS material says Azure Cache for Redis it means the same product under its former name.
 
 ### Amazon ECS
 
@@ -392,8 +396,11 @@ Both serverless container platforms are deployed with Terraform rather than Helm
 - **Availability** &mdash; run tasks across multiple Availability Zones with autoscaling enabled.
 - **AWS permissions** &mdash; to create ECS, EC2, VPC, ELB, IAM, S3, Secrets Manager, and CloudWatch resources.
 - **Tooling** &mdash; AWS CLI with credentials configured, and Terraform v1.13 or later.
+- **Secrets** &mdash; you create the Docker credentials and the Client Auth Key in AWS Secrets Manager yourself, before Terraform runs. The module is given the secret ARNs, not the values, so raw secret values do not enter Terraform state.
 - **Log store** &mdash; Amazon S3 or any S3-compatible store, optional.
 - **Cache store** &mdash; built-in Redis, or ElastiCache for Redis OSS or Valkey in the same VPC.
+- **Compute model** &mdash; with `create_cluster = true` the module registers one capacity provider backed by an EC2 Auto Scaling group, so tasks run on container instances you own. Fargate is not a documented option; see the Fargate section of the [deployment guide](serverless-deployment.md) for what the module actually supports.
+- **Connectivity** &mdash; outbound to the management plane endpoints, and inbound as well, either as a VPC endpoint service or an IP allow-list. Inbound is required on this path, not optional. An endpoint service can only be built on an NLB, so choosing an ALB means adding an NLB in front of it.
 
 ### Azure Container Apps
 
@@ -404,8 +411,10 @@ Both serverless container platforms are deployed with Terraform rather than Helm
 - **Secrets** &mdash; Docker credentials, the Client Auth Key, and your Organisation ID are stored in Key Vault rather than passed as chart values.
 - **Log store** &mdash; Azure Blob Storage or any S3-compatible store, optional.
 - **Cache store** &mdash; built-in Redis or Azure Managed Redis.
+- **Network** &mdash; a VNet is optional, which is unique among the supported platforms. It becomes mandatory for zone redundancy, Application Gateway, and outbound Private Link.
+- **Connectivity** &mdash; outbound to the management plane endpoints, and inbound as well, either as a private endpoint or an IP allow-list. Inbound is required on this path, not optional. Inbound targets the Container Apps environment itself rather than a load balancer, so it works with the built-in ingress.
 
-The Key Vault entries the Terraform configuration expects are `docker-username`, `docker-password`, `portkey-client-auth`, and `organisations-to-sync`. Create the vault with RBAC authorisation enabled and grant yourself the Key Vault Administrator role before writing them.
+The Key Vault entries the Terraform configuration expects are `docker-username`, `docker-password`, `portkey-client-auth`, and `organisations-to-sync`. Create the vault with RBAC authorisation enabled and grant yourself the Key Vault Administrator role before writing them. The module is given the secret names and the vault to resolve them against, not the values, so raw secret values do not enter Terraform state.
 
 ---
 

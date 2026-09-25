@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>AI Gateway on ECS and Container Apps | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+    <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+      <button class="header-search-btn" onclick="openSearch()">
+        <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+        Search <kbd>&#8984;K</kbd>
+      </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../.."></nav>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<div class="sidebar-backdrop"></div>
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture" data-section="architecture">Architecture</a>
+    <a href="#requirements" data-section="requirements">Deployment Requirements</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Deploy</div>
+    <a href="#secrets" data-section="secrets">1. Prepare Secrets</a>
+    <a href="#deploy" data-section="deploy">2. Deploy with Terraform</a>
+    <a href="#ingress" data-section="ingress">3. Expose the Gateway</a>
+    <a href="#connectivity" data-section="connectivity">4. Connect the Planes</a>
+    <a href="#verify" data-section="verify">5. Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Operate</div>
+    <a href="#day2" data-section="day2">Scaling and Upgrades</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#reference" data-section="reference">Reference</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  ECS and Container Apps
+</div>
+
+<div class="article">
+
+<h1>AI Gateway on ECS and Container Apps</h1>
+<p class="subtitle">Deploy a Prisma AIRS AI Gateway hybrid data plane on Amazon ECS or Azure Container Apps with Terraform, covering architecture, requirements, secret preparation, the module configuration, ingress, connectivity to the management plane in both directions, and end-to-end verification</p>
+
+<div class="cloud-links">
+  <a href="ai-gateway-deployment.html">Deployment Guide</a>
+  <a href="hybrid-infrastructure.html">Hybrid Infrastructure</a>
+  <a href="llm-api-key-management.html">LLM API Key Management</a>
+  <a href="../airs/index.html">Prisma AIRS</a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This is a companion to the <a href="ai-gateway-deployment.html">AI Gateway Deployment Guide</a> and to the <a href="hybrid-infrastructure.html">AI Gateway Hybrid Infrastructure</a> guide. It covers the two container platforms that are <strong>not</strong> Kubernetes: Amazon ECS and Azure Container Apps. Both are delivered by Terraform rather than Helm, which changes the workflow enough that the Kubernetes instructions do not transfer.</p>
+  <p>It does not repeat licensing, activation, or the Strata Cloud Manager (SCM) configuration that follows deployment. Those live in the deployment guide and you need them whichever platform you land on. It also does not repeat the two-plane architecture discussion or the platform comparison, which live in the hybrid infrastructure guide.</p>
+  <p>Prisma AIRS AI Gateway is the Portkey gateway, acquired by Palo Alto Networks. You will see the name Portkey throughout: in module paths, variable names, hostnames, secret names, and the vendor's own documentation. The rebrand has not reached the code, so treat <code>portkey</code> and <code>AIRS AI Gateway</code> as the same product wherever they appear below.</p>
+  <p>The guide is written as one linear pass. Pick your platform once in <a href="#architecture">Architecture</a> and the tab selection follows you down the page.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Before you start</div>
+  <p>Everything below assumes two things are already done.</p>
+  <ul>
+    <li><strong>Licensing and activation</strong> &mdash; Phase 1 of the <a href="ai-gateway-deployment.html">AI Gateway Deployment Guide</a>. The gateway will deploy without it, but it will not serve traffic.</li>
+    <li><strong>Credentials from Palo Alto Networks</strong> &mdash; you send your Organisation ID and the email address used at signup; they return Docker registry credentials for the gateway images and a Client Auth Key. There is no self-service path to these, and nothing in this guide works without them. Request them early, because this is the step most likely to add days to a deployment.</li>
+  </ul>
+  <p>Your Organisation ID is in the SCM browser URL: <code>https://stratacloudmanager.paloaltonetworks.com/&lt;organisation_id&gt;/</code>.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     1. Architecture
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="architecture">Architecture</h2>
+
+<p>On ECS and Container Apps the gateway is a container image that Terraform places into a managed container runtime. There is no cluster to build, no Helm release, and no <code>values.yaml</code>. The module creates the network, the runtime, the cache, the log store, and the load balancer as one unit, and reads its secrets from the platform's own secret service.</p>
+
+<p>The shape of the deployment is otherwise the same as on Kubernetes: a stateless gateway behind a load balancer, a Redis-compatible cache for synced configuration and counters, an object store for full request and response bodies, and a two-directional link to the Palo Alto Networks management plane.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which platform should I pick?</div>
+  <ul>
+    <li><strong>Amazon ECS</strong> &mdash; you are on AWS, you want the deployment inside a VPC you control, and you want ALB or NLB semantics you already understand. This is the more configurable of the two and the one with a documented inbound PrivateLink path.</li>
+    <li><strong>Azure Container Apps</strong> &mdash; you are on Azure and you want the least infrastructure. A VNet is optional here, which is unique among the five supported platforms: the simplest ACA deployment has no network of your own at all.</li>
+  </ul>
+  <p>Your selection persists as you scroll, and the same choice applies to every tabbed step below.</p>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="ecs">A &middot; Amazon ECS</button>
+    <button class="mgmt-tab" data-plane="aca">B &middot; Azure Container Apps</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="ecs">
+    <img src="diagrams/aigw-serverless-aws-ecs.svg" alt="AI Gateway hybrid data plane on Amazon ECS: applications call a load balancer inside your VPC, which balances across gateway tasks running on an ECS cluster in two Availability Zones. Tasks read their secrets from AWS Secrets Manager, read configuration from a Redis cache, write full logs to S3, and reach the Palo Alto Networks management plane, model providers, and the container registry through a NAT gateway. The management plane also connects inbound over a VPC endpoint service or an IP allow-list." loading="lazy">
+
+    <p>Reading the flows in order:</p>
+    <ol>
+      <li>Your applications send OpenAI-shaped requests to the load balancer. They hold a gateway workspace key, never a provider key.</li>
+      <li>The load balancer distributes to gateway tasks on container port <code>8787</code>.</li>
+      <li>Tasks read the Docker credentials, Client Auth Key, and Organisation ID from Secrets Manager at start. The task definition holds secret ARNs, so raw values never enter Terraform state.</li>
+      <li>Tasks read synced configuration and write rate limit and budget counters to the cache store.</li>
+      <li>Tasks write full prompt and completion bodies to your S3 bucket. This is the only place that content lands, and it is inside your own account.</li>
+      <li>All other egress leaves through the NAT gateway.</li>
+      <li>The gateway reports configuration sync, metrics, and usage to the management plane. No prompt content travels on this path.</li>
+      <li>The gateway makes the actual model call. Provider egress rules now follow the gateway, not your applications.</li>
+      <li>Image pulls happen at install and upgrade only.</li>
+      <li>The management plane connects <em>inbound</em> to the gateway. This direction is required, and it is the step teams most often miss.</li>
+    </ol>
+  </div>
+
+  <div class="mgmt-panel" data-plane="aca">
+    <img src="diagrams/aigw-serverless-azure-aca.svg" alt="AI Gateway hybrid data plane on Azure Container Apps: applications call the ingress, either the built-in Container Apps FQDN or an Application Gateway, which balances across gateway replicas in a Container Apps environment. Replicas resolve secrets from Azure Key Vault, read configuration from a Redis cache, write full logs to Blob Storage, and reach the Palo Alto Networks management plane, model providers, and the container registry through egress. The management plane also connects inbound over a private endpoint or an IP allow-list." loading="lazy">
+
+    <p>Reading the flows in order:</p>
+    <ol>
+      <li>Your applications send OpenAI-shaped requests to the ingress. They hold a gateway workspace key, never a provider key.</li>
+      <li>The ingress distributes to gateway replicas on port <code>8787</code>.</li>
+      <li>The module resolves the Docker credentials, Client Auth Key, and Organisation ID from Key Vault at deploy time. You give it secret <em>names</em>, so raw values never enter Terraform state.</li>
+      <li>Replicas read synced configuration and write rate limit and budget counters to the cache store.</li>
+      <li>Replicas write full prompt and completion bodies to your Blob container. This is the only place that content lands, and it is inside your own subscription.</li>
+      <li>All other egress leaves through the environment's outbound path.</li>
+      <li>The gateway reports configuration sync, metrics, and usage to the management plane. No prompt content travels on this path.</li>
+      <li>The gateway makes the actual model call. Provider egress rules now follow the gateway, not your applications.</li>
+      <li>Image pulls happen at install and upgrade only.</li>
+      <li>The management plane connects <em>inbound</em> to the gateway. This direction is required, and it is the step teams most often miss.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Both directions are mandatory on this path</div>
+  <p>There are two ways to stand up a hybrid data plane, and they disagree about connectivity. The Gateway Registration wizard in SCM produces an outbound-only deployment. The platform deployment pages, which are what this guide follows, require the management plane to reach your gateway <em>inbound</em> as well, over a private link or an IP allow-list.</p>
+  <p>Configure outbound only and you get a gateway that serves traffic correctly but never appears in Strata Cloud Manager. That failure looks like a licensing or activation problem and is usually diagnosed as one, so settle the inbound path in <a href="#connectivity">step 4</a> before you conclude anything is wrong upstream.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     2. Deployment Requirements
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="requirements">Deployment Requirements</h2>
+
+<p>The requirements split into three groups: what Palo Alto Networks has to give you, what you need installed locally, and what your cloud account has to allow.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>What Palo Alto Networks provides</span>
+  </div>
+  <div class="collapsible-body">
+    <p>All three items come from the same request. Send your Organisation ID and the signup email address to the Palo Alto Networks team.</p>
+    <table>
+      <thead>
+        <tr><th>Item</th><th>Used for</th><th>Where it ends up</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Docker registry username</td><td>Pulling the gateway image</td><td>Secrets Manager or Key Vault</td></tr>
+        <tr><td>Docker registry password</td><td>Pulling the gateway image</td><td>Secrets Manager or Key Vault</td></tr>
+        <tr><td>Client Auth Key</td><td>Authenticating the data plane to the management plane</td><td><code>PORTKEY_CLIENT_AUTH</code></td></tr>
+      </tbody>
+    </table>
+    <p>Your Organisation ID is yours to read off the SCM URL, and it becomes <code>ORGANISATIONS_TO_SYNC</code>. If you sync more than one organisation, the value is comma-separated.</p>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Treat all four values as credentials</div>
+      <p>The Client Auth Key authenticates your entire data plane. Put these values straight into the platform secret service as described in <a href="#secrets">step 1</a> and never into a <code>.tfvars</code> file, a repository, a ticket, or a chat message. The module is deliberately designed so that raw values never reach Terraform state: do not undo that by inlining them.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Tooling, permissions, and sizing</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="mgmt-tabs" data-tab-group="platform">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="ecs">A &middot; Amazon ECS</button>
+        <button class="mgmt-tab" data-plane="aca">B &middot; Azure Container Apps</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="ecs">
+        <table>
+          <thead>
+            <tr><th>Requirement</th><th>Detail</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Account</td><td>AWS account with permissions to create ECS, EC2, VPC, ELB, IAM, S3, Secrets Manager, and CloudWatch resources</td></tr>
+            <tr><td>CLI</td><td>AWS CLI, configured with credentials</td></tr>
+            <tr><td>Terraform</td><td>v1.13 or later</td></tr>
+            <tr><td>Gateway sizing</td><td>1 vCPU (1024 CPU units) and 2 GiB per task</td></tr>
+            <tr><td>Availability</td><td>Tasks across at least two Availability Zones, autoscaling enabled</td></tr>
+            <tr><td>Cache store</td><td>Built-in Redis task, or ElastiCache for Redis OSS or Valkey in the same VPC</td></tr>
+            <tr><td>Log store</td><td>S3 or any S3-compatible store. Optional, but see the note below</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mgmt-panel" data-plane="aca">
+        <table>
+          <thead>
+            <tr><th>Requirement</th><th>Detail</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Subscription</td><td>Azure subscription with permissions to create Container Apps, Key Vault, Storage, VNet, and Application Gateway resources</td></tr>
+            <tr><td>CLI</td><td>Azure CLI, configured with credentials</td></tr>
+            <tr><td>Terraform</td><td>v1.5 or later</td></tr>
+            <tr><td>Gateway sizing</td><td>1 vCPU and 2 GiB per replica</td></tr>
+            <tr><td>Availability</td><td>Autoscaling across multiple Availability Zones, which requires a VNet deployment</td></tr>
+            <tr><td>Cache store</td><td>Built-in Redis container app, or Azure Managed Redis</td></tr>
+            <tr><td>Log store</td><td>Azure Blob Storage or any S3-compatible store. Created for you if you do not name one</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Published sizing is a floor, not a production recommendation</div>
+      <p>The per-task and per-replica figures above are the vendor's stated minimums. They are not throughput-derived, and no requests-per-second guidance is published for either platform. Treat 1 vCPU and 2 GiB as the smallest unit that runs, then size the <em>count</em> of tasks or replicas from your own load test. The gateway is stateless, so horizontal scaling is the lever that matters.</p>
+      <p>Log volume is the one number you can plan against: each log document is roughly 10 kB uncompressed. Multiply by request volume and retention to size the bucket or container.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">The log store is optional in the module and mandatory in practice</div>
+      <p>Both platforms list the log store as optional, and the gateway will run without one. What you lose is the full prompt and completion body for every request, which is the artifact most teams deployed the gateway to get. Metrics and analytics still reach Strata Cloud Manager either way. Configure the log store unless you have a specific reason not to retain request content.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>ECS Fargate &mdash; what is and is not supported</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This question comes up on every AWS engagement, and the published documentation does not answer it, so here is what the module actually does.</p>
+
+    <p>With <code>create_cluster = true</code>, which is what every published example uses, the module builds an ECS cluster whose only capacity provider is backed by an EC2 Auto Scaling group. The <code>instance_type</code>, <code>min_asg_size</code>, <code>max_asg_size</code>, and <code>desired_asg_size</code> variables exist precisely because tasks run on container instances you own. <strong>The documented path is EC2-backed ECS, not Fargate.</strong></p>
+
+    <p>The task definition itself is Fargate-capable. It declares <code>requires_compatibilities = ["EC2", "FARGATE"]</code> with <code>awsvpc</code> networking, and the service attaches through a capacity provider strategy rather than a hard-coded launch type. The gateway's 1024 CPU units and 2048 MiB are also a valid Fargate size combination. So the pieces are in place.</p>
+
+    <p>Reaching Fargate means bypassing the module's cluster creation:</p>
+    <ul>
+      <li>Create the ECS cluster yourself with the <code>FARGATE</code> and <code>FARGATE_SPOT</code> capacity providers registered.</li>
+      <li>Set <code>create_cluster = false</code>, and supply <code>cluster_name</code> and <code>capacity_provider_name</code> pointing at that cluster.</li>
+    </ul>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Not a validated configuration</div>
+      <p>The combination above is inferred from reading the module, not from vendor documentation or a tested deployment. No Palo Alto Networks or Portkey documentation describes a Fargate deployment, and the EC2 lifecycle hook and Auto Scaling resources the module ships alongside the cluster have no Fargate equivalent. Do not commit to Fargate for a customer deployment on the strength of this section. Confirm with the product team first, and treat the EC2-backed path as the supported one until they say otherwise.</p>
+    </div>
+
+    <p>If the requirement behind the question is "no servers to patch" rather than "Fargate specifically", Azure Container Apps satisfies it today with no such caveat, and on AWS a Bottlerocket-based Auto Scaling group gets most of the way there.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     3. Step 1: Prepare Secrets
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="secrets">1. Prepare Secrets</h2>
+
+<p>The secrets go in before Terraform runs. The module reads them by reference, so this ordering is not optional.</p>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="ecs">A &middot; Amazon ECS</button>
+    <button class="mgmt-tab" data-plane="aca">B &middot; Azure Container Apps</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="ecs">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.1 &mdash; Create two secrets in AWS Secrets Manager</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Two secrets are needed: one holding the Docker registry credentials, one holding the Client Auth Key and Organisation ID.</p>
+
+        <div class="code-block">
+          <pre><code>project_name=portkey-gateway      # a name for this deployment
+environment=dev                   # the environment name
+aws_region=us-east-1              # the region you are deploying into
+
+# Docker credentials issued by Palo Alto Networks
+aws secretsmanager create-secret \
+  --name ${project_name}/${environment}/docker-credentials \
+  --region ${aws_region} \
+  --secret-string '{"username":"&lt;docker-username&gt;","password":"&lt;docker-password&gt;"}'
+
+# Client Auth Key and Organisation ID
+aws secretsmanager create-secret \
+  --name ${project_name}/${environment}/client-org \
+  --region ${aws_region} \
+  --secret-string '{"PORTKEY_CLIENT_AUTH":"&lt;client-auth&gt;","ORGANISATIONS_TO_SYNC":"&lt;organisation-id&gt;"}'</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>A CloudFormation template is published as an alternative: <code>cloudformation/secrets.yaml</code> in the <a href="https://github.com/Portkey-AI/portkey-gateway-infrastructure" target="_blank" rel="noopener">portkey-gateway-infrastructure</a> repository. It takes the same values as parameters and emits the same two ARNs as stack outputs.</p>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>Both commands print an <code>ARN</code>. Record them. You need them in step 2, and the module will not accept anything else in their place.</p>
+          <div class="code-block">
+            <pre><code>aws secretsmanager list-secrets --region ${aws_region} \
+  --query "SecretList[?starts_with(Name,'${project_name}/${environment}')].[Name,ARN]" \
+  --output table</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>Two rows come back. If you see one, the second <code>create-secret</code> failed, most often because a secret of that name is pending deletion from an earlier attempt.</p>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">ARNs, not values</div>
+          <p>The <code>secrets</code> block in the Terraform module takes Secrets Manager ARNs. The ECS task definition references the ARN and AWS injects the value at task start. Pasting the raw secret into that block puts your Client Auth Key into Terraform state in plain text.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mgmt-panel" data-plane="aca">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.1 &mdash; Create a Key Vault and store four secrets</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The Key Vault needs RBAC authorisation enabled, and you need the Key Vault Administrator role on it before you can write secrets.</p>
+
+        <div class="code-block">
+          <pre><code>az login
+sub_id=&lt;your-subscription-id&gt;
+az account set --subscription ${sub_id}
+
+rg=portkey-rg           # resource group name
+kv=portkey-kv           # Key Vault name
+
+# Create the resource group first if it does not exist:
+# az group create --name ${rg} --location eastus
+
+az keyvault create \
+  --name ${kv} \
+  --resource-group ${rg} \
+  --location eastus \
+  --enable-rbac-authorization true
+
+user_id=$(az ad signed-in-user show --query id -o tsv)
+
+az role assignment create \
+  --role "Key Vault Administrator" \
+  --assignee ${user_id} \
+  --scope "/subscriptions/${sub_id}/resourceGroups/${rg}/providers/Microsoft.KeyVault/vaults/${kv}"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>Now write the four secrets. The names matter: the module looks them up by name, and these are the names its examples expect.</p>
+
+        <div class="code-block">
+          <pre><code>az keyvault secret set --vault-name ${kv} --name docker-username        --value "&lt;docker-username&gt;"
+az keyvault secret set --vault-name ${kv} --name docker-password        --value "&lt;docker-password&gt;"
+az keyvault secret set --vault-name ${kv} --name portkey-client-auth    --value "&lt;client-auth&gt;"
+az keyvault secret set --vault-name ${kv} --name organisations-to-sync  --value "&lt;organisation-id&gt;"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code>az keyvault secret list --vault-name ${kv} --query "[].name" -o tsv</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>Four names come back, matching the four above exactly. A role assignment can take a minute to propagate, so a <code>Forbidden</code> error on the first <code>secret set</code> usually means you ran it too quickly rather than that the assignment failed.</p>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Names, not values</div>
+          <p>The <code>secrets</code> block in the Terraform module takes Key Vault secret <em>names</em>. The module resolves them against the vault named in <code>secrets_key_vault</code>. Pasting raw values into that block puts your Client Auth Key into Terraform state in plain text.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     4. Step 2: Deploy with Terraform
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="deploy">2. Deploy with Terraform</h2>
+
+<p>One module call builds the whole data plane. The configuration below is the smallest deployment that is worth having: two Availability Zones, a log store, a load balancer, and secrets by reference.</p>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="ecs">A &middot; Amazon ECS</button>
+    <button class="mgmt-tab" data-plane="aca">B &middot; Azure Container Apps</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="ecs">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.1 &mdash; Set up the working directory and remote state</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code>mkdir portkey-gateway-deployment
+cd portkey-gateway-deployment</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>Remote state is optional for a first test and expected for anything else. State for this module contains resource identifiers and configuration, so treat the bucket as sensitive and keep versioning on.</p>
+
+        <div class="code-block">
+          <pre><code>aws s3api create-bucket \
+  --bucket portkey-tfstate-&lt;account-id&gt; \
+  --region us-east-1
+
+aws s3api put-bucket-versioning \
+  --bucket portkey-tfstate-&lt;account-id&gt; \
+  --versioning-configuration Status=Enabled</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>Create <code>backend.config</code>:</p>
+
+        <div class="code-block">
+          <pre><code>bucket = "portkey-tfstate-&lt;account-id&gt;"
+key    = "portkey-gateway/dev.tfstate"
+region = "us-east-1"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.2 &mdash; Write main.tf</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Substitute the two ARNs from step 1 and your log bucket name. The <code>allowed_lb_cidrs</code> value is the only one with a security consequence: it is the set of CIDRs permitted to reach the load balancer, and for an internal load balancer the VPC CIDR is the usual answer.</p>
+
+        <div class="code-block">
+          <pre><code>terraform {
+  required_version = "&gt;= 1.13"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~&gt; 6.0"
+    }
+  }
+
+  backend "s3" {
+    use_lockfile = true
+  }
+}
+
+provider "aws" {
+  region = "us-east-1"
+
+  default_tags {
+    tags = {
+      Environment = "dev"
+      ManagedBy   = "Terraform"
+      Project     = "portkey-gateway"
+    }
+  }
+}
+
+module "portkey_gateway" {
+  source = "github.com/Portkey-AI/portkey-gateway-infrastructure//terraform/ecs?ref=v2.0.0"
+
+  # Project
+  project_name = "portkey-gateway"
+  environment  = "dev"
+  aws_region   = "us-east-1"
+
+  # Docker credentials, by Secrets Manager ARN
+  docker_cred_secret_arn = "&lt;DockerCredentialsSecretArn&gt;"
+
+  # Network
+  create_new_vpc     = true
+  vpc_cidr           = "10.0.0.0/16"
+  num_az             = 2
+  single_nat_gateway = true
+
+  # Cluster
+  create_cluster   = true
+  instance_type    = "t4g.medium"
+  min_asg_size     = 1
+  max_asg_size     = 2
+  desired_asg_size = 1
+
+  # "gateway" for the AI Gateway alone, "all" to add the MCP gateway
+  server_mode = "gateway"
+
+  gateway_config = {
+    desired_task_count = 1
+    cpu                = 1024
+    memory             = 2048
+    gateway_port       = 8787
+    mcp_port           = 8788
+  }
+
+  # Built-in Redis. Swap for ElastiCache in production.
+  redis_configuration = {
+    redis_type = "redis"
+    cpu        = 256
+    memory     = 512
+    endpoint   = ""
+    tls        = false
+    mode       = "standalone"
+  }
+
+  object_storage = {
+    log_store_bucket = "&lt;your-logs-bucket&gt;"
+    bucket_region    = "us-east-1"
+  }
+
+  create_lb        = true
+  internal_lb      = true
+  lb_type          = "network"
+  allowed_lb_cidrs = ["10.0.0.0/16"]
+
+  environment_variables = {
+    gateway = {
+      SERVICE_NAME    = "gateway"
+      ANALYTICS_STORE = "control_plane"
+      LOG_STORE       = "s3_assume"
+    }
+  }
+
+  # Secrets Manager ARNs, not values
+  secrets = {
+    gateway = {
+      PORTKEY_CLIENT_AUTH   = "&lt;ClientOrgSecretNameArn&gt;"
+      ORGANISATIONS_TO_SYNC = "&lt;ClientOrgSecretNameArn&gt;"
+    }
+  }
+}
+
+output "load_balancer_dns_name" {
+  value = module.portkey_gateway.load_balancer_dns_name
+}
+
+output "vpc_id" {
+  value = module.portkey_gateway.vpc_id
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Pin the module version</div>
+          <p>The <code>?ref=v2.0.0</code> suffix on the source is doing real work. Without it Terraform tracks the default branch and a later <code>apply</code> can pull an unrelated change into an unrelated deployment. Bump the ref deliberately, as described under <a href="#day2">Scaling and Upgrades</a>.</p>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Both secret keys point at the same ARN</div>
+          <p>That is not a copy-and-paste error. <code>PORTKEY_CLIENT_AUTH</code> and <code>ORGANISATIONS_TO_SYNC</code> are two JSON keys inside the single <code>client-org</code> secret created in step 1, and the task definition pulls each key from the same ARN.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.3 &mdash; Apply</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code>terraform init -backend-config=backend.config
+terraform plan
+terraform apply</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>Terraform prints <code>load_balancer_dns_name</code>. Confirm the service reached a steady state before moving on:</p>
+          <div class="code-block">
+            <pre><code>aws ecs describe-services \
+  --cluster portkey-gateway-cluster \
+  --services portkey-gateway-dev-gateway \
+  --region us-east-1 \
+  --query "services[0].{running:runningCount,desired:desiredCount,status:status}"</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p><code>running</code> should equal <code>desired</code> and <code>status</code> should read <code>ACTIVE</code>. If tasks are cycling, the cause is almost always the image pull: check the stopped-task reason for an authentication failure, which points back at the Docker credentials secret from step 1.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mgmt-panel" data-plane="aca">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.1 &mdash; Set up the working directory</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code>mkdir portkey-gateway
+cd portkey-gateway</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>The published ACA examples use local state. For anything beyond a first test, add an <code>azurerm</code> backend pointing at a storage account before the first <code>apply</code>: moving state afterwards is avoidable work.</p>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.2 &mdash; Write main.tf</span>
+      </div>
+      <div class="collapsible-body">
+        <p>This is the simplest working configuration: no VNet, built-in ACA ingress, built-in Redis, and an auto-created storage account. Harden it in <a href="#ingress">step 3</a>.</p>
+
+        <div class="code-block">
+          <pre><code>terraform {
+  required_version = "&gt;= 1.5"
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~&gt; 4.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
+module "portkey_gateway" {
+  source = "github.com/Portkey-AI/portkey-gateway-infrastructure//terraform/aca?ref=v1.1.3"
+
+  # Project
+  project_name        = "portkey-gateway"
+  environment         = "dev"
+  resource_group_name = "portkey-rg"
+
+  # Docker credentials, by Key Vault secret name
+  registry_type = "dockerhub"
+  docker_credentials = {
+    key_vault_name  = "portkey-kv"
+    key_vault_rg    = "portkey-rg"
+    username_secret = "docker-username"
+    password_secret = "docker-password"
+  }
+
+  # "none" for no VNet. See step 3 for "new" and "existing".
+  network_mode = "none"
+
+  ingress_type   = "aca"
+  public_ingress = true
+
+  # "gateway" for the AI Gateway alone, "all" to add the MCP gateway
+  server_mode = "gateway"
+
+  gateway_image = {
+    image = "portkeyai/gateway_enterprise"
+    tag   = "2.2.2"
+  }
+
+  gateway_config = {
+    cpu                 = 1
+    memory              = "2Gi"
+    min_replicas        = 1
+    max_replicas        = 2
+    port                = 8787
+    cpu_scale_threshold = 70
+  }
+
+  # Built-in Redis. Swap for Azure Managed Redis in production.
+  redis_config = {
+    redis_type = "redis"
+    cpu        = 1
+    memory     = "2Gi"
+  }
+
+  environment_variables = {
+    gateway = {
+      LOG_LEVEL             = "info"
+      NODE_ENV              = "development"
+      ANALYTICS_STORE       = "control_plane"
+      AZURE_MANAGED_VERSION = "2019-08-01"
+    }
+  }
+
+  # Key Vault secret names, not values
+  secrets = {
+    gateway = {
+      PORTKEY_CLIENT_AUTH   = "portkey-client-auth"
+      ORGANISATIONS_TO_SYNC = "organisations-to-sync"
+    }
+  }
+
+  secrets_key_vault = {
+    name           = "portkey-kv"
+    resource_group = "portkey-rg"
+  }
+}
+
+output "gateway_url" {
+  value = module.portkey_gateway.gateway_url
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Pin the module version and the image tag</div>
+          <p>ACA pins in two places: <code>?ref=v1.1.3</code> on the module source and <code>tag</code> in <code>gateway_image</code>. They move independently. Note also that the ECS and ACA modules carry different version numbers despite living in the same repository, so do not copy a <code>ref</code> between platforms.</p>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">This configuration is public with no VNet</div>
+          <p><code>network_mode = "none"</code> with <code>public_ingress = true</code> gives the gateway a publicly resolvable FQDN reachable from anywhere. That is convenient for a first deployment and wrong for production. Step 3 covers both ways to close it.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.3 &mdash; Apply</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code>terraform init
+terraform plan
+terraform apply</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>Terraform prints <code>gateway_url</code>. Confirm the container app is running and the revision is healthy:</p>
+          <div class="code-block">
+            <pre><code>az containerapp show \
+  --name portkey-gateway-dev-gateway \
+  --resource-group portkey-rg \
+  --query "{state:properties.runningStatus,fqdn:properties.configuration.ingress.fqdn}" -o table</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p><code>state</code> should read <code>Running</code>. If the revision is failing, check the image pull first: an unauthorised pull means the module could not read the Docker credentials from Key Vault, which is a role assignment problem rather than a bad password.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     5. Step 3: Expose the Gateway
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="ingress">3. Expose the Gateway</h2>
+
+<p>Two decisions here. What sits in front of the gateway, and whether the connection to it is encrypted. The second is not optional: applications send a gateway workspace key on every request, and that key is a bearer credential.</p>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Terminate TLS before you send real traffic</div>
+  <p>The minimal configurations in step 2 expose the gateway over plain HTTP on ECS, which puts the workspace key on the wire in cleartext. Azure Container Apps gives you HTTPS on the built-in FQDN by default, so ACA is safe on this point from the first deploy. On ECS you must add TLS yourself, either with an ALB and an ACM certificate, or by keeping the listener private and terminating TLS elsewhere.</p>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="ecs">A &middot; Amazon ECS</button>
+    <button class="mgmt-tab" data-plane="aca">B &middot; Azure Container Apps</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="ecs">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.1 &mdash; Choose ALB or NLB</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The choice is genuinely consequential on ECS, because it decides whether inbound PrivateLink works directly in step 4.</p>
+
+        <table>
+          <thead>
+            <tr><th>You need</th><th>Use</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>TLS termination, WAF, access logs</td><td>ALB</td></tr>
+            <tr><td>Host-based routing, required when <code>server_mode = "all"</code></td><td>ALB</td></tr>
+            <tr><td>Inbound PrivateLink to the management plane, directly</td><td>NLB</td></tr>
+            <tr><td>Layer-4 pass-through and lowest latency</td><td>NLB</td></tr>
+          </tbody>
+        </table>
+
+        <p>An ALB with TLS:</p>
+        <div class="code-block">
+          <pre><code>create_lb           = true
+internal_lb         = false   # true for an internal ALB
+lb_type             = "application"
+tls_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx"
+allowed_lb_cidrs    = ["&lt;X.X.X.X/Y&gt;"]</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>With <code>server_mode = "all"</code>, add host-based routing and point both names at the ALB:</p>
+        <div class="code-block">
+          <pre><code>alb_routing_configuration = {
+  enable_host_based_routing = true
+  gateway_host              = "gateway.example.com"
+  mcp_host                  = "mcp.example.com"
+}
+
+# DNS
+# gateway.example.com  A/CNAME  &lt;alb-dns-name&gt;
+# mcp.example.com      A/CNAME  &lt;alb-dns-name&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>An NLB, which is the default in step 2:</p>
+        <div class="code-block">
+          <pre><code>create_lb        = true
+internal_lb      = true    # false for internet-facing
+lb_type          = "network"
+allowed_lb_cidrs = ["10.0.0.0/16"]</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">The trap: ALB plus inbound PrivateLink</div>
+          <p>An AWS VPC endpoint service can only be created against a Network Load Balancer or a Gateway Load Balancer. If you pick an ALB, which <code>server_mode = "all"</code> forces you to, you cannot hand that ALB to the endpoint service in step 4. You will need a separate NLB in front of the ALB, provisioned outside this module, using a target group of type <code>alb</code>. Decide this now rather than after the ALB is carrying traffic.</p>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Raise the idle timeout</div>
+          <p>A streaming completion holds the connection open for the length of the generation. Load balancer idle timeouts are commonly shorter than a long response, and the failure looks like a truncated stream rather than a timeout, which sends people looking at the model instead of the load balancer. Set the idle timeout above your longest expected generation.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.2 &mdash; Optional: move the cache store to ElastiCache</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The built-in Redis task from step 2 is a single container with no persistence and no failover. It is fine for a first deployment and not fine for production, where losing it drops synced configuration and every rate limit and budget counter at once.</p>
+        <p>Point the module at an ElastiCache cluster in the same VPC instead, and store the password as a further Secrets Manager entry rather than inline.</p>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Same VPC, not just reachable</div>
+          <p>The cache store must sit in the same VPC as the gateway. This is stated as a requirement rather than a recommendation, so a peered or transit-attached cluster in another VPC is outside what is documented.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mgmt-panel" data-plane="aca">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.1 &mdash; Choose built-in ingress or Application Gateway</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Built-in ACA ingress, which is what step 2 configures, gives a managed HTTPS FQDN with a valid certificate and no VNet. Application Gateway adds WAF, your own certificate and hostname, and host-based routing for MCP, and it requires a VNet.</p>
+
+        <p>To move into a VNet, replace <code>network_mode = "none"</code> with either:</p>
+        <div class="code-block">
+          <pre><code># Let the module build the VNet
+network_mode = "new"
+vnet_cidr    = "10.0.0.0/16"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="code-block">
+          <pre><code># Or bring your own
+network_mode           = "existing"
+vnet_id                = "/subscriptions/&lt;sub&gt;/resourceGroups/&lt;rg&gt;/providers/Microsoft.Network/virtualNetworks/&lt;vnet&gt;"
+aca_subnet_id          = "&lt;vnet-id&gt;/subnets/&lt;aca-subnet&gt;"
+private_link_subnet_id = "&lt;vnet-id&gt;/subnets/&lt;private-link-subnet&gt;"
+app_gateway_subnet_id  = "&lt;vnet-id&gt;/subnets/&lt;app-gateway-subnet&gt;"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>Then add Application Gateway:</p>
+        <div class="code-block">
+          <pre><code>ingress_type = "application_gateway"
+
+app_gateway_config = {
+  sku_name     = "WAF_v2"
+  sku_tier     = "WAF_v2"
+  capacity     = 2
+  enable_waf   = true
+  public       = true      # false for a private Application Gateway
+  routing_mode = "host"
+  gateway_host = "gateway.example.com"
+  mcp_host     = "mcp.example.com"   # only when server_mode = "all"
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>For your own TLS certificate, import the PFX into Key Vault and reference it:</p>
+        <div class="code-block">
+          <pre><code>az keyvault certificate import \
+  --vault-name my-ssl-kv \
+  --name my-ssl-cert \
+  --file certificate.pfx \
+  --password "&lt;pfx-password&gt;"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="code-block">
+          <pre><code>app_gateway_config = {
+  # ... as above ...
+  ssl_cert_key_vault_secret_id = "https://my-ssl-kv.vault.azure.net/secrets/my-ssl-cert"
+  ssl_cert_key_vault_rg        = "my-ssl-kv-rg"
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>Point DNS at the Application Gateway public IP and confirm the certificate served is yours, not the ACA default:</p>
+          <div class="code-block">
+            <pre><code>curl -sv https://gateway.example.com/ 2&gt;&amp;1 | grep -E "subject:|issuer:"</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Raise the request timeout</div>
+          <p>Application Gateway's default backend request timeout is shorter than a long streaming completion. Raise it above your longest expected generation, or streamed responses will be cut off in a way that looks like a model fault rather than a proxy timeout.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.2 &mdash; Optional: Azure Managed Redis and your own storage</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The built-in Redis container app from step 2 has no persistence and no failover. For production, point the module at Azure Managed Redis over TLS:</p>
+
+        <div class="code-block">
+          <pre><code>redis_config = {
+  redis_type = "azure-redis"
+  endpoint   = "rediss://&lt;name&gt;.redis.cache.windows.net:6380"
+  tls        = true
+  mode       = "standalone"
+}
+
+secrets = {
+  gateway = {
+    PORTKEY_CLIENT_AUTH   = "portkey-client-auth"
+    ORGANISATIONS_TO_SYNC = "organisations-to-sync"
+    REDIS_PASSWORD        = "&lt;redis-password-secret-name&gt;"   # create this in Key Vault first
+  }
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>By default the module creates a storage account and container for the log store. To use one you already have, with a managed identity rather than a key:</p>
+
+        <div class="code-block">
+          <pre><code>storage_config = {
+  resource_group = "my-storage-account-rg"
+  auth_mode      = "managed"
+  account_name   = "my-storage-account-name"
+  container_name = "my-container-name"
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     6. Step 4: Connect the Planes
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="connectivity">4. Connect the Planes</h2>
+
+<p>Two directions, configured separately, both required. Outbound carries configuration sync, metrics, and usage from your gateway to Palo Alto Networks. Inbound lets the management plane reach your gateway, which is what makes it manageable from Strata Cloud Manager.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Neither direction carries prompt content</div>
+  <p>Worth stating plainly for the security review: configuration, anonymised metrics, and usage counts cross these links. Full prompt and completion bodies go to your own log store and stay there. The privacy question and the connectivity question are separate, and the answer to the first does not depend on which option you pick for the second.</p>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="ecs">A &middot; Amazon ECS</button>
+    <button class="mgmt-tab" data-plane="aca">B &middot; Azure Container Apps</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="ecs">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>4.1 &mdash; Outbound: over the internet</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The simple option. Allow the gateway egress to two hostnames on 443:</p>
+        <ul>
+          <li><code>https://aigw.portkey.ai</code></li>
+          <li><code>https://albus.portkey.ai</code></li>
+        </ul>
+        <p>No module configuration is needed if the VPC already has outbound internet through the NAT gateway. If you filter egress by FQDN, these are the two entries to add.</p>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>4.2 &mdash; Outbound: over AWS PrivateLink</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Keeps the traffic off the internet entirely. It needs a whitelisting step at Palo Alto Networks first, so start it early.</p>
+        <ol>
+          <li>Send your AWS account ARN to the Palo Alto Networks team and wait for confirmation that it is allow-listed.</li>
+          <li>In the <a href="https://console.aws.amazon.com/vpc/" target="_blank" rel="noopener">VPC console</a>, in the region where the gateway runs, go to <strong>Endpoints</strong> and select <strong>Create endpoint</strong>.</li>
+          <li>Choose the <strong>PrivateLink Ready partner services</strong> category and enter the service name:
+            <div class="code-block">
+              <pre><code>com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>If the gateway is outside <code>us-east-1</code>, tick <strong>Enable Cross Region endpoint</strong>, pick <code>us-east-1</code>, and select <strong>Verify service</strong>.</li>
+          <li>Under <strong>Network settings</strong>, select the gateway's VPC and at least two subnets in different Availability Zones. Attach a security group that allows inbound 443 from the gateway tasks.</li>
+          <li>Select <strong>Create endpoint</strong> and wait for the status to reach <code>Available</code>.</li>
+          <li>Select <strong>Actions</strong>, then <strong>Modify private DNS name</strong>, and enable it for the endpoint.</li>
+        </ol>
+
+        <p>Then repoint the gateway at the private endpoint and re-apply:</p>
+        <div class="code-block">
+          <pre><code>environment_variables = {
+  gateway = {
+    SERVICE_NAME             = "gateway"
+    ANALYTICS_STORE          = "control_plane"
+    LOG_STORE                = "s3_assume"
+    ALBUS_BASEPATH           = "https://aws-cp.portkey.ai/albus"
+    CONTROL_PLANE_BASEPATH   = "https://aws-cp.portkey.ai/api/v1"
+    SOURCE_SYNC_API_BASEPATH = "https://aws-cp.portkey.ai/api/v1/sync"
+    CONFIG_READER_PATH       = "https://aws-cp.portkey.ai/api/model-configs"
+  }
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="code-block">
+          <pre><code>terraform apply</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>From a host in the VPC, confirm the private DNS name resolves to a private address rather than a public one:</p>
+          <div class="code-block">
+            <pre><code>dig +short aws-cp.portkey.ai</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>An RFC 1918 address means private DNS is working. A public address means the endpoint's private DNS name is not enabled, and the gateway will still be egressing over the internet.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>4.3 &mdash; Inbound: VPC endpoint service, or an IP allow-list</span>
+      </div>
+      <div class="collapsible-body">
+        <p>This is the direction that is easy to skip and expensive to skip. Pick one of the two.</p>
+
+        <h4>Option A &mdash; VPC endpoint service (PrivateLink)</h4>
+        <p>Requires an NLB. If you deployed with <code>lb_type = "network"</code> the module already made one. If you are on an ALB, build an NLB in front of it first, with a target group of type <code>alb</code> and a listener forwarding to the ALB's port.</p>
+        <ol>
+          <li>In the VPC console, in the gateway's region, create an <strong>Endpoint service</strong> against that NLB. Select IPv4, and decide whether connection requests need acceptance.</li>
+          <li>If you enable a private DNS name, verify domain ownership: <strong>Actions</strong>, then <strong>Verify domain ownership for private DNS name</strong>, create the record it gives you, then <strong>Verify</strong>.</li>
+          <li>Authorise the management plane to connect. <strong>Actions</strong>, then <strong>Allow principals</strong>, and add:
+            <div class="code-block">
+              <pre><code>arn:aws:iam::299329113195:root</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Send the Palo Alto Networks team the service name, DNS names, private DNS name, region, and the load balancer's listener port.</li>
+          <li>They initiate a connection request. Approve it under <strong>Endpoint connections</strong>.</li>
+        </ol>
+
+        <h4>Option B &mdash; IP allow-list</h4>
+        <p>Needs a publicly reachable endpoint. Permit the three management plane addresses on the listener port:</p>
+        <div class="code-block">
+          <pre><code>allowed_lb_cidrs = ["54.81.226.149/32", "34.200.113.35/32", "44.221.117.129/32"]</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Then send the public endpoint to the Palo Alto Networks team so they can complete the integration on their side.</p>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Allow-listing replaces your own CIDRs, it does not extend them</div>
+          <p><code>allowed_lb_cidrs</code> is the complete list. Setting it to the three management plane addresses alone will lock out your own applications. Include your client CIDRs in the same list.</p>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Hard-coded addresses are a maintenance item</div>
+          <p>Three fixed IPv4 addresses and one account ARN are published values that can change without appearing in your monitoring. Record where you used them so a future change is a lookup rather than an investigation.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mgmt-panel" data-plane="aca">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>4.1 &mdash; Outbound: over the internet</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Allow the gateway egress to two hostnames on 443:</p>
+        <ul>
+          <li><code>https://aigw.portkey.ai</code></li>
+          <li><code>https://albus.portkey.ai</code></li>
+        </ul>
+        <p>No configuration is needed if the environment already has outbound internet access. With <code>network_mode = "none"</code> it does, by default.</p>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>4.2 &mdash; Outbound: over Azure Private Link</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Requires a VNet deployment, so <code>network_mode</code> must be <code>new</code> or <code>existing</code>. This is the main reason to leave <code>none</code> behind.</p>
+        <ol>
+          <li>Send your Azure subscription ID to the Palo Alto Networks team and wait for confirmation that it is allow-listed.</li>
+          <li>Enable the outbound private link in <code>terraform.tfvars</code>:
+            <div class="code-block">
+              <pre><code>control_plane_private_link = {
+  outbound = true
+}</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Apply. This creates a private endpoint in your VNet, the <code>privatelink-az.portkey.ai</code> private DNS zone, an <code>azure-cp</code> A record, and the VNet link.
+            <div class="code-block">
+              <pre><code>terraform apply</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Send them the private endpoint resource ID and wait for approval:
+            <div class="code-block">
+              <pre><code>terraform output control_plane_private_endpoint_id</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verify approval before continuing</div>
+          <div class="code-block">
+            <pre><code>az network private-endpoint show \
+  --ids $(terraform output -raw control_plane_private_endpoint_id) \
+  --query 'privateLinkServiceConnections[0].privateLinkServiceConnectionState.status' -o tsv</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>This must return <code>Approved</code>. Repointing the gateway at the private hostnames before approval lands will break outbound sync.</p>
+        </div>
+
+        <p>Once approved, repoint the gateway and re-apply:</p>
+        <div class="code-block">
+          <pre><code>environment_variables = {
+  gateway = {
+    ALBUS_BASEPATH           = "https://private.azure-cp.portkey.ai/albus"
+    CONTROL_PLANE_BASEPATH   = "https://private.azure-cp.portkey.ai/api/v1"
+    SOURCE_SYNC_API_BASEPATH = "https://private.azure-cp.portkey.ai/api/v1/sync"
+    CONFIG_READER_PATH       = "https://private.azure-cp.portkey.ai/api/model-configs"
+  }
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>4.3 &mdash; Inbound: private endpoint, or an IP allow-list</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Inbound on ACA targets the Container Apps environment itself rather than a load balancer, which means it works with the built-in ingress and does not force you onto Application Gateway.</p>
+
+        <h4>Option A &mdash; Azure Private Link</h4>
+        <ol>
+          <li>Collect the two values they need:
+            <div class="code-block">
+              <pre><code>terraform output container_app_environment_id
+terraform output inbound_gateway_fqdn</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Send both to the Palo Alto Networks team. They create a private endpoint in their subscription targeting your environment.</li>
+          <li>Watch for the pending connection:
+            <div class="code-block">
+              <pre><code>az network private-endpoint-connection list \
+  --id $(terraform output -raw container_app_environment_id) \
+  --type Microsoft.App/managedEnvironments \
+  --query "[].{Name:name, Status:properties.privateLinkServiceConnectionState.status}"</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+          <li>Approve it:
+            <div class="code-block">
+              <pre><code>az network private-endpoint-connection approve \
+  --id "&lt;connection-id&gt;" \
+  --description "Approved for AIRS AI Gateway control plane"</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+          </li>
+        </ol>
+        <p>The portal path is the same thing: <strong>Container Apps Environment</strong>, then <strong>Networking</strong>, then <strong>Private endpoint connections</strong>.</p>
+
+        <h4>Option B &mdash; IP allow-list</h4>
+        <p>Needs a publicly reachable endpoint. Add an inbound rule on the NSG or firewall permitting the three management plane addresses on the listener port:</p>
+        <div class="code-block">
+          <pre><code>54.81.226.149
+34.200.113.35
+44.221.117.129</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Then send the public endpoint to the Palo Alto Networks team so they can complete the integration.</p>
+
+        <div class="callout callout-note">
+          <div class="callout-title">These are the same three addresses as on AWS</div>
+          <p>The management plane egresses from AWS regardless of which cloud your data plane runs in. That is expected, not a documentation error, and it is worth saying out loud in an Azure security review before someone else raises it.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     7. Step 5: Verify
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="verify">5. Verify</h2>
+
+<p>One request proves the whole chain: ingress, gateway, provider egress, log store, and the link to the management plane.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header open">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 &mdash; Send a request through the gateway</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Replace <code>&lt;GATEWAY_ENDPOINT&gt;</code> with the load balancer DNS name, the Container Apps FQDN, or your custom hostname. Use <code>https</code> wherever you configured TLS in step 3.</p>
+
+    <div class="code-block">
+      <pre><code>export OPENAI_API_KEY=&lt;your-openai-key&gt;
+export PORTKEY_API_KEY=&lt;your-gateway-workspace-key&gt;
+
+curl 'https://&lt;GATEWAY_ENDPOINT&gt;/v1/chat/completions' \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "x-portkey-provider: openai" \
+  -H "x-portkey-api-key: $PORTKEY_API_KEY" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "What is a fractal?"}]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verify</div>
+      <p>A normal chat completion comes back. Then open <a href="https://stratacloudmanager.paloaltonetworks.com/" target="_blank" rel="noopener">Strata Cloud Manager</a> and go to <strong>Logs</strong>. The request should be listed, and selecting it should show the full prompt and completion.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Reading a partial success</div>
+      <ul>
+        <li><strong>Completion returns, nothing in Logs</strong> &mdash; the data plane works and the management plane link does not. Almost always the inbound direction in step 4.3. Check that the endpoint service connection or private endpoint connection was actually approved, not merely requested.</li>
+        <li><strong>Completion returns, log entry has no body</strong> &mdash; the log store is not wired up. Check <code>LOG_STORE</code> and the task or replica identity's permission on the bucket or container.</li>
+        <li><strong>401 from the gateway</strong> &mdash; the workspace key is wrong, or the gateway has not finished its first configuration sync. Check outbound reachability to <code>albus.portkey.ai</code>.</li>
+        <li><strong>Connection resets on long responses</strong> &mdash; load balancer idle timeout, not the model. See step 3.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     8. Scaling and Upgrades
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="day2">Scaling and Upgrades</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Autoscaling</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="mgmt-tabs" data-tab-group="platform">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="ecs">A &middot; Amazon ECS</button>
+        <button class="mgmt-tab" data-plane="aca">B &middot; Azure Container Apps</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="ecs">
+        <p>Target tracking on CPU and memory, with separate cooldowns so scale-out is faster than scale-in:</p>
+        <div class="code-block">
+          <pre><code>gateway_autoscaling = {
+  enable_autoscaling        = true
+  autoscaling_min_capacity  = 3
+  autoscaling_max_capacity  = 20
+  target_cpu_utilization    = 70
+  target_memory_utilization = 80
+  scale_in_cooldown         = 120
+  scale_out_cooldown        = 60
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Remember that task autoscaling and the Auto Scaling group behind the capacity provider are two separate limits. Raising <code>autoscaling_max_capacity</code> without raising <code>max_asg_size</code> gives you tasks that cannot be placed.</p>
+      </div>
+
+      <div class="mgmt-panel" data-plane="aca">
+        <p>Container Apps can scale on CPU, memory, or concurrent HTTP requests. Set the threshold you want and null out the others.</p>
+        <div class="code-block">
+          <pre><code># CPU, the default
+gateway_config = {
+  cpu                 = 1
+  memory              = "2Gi"
+  min_replicas        = 2
+  max_replicas        = 10
+  cpu_scale_threshold = 70
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="code-block">
+          <pre><code># Concurrent requests, usually the better fit for a gateway
+gateway_config = {
+  cpu                            = 1
+  memory                         = "2Gi"
+  min_replicas                   = 2
+  max_replicas                   = 10
+  cpu_scale_threshold            = null
+  http_scale_concurrent_requests = 100
+}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>HTTP-based scaling tends to track gateway load better than CPU, because a request waiting on a slow model provider consumes a connection without consuming much processor time.</p>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Do not leave min_replicas at 1</div>
+          <p>At one replica, any restart or platform-initiated move is a full outage. Set it to at least 2 for anything carrying real traffic.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Deployment strategies (ECS only)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The ECS module supports blue/green and canary rollouts through <code>gateway_deployment_configuration</code>. Container Apps handles this with its own revision model instead, so there is no equivalent block on ACA.</p>
+    <div class="code-block">
+      <pre><code># Blue/green
+gateway_deployment_configuration = {
+  enable_blue_green = true
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="code-block">
+      <pre><code># Canary
+gateway_deployment_configuration = {
+  enable_blue_green = false
+  canary_configuration = {
+    canary_bake_time_in_minutes = 5
+    canary_percent              = 10
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Version pinning and upgrades</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two things carry versions and they are not linked: the Terraform module, pinned by the <code>?ref=</code> on the source, and on ACA the gateway image, pinned by <code>gateway_image.tag</code>.</p>
+
+    <div class="code-block">
+      <pre><code># Pinned, the only correct form for a deployment you care about
+source = "github.com/Portkey-AI/portkey-gateway-infrastructure//terraform/ecs?ref=v2.0.0"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>To upgrade, change the ref, run <code>terraform init -upgrade</code>, read the plan carefully, and apply to a non-production environment first.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">No published compatibility matrix</div>
+      <p>There is no documented statement of which module versions work with which gateway image versions, nor a supported upgrade path between module releases, nor a tested rollback procedure. Changing a pinned ref is therefore an untested change until you test it. Keep a non-production deployment on the same pins as production so upgrades have somewhere to fail first.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Multiple environments</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Separate state per environment, one backend config each. On ECS:</p>
+    <div class="code-block">
+      <pre><code># dev/backend.config
+bucket = "portkey-tfstate-&lt;account-id&gt;"
+key    = "portkey-gateway/dev.tfstate"
+region = "us-east-1"
+
+# prod/backend.config
+bucket = "portkey-tfstate-&lt;account-id&gt;"
+key    = "portkey-gateway/prod.tfstate"
+region = "us-east-1"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="code-block">
+      <pre><code>terraform init -reconfigure -backend-config=dev/backend.config
+terraform apply -var-file=dev/dev.tfvars</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Keep <code>environment</code> distinct per deployment. It feeds resource naming, and two environments sharing a value will collide.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Removing the gateway</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>terraform destroy</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">What destroy leaves behind, and what it takes with it</div>
+      <p>The secrets you created in step 1 are outside the module, so they survive. So does an existing log store you brought yourself. A storage account or bucket the module created for you does <strong>not</strong> survive, and it holds every prompt and completion body the gateway has written. Copy anything you need to keep before destroying, and tell the Palo Alto Networks team to tear down their side of any private link.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     9. Reference
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="reference">Reference</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Endpoints, addresses, and identifiers</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Value</th><th>What it is</th><th>Used in</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>aigw.portkey.ai</code></td><td>Management plane, outbound over the internet</td><td>Egress allow-list</td></tr>
+        <tr><td><code>albus.portkey.ai</code></td><td>Configuration sync, outbound over the internet</td><td>Egress allow-list</td></tr>
+        <tr><td><code>aws-cp.portkey.ai</code></td><td>Management plane over AWS PrivateLink</td><td>ECS outbound private path</td></tr>
+        <tr><td><code>private.azure-cp.portkey.ai</code></td><td>Management plane over Azure Private Link</td><td>ACA outbound private path</td></tr>
+        <tr><td><code>com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95</code></td><td>Endpoint service name for outbound PrivateLink</td><td>ECS step 4.2</td></tr>
+        <tr><td><code>arn:aws:iam::299329113195:root</code></td><td>Management plane AWS principal</td><td>ECS step 4.3, allowed principals</td></tr>
+        <tr><td><code>54.81.226.149</code>, <code>34.200.113.35</code>, <code>44.221.117.129</code></td><td>Management plane source addresses</td><td>Inbound IP allow-list, both platforms</td></tr>
+        <tr><td><code>8787</code></td><td>Gateway container port</td><td>Both platforms</td></tr>
+        <tr><td><code>8788</code></td><td>MCP gateway container port</td><td><code>server_mode = "all"</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Platform differences at a glance</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th></th><th>Amazon ECS</th><th>Azure Container Apps</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Terraform minimum</td><td>v1.13</td><td>v1.5</td></tr>
+        <tr><td>Module path</td><td><code>//terraform/ecs</code></td><td><code>//terraform/aca</code></td></tr>
+        <tr><td>Secret service</td><td>Secrets Manager, referenced by ARN</td><td>Key Vault, referenced by name</td></tr>
+        <tr><td>Network required</td><td>Yes, a VPC</td><td>No, VNet is optional</td></tr>
+        <tr><td>TLS out of the box</td><td>No, add an ALB and a certificate</td><td>Yes, on the built-in FQDN</td></tr>
+        <tr><td>Managed cache option</td><td>ElastiCache for Redis OSS or Valkey</td><td>Azure Managed Redis</td></tr>
+        <tr><td>Log store</td><td>S3 or S3-compatible</td><td>Blob Storage or S3-compatible</td></tr>
+        <tr><td>Inbound private link target</td><td>Network Load Balancer only</td><td>Container Apps environment</td></tr>
+        <tr><td>Blue/green and canary</td><td>Yes, in the module</td><td>No, use ACA revisions</td></tr>
+        <tr><td>Compute model</td><td>EC2-backed by default</td><td>Fully managed</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>What is not yet documented</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Questions that come up in the field and that the published material does not currently answer. Raise these with the product team rather than inferring an answer, and treat anything below as unresolved when writing a customer commitment.</p>
+
+    <ul>
+      <li><strong>Throughput sizing</strong> &mdash; no requests-per-second figures for either platform. The published CPU and memory numbers are minimums to run, not a capacity model.</li>
+      <li><strong>ECS Fargate</strong> &mdash; not documented. See the Fargate section under <a href="#requirements">Deployment Requirements</a> for what the module actually supports.</li>
+      <li><strong>Upgrade and rollback</strong> &mdash; no compatibility matrix between module versions and gateway image versions, no supported upgrade path, no tested rollback.</li>
+      <li><strong>Region placement and data residency</strong> &mdash; the management plane egresses from AWS <code>us-east-1</code> addresses regardless of data plane location. Where management plane metadata is processed and stored is not documented, which matters for EU deals.</li>
+      <li><strong>Air-gapped deployment</strong> &mdash; no documented configuration for an environment with no path to <code>portkey.ai</code>.</li>
+      <li><strong>TLS inspection</strong> &mdash; behaviour of the outbound links through an intercepting proxy is not described, and streaming through one is untested.</li>
+      <li><strong>On-premises</strong> &mdash; confirmed supported but with no published procedure for these two platforms.</li>
+    </ul>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Two documentation paths disagree, deliberately</div>
+      <p>The SCM Gateway Registration wizard produces an outbound-only deployment. The platform pages this guide follows require inbound as well. Both are real and neither is a typo, but they are not interchangeable, and a customer who reads the wizard documentation and then deploys from a platform page will end up with a gateway that does not register. Establish which path a deployment is on before troubleshooting it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Source documentation</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This guide is derived from the published self-hosting documentation and from the Terraform module source.</p>
+    <ul>
+      <li><strong>ECS</strong> &mdash; <code>self-hosting/hybrid-deployments/aws/ecs</code></li>
+      <li><strong>Azure Container Apps</strong> &mdash; <code>self-hosting/hybrid-deployments/azure/aca</code></li>
+      <li><strong>Architecture</strong> &mdash; <code>self-hosting/hybrid-deployments/architecture</code></li>
+      <li><strong>Terraform modules</strong> &mdash; <a href="https://github.com/Portkey-AI/portkey-gateway-infrastructure" target="_blank" rel="noopener">Portkey-AI/portkey-gateway-infrastructure</a>, paths <code>terraform/ecs</code> and <code>terraform/aca</code>, each with its own <code>docs/</code> directory and variables reference</li>
+    </ul>
+    <p>The doc pages are published twice, on <code>docs.portkey.ai/docs/aigw/</code> and on <code>portkey.ai/docs/</code>, and the two versions differ. See <a href="SOURCES.md">SOURCES.md</a> in this directory for which to prefer and where the local mirrors are.</p>
+    <!-- Maintainer bibliography: local mirrors are pan-docs-reference/docs/portkey/aigw/self-hosting/hybrid-deployments/{aws/ecs,azure/aca}.md and pan-docs-reference/docs/portkey/self-hosting/hybrid-deployments/{aws/ecs,azure/aca}.md. The Fargate finding comes from reading terraform/ecs/main.tf (locals.capacity_provider_name), terraform/ecs/cluster.tf (only an ASG capacity provider is registered), and terraform/ecs/modules/ecs-service/main.tf (requires_compatibilities = ["EC2","FARGATE"], awsvpc). Re-verify against the module before changing that section. -->
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="download-md-btn" id="downloadMdBtn" onclick="downloadAsMarkdown()">&#8681; Markdown</button>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>
