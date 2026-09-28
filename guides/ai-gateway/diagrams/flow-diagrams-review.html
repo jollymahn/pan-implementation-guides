@@ -108,7 +108,7 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
     <li><a href="#d7">Attribution and billing</a></li>
     <li><a href="#d8">What the gateway does to a single request</a></li>
   </ol>
-  <p style="margin-top:10px"><a href="#gaps">Gaps worth raising with the customer</a> &middot; <a href="#open">Open questions not yet validated</a> &middot; <a href="#next">Suggested next step</a></p>
+  <p style="margin-top:10px"><a href="#gaps">Gaps worth raising with the customer</a> &middot; <a href="#open">Verification against the documentation mirror</a> &middot; <a href="#next">Suggested next step</a></p>
 </nav>
 
 <h2 id="d1"><span class="num">1</span>How the API key gets into the app call</h2>
@@ -142,20 +142,20 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
 <p class="lede">The requested Bedrock case, built on standard Amazon Bedrock with an IAM credential.</p>
 <div class="meta">Source <code>aigw-bedrock.drawio</code> &middot; Export <code>aigw-bedrock.svg</code></div>
 <figure>
-  <img src="aigw-bedrock.svg" alt="An application with no AWS credential calls the AI Gateway, which translates and SigV4-signs the call into a customer AWS account containing the Bedrock runtime endpoint, the provisioned foundation models, and a least-privilege IAM identity. Callouts cover the two billing meters, where the prompt physically travels, and items to verify in the customer tenant." loading="lazy">
+  <img src="aigw-bedrock.svg" alt="An application with no AWS credential calls the AI Gateway, which translates and SigV4-signs the call into a customer AWS account containing the Bedrock runtime endpoint, the provisioned foundation models, and a least-privilege IAM identity. Callouts cover the two billing meters, where the prompt physically travels, and the credential, region, and PrivateLink detail confirmed in the documentation." loading="lazy">
   <figcaption>The app holds no AWS credential. The gateway signs the Bedrock call with an IAM identity that only it holds, in a region pinned at configuration time.</figcaption>
 </figure>
 <ul>
   <li><strong>Two meters run at once</strong> &mdash; AWS still bills Bedrock inference to the customer's own account, and Palo Alto Networks separately meters flex credits by token volume. These are different numbers in different consoles, and Finance will ask about it.</li>
   <li><strong>Where the prompt physically goes</strong> &mdash; with SaaS the prompt transits a Palo Alto Networks endpoint before it reaches AWS, even though Bedrock sits inside the customer's own account. For a customer who picked Bedrock specifically to keep inference in-account, that is a cutover-blocking conversation if it surfaces late.</li>
-  <li><strong>The red box</strong> &mdash; four Bedrock specifics I could not confirm, listed below under open questions.</li>
+  <li><strong>The detail box</strong> &mdash; the credential, region, inference profile, and PrivateLink specifics, all since confirmed against the documentation mirror and listed below.</li>
 </ul>
 
 <h2 id="d4"><span class="num">4</span>AI Gateway fronting OpenAI</h2>
 <p class="lede">The same structure as Bedrock, plus the scope distinction that trips up most OpenAI conversations.</p>
 <div class="meta">Source <code>aigw-openai.drawio</code> &middot; Export <code>aigw-openai.svg</code></div>
 <figure>
-  <img src="aigw-openai.svg" alt="An application with no OpenAI key calls the AI Gateway, which strips the gateway key and attaches the organization's OpenAI key before calling the OpenAI API endpoint. Callouts cover the Strata Cloud Manager integration fields, the distinction between the OpenAI API and the ChatGPT app, the two billing meters, and items to verify in the customer tenant." loading="lazy">
+  <img src="aigw-openai.svg" alt="An application with no OpenAI key calls the AI Gateway, which strips the gateway key and attaches the organization's OpenAI key before calling the OpenAI API endpoint. Callouts cover the Strata Cloud Manager integration fields, the distinction between the OpenAI API and the ChatGPT app, the two billing meters, and the integration fields and endpoint coverage confirmed in the documentation." loading="lazy">
   <figcaption>The app holds no <code>sk-proj-</code> key. One OpenAI key lives in the integration record, and the OpenAI usage dashboard collapses to a single caller as a result.</figcaption>
 </figure>
 <div class="callout danger">
@@ -169,16 +169,16 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
 <p class="lede">The Azure case, where the naming discipline matters more than the wiring.</p>
 <div class="meta">Source <code>aigw-azure-foundry.drawio</code> &middot; Export <code>aigw-azure-foundry.svg</code></div>
 <figure>
-  <img src="aigw-azure-foundry.svg" alt="An application with no Azure credential calls the AI Gateway, which rewrites the call to a Foundry resource endpoint, a named model deployment, and a pinned API version inside the customer's Azure subscription, authenticating with either a resource key or an Entra identity. Callouts cover the two catalog entries, deployment naming, the two billing meters, and a long list of items to verify in the tenant." loading="lazy">
+  <img src="aigw-azure-foundry.svg" alt="An application with no Azure credential calls the AI Gateway, which rewrites the call to a Foundry resource endpoint, a named model deployment, and a pinned API version inside the customer's Azure subscription, authenticating with either a resource key or an Entra identity. Callouts cover the two catalog entries, deployment naming, the two billing meters, and the three authentication types the integration form accepts." loading="lazy">
   <figcaption>The app names a deployment, not a model. The gateway holds the endpoint, the API version, and either the resource key or an Entra identity with a role on the resource.</figcaption>
 </figure>
 <ul>
   <li><strong>Two catalog entries, not one</strong> &mdash; Azure OpenAI and Azure Foundry are separate provider entries in Strata Cloud Manager and are not interchangeable. Pick by which resource actually hosts the model the app will call. A team using both needs two integrations and two slugs, which conveniently is also how you give them two separate budgets.</li>
   <li><strong>The deployment name is not the model name</strong> &mdash; Azure serves a deployment someone created and named, which may be <code>gpt4o-prod</code> or <code>chat-eu</code>. That name is what the app sends, what goes on the allowlist, and what appears in every log row. A rename in Azure breaks every caller and surfaces as a model-not-found rather than an auth failure, which sends people looking in the wrong place.</li>
-  <li><strong>Keyless is possible on the Azure OpenAI side</strong> &mdash; an Entra identity holding Cognitive Services OpenAI User on the resource itself removes the static secret entirely. Whether the integration form accepts that is one of the items in the red box.</li>
+  <li><strong>Keyless is possible on the Azure OpenAI side</strong> &mdash; an Entra identity holding Cognitive Services OpenAI User on the resource itself removes the static secret entirely. The integration form does accept it, as Azure Managed Entity or Azure Entra ID.</li>
   <li><strong>Provisioned throughput breaks reconciliation</strong> &mdash; if the resource runs on PTU rather than standard, Azure spend is committed capacity and does not move with token counts at all. Gateway cost figures and the Azure invoice will never match, and they are not supposed to. Use the gateway numbers for allocation between teams, not for predicting the bill.</li>
 </ul>
-<p>This diagram carries the most unconfirmed detail of the eight. The deployment guide records the Azure integration form's exact field set as not yet captured, so the red box is longer here than elsewhere on purpose.</p>
+<p>This diagram carried the most unconfirmed detail of the eight when it was drafted, because the deployment guide records the Azure integration form's exact field set as still to be captured. The Azure Foundry integration page in the documentation mirror answers all of it, and the detail box now states the field set rather than asking about it.</p>
 
 <h2 id="d6"><span class="num">6</span>Routing Claude Code through the gateway</h2>
 <p class="lede">The client-side half of the picture, and the only path in this set that has been run end to end.</p>
@@ -228,11 +228,11 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
 <p>This is the troubleshooting diagram. Each gate shows the error a caller actually receives, so a support conversation can start with the error string and land on the right gate immediately.</p>
 <div class="callout warning">
   <div class="callout-title">What this pipeline does not do</div>
-  <p>PII detection and content moderation are deliberately not gateway guardrails. They belong to AI Runtime, which brings advanced DLP and threat detection. If the customer needs inline scanning for prompt injection, data leakage, or malicious content, the gateway alone does not cover it and needs to be paired with AIRS API Intercept.</p>
+  <p>A guardrail that exists in the catalogue does nothing until it is attached. Every check in step 4 runs only when its guardrail ID is listed in a config's <code>before_request_hooks</code> or <code>after_request_hooks</code>, and a guardrail set to <code>async=true</code> observes and logs without blocking, returning <code>246</code> rather than <code>446</code>. Enabling a guardrail is not the same as enforcing it on a route.</p>
 </div>
 
 <h2 id="gaps">Gaps worth raising with the customer</h2>
-<p class="lede">Ten points that a customer conversation tends to skip past. All ten changed the diagrams and are baked into the artwork rather than left as speaker notes.</p>
+<p class="lede">Eleven points that a customer conversation tends to skip past. All eleven changed the diagrams and are baked into the artwork rather than left as speaker notes.</p>
 <table>
   <thead><tr><th style="width:26%">Gap</th><th style="width:44%">Why it matters</th><th style="width:30%">Where it appears</th></tr></thead>
   <tbody>
@@ -244,46 +244,56 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
     <tr><td><strong>Metadata schema is the chargeback model</strong></td><td>It must be agreed before the first key is issued. Budget limits are never retroactive and issued keys carry their old tags.</td><td>Diagram 7, right panel and bottom callout; diagram 6, second rollout decision</td></tr>
     <tr><td><strong>Limits cannot be edited once set</strong></td><td>Budget and rate limits cannot be changed by any organization member after creation. Getting them wrong means recreating the object.</td><td>Diagram 7, bottom right</td></tr>
     <tr><td><strong>Data residency under SaaS</strong></td><td>Prompts leave the customer environment before reaching the provider, even when the model sits in the customer's own AWS account or Azure subscription. This is the argument for Hybrid, and it should surface in design rather than at cutover.</td><td>Diagram 3, "Where the prompt physically goes"</td></tr>
-    <tr><td><strong>PII and moderation are out of scope</strong></td><td>They are AI Runtime functions, not gateway guardrails. A customer who assumes the gateway covers DLP will be disappointed at test time.</td><td>Diagram 8, bottom left</td></tr>
-    <tr><td><strong>Per-user attribution is not automatic</strong></td><td>A shared application key attributes to the application. Per end-user cost or audit has to be designed in deliberately, and depends on how per-request metadata is accepted. For developer tooling this becomes a one-key-per-developer decision with real revocation consequences.</td><td>Diagram 7, bottom centre; diagram 6, red callout</td></tr>
+    <tr><td><strong>An unattached guardrail enforces nothing</strong></td><td>PII detection and content moderation are Pro guardrails on the gateway, so the capability is there. It only takes effect once the guardrail ID is attached to a config's request hooks, and an <code>async=true</code> guardrail logs without blocking. A customer who enables one in the catalogue and assumes it is live will find nothing was ever stopped.</td><td>Diagram 8, step 4 and bottom left</td></tr>
+    <tr><td><strong>Per-user attribution needs an application change</strong></td><td>A shared application key attributes to the application. Splitting it per end user means sending <code>x-portkey-metadata</code> with its reserved <code>_user</code> key on every request, which the application has to do. For developer tooling this becomes a one-key-per-developer decision with real revocation consequences.</td><td>Diagram 7, bottom centre; diagram 6, red callout</td></tr>
+    <tr><td><strong>Streaming calls log zero cost by default</strong></td><td>With <code>stream: true</code> the provider returns no usage data, so tokens and cost record as zero and budget enforcement never sees the spend. The application has to send <code>stream_options: {include_usage: true}</code>. This affects every OpenAI-compatible provider, Azure OpenAI included.</td><td>Diagram 4, confirmed-detail box</td></tr>
   </tbody>
 </table>
 
-<h2 id="open">Open questions not yet validated</h2>
-<div class="callout danger">
-  <div class="callout-title">Research was blocked in this session</div>
-  <p>These diagrams were drafted with external research unavailable: WebSearch is blocked by an organization policy on this account, WebFetch is not available, and outbound curl was denied. None of the provider-specific detail below was checked against an external source, so it is the single most useful thing for a reviewer to attack.</p>
-  <p>Everything in the eight diagrams is grounded in repository material instead: the PAN reference page <code>configure-ai-gateway.md</code>, the existing AI Gateway deployment guide, the LLM API key management guide, and the AI Gateway TRD. Where a claim could not be grounded that way, it is called out on the diagram rather than asserted. Diagram 6 is the exception: its wiring comes from a guide section that was run live and screenshotted.</p>
+<h2 id="open">Verification against the documentation mirror</h2>
+<div class="callout note">
+  <div class="callout-title">Why the diagrams originally carried open questions</div>
+  <p>These diagrams were drafted on 17 September 2026 with external research unavailable: WebSearch was blocked by an organization policy on this account, WebFetch was not available, and outbound curl was denied. Every provider-specific claim was grounded in repository material instead, and anything that could not be grounded that way was called out on the diagram rather than asserted.</p>
+  <p>The 627-page Portkey documentation mirror landed in <code>pan-docs-reference/docs/portkey/</code> on 25 September 2026, eight days later. Almost every open question is answerable from it, so the diagrams were re-reviewed against it and the caveat boxes were replaced with the answers. What follows records what was checked, so a reviewer can attack the sourcing rather than the artwork.</p>
 </div>
 
-<h3>Bedrock, on diagram 3</h3>
+<h3>Bedrock, on diagram 3 &mdash; all four resolved</h3>
 <ul>
-  <li>Whether the integration can assume an IAM role with an external ID (<code>sts:AssumeRole</code>) instead of holding a static access key. Many security teams will not issue long-lived AWS keys at all, so this can be a blocker.</li>
-  <li>Whether Bedrock inference profiles and cross-region inference IDs are selectable in model provisioning.</li>
-  <li>Whether a single integration can span more than one AWS region, or whether each region needs its own integration and slug.</li>
-  <li>Whether PrivateLink to the Bedrock endpoint is supported from a Hybrid data plane.</li>
+  <li><strong>Assumed role</strong> &mdash; supported. <code>product/model-catalog/connect-bedrock-with-amazon-assumed-role.md</code> gives the trust principal <code>arn:aws:iam::039293892788:role/AirsGwEnterpriseRole</code> and requires <code>sts:TagSession</code> for session tags. This is a different principal from the <code>299329113195</code> inbound one the hybrid guides warn against, which is worth saying out loud so nobody blocks the wrong account.</li>
+  <li><strong>Inference profiles</strong> &mdash; selectable, per <code>integrations/llms/bedrock/aws-bedrock.md:430</code>, and they need one additional IAM permission.</li>
+  <li><strong>Region scope</strong> &mdash; the integration carries a default region, and <code>x-portkey-aws-region</code> overrides it per request (<code>aws-bedrock.md:536</code>), so one slug can serve several regions. The same page also documents a third auth type the diagram did not show: a Bedrock API key with the <code>apiKey</code> auth type.</li>
+  <li><strong>PrivateLink</strong> &mdash; supported for Self-Hosted Enterprise through the Custom Host option (<code>aws-bedrock.md:561</code>).</li>
 </ul>
 
-<h3>OpenAI, on diagram 4</h3>
+<h3>OpenAI, on diagram 4 &mdash; three resolved, one still open</h3>
 <ul>
-  <li>Whether the integration details page exposes Organization ID and Project ID as named fields, or expects a key that already carries that scope.</li>
-  <li>Which OpenAI endpoints are proxied. Chat completions is safe to assume; Responses, Assistants, Batch, and Realtime are not.</li>
-  <li>Whether an OpenAI-compatible self-hosted model such as vLLM or Ollama uses this integration with a Custom Host, or a different provider entry.</li>
-  <li>Whether streaming responses are logged in full or summarized.</li>
+  <li><strong>Organization ID and Project ID</strong> &mdash; named optional fields on the integration (<code>integrations/llms/openai.md:112,444</code>).</li>
+  <li><strong>Endpoint coverage</strong> &mdash; wider than assumed. The Responses API is described as fully supported, and Realtime, embeddings, batches, files, and fine-tuning all have coverage.</li>
+  <li><strong>Self-hosted OpenAI-compatible models</strong> &mdash; vLLM and Ollama have their own provider pages, so they are separate integrations rather than a Custom Host on this one.</li>
+  <li><strong>Streaming</strong> &mdash; still open on content logging. The cost side turned up a related problem that matters more in practice: with <code>stream: true</code> the provider returns no usage data, so tokens and cost record as zero and budgets never see the spend unless the application sends <code>stream_options: {include_usage: true}</code> (<code>product/observability/cost-management.md:168</code>). That applies to every OpenAI-compatible provider, Azure OpenAI included, and it is now on the diagram.</li>
 </ul>
 
-<h3>Azure, on diagram 5</h3>
-<p>This is the longest list, because the deployment guide records the Azure integration form's exact field set as still to be captured.</p>
+<h3>Azure, on diagram 5 &mdash; all resolved</h3>
+<p>Every answer here comes from <code>integrations/llms/azure-foundry.md</code>, except the role, which comes from the AKS hybrid page.</p>
 <ul>
-  <li>Whether the integration form accepts an Entra identity or managed identity at all, or only a static resource key. This is the difference between rotating a secret forever and never holding one.</li>
-  <li>Whether <code>api-version</code> is a field you set on the integration or is pinned by the platform. It changes which request shapes work.</li>
-  <li>Whether model provisioning lists deployment names or model names.</li>
-  <li>Whether one integration can span several deployments, several resources, or several regions, or whether each needs its own slug.</li>
-  <li>Which Entra role Azure Foundry needs, given that Cognitive Services OpenAI User is specifically the Azure OpenAI role.</li>
+  <li><strong>Auth</strong> &mdash; three types are offered: the resource API key, Azure Managed Entity with a Managed ClientID, or Azure Entra ID with ClientID, Secret, and Tenant ID (<code>:102,104,125,151</code>). Keyless is available, so the static resource key is a choice.</li>
+  <li><strong>API version</strong> &mdash; a field you set, required whenever the version appears in your deployment URL (<code>:139</code>).</li>
+  <li><strong>Deployments per integration</strong> &mdash; Azure Deployment Name is optional and required only when one resource holds several deployments (<code>:145</code>). The Foundry URL is a single base endpoint, so an integration is pinned to one resource and region and a second resource needs a second slug.</li>
+  <li><strong>The Entra role</strong> &mdash; <code>Cognitive Services OpenAI User</code> covers Azure AI Foundry as well as Azure OpenAI, granted on the resource itself (<code>self-hosting/hybrid-deployments/azure/aks.md:997</code>). The diagram was already right about this.</li>
 </ul>
 
-<h3>Applies to all of them</h3>
-<p>Two more worth confirming in the tenant while you are there: whether per-request metadata headers are accepted and logged, which decides whether per-user attribution is even possible, and whether the SaaS base URL differs by region now that availability is Americas only.</p>
+<h3>Corrected, on diagrams 7 and 8</h3>
+<ul>
+  <li><strong>Per-user attribution</strong> &mdash; diagram 7 asked whether per-request metadata is accepted before promising it. It is: <code>product/observability/metadata.md</code> documents <code>x-portkey-metadata</code> with a reserved <code>_user</code> key that Observability groups and filters on. The caveat now names the mechanism, and notes that the application has to set it.</li>
+  <li><strong>Guardrails</strong> &mdash; diagram 8 said PII detection and content moderation are deliberately not gateway guardrails and belong to AI Runtime. That is wrong. <code>product/guardrails/pii-redaction.md</code> documents a Pro PII guardrail redacting phone, email, location, IP, SSN, names, and credit card, and <code>list-of-guardrail-checks.md:253</code> lists Moderate Content, Check Language, Detect PII, and Detect Gibberish as Pro checks. Palo Alto Networks Prisma AIRS also appears at <code>:88</code> as a guardrail provider configured inside the gateway. Step 4 named Check Language and Detect Gibberish as basic checks, when both are Pro. The real limitation, which replaced the wrong one, is that a guardrail does nothing until its ID is attached to a config's <code>before_request_hooks</code> or <code>after_request_hooks</code>, and an <code>async=true</code> guardrail observes without blocking (<code>capabilities.md:74-81</code>).</li>
+</ul>
+
+<h3>Still unverified</h3>
+<ul>
+  <li>Whether streaming response <em>content</em> is logged in full or summarized. The usage-data behaviour above is documented; the log body is not.</li>
+  <li>Whether the SaaS base URL differs by region. <code>configure-ai-gateway.md:373</code> still says the AI Gateway is initially available in the Americas region for both SaaS and Hybrid, and nothing states what changes when that expands.</li>
+  <li><code>CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY</code> and the exact <code>400 Either x-portkey-config or x-portkey-provider header is required</code> string on diagram 6. Neither appears anywhere in the mirror; the deployment guide attributes the first to Anthropic's own LLM gateway page. Both are plausible and neither is confirmable from this repository.</li>
+</ul>
 
 <h2 id="next">Suggested next step</h2>
 <p>If these work, the natural placement in <code>ai-gateway-deployment.html</code> is one diagram per phase rather than a gallery:</p>
@@ -293,7 +303,7 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
     <tr><td>1. How the API key gets into the app call</td><td>Phase 1 overview, or the concepts section, wherever the two-key model is first introduced</td></tr>
     <tr><td>2. Getting the gateway inline</td><td>The client wiring phase, immediately above the environment variable block</td></tr>
     <tr><td>3. Fronting Amazon Bedrock</td><td>The integration phase, inside the Bedrock tab</td></tr>
-    <tr><td>4. Fronting OpenAI</td><td>The integration phase, inside the OpenAI tab. The red scope box may also be worth lifting into the guide's opening scope section, since it reframes the whole engagement.</td></tr>
+    <tr><td>4. Fronting OpenAI</td><td>The integration phase, inside the OpenAI tab. The ChatGPT scope box may also be worth lifting into the guide's opening scope section, since it reframes the whole engagement.</td></tr>
     <tr><td>5. Fronting Azure AI Foundry</td><td>The integration phase, inside the Azure tab, next to the existing <code>TODO(provider-azure-openai)</code> marker</td></tr>
     <tr><td>6. Routing Claude Code through the gateway</td><td>The Claude Code section, above the three exports. The four-column table could replace prose the guide currently carries.</td></tr>
     <tr><td>7. Attribution and billing</td><td>Phase 5, above the Policies &amp; Profiles walkthrough</td></tr>

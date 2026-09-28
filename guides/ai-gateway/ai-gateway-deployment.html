@@ -137,6 +137,9 @@
 <p><em>High-level architecture, showing where each component sits:</em></p>
 <img src="diagrams/aigw-architecture-overview.svg" alt="Architecture overview showing AI applications and agents routing through the Prisma AIRS AI Gateway, which applies guardrails, budgets, rate limits, and model allowlists before reaching LLM providers and MCP servers, with Strata Cloud Manager as the control plane and logs flowing to the AI Gateway dashboard, Strata Logging Service, and OpenTelemetry endpoints" loading="lazy">
 
+<p><em>Two keys are in play. The application only ever holds the gateway key, and the provider key never leaves Strata Cloud Manager:</em></p>
+<img src="diagrams/aigw-key-flow.svg" alt="Two swim lanes. The data plane shows an application sending a request to the AI Gateway and on to an LLM provider, with the on-the-wire headers before and after the gateway. The control plane shows a secrets manager feeding the provider key into a Strata Cloud Manager integration, which issues separate gateway API keys to the app team." loading="lazy">
+
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
@@ -1003,6 +1006,9 @@ kubectl logs -n airs-gw deployment/airs-gw --tail=50</code></pre>
 
 <p>An <strong>Integration</strong> is the unit of configuration in AI Gateway: one provider connection with its credentials, cost model, workspace access, budgets, rate limits, and model allowlist. This phase walks the full SCM wizard, from selecting a provider to clicking <strong>Create Integration</strong>. The wizard has four stages: select a provider, set integration details, provision the workspace, and configure model provisioning. Each integration connects one provider; run this wizard once per provider. Privately hosted models use <strong>Custom Host</strong> in Step 3.3. The phase closes by routing a real application, <strong>Claude Code</strong>, through the gateway to prove the integration end to end, then extends that to other clients and sets up the identity scheme that keeps people and agents distinguishable in the logs.</p>
 
+<p><em>What changes in an application when the gateway goes inline, and what each value is for:</em></p>
+<img src="diagrams/aigw-getting-inline.svg" alt="A before lane showing an app calling the provider directly, and an after lane showing the same app calling the AI Gateway. Below them, a five-row table listing the gateway base URL, gateway API key, integration slug, model reference, and provider header, with an example value, where to find it in Strata Cloud Manager, and the failure mode for each." loading="lazy">
+
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
@@ -1395,6 +1401,8 @@ kubectl logs -n airs-gw deployment/airs-gw --tail=50</code></pre>
     <span>Step 3.9: Route Claude Code through the gateway</span>
   </div>
   <div class="collapsible-body">
+    <p><em>The three variables, what each one does, and how to prove the routing took:</em></p>
+    <img src="diagrams/aigw-claude-code.svg" alt="A developer workstation sets three environment variables and sends a request to the AI Gateway, which strips the gateway key, attaches the Anthropic key, and calls the Anthropic API. The on-the-wire headers are shown before and after. Below, a four-column table describing each variable, and three callouts covering validation order, where the values live, and two rollout decisions." loading="lazy">
     <p>Claude Code reads three environment variables for gateway routing: <code>ANTHROPIC_BASE_URL</code> for the gateway endpoint, <code>ANTHROPIC_AUTH_TOKEN</code> for the credential (sent as an <code>Authorization: Bearer</code> header), and <code>ANTHROPIC_CUSTOM_HEADERS</code> to pin the integration (explained after the list). Test with shell exports first, then persist the values in a settings file.</p>
     <p>If <code>~/.claude/settings.json</code> already contains <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, or <code>ANTHROPIC_CUSTOM_HEADERS</code> from an earlier attempt, remove those three entries now or correct them to the values you are about to export; the settings file overrides the shell, so stale entries make the curl test pass and Claude Code fail.</p>
     <ol>
@@ -1511,8 +1519,11 @@ export ANTHROPIC_CUSTOM_HEADERS="x-portkey-provider: @&lt;integration-slug&gt;"<
           <li><strong>API Key</strong> &mdash; a secret key from the OpenAI platform; use the <strong>Grab API Key</strong> link if you need to create one.</li>
           <li>Organization ID (optional) &mdash; pins requests to one OpenAI organization. Set it when the key's owner belongs to several organizations, so usage is billed to the right one.</li>
           <li>Project ID (optional) &mdash; scopes requests to one OpenAI project, which keeps usage and cost tracking per project. Mainly needed with legacy user keys that can reach more than one project.</li>
+          <li><strong>Streaming and cost</strong> &mdash; with <code>stream: true</code> OpenAI returns no usage data, so tokens and cost log as zero and budget enforcement never sees the spend. The application has to send <code>stream_options: {include_usage: true}</code>. This applies to every OpenAI-compatible provider, Azure OpenAI included.</li>
           <li><strong>Model reference</strong> &mdash; <code>@&lt;your-slug&gt;/&lt;model-name&gt;</code>, for example <code>@default-openai/gpt-4.1</code> if you used <code>default-openai</code> as the slug in Step 3.2.</li>
         </ul>
+        <p><em>How the call reaches OpenAI, and the scope line between the OpenAI API and the ChatGPT app:</em></p>
+        <img src="diagrams/aigw-openai.svg" alt="An application with no OpenAI key calls the AI Gateway, which strips the gateway key and attaches the organization's OpenAI key before calling the OpenAI API endpoint. Callouts cover the Strata Cloud Manager integration fields, the distinction between the OpenAI API and the ChatGPT app, the two billing meters, and the integration fields and endpoint coverage confirmed in the documentation." loading="lazy">
       </div>
     </div>
 
@@ -1543,6 +1554,8 @@ export ANTHROPIC_CUSTOM_HEADERS="x-portkey-provider: @&lt;integration-slug&gt;"<
           <li>Authentication &mdash; one of three modes. <strong>API key</strong>: the resource's key from the Azure portal, the simplest option and the one to start with. <strong>Entra ID</strong>: a service principal identified by tenant ID, client ID, and client secret, so the gateway requests tokens instead of holding a resource key. <strong>Managed identity</strong>: for Hybrid data planes running on Azure infrastructure that has a managed identity, with an optional client ID to select a user-assigned identity.</li>
           <li><strong>Model reference</strong> &mdash; applications address a deployment through its name: <code>@&lt;your-slug&gt;/&lt;deployment-name&gt;</code>, for example <code>@default-azure-openai/&lt;deployment-name&gt;</code> if you used <code>default-azure-openai</code> as the slug in Step 3.2.</li>
         </ul>
+        <p><em>How the call reaches Azure, and why the catalog carries Azure OpenAI and Azure AI Foundry as separate entries:</em></p>
+        <img src="diagrams/aigw-azure-foundry.svg" alt="An application with no Azure credential calls the AI Gateway, which rewrites the call to a Foundry resource endpoint, a named model deployment, and a pinned API version inside the customer's Azure subscription, authenticating with either a resource key or an Entra identity. Callouts cover the two catalog entries, deployment naming, the two billing meters, and the three authentication types the integration form accepts." loading="lazy">
       </div>
     </div>
 
@@ -1560,6 +1573,8 @@ export ANTHROPIC_CUSTOM_HEADERS="x-portkey-provider: @&lt;integration-slug&gt;"<
           <li>Permissions &mdash; whichever identity you use, grant it <code>bedrock:InvokeModel</code> and <code>bedrock:InvokeModelWithResponseStream</code> on the models you provision. If you call models through inference profiles, it also needs <code>bedrock:GetInferenceProfile</code> on <code>arn:aws:bedrock:*:*:inference-profile/*</code> and <code>arn:aws:bedrock:*:*:application-inference-profile/*</code>, because the gateway resolves the profile to its foundation model before sending the request.</li>
           <li><strong>Model reference</strong> &mdash; <code>@&lt;your-slug&gt;/&lt;model-id&gt;</code> with the full Bedrock model ID, including any cross-region prefix, for example <code>@default-bedrock/us.anthropic.claude-3-7-sonnet-20250219-v1:0</code> if you used <code>default-bedrock</code> as the slug in Step 3.2.</li>
         </ul>
+        <p><em>How the call reaches Bedrock, and where the prompt physically travels on the way:</em></p>
+        <img src="diagrams/aigw-bedrock.svg" alt="An application with no AWS credential calls the AI Gateway, which translates and SigV4-signs the call into a customer AWS account containing the Bedrock runtime endpoint, the provisioned foundation models, and a least-privilege IAM identity. Callouts cover the two billing meters, where the prompt physically travels, and the credential, region, and PrivateLink detail confirmed in the documentation." loading="lazy">
       </div>
     </div>
 
@@ -1762,6 +1777,8 @@ print(response.choices[0].message.content)</code></pre>
   </div>
   <div class="collapsible-body">
     <p>Give every person a <strong>User</strong> key and every agent a <strong>Service</strong> key, tagged as in this table. Key metadata (the JSON in the key's <strong>Metadata</strong> field, Step 3.8) is set by the admin and cannot be changed by the caller; request metadata (a JSON object the client sends in the <code>x-portkey-metadata</code> header, where the reserved key <code>_user</code> drives the per-user analytics) is the caller's own claim; and key metadata wins when both carry the same key. Keep the tag names consistent across the tenant, because the filters you build later depend on them.</p>
+    <p><em>How a cost or audit question is traced back from a log row to a person or a team:</em></p>
+    <img src="diagrams/aigw-attribution-billing.svg" alt="Three columns. Left, a five-step attribution chain from Organization down through Workspace, Integration, the gateway API key, and the request. Centre, the fields captured in the prompt log and the event log, and the two separate money flows. Right, a panel explaining that group information is metadata you define rather than anything sourced from an identity provider." loading="lazy">
     <table>
       <thead>
         <tr><th>Caller</th><th>Key type</th><th>Key Metadata (set by the admin)</th><th>Request metadata (sent by the client)</th></tr>
@@ -2378,6 +2395,21 @@ client = Anthropic(
 <!-- ════════════════════════════════════════════════════════════ -->
 
 <h2 id="reference">Reference</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Request lifecycle &mdash; where a call can stop</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Every request crosses six checks before the gateway swaps in the provider credential, and each one rejects with its own error. Start a support conversation from the error the caller reported and this diagram points at the gate that produced it. A rejected call is still written to the logs, so a block leaves evidence rather than a gap.</p>
+    <img src="diagrams/aigw-request-lifecycle.svg" alt="A horizontal pipeline of six checks: authenticate, resolve the slug, model allowlist, guardrails, rate limit, and budget. Each shows the error it stops with. Then a credential swap, the provider call, and a meter and log step that fans out to four logging destinations." loading="lazy">
+    <div class="callout callout-warning">
+      <div class="callout-title">A guardrail does nothing until it is attached</div>
+      <p>Creating a guardrail in the catalogue does not put it in the request path. Its ID has to be listed in a config's <code>before_request_hooks</code> or <code>after_request_hooks</code>, and a guardrail set to <code>async=true</code> observes and logs without blocking, returning <code>246</code> rather than <code>446</code>. If a test prompt that should have been stopped went through, check the attachment before suspecting the check itself.</p>
+    </div>
+  </div>
+</div>
 
 <div class="collapsible">
   <div class="collapsible-header">
