@@ -4,7 +4,13 @@ Plan, size, and prepare the infrastructure for a Prisma AIRS AI Gateway hybrid d
 
 > **Guide Approach:** This is a companion to the [AI Gateway Deployment Guide](ai-gateway-deployment.md). It covers only the infrastructure a hybrid data plane needs: what runs in your environment, how big it has to be, what it talks to, and what each platform requires before you deploy. It does not repeat licensing, activation, or Strata Cloud Manager (SCM) configuration. Those live in the deployment guide, and you need them regardless of which platform you land on.
 
-> **Warning &mdash; complete these first:** Everything below assumes you have already finished Phase 1 (License and Activate) and Phase 2 (Enable the Gateway) in the deployment guide. You also need the Docker credentials and Client Auth Key that the Palo Alto Networks team issues against your Organisation ID. Without those the install will come up but never pull images or sync.
+> **Warning &mdash; complete these first:**
+>
+> - **Path 1 (SCM wizard)** &mdash; finish [Phase 1 (License and Activate)](ai-gateway-deployment.md#license-activate) and [Phase 2 (Enable the Gateway)](ai-gateway-deployment.md#enable-gateway) in the deployment guide. The wizard's `values.yaml` carries your image pull credentials and environment secrets, so you do not request them separately.
+> - **Path 2 (platform pages)** &mdash; finish Phase 1 only, and obtain two secrets from your account team, issued against your Organisation ID: Docker registry credentials (pull access to `registry.portkey.ai`) and the Client Auth Key (authenticates this data plane to the management plane sync API for your organisation).
+> - **Both paths** &mdash; a workspace API key from SCM, so you can send a test request after install. [Phase 3, Step 3.8](ai-gateway-deployment.md#llm-integration) of the deployment guide covers creating one.
+>
+> Without those, the install will come up but never pull images or sync. On the Helm paths the two secrets go into `values.yaml` or a Kubernetes Secret (mechanics in the [AWS checklist](#prerequisites-aws-eks)); on Container Apps they go into Key Vault. Store the originals in your secret manager, treat `values.yaml` and the Key Vault entries as credentials, and never commit them. Ask your account team for the rotation procedure when they issue the secrets; this guide does not cover rotation. If a previous install is stuck in `ImagePullBackOff`, confirm with the team that the credentials are still active before you reinstall.
 
 ---
 
@@ -81,11 +87,11 @@ Because config is cached locally, the gateway keeps serving traffic when the man
 This is the section to bring to a data protection review.
 
 - **Prompt content and LLM responses** &mdash; in the current AIRS release these reach the Strata Cloud Manager backend and are stored there. Treat every prompt that passes through the gateway as data that has left your environment. On the Portkey product, `LOG_STORE` pointed at your own bucket keeps bodies in your account and a single body crosses the boundary each time an operator opens that entry; that is not the AIRS GA behavior.
-- **Crossing the boundary** &mdash; metrics (tokens, cost, latency, model, provider, trace identifiers), usage counters, configuration sync, and, in the current AIRS release, full prompt and completion bodies.
+- **Crossing the boundary by default** &mdash; metrics (tokens, cost, latency, model, provider, trace identifiers), usage counters, configuration sync, and, in the current AIRS release, full prompt and completion bodies.
 - **Log storage location** &mdash; not customer-selectable in the current AIRS release, per the note above. Region, retention, and custody for the backend store are unpublished.
 - **In transit** &mdash; TLS 1.3 between planes.
 - **At rest** &mdash; all management plane data encrypted, with envelope encryption for sensitive fields.
-- **BYOK** &mdash; optional, with AWS KMS.
+- **Bring Your Own Key (BYOK)** &mdash; optional, with AWS Key Management Service (KMS), for management plane data at rest.
 - **Access control** &mdash; network-level controls restrict management plane access to authorised IPs, administrative functions use scope-based access control, all administrative actions are audit logged, and access tokens are short lived with automatic rotation.
 
 > **Warning &mdash; region placement is still an open question:** The published architecture does not state whether the SCM tenant can be placed in the same region as your data plane, or whether hybrid deployments are constrained to a single management plane region. For a deployment with EU data residency obligations, confirm this with your account team before you design around it. See [Open Questions](#open-questions-for-the-product-team).
@@ -297,7 +303,11 @@ curl '<GATEWAY_BASE_URL>/v1/chat/completions' \
   }'
 ```
 
-If the request succeeds but never appears in Logs, the outbound path is working and the log or sync path is not. If the log detail view is empty but the entry exists, check the log store configuration rather than connectivity.
+Wait about a minute; pods report to the management plane roughly every 30 seconds. Replace `portkeyai` in the commands below with your release namespace if you used the SCM wizard's `values.yaml`.
+
+- **The curl fails** &mdash; check `kubectl get pods -n portkeyai` and `kubectl logs -n portkeyai <gateway-pod>` for image pull or startup errors and return to the checklist for your platform. If a pod is stuck in `ImagePullBackOff`, run `kubectl describe pod -n portkeyai <pod>` and check the Docker credentials against the ones issued for your Organisation ID. If a pod is in `CrashLoopBackOff`, check `kubectl logs -n portkeyai <pod>` for a missing environment value and compare against the [Outbound](#outbound-data-plane-to-management-plane) and log store snippets. Re-run `helm upgrade --install` after correcting `values.yaml`.
+- **The request succeeds but never appears in Logs** &mdash; the outbound path is working and the log or sync path is not. Check **Connection Status** and **Last Sync** under Gateway Registration, look for sync errors in the gateway pod log, then re-check the base paths in [Outbound](#outbound-data-plane-to-management-plane).
+- **The entry exists but the log detail view is empty** &mdash; check the `LOG_STORE` settings in `values.yaml` rather than connectivity.
 
 ---
 
@@ -312,11 +322,11 @@ The AWS topology is the one drawn in [Hybrid Architecture](#hybrid-architecture)
 - **EKS cluster** &mdash; at least 2 worker nodes, ideally one per Availability Zone.
 - **Tooling** &mdash; AWS CLI, kubectl, Helm v3 or above, and eksctl.
 - **S3 bucket** &mdash; for LLM access logs, with encryption at rest and a lifecycle policy matching your retention requirement.
-- **Bucket access** &mdash; either IAM Roles for Service Accounts (IRSA) or EKS Pod Identity. Both avoid static credentials.
+- **Bucket access** &mdash; either IAM Roles for Service Accounts (IRSA) or EKS Pod Identity. Both avoid static credentials. Create an IAM role trusted by the cluster's OIDC provider (IRSA) or by `pods.eks.amazonaws.com` (Pod Identity), with `s3:PutObject`, `s3:GetObject`, and `s3:ListBucket` on `arn:aws:s3:::<AWS_BUCKET_NAME>` and `arn:aws:s3:::<AWS_BUCKET_NAME>/*` (confirm the exact action list against the EKS platform page). With IRSA, `eksctl create iamserviceaccount --name <SERVICE_ACCOUNT_NAME> --namespace portkeyai --cluster <CLUSTER> --attach-policy-arn <POLICY_ARN> --approve` creates both the role and the annotated service account. With Pod Identity, `aws eks create-pod-identity-association --cluster-name <CLUSTER> --namespace portkeyai --service-account <SERVICE_ACCOUNT_NAME> --role-arn <ROLE_ARN>` makes the association.
 - **Cache store** &mdash; ElastiCache for Redis OSS or Valkey in the same VPC, or the built-in Redis.
-- **External access** &mdash; an Application Load Balancer with a Kubernetes Ingress, or a Network Load Balancer. Either works, because nothing outside your own network needs to reach it.
-- **Connectivity** &mdash; the outbound path per [Connectivity](#connectivity). There is no inbound path to build.
-- **Credentials from Palo Alto Networks** &mdash; Docker credentials for the gateway images and the Client Auth Key, issued against your Organisation ID.
+- **External access** &mdash; an Application Load Balancer with a Kubernetes Ingress, or a Network Load Balancer. With no inbound path to back, the choice is yours to make on its merits.
+- **Connectivity** &mdash; per [Connectivity](#connectivity).
+- **Credentials from Palo Alto Networks** &mdash; per the warning at the top of this guide. Create the pull credential as a `kubernetes.io/dockerconfigjson` Secret in `portkeyai` and reference it from `imagePullSecrets` rather than pasting it into `values.yaml`; put the Client Auth Key in a Secret referenced by the chart or delivered by your secrets operator. Anything that does go through `values.yaml` is stored in the Helm release Secret in the namespace, so restrict `get secrets` on `portkeyai` accordingly.
 
 The snippet below is the published platform-page procedure for the Portkey chart. The key AIRS uses for a local log store is not confirmed, so on the SCM wizard path (`airs-gw`) these keys may have no effect; see the log storage note under [Hybrid Architecture](#hybrid-architecture) for the trade a customer-held bucket involves before you plan around one. With IRSA, the service account carries the role ARN annotation and the log store is configured in the same file:
 
@@ -352,10 +362,11 @@ Azure uses the same topology with Azure equivalents substituted. The boundary be
 ### Azure checklist
 
 - **AKS cluster** &mdash; at least 2 worker nodes, ideally one per availability zone.
-- **Workload Identity** &mdash; optional, needed only if you want Blob Storage access without stored secrets. Requires the OIDC issuer and Workload Identity both enabled on the cluster.
+- **Workload Identity** &mdash; recommended. Requires the OpenID Connect (OIDC) issuer and Workload Identity both enabled on the cluster (`az aks update` with `--enable-oidc-issuer --enable-workload-identity`). Without it the gateway authenticates to Blob Storage with a storage account key held in `values.yaml`, which then lives in the Helm release Secret; if you take that route, use a key you can rotate and scope the account's network rules to the AKS subnet.
 - **Tooling** &mdash; Azure CLI, kubectl, and Helm v3 or above.
 - **Storage account and container** &mdash; for logs, with encryption at rest and a lifecycle rule for retention.
 - **Cache store** &mdash; Azure Cache for Redis in the same VNet, or the built-in Redis.
+- **External access** &mdash; an internal load balancer in front of the gateway Service or Ingress. No Private Link Service and no dedicated subnet for one is needed.
 - **Connectivity** &mdash; Azure Private Link or internet, outbound only. There is no inbound path to build.
 - **Credentials from Palo Alto Networks** &mdash; as for AWS.
 
@@ -374,10 +385,12 @@ GKE follows the same pattern as EKS and AKS, with one networking requirement tha
 ### GCP checklist
 
 - **GKE cluster** &mdash; at least 2 worker nodes, ideally one per zone.
-- **Proxy-only subnet** &mdash; the VPC hosting the cluster must have an `ACTIVE` subnet with purpose `REGIONAL_MANAGED_PROXY`. Without it the regional load balancer cannot be created.
+- **Proxy-only subnet** &mdash; the cluster VPC needs an `ACTIVE` subnet with purpose `REGIONAL_MANAGED_PROXY` in the cluster region, or the regional load balancer never provisions and Helm reports nothing. Create it first: `gcloud compute networks subnets create <NAME> --network=<VPC> --region=<REGION> --range=<CIDR> --purpose=REGIONAL_MANAGED_PROXY --role=ACTIVE`. Confirm with `gcloud compute networks subnets list`, filtering on purpose `REGIONAL_MANAGED_PROXY`, that one subnet in your region shows role `ACTIVE`.
+- **Workload Identity** &mdash; must be enabled on the cluster and on the node pool before the bucket binding below will work.
 - **Tooling** &mdash; gcloud CLI, kubectl, and Helm v3 or above.
-- **Cloud Storage bucket** &mdash; for logs, reached with Workload Identity.
+- **Cloud Storage bucket** &mdash; for logs. Bind the gateway's Kubernetes service account to a Google service account with object create and read permissions on this bucket only (bucket-level IAM rather than project-level); take the exact role names from the GKE platform page.
 - **Cache store** &mdash; Memorystore for Redis or Valkey in the same VPC, or the built-in Redis.
+- **External access** &mdash; an internal load balancer in front of the gateway Service or Ingress. You do not publish it as a service attachment.
 - **Connectivity** &mdash; Private Service Connect or internet, outbound only. There is no inbound path to build.
 - **Credentials from Palo Alto Networks** &mdash; as for AWS.
 
@@ -397,9 +410,10 @@ The Terraform minimums genuinely differ between the two: v1.13 for ECS and v1.5 
 
 - **Sizing** &mdash; ECS tasks with at least 1 vCPU (1024 CPU units) and 2 GiB per task.
 - **Availability** &mdash; run tasks across multiple Availability Zones with autoscaling enabled.
-- **AWS permissions** &mdash; to create ECS, EC2, VPC, ELB, IAM, S3, Secrets Manager, and CloudWatch resources.
+- **AWS permissions** &mdash; to create ECS, EC2, VPC, ELB, IAM, S3, Secrets Manager, and CloudWatch resources. Run Terraform from a role scoped to those services, not from an administrator identity.
 - **Tooling** &mdash; AWS CLI with credentials configured, and Terraform v1.13 or later.
-- **Secrets** &mdash; you create the Docker credentials and the Client Auth Key in AWS Secrets Manager yourself, before Terraform runs. The module is given the secret ARNs, not the values, so raw secret values do not enter Terraform state.
+- **State and re-runs** &mdash; configure a remote backend before the first apply so a failed run can be resumed; `terraform apply` is safe to re-run against the same state, and `terraform destroy` removes everything the configuration created. If local state was lost after a partial apply, import or delete the orphaned resources before re-applying. State holds resource identifiers and configuration, so keep it in an encrypted, access-controlled backend.
+- **Secrets** &mdash; you create the Docker credentials and the Client Auth Key in AWS Secrets Manager yourself, before Terraform runs. The module is given the secret ARNs, not the values, and the task definition resolves each ARN at task start, so raw secret values do not enter Terraform state.
 - **Log store** &mdash; Amazon S3 or any S3-compatible store, optional.
 - **Cache store** &mdash; built-in Redis, or ElastiCache for Redis OSS or Valkey in the same VPC.
 - **Compute model** &mdash; with `create_cluster = true` the module registers one capacity provider backed by an EC2 Auto Scaling group, so tasks run on container instances you own. Fargate is not a documented option; see [ECS Fargate](serverless-deployment.md#fargate) in the ECS and Container Apps guide for what the module actually supports.
@@ -425,21 +439,19 @@ The Key Vault entries the Terraform configuration expects are `docker-username`,
 
 Registration is what connects a self-hosted gateway to the management plane, and workspaces are what decide who may route through it. The two are configured together.
 
-### Gateway registration
+### Gateway registration (SCM wizard path)
 
-Registration enables configuration sync, analytics, and workspace access control. Once registered, the data plane can pull prompt templates, routing configs, integrations, and API keys.
+If you finished Phase 2 of the deployment guide, your gateway is already registered and this section is background; do not click **Add New Gateway** again, since that creates a second gateway. Registration connects the gateway to the management plane and sets which workspaces may route through it. It is done once, in the SCM wizard under **AI Security → AI Gateway → Admin Settings → Gateway Registration → Add New Gateway**, and is covered click by click in [Phase 2 of the deployment guide](ai-gateway-deployment.md#enable-gateway). The wizard's Workspace Provisioning stage offers Allow All Workspaces or Allow Specific Workspaces; Allow Specific Workspaces is the right choice when you need separate gateways per team, business unit, or compliance boundary.
 
-Open **AI Security → AI Gateway → Admin Settings** and select the **Gateway Registration** tab. Click **Add New Gateway**, at the right-hand end of the header row showing the Total Gateways count. The wizard has three stages:
+<!-- TODO: verify whether an existing registration row under Gateway Registration has an edit action for changing Workspace Provisioning (Allow All versus Allow Specific, toggling workspaces on) without a reinstall, or whether the only path is a new registration (WR-20) -->
 
-1. **Register Gateway** &mdash; enter a Gateway Name and a Gateway Type of Production or Non Production.
-2. **Workspace Provisioning** &mdash; choose Allow All Workspaces, or Allow Specific Workspaces and toggle each one on. Specific workspaces is the right choice when you need separate gateways per team, business unit, or compliance boundary.
-3. **Configure Gateway Deployment** &mdash; download the generated `values.yaml`, then click Done.
+Two points matter for infrastructure planning. First, the generated `values.yaml` targets the `airs-gw` chart, points at `registry.portkey.ai`, and is not a drop-in for the platform-page `values.yaml` this guide describes. Second, after the wizard closes the gateway appears in the list with a copyable Slug Name (for example `dp-ai-gateway-5aa51a`), its Type, a Connection Status, whether it is the Default, and Last Sync. Connection Status stays **Unknown** with Last Sync showing `--` until running pods check in; after that they check in roughly every 30 seconds. Once pods are Running, the row should update within a couple of minutes. If it still reads Unknown after that, the pods are not reaching `api.portkey.ai`: check `kubectl logs -n <namespace> <gateway-pod>` for authentication or connection errors and confirm egress on 443. The guide cannot confirm whether the file has a validity window; if the pods report an authentication failure, register a new gateway and reinstall from the new file.
 
-> **Danger &mdash; the generated values.yaml is shown once:** It is not retrievable after you navigate away from that screen. Download it and store it in a secret manager before you go anywhere else. It carries your image pull credentials and environment secrets, so treat it as credentials and never commit it.
+<!-- TODO: verify whether the wizard-generated values.yaml expires on a timer or stays valid until used (WR-16) -->
 
-After the wizard closes, the gateway appears in the list with a copyable Slug Name (for example `dp-ai-gateway-5aa51a`), its Type, a Connection Status, whether it is the Default, and Last Sync. Connection Status reads **Unknown** with Last Sync showing `--` until running pods check in, which they then repeat roughly every 30 seconds. That is the normal state for the whole gap between finishing the wizard and completing the install.
+> **Danger &mdash; the generated values.yaml is shown once:** It is not retrievable after you navigate away from that screen. Download it and store it in a secret manager before you go anywhere else. It carries your image pull credentials and environment secrets, so treat it as credentials and never commit it. Helm also stores this file inside the cluster, in the release Secret in the gateway namespace, one copy per revision; restrict `get` and `list` on Secrets in that namespace to the operators who need it. If you lose the file, there is no way to regenerate it for the same gateway: register a new gateway with Add New Gateway (use a new Gateway Name; the guide cannot confirm whether duplicate names are rejected), download the new `values.yaml`, remove the orphaned entry from the list so an unused registration with live credentials does not linger, and install only against the new file.
 
-> **Note &mdash; Total Gateways counts hybrid gateways only:** The counter reads zero on a tenant already serving traffic through the SaaS gateway, because the SaaS gateway is a separate row above the list rather than an entry in it. An empty list does not mean AI Gateway is unlicensed or inactive. Deploying hybrid does not disable the SaaS gateway; both run in parallel until you switch that row's toggle off.
+Total Gateways counts hybrid gateways only. The counter reads zero on a tenant already serving traffic through the SaaS gateway, because the SaaS gateway is a separate row above the list rather than an entry in it, so an empty list does not mean AI Gateway is unlicensed or inactive. The SaaS gateway stays enabled and any client still using the SaaS Gateway URL continues to send prompts to the Palo Alto Networks hosted plane. Once your clients are repointed at the hybrid endpoint and verified, switch the SaaS row's toggle off so no traffic can leave your network by the old path.
 
 > **Note &mdash; this flow installs airs-gw, not portkey-ai/gateway:** The `values.yaml` the wizard generates targets the `airs-gw` chart and points at `registry.portkey.ai`. It is not a drop-in for the `values.yaml` the platform pages in this guide describe. The screen's Configuration Reference and Deployment guide links both resolve into the public [Portkey-AI/airs-gw-helm](https://github.com/Portkey-AI/airs-gw-helm) repository, which stays readable after the wizard closes.
 
@@ -474,7 +486,7 @@ The SCM dashboard covers request-level analytics. It does not replace infrastruc
 
 ### Cache behavior and FIPS
 
-- **Cache behavior** &mdash; documented separately, covering what is cached, for how long, and how invalidation propagates from the management plane.
+- **Cache behaviour** &mdash; documented separately at `self-hosting/cache-behavior`, covering what is cached, for how long, and how invalidation propagates from the management plane.
 - **FIPS-compliant images** &mdash; available for deployments with FIPS 140 obligations. Confirm availability for your entitlement and platform.
 - **Air-gapped** &mdash; setting `LOG_STORE` to `control_plane` appears in the documentation in the context of air-gapped deployments, and the `v2` log path format is explicitly unsupported in that mode. A full air-gapped deployment procedure is not published.
 
