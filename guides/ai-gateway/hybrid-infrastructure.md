@@ -39,7 +39,11 @@ The data plane processes every LLM request. The management plane is where you au
 | Redis | Management plane cache for auth context, configs, rate limit counters, and circuit breaker state. |
 | Blob Store | Object storage for full request and response bodies, read by the Backend to serve log detail views. |
 
-> **Note &mdash; log storage location is configurable:** Both tables list a blob store. Where the raw payloads actually land depends on your `LOG_STORE` setting: pointed at your own bucket, the bodies stay in your account and the Backend reads them across the link when an operator opens a log entry. Set to `control_plane`, they go to the management plane instead. Decide this deliberately, because it is the single setting that governs where prompt content rests.
+> **Note &mdash; log storage location is not configurable in the current AIRS release:** Both tables list a blob store. In the current Prisma AIRS GA release, prompt and completion bodies go to the Strata Cloud Manager AI Gateway backend, and keeping them in your own environment is a fast-follow feature that has not shipped. Do not tell a customer that prompt content stays in their account.
+>
+> The `LOG_STORE` mechanism described below is the Portkey product's, documented on the platform deployment pages this guide follows. Pointed at your own bucket it writes bodies there, and the Backend reads them across the link when an operator opens a log entry; `control_plane` sends them to the management plane instead. Whether any of that takes effect on an AIRS gateway is not confirmed, so treat the snippets below as the published platform-page procedure rather than as a residency control you can rely on.
+>
+> Until Palo Alto Networks confirms the region, retention period, and custody model for the backend log store, the honest answer to a data residency question is that full prompt content reaches Palo Alto Networks and the details are not yet published. <!-- TODO: verify with Palo Alto Networks: region, retention, and custody for backend-stored prompt logs, the AIRS configuration mechanism for log storage (which may not be LOG_STORE), and whether LOG_STORE has any effect on an airs-gw deployment. Tracked as question 9 in workspace/airs/aigw-product-questions.md. -->
 
 ### Identity and authentication
 
@@ -76,9 +80,9 @@ Because config is cached locally, the gateway keeps serving traffic when the man
 
 This is the section to bring to a data protection review.
 
-- **Prompt content and LLM responses** &mdash; remain within your network.
-- **Crossing the boundary** &mdash; only anonymised metrics.
-- **Log storage location** &mdash; configurable, per the note above.
+- **Prompt content and LLM responses** &mdash; in the current AIRS release these reach the Strata Cloud Manager backend and are stored there. Treat every prompt that passes through the gateway as data that has left your environment. On the Portkey product, `LOG_STORE` pointed at your own bucket keeps bodies in your account and a single body crosses the boundary each time an operator opens that entry; that is not the AIRS GA behavior.
+- **Crossing the boundary** &mdash; metrics (tokens, cost, latency, model, provider, trace identifiers), usage counters, configuration sync, and, in the current AIRS release, full prompt and completion bodies.
+- **Log storage location** &mdash; not customer-selectable in the current AIRS release, per the note above. Region, retention, and custody for the backend store are unpublished.
 - **In transit** &mdash; TLS 1.3 between planes.
 - **At rest** &mdash; all management plane data encrypted, with envelope encryption for sensitive fields.
 - **BYOK** &mdash; optional, with AWS KMS.
@@ -319,7 +323,7 @@ The AWS topology is the one drawn in [Hybrid Architecture](#hybrid-architecture)
 - **Connectivity** &mdash; outbound and inbound paths per [Connectivity](#connectivity). The inbound half applies only on the platform-page path; a gateway registered through the SCM wizard needs outbound only.
 - **Credentials from Palo Alto Networks** &mdash; Docker credentials for the gateway images and the Client Auth Key, issued against your Organisation ID.
 
-With IRSA, the service account carries the role ARN annotation and the log store is configured in the same file:
+The snippet below is the published platform-page procedure for the Portkey chart. Customer-side log storage is not in the current AIRS GA release, so on the SCM wizard path (`airs-gw`) these keys may have no effect; see the log storage note under [Hybrid Architecture](#hybrid-architecture) before you plan around a customer-held bucket. With IRSA, the service account carries the role ARN annotation and the log store is configured in the same file:
 
 ```yaml
 serviceAccount:

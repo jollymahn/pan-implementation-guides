@@ -192,8 +192,11 @@ helm upgrade --install portkey-ai portkey-ai/gateway \
     </table>
 
     <div class="callout callout-note">
-      <div class="callout-title">Log storage location is configurable</div>
-      <p>Both tables list a blob store. Where the raw payloads land depends on the <code>LOG_STORE</code> environment variable, set under <code>environment.data</code> in the chart's <code>values.yaml</code> (the <a href="#prereq-aws">AWS checklist</a> below shows an example). Set it to a bucket-backed value such as <code>s3_assume</code> or <code>s3_custom</code> and the bodies stay in your account; the Backend reads them across the link when an operator opens a log entry. Set it to <code>control_plane</code> and they go to the management plane instead. Decide this deliberately, because this setting decides where prompt content is stored.</p>
+      <div class="callout-title">Log storage location is not configurable in the current AIRS release</div>
+      <p>Both tables list a blob store. In the current Prisma AIRS GA release, prompt and completion bodies go to the Strata Cloud Manager AI Gateway backend, and keeping them in your own environment is a fast-follow feature that has not shipped. Do not tell a customer that prompt content stays in their account.</p>
+      <p>The <code>LOG_STORE</code> mechanism described below is the Portkey product's, documented on the platform deployment pages this guide follows. Setting it to a bucket-backed value such as <code>s3_assume</code> or <code>s3_custom</code> writes bodies to your bucket, and the Backend reads them across the link when an operator opens a log entry; <code>control_plane</code> sends them to the management plane instead. Whether any of that takes effect on an AIRS gateway is not confirmed, so treat the snippets below as the published platform-page procedure rather than as a residency control you can rely on.</p>
+      <p>Until Palo Alto Networks confirms the region, retention period, and custody model for the backend log store, the honest answer to a data residency question is that full prompt content reaches Palo Alto Networks and the details are not yet published.</p>
+      <!-- TODO: verify with Palo Alto Networks: region, retention, and custody for backend-stored prompt logs, the AIRS configuration mechanism for log storage (which may not be LOG_STORE), and whether LOG_STORE has any effect on an airs-gw deployment. Tracked as question 9 in workspace/airs/aigw-product-questions.md. -->
       <!-- TODO: verify how the Backend reads a customer-bucket log body: does it hold credentials or a cross-account grant to the bucket, or does it ask the gateway over the inbound path to fetch and relay the object? (WN-2) -->
       <!-- TODO: verify what happens to log entries written to the previous store after LOG_STORE is changed: are they migrated, and do their detail views still open in SCM? (WR-2) -->
     </div>
@@ -259,9 +262,9 @@ helm upgrade --install portkey-ai portkey-ai/gateway \
     <p>This is the section to bring to a data protection review.</p>
 
     <ul>
-      <li><strong>Prompt content and LLM responses</strong> &mdash; stored in your log store when <code>LOG_STORE</code> points at your own bucket; a single request or response body crosses the boundary each time an operator opens that entry in SCM Logs. With <code>LOG_STORE: control_plane</code>, every body is stored in the management plane.</li>
-      <li><strong>Crossing the boundary by default</strong> &mdash; metrics (tokens, cost, latency, model, provider, trace identifiers), usage counters, and configuration sync. Not prompt bodies, unless configured as above.</li>
-      <li><strong>Log storage location</strong> &mdash; configurable, per the note above.</li>
+      <li><strong>Prompt content and LLM responses</strong> &mdash; in the current AIRS release these reach the Strata Cloud Manager backend and are stored there. Treat every prompt that passes through the gateway as data that has left your environment. On the Portkey product, <code>LOG_STORE</code> pointed at your own bucket keeps bodies in your account and a single body crosses the boundary each time an operator opens that entry; that is not the AIRS GA behavior.</li>
+      <li><strong>Crossing the boundary by default</strong> &mdash; metrics (tokens, cost, latency, model, provider, trace identifiers), usage counters, configuration sync, and, in the current AIRS release, full prompt and completion bodies.</li>
+      <li><strong>Log storage location</strong> &mdash; not customer-selectable in the current AIRS release, per the note above. Region, retention, and custody for the backend store are unpublished.</li>
       <li><strong>In transit</strong> &mdash; TLS 1.3 between planes.</li>
       <li><strong>At rest</strong> &mdash; all management plane data encrypted, with envelope encryption for sensitive fields.</li>
       <li><strong>Bring Your Own Key (BYOK)</strong> &mdash; optional, with AWS Key Management Service (KMS), for management plane data at rest.</li>
@@ -580,7 +583,7 @@ spec:
       <li><strong>Credentials from Palo Alto Networks</strong> &mdash; per <a href="#complete-first">Complete these first</a>. Create the pull credential as a <code>kubernetes.io/dockerconfigjson</code> Secret in <code>portkeyai</code> and reference it from <code>imagePullSecrets</code> rather than pasting it into <code>values.yaml</code>; put the Client Auth Key in a Secret referenced by the chart or delivered by your secrets operator. Anything that does go through <code>values.yaml</code> is stored in the Helm release Secret in the namespace, so restrict <code>get secrets</code> on <code>portkeyai</code> accordingly.</li>
     </ul>
 
-    <p>With IRSA, add the following to the <code>values.yaml</code> you will install from. On the SCM wizard path that is the wizard-generated <code>airs-gw</code> file; on the platform-page path it is the file you wrote from the EKS page. Merge, do not replace: keep <code>environment.create</code>, <code>environment.secret</code>, and every existing <code>environment.data</code> entry (including the PrivateLink base paths from <a href="#connectivity">Outbound</a> if you set them), and add only the three <code>LOG_STORE</code> keys under <code>data</code>.</p>
+    <p>The snippet below is the published platform-page procedure for the Portkey chart. Customer-side log storage is not in the current AIRS GA release, so on the SCM wizard path (<code>airs-gw</code>) these keys may have no effect; see <a href="#architecture">Log storage location is not configurable in the current AIRS release</a> before you plan around a customer-held bucket. Apply it on the platform-page path, to the <code>values.yaml</code> you wrote from the EKS page. Merge, do not replace: keep <code>environment.create</code>, <code>environment.secret</code>, and every existing <code>environment.data</code> entry (including the PrivateLink base paths from <a href="#connectivity">Outbound</a> if you set them), and add only the three <code>LOG_STORE</code> keys under <code>data</code>.</p>
 
     <div class="code-block">
       <pre><code>serviceAccount:
