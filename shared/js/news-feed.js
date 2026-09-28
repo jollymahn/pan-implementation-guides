@@ -10,11 +10,25 @@
  */
 var NEWS_ITEMS = [
   {
+    badge: "New",
+    date: "Sep 28",
+    title: "AI Gateway on EKS, AKS, and GKE",
+    href: "guides/ai-gateway/kubernetes-deployment.html",
+    tags: "AI Gateway, Hybrid, Kubernetes, Helm, Workload Identity"
+  },
+  {
     badge: "Updated",
-    date: "Sep 27",
-    title: "Prisma AIRS AI Gateway Deployment",
-    href: "guides/ai-gateway/ai-gateway-deployment.html",
-    tags: "Prompt log residency, SaaS Gateway toggle, Data residency"
+    date: "Sep 28",
+    title: "AI Gateway Hybrid Connectivity",
+    href: "guides/ai-gateway/hybrid-infrastructure.html#connectivity",
+    tags: "Outbound only, Inbound path removed, PrivateLink"
+  },
+  {
+    badge: "Updated",
+    date: "Sep 28",
+    title: "ECS Fargate Support",
+    href: "guides/ai-gateway/serverless-deployment.html#fargate",
+    tags: "EC2-backed ECS, Fargate undocumented, Capacity providers"
   },
   {
     badge: "New",
@@ -36,19 +50,5 @@ var NEWS_ITEMS = [
     title: "VM-Series Active/Passive HA on AWS",
     href: "guides/aws/vm-series-ha-deployment.html",
     tags: "VM-Series, HA, AWS, Cross-AZ, Terraform"
-  },
-  {
-    badge: "New",
-    date: "Sep 10",
-    title: "AIRS Engagement Planner",
-    href: "guides/airs-planner/index.html",
-    tags: "AIRS, Project Plan, Prerequisites, Team Personas"
-  },
-  {
-    badge: "New",
-    date: "Sep 9",
-    title: "VM-Series Active/Passive HA on Azure",
-    href: "guides/azure/vm-series-ha.html",
-    tags: "SCM, HA, Azure, VM-Series"
   }
 ];

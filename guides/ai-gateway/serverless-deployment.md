@@ -2,7 +2,7 @@
 
 Deploy a Prisma AIRS AI Gateway hybrid data plane on Amazon ECS or Azure Container Apps with Terraform, from secret preparation through ingress, outbound connectivity to the management plane, and end-to-end verification.
 
-**Related:** [Deployment Guide](ai-gateway-deployment.md) | [Hybrid Infrastructure](hybrid-infrastructure.md) | [LLM API Key Management](llm-api-key-management.md)
+**Related:** [Deployment Guide](ai-gateway-deployment.md) | [Hybrid Infrastructure](hybrid-infrastructure.md) | [EKS, AKS, and GKE](kubernetes-deployment.md) | [LLM API Key Management](llm-api-key-management.md)
 
 ---
 
@@ -31,7 +31,7 @@ Prisma AIRS AI Gateway is the Portkey gateway, acquired by Palo Alto Networks. Y
 
 On ECS and Container Apps the gateway is a container image that Terraform places into a managed container runtime. There is no cluster to build, no Helm release, and no `values.yaml`. The module creates the network, the runtime, the cache, the log store, and the load balancer as one unit, and reads its secrets from the platform's own secret service.
 
-The shape of the deployment is otherwise the same as on Kubernetes: a stateless gateway behind a load balancer, a Redis-compatible cache for synced configuration and counters, an object store for full request and response bodies, and a two-directional link to the Palo Alto Networks management plane.
+The shape of the deployment is otherwise the same as on Kubernetes: a stateless gateway behind a load balancer, a Redis-compatible cache for synced configuration and counters, an object store for full request and response bodies, and an outbound link to the Palo Alto Networks management plane.
 
 > **Note: Which platform should I pick?**
 >
@@ -1492,7 +1492,7 @@ Work through the following after the destroy. Revocation comes first, because it
 These questions come up in the field and the published material does not currently answer them. Raise them with the product team rather than inferring an answer, and treat anything below as unresolved when writing a customer commitment.
 
 - **Throughput sizing** &mdash; no requests-per-second figures for either platform. The published CPU and memory numbers are minimums to run, not a capacity model.
-- **ECS Fargate** &mdash; not documented. See the Fargate section under Deployment Requirements for what the module actually supports.
+- **ECS Fargate** &mdash; not documented. See [ECS Fargate](#fargate) under Deployment Requirements for what the module actually supports.
 - **Upgrade and rollback** &mdash; no compatibility matrix between module versions and gateway image versions, no supported upgrade path, no tested rollback.
 - **Region placement and data residency** &mdash; Strata Cloud Manager runs in the Americas only today, with other regions planned, and prompt bodies land there on the default log store. Retention and custody for that store are still unpublished.
 - **Air-gapped deployment** &mdash; no documented configuration for an environment with no path to `portkey.ai`.

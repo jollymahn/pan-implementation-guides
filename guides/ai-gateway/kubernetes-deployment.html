@@ -1,0 +1,2165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>AI Gateway on EKS, AKS, and GKE | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+    <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+      <button class="header-search-btn" onclick="openSearch()">
+        <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+        Search <kbd>&#8984;K</kbd>
+      </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../.."></nav>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<div class="sidebar-backdrop"></div>
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture" data-section="architecture">Architecture</a>
+    <a href="#requirements" data-section="requirements">Deployment Requirements</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Deploy</div>
+    <a href="#cluster" data-section="cluster">1. Prepare the Cluster</a>
+    <a href="#dependencies" data-section="dependencies">2. Cache and Log Store</a>
+    <a href="#identity" data-section="identity">3. Grant an Identity</a>
+    <a href="#values" data-section="values">4. Build values.yaml</a>
+    <a href="#install" data-section="install">5. Install the Chart</a>
+    <a href="#ingress" data-section="ingress">6. Expose the Gateway</a>
+    <a href="#connectivity" data-section="connectivity">7. Connect the Planes</a>
+    <a href="#verify" data-section="verify">8. Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Operate</div>
+    <a href="#day2" data-section="day2">Scaling and Upgrades</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#reference" data-section="reference">Reference</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  EKS, AKS, and GKE
+</div>
+
+<div class="article">
+
+<h1>AI Gateway on EKS, AKS, and GKE</h1>
+<p class="subtitle">Deploy a Prisma AIRS AI Gateway hybrid data plane on Amazon EKS, Azure AKS, or Google GKE with Helm, from cluster preparation through the cache and log store, workload identity, values.yaml, ingress, outbound connectivity to the management plane, and end-to-end verification</p>
+
+<div class="cloud-links">
+  <a href="ai-gateway-deployment.html">Deployment Guide</a>
+  <a href="hybrid-infrastructure.html">Hybrid Infrastructure</a>
+  <a href="serverless-deployment.html">ECS and Container Apps</a>
+  <a href="llm-api-key-management.html">LLM API Key Management</a>
+  <a href="../airs/index.html">Prisma AIRS</a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>This is a companion to the <a href="ai-gateway-deployment.html">AI Gateway Deployment Guide</a> and to the <a href="hybrid-infrastructure.html">AI Gateway Hybrid Infrastructure</a> guide. It covers the three managed Kubernetes platforms: Amazon EKS, Azure AKS, and Google GKE. All three are delivered by Helm and a <code>values.yaml</code> file, so the workflow is the same on each and only the cloud-specific pieces differ.</p>
+  <p>It does not repeat licensing, activation, or the Strata Cloud Manager (SCM) configuration that follows deployment. Those live in the deployment guide and you need them whichever platform you land on. It also does not repeat the two-plane architecture discussion or the platform comparison, which live in the hybrid infrastructure guide. If you are not on Kubernetes, the Terraform path for Amazon ECS and Azure Container Apps is in <a href="serverless-deployment.html">ECS and Container Apps</a>.</p>
+  <p>Two terms carry the whole guide. The <strong>data plane</strong> is the gateway you run in your own cluster: the pods, the cache, the log store, and the load balancer in front of them. The <strong>management plane</strong> is the Palo Alto Networks service that holds configuration, policy, and analytics, and that you reach through Strata Cloud Manager.</p>
+  <p>Prisma AIRS AI Gateway is the Portkey gateway, acquired by Palo Alto Networks. You will see the name Portkey throughout: in chart names, repository URLs, environment variable names, hostnames, and the vendor's own documentation. The rebrand has not reached the code, so treat <code>portkey</code> and <code>AIRS AI Gateway</code> as the same product wherever they appear below.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Two different Helm charts exist, and this guide follows one of them</div>
+  <ul>
+    <li><strong><code>airs-gw</code></strong>, from <code>https://portkey-ai.github.io/airs-gw-helm</code>, is what the SCM Gateway Registration wizard generates. It is a shorter, opinionated install driven by the values the wizard hands you. That path is documented in Phase 2 of the <a href="ai-gateway-deployment.html">AI Gateway Deployment Guide</a>.</li>
+    <li><strong><code>portkey-ai/gateway</code></strong>, from <code>https://portkey-ai.github.io/helm</code>, is the full chart the platform deployment pages use. It exposes the cache, the log store, the Data Service, the MCP gateway, ingress, and workload identity as configuration. This guide follows that chart.</li>
+  </ul>
+  <p>Pick one and stay on it. The two charts use different release names and different value keys, and installing both into one namespace produces two gateway Deployments competing for the same registration.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Before you start</div>
+  <p>Everything below assumes two things are already done.</p>
+  <ul>
+    <li><strong>Licensing and activation</strong> &mdash; Phase 1 of the <a href="ai-gateway-deployment.html">AI Gateway Deployment Guide</a>. The gateway will deploy without it, but it will not serve traffic.</li>
+    <li><strong>Credentials from Palo Alto Networks</strong> &mdash; you send your Organisation ID and the email address used at signup; they return Docker registry credentials for the gateway images and a Client Auth Key. There is no self-service path to these, and nothing in this guide works without them. Request them early, because this is the step most likely to add days to a deployment.</li>
+  </ul>
+  <p>Raise that request through your Palo Alto Networks account team, or open a case in the <a href="https://support.paloaltonetworks.com/" target="_blank" rel="noopener">Customer Support Portal</a> against Prisma AIRS AI Gateway. Every later step that says "contact the Palo Alto Networks team" means the same channel.</p>
+  <p>Your Organisation ID is in the SCM browser URL: <code>https://stratacloudmanager.paloaltonetworks.com/&lt;organisation_id&gt;/</code>.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Connectivity is outbound only</div>
+  <p>Palo Alto Networks confirmed on 2026-09-27 that private link is not supported with Strata Cloud Manager and that the only connectivity between a gateway and the cloud is outbound from the gateway. The platform deployment pages still describe an inbound path, because they describe the Portkey product. Read <a href="#connectivity">Connect the Planes</a>, step 7.4, before you build against one of those pages.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     Architecture
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="architecture">Architecture</h2>
+
+<p>On Kubernetes the gateway is a Helm release in a namespace you own. The chart creates the Deployment, the Service, the ServiceAccount, the image pull secret, and the environment Secret. It can also create an in-cluster Redis and the optional Data Service. Everything outside the cluster, meaning the managed cache, the object store, the load balancer, and the cloud identity that ties them together, you create yourself and reference from <code>values.yaml</code>.</p>
+<p>The shape of the deployment is the same on all three platforms: stateless gateway pods behind a load balancer, a Redis-compatible cache for synced configuration and counters, an object store for full request and response bodies, and an outbound link to the Palo Alto Networks management plane.</p>
+<div class="callout callout-note">
+  <div class="callout-title">Which platform should I pick?</div>
+  <ul>
+    <li><strong>Amazon EKS</strong> &mdash; you are on AWS. Identity comes from IRSA or EKS Pod Identity, and ingress needs the AWS Load Balancer Controller installed before the chart.</li>
+    <li><strong>Azure AKS</strong> &mdash; you are on Azure. Identity comes from workload identity, a managed identity, or an Entra app registration, and ingress uses the application routing add-on rather than a controller you install yourself.</li>
+    <li><strong>Google GKE</strong> &mdash; you are on GCP. Identity comes from Workload Identity Federation, and ingress needs a <code>REGIONAL_MANAGED_PROXY</code> subnet in the VPC before anything else works.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="eks">A &middot; Amazon EKS</button>
+    <button class="mgmt-tab" data-plane="aks">B &middot; Azure AKS</button>
+    <button class="mgmt-tab" data-plane="gke">C &middot; Google GKE</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="eks">
+    <img src="diagrams/aigw-hybrid-aws-vpc.svg" alt="AI Gateway hybrid data plane on Amazon EKS" loading="lazy">
+  </div>
+
+  <div class="mgmt-panel" data-plane="aks">
+    <img src="diagrams/aigw-hybrid-azure-vnet.svg" alt="AI Gateway hybrid data plane on Azure AKS" loading="lazy">
+  </div>
+
+  <div class="mgmt-panel" data-plane="gke">
+    <img src="diagrams/aigw-hybrid-gcp-vpc.svg" alt="AI Gateway hybrid data plane on Google GKE" loading="lazy">
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     Deployment Requirements
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="requirements">Deployment Requirements</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Node sizing</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The published sizing is a floor for running the gateway, not a capacity model. No requests-per-second figures are published for any of the three platforms.</p>
+    <table>
+      <thead>
+        <tr><th>Platform</th><th>Suggested node type</th><th>Minimum per node</th><th>Node count</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Amazon EKS</td><td><code>t4g.medium</code></td><td>2 vCPU, 4 GiB</td><td>2, one per Availability Zone</td></tr>
+        <tr><td>Azure AKS</td><td><code>B2ms</code></td><td>2 vCPU, 4 GiB</td><td>2, one per Availability Zone</td></tr>
+        <tr><td>Google GKE</td><td>Any machine type meeting the floor</td><td>2 vCPU, 4 GiB</td><td>2, one per zone</td></tr>
+      </tbody>
+    </table>
+    <p>Log documents are roughly 10 KB each uncompressed. Multiply by your expected request rate and your retention window to size the bucket.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Tooling</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Platform</th><th>Required on your workstation</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Amazon EKS</td><td>AWS CLI, <code>eksctl</code>, <code>kubectl</code>, Helm v3 or above</td></tr>
+        <tr><td>Azure AKS</td><td>Azure CLI, <code>kubectl</code>, Helm v3 or above</td></tr>
+        <tr><td>Google GKE</td><td>gcloud CLI, <code>kubectl</code>, Helm v3 or above</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>What you request from Palo Alto Networks</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Four of these block a step, so raise the ones you need before you start building.</p>
+    <table>
+      <thead>
+        <tr><th>Request</th><th>Needed for</th><th>Blocks</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Docker registry username and password</td><td>Pulling the gateway and Data Service images</td><td>Step 4.1</td></tr>
+        <tr><td>Client Auth Key</td><td><code>PORTKEY_CLIENT_AUTH</code> in <code>values.yaml</code></td><td>Step 4.1</td></tr>
+        <tr><td>AWS account ARN allow-listing</td><td>Outbound PrivateLink from EKS</td><td>Step 7.3 on AWS</td></tr>
+        <tr><td>Azure subscription allow-listing, then private endpoint approval</td><td>Outbound Private Link from AKS</td><td>Step 7.3 on Azure</td></tr>
+        <tr><td>GCP project allow-listing, then the service attachment URI and PSC connection approval</td><td>Outbound Private Service Connect from GKE</td><td>Step 7.3 on GCP</td></tr>
+      </tbody>
+    </table>
+    <p>Your Organisation ID is self-service. Read it out of the SCM browser URL.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title"><code>values.yaml</code> is a credential file</div>
+      <p>It carries the Docker registry password and the Client Auth Key in plain text, and depending on your choices it may also carry a Redis password, an Entra client secret, or HMAC keys. Do not commit it. Add it to <code>.gitignore</code> before you write anything into it, and keep it in a secret manager or a password vault rather than in the repository that holds your cluster manifests.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     1. Prepare the Cluster
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="cluster">1. Prepare the Cluster</h2>
+
+<p>The chart assumes a cluster that already exists, already has two or more worker nodes spread across zones, and already has the platform features that identity and ingress depend on. Turning those on afterwards usually means recreating something, so do this first.</p>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="eks">A &middot; Amazon EKS</button>
+    <button class="mgmt-tab" data-plane="aks">B &middot; Azure AKS</button>
+    <button class="mgmt-tab" data-plane="gke">C &middot; Google GKE</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="eks">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.1 &mdash; Set your environment variables</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Every command below reuses these. Keep the shell open for the rest of the guide, or put them in a file you source.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">cluster_name=&lt;EKS_CLUSTER_NAME&gt;               # The EKS cluster where the gateway will run
+namespace=portkeyai                           # Namespace for the gateway
+service_account_name=gateway-sa               # Service account the gateway pods will use
+region=&lt;AWS_REGION&gt;
+
+kubectl create namespace $namespace --dry-run=client -o yaml | kubectl apply -f -
+
+mkdir -p portkey-gateway &amp;&amp; cd portkey-gateway
+printf 'values.yaml\n' &gt;&gt; .gitignore
+touch values.yaml</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>aws eks describe-cluster --name $cluster_name --region $region --query cluster.status --output text</code> returns <code>ACTIVE</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.2 &mdash; Confirm node count and sizing</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">kubectl get nodes -o custom-columns=NAME:.metadata.name,ZONE:.metadata.labels.'topology\.kubernetes\.io/zone',TYPE:.metadata.labels.'node\.kubernetes\.io/instance-type'</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>at least two nodes appear, in at least two different zones, each <code>t4g.medium</code> or larger. If they are all in one zone, a single AZ failure takes the gateway down.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.3 &mdash; Associate an IAM OIDC provider</span>
+      </div>
+      <div class="collapsible-body">
+        <p>IRSA needs the cluster's OIDC issuer registered as an IAM identity provider. Skip this only if you have chosen EKS Pod Identity instead, which is covered in step 3.1.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">oidc_issuer=$(aws eks describe-cluster --name $cluster_name \
+  --query "cluster.identity.oidc.issuer" --output text | sed -e "s~https://~~")
+
+# Check whether a provider already exists
+aws iam list-open-id-connect-providers | grep $oidc_issuer
+
+# If nothing is returned, create one
+eksctl utils associate-iam-oidc-provider --cluster $cluster_name --approve</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>re-run the <code>grep</code> and confirm it now prints a provider ARN ending in your issuer path.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.4 &mdash; Install the AWS Load Balancer Controller</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Both ingress options in step 6 depend on this controller. Install it from the <a href="https://docs.aws.amazon.com/eks/latest/userguide/lbc-helm.html" target="_blank" rel="noopener">AWS documentation</a> if it is not already running, and confirm your VPC and subnets carry the <a href="https://docs.aws.amazon.com/eks/latest/userguide/network-reqs.html" target="_blank" rel="noopener">required tags</a>.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">kubectl get deployment -n kube-system aws-load-balancer-controller</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>the deployment exists and reports its replicas as ready. Without it, an Ingress or a <code>LoadBalancer</code> Service will be created in Kubernetes and no AWS load balancer will ever appear.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="aks">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.1 &mdash; Set your environment variables</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">CLUSTER_NAME=&lt;AKS_CLUSTER_NAME&gt;
+RESOURCE_GROUP=&lt;RESOURCE_GROUP_NAME&gt;
+NAMESPACE=portkeyai
+SERVICE_ACCOUNT_NAME=gateway-sa
+
+kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+
+mkdir -p portkey-gateway &amp;&amp; cd portkey-gateway
+printf 'values.yaml\n' &gt;&gt; .gitignore
+touch values.yaml</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>az aks show --name $CLUSTER_NAME --resource-group $RESOURCE_GROUP --query provisioningState -o tsv</code> returns <code>Succeeded</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.2 &mdash; Confirm node count and sizing</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">kubectl get nodes -o custom-columns=NAME:.metadata.name,ZONE:.metadata.labels.'topology\.kubernetes\.io/zone',TYPE:.metadata.labels.'node\.kubernetes\.io/instance-type'</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>at least two nodes, in at least two zones, each <code>B2ms</code> or larger.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.3 &mdash; Enable the OIDC issuer and workload identity</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Workload identity is the cleanest of the three Azure authentication modes because no secret ends up in <code>values.yaml</code>. It has to be enabled on the cluster before you can federate a credential against it.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">az aks update \
+  --resource-group ${RESOURCE_GROUP} \
+  --name ${CLUSTER_NAME} \
+  --enable-oidc-issuer \
+  --enable-workload-identity
+
+OIDC_ISSUER=$(az aks show \
+  --name ${CLUSTER_NAME} \
+  --resource-group ${RESOURCE_GROUP} \
+  --query "oidcIssuerProfile.issuerUrl" -o tsv)
+echo ${OIDC_ISSUER}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>${OIDC_ISSUER}</code> prints an <code>https://</code> URL. An empty value means the update did not take, and step 3 will fail when it tries to federate against it.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.4 &mdash; Enable the application routing add-on</span>
+      </div>
+      <div class="collapsible-body">
+        <p>This is what gives you a managed NGINX ingress controller on AKS. Pass <code>--nginx None</code> so the add-on installs without creating a default controller, then create the controller you actually want in step 6.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">az aks approuting enable \
+  --resource-group ${RESOURCE_GROUP} \
+  --name ${CLUSTER_NAME} \
+  --nginx None</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>kubectl get pods -n app-routing-system</code> lists running pods. Skip this step if you plan to use the Azure Load Balancer with a Kubernetes Service instead of an Ingress.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="gke">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.1 &mdash; Set your environment variables</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">CLUSTER_NAME=&lt;GKE_CLUSTER_NAME&gt;
+PROJECT_ID_A=&lt;PROJECT_ID&gt;
+REGION=&lt;GKE_CLUSTER_REGION&gt;
+VPC_NAME=&lt;VPC_NAME&gt;
+NAMESPACE=portkeyai
+KSA=gateway-sa
+
+kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+
+mkdir -p portkey-gateway &amp;&amp; cd portkey-gateway
+printf 'values.yaml\n' &gt;&gt; .gitignore
+touch values.yaml</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>gcloud container clusters describe ${CLUSTER_NAME} --region ${REGION} --format="value(status)"</code> returns <code>RUNNING</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.2 &mdash; Confirm node count and sizing</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">kubectl get nodes -o custom-columns=NAME:.metadata.name,ZONE:.metadata.labels.'topology\.kubernetes\.io/zone',TYPE:.metadata.labels.'node\.kubernetes\.io/instance-type'</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>at least two nodes, in at least two zones, each with 2 vCPU and 4 GiB or more.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.3 &mdash; Confirm Workload Identity is enabled</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">gcloud container clusters describe ${CLUSTER_NAME} \
+  --region ${REGION} \
+  --format="value(workloadIdentityConfig.workloadPool)"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>the command prints <code>${PROJECT_ID_A}.svc.id.goog</code>. If it prints nothing, enable it with <code>gcloud container clusters update ${CLUSTER_NAME} --region ${REGION} --workload-pool=${PROJECT_ID_A}.svc.id.goog</code> and confirm again before moving on.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>1.4 &mdash; Create the regional managed proxy subnet</span>
+      </div>
+      <div class="collapsible-body">
+        <p>GCP load balancers need an <code>ACTIVE</code> subnet with purpose <code>REGIONAL_MANAGED_PROXY</code> in the cluster's VPC. A GKE ingress that never receives an address is usually missing this subnet, and the failure is silent.</p>
+        <div class="code-block">
+          <pre><code class="language-bash"># &lt;SUBNET_CIDR&gt; must fall inside the VPC CIDR, for example 10.0.2.0/23
+gcloud compute networks subnets create lb-subnet \
+  --purpose=REGIONAL_MANAGED_PROXY \
+  --role=ACTIVE \
+  --region=${REGION} \
+  --network=${VPC_NAME} \
+  --range=&lt;SUBNET_CIDR&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">gcloud compute networks subnets list \
+  --filter="purpose=REGIONAL_MANAGED_PROXY AND region:${REGION}" \
+  --format="table(name,ipCidrRange,role)"</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>The subnet appears with role <code>ACTIVE</code>. Also confirm the HTTP Load Balancing add-on is enabled on the cluster, because the ingress path in step 6 depends on it.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     2. Provision the Cache and the Log Store
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="dependencies">2. Provision the Cache and the Log Store</h2>
+
+<p>The gateway needs a Redis-compatible cache for synced configuration, rate limit counters, and budget counters. It optionally needs an object store for full prompt and completion bodies. Create both now so that step 3 can scope its permissions to real resources.</p>
+<div class="callout callout-note">
+  <div class="callout-title">The built-in Redis is the shortcut, not the answer</div>
+  <p>The chart ships a single-pod Redis that needs no permissions and no networking. It is fine for a proof of concept. It holds no data across a pod restart, it does not scale with the gateway, and it gives you nothing to monitor, so do not carry it into production.</p>
+</div>
+<div class="callout callout-warning">
+  <div class="callout-title">The log store does not keep prompt content out of the cloud</div>
+  <p>In the current AIRS release, prompt and completion bodies reach the Strata Cloud Manager backend regardless of where your log store points. A bucket in your own account is an additional copy, not a residency control. Treat it that way in any data handling conversation.</p>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="eks">A &middot; Amazon EKS</button>
+    <button class="mgmt-tab" data-plane="aks">B &middot; Azure AKS</button>
+    <button class="mgmt-tab" data-plane="gke">C &middot; Google GKE</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="eks">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.1 &mdash; Create the S3 log bucket</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">bucket_name=&lt;S3_BUCKET_NAME&gt;
+aws s3api create-bucket --bucket $bucket_name --region $region \
+  --create-bucket-configuration LocationConstraint=$region
+aws s3api put-public-access-block --bucket $bucket_name \
+  --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>aws s3api get-public-access-block --bucket $bucket_name</code> reports all four settings as <code>true</code>. Note the bucket name and region for step 4.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.2 &mdash; Provision ElastiCache</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Create an ElastiCache for Redis OSS or Valkey cache in the same VPC as the cluster. Then open the path from the nodes to it.</p>
+        <div class="code-block">
+          <pre><code class="language-bash"># Allow the EKS node security group to reach the cache
+aws ec2 authorize-security-group-ingress \
+  --group-id &lt;ELASTICACHE_SG_ID&gt; \
+  --protocol tcp --port 6379 \
+  --source-group &lt;EKS_NODE_SG_ID&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>from a pod in the cluster, <code>nc -vz &lt;ElastiCache_Endpoint&gt; 6379</code> connects. Record the endpoint: use the <strong>Configuration Endpoint</strong> if cluster mode is enabled, and the <strong>Primary Endpoint</strong> if it is not. Using the wrong one produces a connection that appears to work and then fails on the first keyspace operation.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="aks">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.1 &mdash; Create the storage account and container</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">STORAGE_ACCOUNT_NAME=&lt;STORAGE_ACCOUNT_NAME&gt;
+CONTAINER_NAME=&lt;CONTAINER_NAME&gt;
+
+az storage account create \
+  --name ${STORAGE_ACCOUNT_NAME} \
+  --resource-group ${RESOURCE_GROUP} \
+  --sku Standard_LRS \
+  --allow-blob-public-access false
+
+az storage container create \
+  --name ${CONTAINER_NAME} \
+  --account-name ${STORAGE_ACCOUNT_NAME} \
+  --auth-mode login</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>az storage container show --name ${CONTAINER_NAME} --account-name ${STORAGE_ACCOUNT_NAME} --auth-mode login</code> returns the container. Note both names for step 4.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.2 &mdash; Provision Azure Managed Redis</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Create an Azure Managed Redis instance reachable from the AKS cluster. If you intend to authenticate with workload identity, a managed identity, or Entra ID rather than an access key, <a href="https://learn.microsoft.com/en-us/azure/azure-cache-for-redis/cache-azure-active-directory-for-authentication" target="_blank" rel="noopener">enable Microsoft Entra Authentication</a> on the instance now. It cannot be added later without a restart.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>from a pod in the cluster, <code>nc -vz &lt;Azure_Redis_Endpoint&gt; &lt;Port&gt;</code> connects. Record the endpoint and port.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="gke">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.1 &mdash; Create the GCS log bucket</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">GCS_BUCKET_NAME=&lt;GCS_BUCKET_NAME&gt;
+gcloud storage buckets create gs://${GCS_BUCKET_NAME} \
+  --project=${PROJECT_ID_A} \
+  --location=${REGION} \
+  --uniform-bucket-level-access \
+  --public-access-prevention</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>gcloud storage buckets describe gs://${GCS_BUCKET_NAME} --format="value(name,location)"</code> returns the bucket. Note the name and region for step 4.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.2 &mdash; Provision Memorystore</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Create a Memorystore for Redis or Valkey instance in the same VPC as the cluster, then confirm the firewall permits the cluster to reach it.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>from a pod in the cluster, <code>nc -vz &lt;MEMORY_STORE_IP&gt; &lt;Port&gt;</code> connects.</p>
+        </div>
+        <p>If TLS is enabled on the instance, download its <code>server-ca.pem</code> and load it into the cluster now. The gateway reads it from a mounted volume.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">kubectl create secret generic memorystore-tls-certs \
+  --from-file=server-ca.pem -n ${NAMESPACE}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>kubectl get secret memorystore-tls-certs -n ${NAMESPACE}</code> shows one key. You will mount it in step 4.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     3. Grant the Gateway an Identity
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="identity">3. Grant the Gateway an Identity</h2>
+
+<p>The gateway pods need a cloud identity to write logs to the object store, and, if you chose IAM authentication on the cache, to connect to the cache. Each platform binds a cloud identity to the Kubernetes service account named in <code>values.yaml</code>, so the service account name has to match exactly across this section and step 4.</p>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="eks">A &middot; Amazon EKS</button>
+    <button class="mgmt-tab" data-plane="aks">B &middot; Azure AKS</button>
+    <button class="mgmt-tab" data-plane="gke">C &middot; Google GKE</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="eks">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.1 &mdash; Create the IAM role</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Two mechanisms are available. IRSA is the older and more widely supported one, and it annotates the service account with a role ARN. EKS Pod Identity is newer, needs the Pod Identity Agent installed on the cluster, and needs no annotation. Choose one.</p>
+        <p><strong>IRSA:</strong></p>
+        <div class="code-block">
+          <pre><code class="language-bash">role_name=&lt;IAM_ROLE_NAME&gt;
+aws_account_id=$(aws sts get-caller-identity --query Account --output text)
+oidc_issuer=$(aws eks describe-cluster --name $cluster_name \
+  --query "cluster.identity.oidc.issuer" --output text | sed -e "s~https://~~")
+
+cat &gt;trust-relationship.json &lt;&lt;EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::${aws_account_id}:oidc-provider/${oidc_issuer}"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "${oidc_issuer}:aud": "sts.amazonaws.com",
+          "${oidc_issuer}:sub": "system:serviceaccount:${namespace}:${service_account_name}"
+        }
+      }
+    }
+  ]
+}
+EOF
+
+aws iam create-role --role-name $role_name \
+  --assume-role-policy-document file://trust-relationship.json
+
+role_arn=$(aws iam get-role --role-name $role_name --query "Role.Arn" --output text)
+echo "$role_arn"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p><strong>EKS Pod Identity:</strong> install the Pod Identity Agent first, then create a role that trusts the EKS service and associate it.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">role_name=&lt;IAM_ROLE_NAME&gt;
+cat &gt;trust-relationship.json &lt;&lt;EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowEksAuthToAssumeRoleForPodIdentity",
+      "Effect": "Allow",
+      "Principal": { "Service": "pods.eks.amazonaws.com" },
+      "Action": ["sts:AssumeRole", "sts:TagSession"]
+    }
+  ]
+}
+EOF
+
+aws iam create-role --role-name $role_name \
+  --assume-role-policy-document file://trust-relationship.json
+
+aws_account_id=$(aws sts get-caller-identity --query Account --output text)
+aws eks create-pod-identity-association \
+  --cluster-name $cluster_name \
+  --role-arn "arn:aws:iam::${aws_account_id}:role/${role_name}" \
+  --namespace $namespace \
+  --service-account $service_account_name</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>echo "$role_arn"</code> prints the ARN. Record it. IRSA needs it in <code>values.yaml</code>; Pod Identity does not.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.2 &mdash; Attach the S3 policy</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">cat &gt;s3-access-policy.json &lt;&lt;EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject"],
+      "Resource": ["arn:aws:s3:::${bucket_name}/*"]
+    }
+  ]
+}
+EOF
+
+aws iam put-role-policy --role-name $role_name \
+  --policy-name s3-access-policy --policy-document file://s3-access-policy.json</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>aws iam list-role-policies --role-name $role_name</code> lists <code>s3-access-policy</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.3 &mdash; Attach the ElastiCache and Bedrock policies</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Attach the ElastiCache policy only if you chose IAM authentication on the cache in step 4. Attach the Bedrock policy only if the gateway routes to Bedrock models using this role rather than an API key.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">elasticache_cluster_arn=&lt;ELASTICACHE_REPLICATION_GROUP_ARN&gt;
+elasticache_user_arn=&lt;ELASTICACHE_USER_ARN&gt;
+
+cat &gt;elasticache-access-policy.json &lt;&lt;EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["elasticache:Connect"],
+      "Resource": ["${elasticache_cluster_arn}", "${elasticache_user_arn}"]
+    }
+  ]
+}
+EOF
+
+aws iam put-role-policy --role-name $role_name \
+  --policy-name elasticache-access-policy --policy-document file://elasticache-access-policy.json
+
+cat &gt;bedrock-access-policy.json &lt;&lt;EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Resource": [
+        "arn:aws:bedrock:&lt;region&gt;::foundation-model/&lt;model-id&gt;",
+        "arn:aws:bedrock:&lt;region&gt;:&lt;account-id&gt;:provisioned-model/&lt;model-id&gt;"
+      ]
+    }
+  ]
+}
+EOF
+
+aws iam put-role-policy --role-name $role_name \
+  --policy-name bedrock-access-policy --policy-document file://bedrock-access-policy.json</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>aws iam list-role-policies --role-name $role_name</code> lists every policy you attached.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="aks">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.1 &mdash; Create a user-assigned managed identity</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">MANAGED_IDENTITY_NAME=portkey-gateway-identity
+
+az identity create \
+  --name ${MANAGED_IDENTITY_NAME} \
+  --resource-group ${RESOURCE_GROUP}
+
+MANAGED_IDENTITY_CLIENT_ID=$(az identity show \
+  --name ${MANAGED_IDENTITY_NAME} \
+  --resource-group ${RESOURCE_GROUP} \
+  --query clientId -o tsv)
+echo ${MANAGED_IDENTITY_CLIENT_ID}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>a GUID prints. Record it; <code>values.yaml</code> needs it as the service account annotation.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.2 &mdash; Federate the Kubernetes service account</span>
+      </div>
+      <div class="collapsible-body">
+        <p>This is what lets the pod exchange its projected service account token for an Azure token. The <code>--subject</code> value has to match the namespace and service account name exactly.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">az identity federated-credential create \
+  --name portkey-gateway-federated-cred \
+  --identity-name ${MANAGED_IDENTITY_NAME} \
+  --resource-group ${RESOURCE_GROUP} \
+  --issuer ${OIDC_ISSUER} \
+  --subject system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT_NAME} \
+  --audiences api://AzureADTokenExchange</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>az identity federated-credential list --identity-name ${MANAGED_IDENTITY_NAME} --resource-group ${RESOURCE_GROUP} --query "[].subject" -o tsv</code> prints your namespace and service account. A mismatch here produces an authentication failure at runtime rather than at deploy time.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.3 &mdash; Grant access to the container and the cache</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">STORAGE_ID=$(az storage account show \
+  --name ${STORAGE_ACCOUNT_NAME} \
+  --resource-group ${RESOURCE_GROUP} --query id -o tsv)
+
+az role assignment create \
+  --assignee ${MANAGED_IDENTITY_CLIENT_ID} \
+  --role "Storage Blob Data Contributor" \
+  --scope "${STORAGE_ID}/blobServices/default/containers/${CONTAINER_NAME}"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>If you chose workload identity on the cache, also assign a Redis data access policy.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">REDIS_NAME=&lt;REDIS_NAME&gt;
+MANAGED_IDENTITY_OBJECT_ID=$(az identity show \
+  --name ${MANAGED_IDENTITY_NAME} \
+  --resource-group ${RESOURCE_GROUP} \
+  --query principalId -o tsv)
+
+az redisenterprise database access-policy-assignment create \
+  --access-policy-assignment-name portkeyGatewayRedisAccess \
+  --cluster-name ${REDIS_NAME} \
+  --database-name default \
+  --resource-group ${RESOURCE_GROUP} \
+  --access-policy-name default \
+  --object-id ${MANAGED_IDENTITY_OBJECT_ID}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>If the gateway routes to Azure OpenAI or Azure AI Foundry using this identity rather than an API key, also grant <code>Cognitive Services OpenAI User</code> on that resource.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>az role assignment list --assignee ${MANAGED_IDENTITY_CLIENT_ID} --all -o table</code> lists the role and the container scope.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="gke">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.1 &mdash; Create the Google service account</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">GSA=&lt;GSA_NAME&gt;
+
+gcloud iam service-accounts create ${GSA} \
+  --display-name="Portkey Gateway Service Account"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>gcloud iam service-accounts describe ${GSA}@${PROJECT_ID_A}.iam.gserviceaccount.com</code> returns the account.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.2 &mdash; Bind it to the Kubernetes service account</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">gcloud iam service-accounts \
+  add-iam-policy-binding ${GSA}@${PROJECT_ID_A}.iam.gserviceaccount.com \
+  --role roles/iam.workloadIdentityUser \
+  --member "serviceAccount:${PROJECT_ID_A}.svc.id.goog[${NAMESPACE}/${KSA}]"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>gcloud iam service-accounts get-iam-policy ${GSA}@${PROJECT_ID_A}.iam.gserviceaccount.com</code> shows the binding with your namespace and KSA name.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.3 &mdash; Grant the project roles</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Grant <code>roles/storage.objectAdmin</code> for the log bucket. Add <code>roles/redis.dbConnectionUser</code> only if you chose IAM authentication on Memorystore, and <code>roles/aiplatform.user</code> only if the gateway invokes Vertex AI models with this identity.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">for ROLE in roles/storage.objectAdmin roles/redis.dbConnectionUser roles/aiplatform.user; do
+  gcloud projects add-iam-policy-binding ${PROJECT_ID_A} \
+    --member="serviceAccount:${GSA}@${PROJECT_ID_A}.iam.gserviceaccount.com" \
+    --role="${ROLE}"
+done</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>If the bucket, the cache, or Vertex AI lives in a different project, run the same binding against that project ID while keeping the member pointed at the service account's own project.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>gcloud projects get-iam-policy ${PROJECT_ID_A} --flatten="bindings[].members" --filter="bindings.members:${GSA}@${PROJECT_ID_A}.iam.gserviceaccount.com" --format="value(bindings.role)"</code> lists each role you granted.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     4. Build values.yaml
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="values">4. Build values.yaml</h2>
+
+<p>Everything the chart needs lives in one file. Build it in four passes: the common block, then the cache, then the log store, then the optional components. Keep the file out of version control.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 &mdash; The common block (all platforms)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This part is identical on EKS, AKS, and GKE. <code>SERVICE_NAME</code> is a label you choose. <code>PORTKEY_CLIENT_AUTH</code> and the registry credentials come from Palo Alto Networks. <code>ORGANISATIONS_TO_SYNC</code> is your Organisation ID from the SCM URL.</p>
+    <div class="code-block">
+      <pre><code class="language-yaml">imageCredentials:
+  - name: portkey-enterprise-registry-credentials
+    create: true
+    registry: https://index.docker.io/v1/
+    username: &lt;PROVIDED BY PALO ALTO NETWORKS&gt;
+    password: &lt;PROVIDED BY PALO ALTO NETWORKS&gt;
+
+images:
+  gatewayImage:
+    repository: "docker.io/portkeyai/gateway_enterprise"
+    pullPolicy: Always
+    tag: "latest"
+  dataserviceImage:
+    repository: "docker.io/portkeyai/data-service"
+    pullPolicy: Always
+    tag: "latest"
+  redisImage:
+    repository: "docker.io/redis"
+    pullPolicy: IfNotPresent
+    tag: "7.2-alpine"
+
+environment:
+  create: true
+  secret: true
+  data:
+    ANALYTICS_STORE: control_plane
+    SERVICE_NAME: &lt;SERVICE_NAME&gt;
+    PORTKEY_CLIENT_AUTH: &lt;PROVIDED BY PALO ALTO NETWORKS&gt;
+    ORGANISATIONS_TO_SYNC: &lt;ORGANISATION_ID&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title"><code>tag: "latest"</code> is what the vendor publishes, and it is not what you want in production</div>
+      <p>A pod restart can pull a different image than the one you validated, and there is no published compatibility matrix between chart versions and image versions. Pin both to a digest or a fixed tag for any environment you care about, and treat an upgrade as a deliberate change. <!-- TODO: verify whether Palo Alto Networks publishes versioned image tags for the enterprise gateway --></p>
+    </div>
+  </div>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="eks">A &middot; Amazon EKS</button>
+    <button class="mgmt-tab" data-plane="aks">B &middot; Azure AKS</button>
+    <button class="mgmt-tab" data-plane="gke">C &middot; Google GKE</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="eks">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>4.2 &mdash; The cache block</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Add one of these to <code>values.yaml</code>, merging into the <code>environment.data</code> map you already have.</p>
+        <p>Built-in Redis, for a proof of concept only:</p>
+        <div class="code-block">
+          <pre><code class="language-yaml">environment:
+  data:
+    CACHE_STORE: redis
+    REDIS_URL: "redis://redis:6379"
+    REDIS_TLS_ENABLED: "false"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>ElastiCache with IAM authentication, which is the option that keeps a password out of the file:</p>
+        <div class="code-block">
+          <pre><code class="language-yaml">serviceAccount:
+  create: true
+  automount: true
+  name: &lt;SERVICE_ACCOUNT_NAME&gt;
+  annotations:
+    eks.amazonaws.com/role-arn: &lt;ROLE_ARN&gt;        # IRSA only; omit for Pod Identity
+
+environment:
+  data:
+    CACHE_STORE: aws-elastic-cache
+    REDIS_URL: "redis://&lt;ElastiCache_Endpoint&gt;:&lt;Port&gt;"
+    REDIS_TLS_ENABLED: "true"
+    REDIS_MODE: cluster                            # Only when cluster mode is enabled
+    AWS_REDIS_AUTH_MODE: iam
+    AWS_REDIS_CLUSTER_NAME: &lt;ELASTICACHE_CLUSTER_NAME&gt;
+    REDIS_USERNAME: &lt;ELASTICACHE_USER_ID&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>ElastiCache with an auth token instead sets <code>REDIS_PASSWORD: &lt;Auth_Token&gt;</code> and drops the three IAM keys. ElastiCache with no auth drops the password as well and sets <code>REDIS_TLS_ENABLED: "false"</code>.</p>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>4.3 &mdash; The log store block</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-yaml">serviceAccount:
+  create: true
+  automount: true
+  name: &lt;SERVICE_ACCOUNT_NAME&gt;
+  annotations:
+    eks.amazonaws.com/role-arn: &lt;ROLE_ARN&gt;        # IRSA only; omit for Pod Identity
+
+environment:
+  data:
+    LOG_STORE: s3_assume
+    LOG_STORE_REGION: "&lt;AWS_BUCKET_REGION&gt;"
+    LOG_STORE_GENERATIONS_BUCKET: "&lt;AWS_BUCKET_NAME&gt;"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="aks">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>4.2 &mdash; The cache block</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Add one of these to <code>values.yaml</code>, merging into the <code>environment.data</code> map you already have.</p>
+        <p>Azure Managed Redis with workload identity:</p>
+        <div class="code-block">
+          <pre><code class="language-yaml">serviceAccount:
+  create: true
+  automount: true
+  name: &lt;SERVICE_ACCOUNT_NAME&gt;
+  annotations:
+    azure.workload.identity/client-id: &lt;MANAGED_IDENTITY_CLIENT_ID&gt;
+
+podLabels:
+  azure.workload.identity/use: "true"
+
+environment:
+  data:
+    CACHE_STORE: azure-redis
+    REDIS_URL: "redis://&lt;Azure_Redis_Endpoint&gt;:&lt;Port&gt;"
+    REDIS_TLS_ENABLED: "true"
+    REDIS_MODE: cluster                            # Only when cluster mode is enabled
+    AZURE_REDIS_AUTH_MODE: workload</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>The other three modes are <code>password</code> (with <code>rediss://</code>, <code>REDIS_PASSWORD</code>, and no identity), <code>managed</code> (with <code>AZURE_REDIS_MANAGED_CLIENT_ID</code>), and <code>entra</code> (with <code>AZURE_REDIS_ENTRA_CLIENT_ID</code>, <code>AZURE_REDIS_ENTRA_CLIENT_SECRET</code>, and <code>AZURE_REDIS_ENTRA_TENANT_ID</code>). The <code>podLabels</code> entry is mandatory for <code>workload</code>, and a deployment that omits it fails to authenticate with no obvious cause.</p>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>4.3 &mdash; The log store block</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-yaml">environment:
+  data:
+    LOG_STORE: azure
+    AZURE_STORAGE_ACCOUNT: &lt;STORAGE_ACCOUNT_NAME&gt;
+    AZURE_STORAGE_CONTAINER: &lt;STORAGE_CONTAINER&gt;
+    AZURE_AUTH_MODE: workload</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Set <code>AZURE_AUTH_MODE: managed</code> with <code>AZURE_MANAGED_CLIENT_ID</code>, or <code>entra</code> with the three <code>AZURE_ENTRA_*</code> keys, if you chose one of those modes in step 3.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="gke">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>4.2 &mdash; The cache block</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Add one of these to <code>values.yaml</code>, merging into the <code>environment.data</code> map you already have.</p>
+        <p>Memorystore with Workload Identity Federation:</p>
+        <div class="code-block">
+          <pre><code class="language-yaml">serviceAccount:
+  create: true
+  automount: true
+  name: &lt;KSA&gt;
+  annotations:
+    iam.gke.io/gcp-service-account: &lt;GSA&gt;@&lt;PROJECT_ID_A&gt;.iam.gserviceaccount.com
+
+environment:
+  data:
+    CACHE_STORE: gcp-memory-store
+    GCP_REDIS_AUTH_MODE: workload
+    REDIS_URL: "redis://&lt;MEMORY_STORE_IP&gt;:&lt;Port&gt;"
+    REDIS_TLS_ENABLED: "false"
+    REDIS_MODE: cluster                            # Only when cluster mode is enabled</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>If TLS is enabled on the instance, add the mount for the secret you created in step 2.2:</p>
+        <div class="code-block">
+          <pre><code class="language-yaml">environment:
+  data:
+    REDIS_TLS_CERTS: /etc/ssl/certs/server-ca.pem
+    REDIS_TLS_ENABLED: "true"
+
+volumes:
+  - name: memorystore-tls-certs
+    secret:
+      secretName: memorystore-tls-certs
+
+volumeMounts:
+  - name: memorystore-tls-certs
+    mountPath: /etc/ssl/certs/server-ca.pem
+    subPath: server-ca.pem</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>An AUTH string instead sets <code>REDIS_PASSWORD</code> and drops <code>GCP_REDIS_AUTH_MODE</code>.</p>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>4.3 &mdash; The log store block</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-yaml">environment:
+  data:
+    LOG_STORE: gcs_assume
+    GCP_AUTH_MODE: workload
+    LOG_STORE_REGION: &lt;GCS_BUCKET_REGION&gt;
+    LOG_STORE_GENERATIONS_BUCKET: &lt;GCS_BUCKET_NAME&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>HMAC access instead uses <code>LOG_STORE: gcs</code> with <code>LOG_STORE_ACCESS_KEY</code> and <code>LOG_STORE_SECRET_KEY</code>, and needs no service account annotation. It also puts two long-lived keys into the file, so prefer Workload Identity Federation.</p>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.4 &mdash; Optional components (all platforms)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The MCP gateway is off by default. <code>SERVER_MODE</code> accepts <code>""</code> for the AI gateway alone, <code>"mcp"</code> for the MCP gateway alone, and <code>"all"</code> for both. Leave <code>MCP_GATEWAY_BASE_URL</code> unset on the first install, because the load balancer that it points at does not exist yet. Set it on a second pass after step 6.</p>
+    <div class="code-block">
+      <pre><code class="language-yaml">environment:
+  data:
+    SERVER_MODE: "all"
+    MCP_PORT: "8788"
+    MCP_GATEWAY_BASE_URL: "https://&lt;MCP hostname&gt;"   # Second pass only</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The Data Service handles batch processing, fine-tuning, and log exports. Enable it only if you need one of those.</p>
+    <div class="code-block">
+      <pre><code class="language-yaml">dataservice:
+  name: "dataservice"
+  enabled: true
+  env:
+    DEBUG_ENABLED: false
+    SERVICE_NAME: "portkeyenterprise-dataservice"
+  serviceAccount:
+    create: false
+    name: &lt;SERVICE_ACCOUNT_NAME&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title"><code>SERVER_MODE: "all"</code> forces host-based ingress</div>
+      <p>Running both gateways behind one load balancer requires <code>ingress.hostBased: true</code>, a hostname for each gateway, and two DNS records. Decide this before step 6, because switching later means rebuilding the ingress and the DNS records.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     5. Install the Chart
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="install">5. Install the Chart</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 &mdash; Add the repository and install</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code class="language-bash">helm repo add portkey-ai https://portkey-ai.github.io/helm
+helm repo update
+
+helm upgrade --install portkey-ai portkey-ai/gateway \
+  -f ./values.yaml -n $namespace --create-namespace</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>On AKS and GKE substitute <code>${NAMESPACE}</code> for <code>$namespace</code>, matching the variable you set in step 1.1.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verify</div>
+      <p><code>helm status portkey-ai -n $namespace</code> reports <code>STATUS: deployed</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.2 &mdash; Confirm the pods are running</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code class="language-bash">kubectl get pods -n $namespace</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verify</div>
+      <p>every pod reports <code>Running</code> and shows its containers ready. A gateway pod, and a Redis pod if you kept the built-in cache, and a Data Service pod if you enabled it.</p>
+    </div>
+    <p>If a pod sits in <code>Pending</code>, <code>ImagePullBackOff</code>, or <code>CrashLoopBackOff</code>, read the events and the logs before changing anything:</p>
+    <div class="code-block">
+      <pre><code class="language-bash">kubectl describe pod &lt;POD_NAME&gt; -n $namespace
+kubectl logs &lt;POD_NAME&gt; -n $namespace --tail=100</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><code>ImagePullBackOff</code> almost always means the registry credentials in step 4.1 are wrong or were never applied. <code>CrashLoopBackOff</code> with an authentication error in the logs points at the cache or log store identity from step 3.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     6. Expose the Gateway
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="ingress">6. Expose the Gateway</h2>
+
+<p>Your applications need a stable address for the gateway. Each platform offers an Ingress path and a Service path, and the choice changes which load balancer the cloud creates. Add the block to <code>values.yaml</code> and re-run the <code>helm upgrade --install</code> command from step 5.1.</p>
+<div class="callout callout-warning">
+  <div class="callout-title">These examples serve plain HTTP</div>
+  <p>Every published example listens on port 80 with no certificate, and the gateway carries workspace keys and prompt content. Attach a certificate through the platform's own annotations before any application sends real traffic. The chart does not do this for you. <!-- TODO: verify the recommended TLS annotation set per platform with the product team --></p>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="eks">A &middot; Amazon EKS</button>
+    <button class="mgmt-tab" data-plane="aks">B &middot; Azure AKS</button>
+    <button class="mgmt-tab" data-plane="gke">C &middot; Google GKE</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="eks">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>6.1 &mdash; Choose ALB with an Ingress, or NLB with a Service</span>
+      </div>
+      <div class="collapsible-body">
+        <p>An ALB gives you layer-7 routing, host-based routing for <code>SERVER_MODE: all</code>, and per-path health checks. An NLB gives you layer-4 pass-through and a static IP per zone. Both require the AWS Load Balancer Controller from step 1.4.</p>
+        <p>ALB with an Ingress:</p>
+        <div class="code-block">
+          <pre><code class="language-yaml">service:
+  type: ClusterIP
+  port: 8787
+
+ingress:
+  enabled: true
+  ingressClassName: "alb"
+  # hostname: "&lt;AI Gateway Hostname&gt;"
+  # hostBased: false
+  # mcpHostname: "&lt;MCP Gateway Hostname&gt;"
+  annotations:
+    alb.ingress.kubernetes.io/load-balancer-name: portkey-gateway
+    alb.ingress.kubernetes.io/scheme: internal            # 'internet-facing' to expose publicly
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /v1/health
+    alb.ingress.kubernetes.io/inbound-cidrs: &lt;X.X.X.X/Y&gt;  # Your application CIDRs only
+    alb.ingress.kubernetes.io/manage-backend-security-group-rules: "true"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>NLB with a Service:</p>
+        <div class="code-block">
+          <pre><code class="language-yaml">service:
+  type: LoadBalancer
+  port: 80
+  containerPort: 8787
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/v1/health"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "8787"
+    service.beta.kubernetes.io/aws-load-balancer-manage-backend-security-group-rules: "true"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p><code>service.containerPort</code> must equal <code>environment.data.PORT</code>. The chart defaults both to <code>8787</code>, so leave them alone unless you have a reason.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">kubectl get ingress -n $namespace          # ALB path
+kubectl get svc -n $namespace              # NLB path</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>An address appears within a few minutes. If the <code>ADDRESS</code> column stays empty, check the controller logs with <code>kubectl logs -n kube-system deployment/aws-load-balancer-controller</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>6.2 &mdash; Restrict the source range</span>
+      </div>
+      <div class="collapsible-body">
+        <p><code>inbound-cidrs</code> on the ALB path, or the security group the controller manages on the NLB path, decides who can reach the gateway. Set it to the CIDRs your applications run in. Do not leave it at <code>0.0.0.0/0</code>, and do not add any Palo Alto Networks address; see step 7.4.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>from outside the allowed range, a request to the load balancer times out. From inside it, step 8 succeeds.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="aks">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>6.1 &mdash; Create the NGINX ingress controller</span>
+      </div>
+      <div class="collapsible-body">
+        <p>This path uses the application routing add-on you enabled in step 1.4. Create the controller you want, external with a static public IP or internal with a private IP.</p>
+        <p>External with a static IP:</p>
+        <div class="code-block">
+          <pre><code class="language-bash">STATIC_IP_NAME=portkey-lb-static-ip
+
+az network public-ip create \
+  --resource-group ${RESOURCE_GROUP} \
+  --name ${STATIC_IP_NAME} \
+  --sku Standard \
+  --allocation-method static
+
+CLIENT_ID=$(az aks show --name ${CLUSTER_NAME} --resource-group ${RESOURCE_GROUP} --query identity.principalId -o tsv)
+RG_SCOPE=$(az group show --name ${RESOURCE_GROUP} --query id -o tsv)
+az role assignment create \
+  --assignee ${CLIENT_ID} \
+  --role "Network Contributor" \
+  --scope ${RG_SCOPE}
+
+kubectl apply -f - &lt;&lt;EOF
+apiVersion: approuting.kubernetes.azure.com/v1alpha1
+kind: NginxIngressController
+metadata:
+  name: nginx-static
+spec:
+  ingressClassName: nginx-static
+  controllerNamePrefix: nginx-static
+  loadBalancerAnnotations:
+    service.beta.kubernetes.io/azure-pip-name: "${STATIC_IP_NAME}"
+    service.beta.kubernetes.io/azure-load-balancer-resource-group: "${RESOURCE_GROUP}"
+EOF</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Internal with a private IP:</p>
+        <div class="code-block">
+          <pre><code class="language-bash">kubectl apply -f - &lt;&lt;EOF
+apiVersion: approuting.kubernetes.azure.com/v1alpha1
+kind: NginxIngressController
+metadata:
+  name: nginx-internal
+spec:
+  ingressClassName: nginx-internal
+  controllerNamePrefix: nginx-internal
+  loadBalancerAnnotations:
+    service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+EOF</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>kubectl get nginxingresscontroller</code> reports the controller as available.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>6.2 &mdash; Point the chart at the controller</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-yaml">ingress:
+  enabled: true
+  ingressClassName: "nginx-internal"     # or 'nginx-static'
+  # hostname: "&lt;AI Gateway Hostname&gt;"
+  # hostBased: true
+  # mcpHostname: "&lt;MCP Gateway Hostname&gt;"
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: "/v1/health"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>The alternative, skipping NGINX entirely, is an Azure Load Balancer fronting a Kubernetes Service:</p>
+        <div class="code-block">
+          <pre><code class="language-yaml">service:
+  type: LoadBalancer
+  port: 80
+  containerPort: 8787
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-protocol: "http"
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: "/v1/health"
+    service.beta.kubernetes.io/azure-allowed-ip-ranges: &lt;X.X.X.X/Y&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Set <code>azure-allowed-ip-ranges</code> to your application CIDRs. The published example uses <code>0.0.0.0/0</code>, which exposes the gateway to everything that can route to it.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">IP=$(kubectl get ingress portkey-ai-gateway -n ${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+echo ${IP}</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>An address prints. Then create a DNS record in your public or private zone pointing at it. With <code>SERVER_MODE: all</code> you create two records, one per hostname, both pointing at the same address.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="gke">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>6.1 &mdash; Choose the Ingress or the Service</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Both depend on the <code>REGIONAL_MANAGED_PROXY</code> subnet from step 1.4 and on the HTTP Load Balancing add-on.</p>
+        <p>Application Load Balancer with an Ingress:</p>
+        <div class="code-block">
+          <pre><code class="language-yaml">ingress:
+  enabled: true
+  ingressClassName: gce                  # 'gce-internal' for an internal load balancer
+  # hostname: "&lt;AI Gateway Hostname&gt;"
+  # hostBased: true
+  # mcpHostname: "&lt;MCP Gateway Hostname&gt;"
+  annotations:
+    kubernetes.io/ingress.class: gce     # 'gce-internal' for an internal load balancer
+    ingress.gcp.kubernetes.io/healthcheck-path: /v1/health</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Load balancer with a Service:</p>
+        <div class="code-block">
+          <pre><code class="language-yaml">service:
+  type: LoadBalancer
+  port: 80
+  containerPort: 8787
+  annotations:
+    cloud.google.com/l4-rbs: "enabled"                    # External load balancer
+    # networking.gke.io/load-balancer-type: "Internal"    # Internal load balancer
+    spec.loadBalancerSourceRanges: "&lt;X.X.X.X/Y&gt;"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">kubectl get ingress -n ${NAMESPACE}
+kubectl get svc -n ${NAMESPACE}</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>An address appears. A GKE ingress can take several minutes and will stay blank indefinitely if the proxy subnet from step 1.4 is missing or not <code>ACTIVE</code>, so re-check that first when nothing happens.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>6.2 &mdash; Restrict the source range</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Set <code>spec.loadBalancerSourceRanges</code> on the Service path, or a Cloud Armor policy on the Ingress path, to your application CIDRs.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>a request from outside the range fails, and step 8 succeeds from inside it.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     7. Connect the Planes
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="connectivity">7. Connect the Planes</h2>
+
+<p>The gateway registers itself, pulls configuration and policy, and reports metrics and usage over an outbound connection to the management plane. Only one direction is required, and it is outbound from the gateway. The platform deployment pages also describe an inbound direction; do not build it, for the reasons in step 7.4.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.1 &mdash; Allow outbound egress (all platforms)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Kubernetes permits all egress by default. If your cluster applies NetworkPolicies that restrict it, the gateway needs an explicit allowance or it will never register.</p>
+    <div class="code-block">
+      <pre><code class="language-yaml">apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-egress
+  namespace: portkeyai
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Narrow that CIDR to the destinations the gateway actually needs, which are the management plane endpoints, your cache, your log store, and every model provider you route to. A broad rule is the published example, not a recommendation.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verify</div>
+      <p><code>kubectl exec -n $namespace &lt;POD_NAME&gt; -- curl -sS -o /dev/null -w '%{http_code}\n' https://albus.portkey.ai</code> returns an HTTP status rather than hanging.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.2 &mdash; Reach the management plane over the internet (all platforms)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The simplest path is over the internet. The gateway needs outbound access to two endpoints and nothing else changes in <code>values.yaml</code>.</p>
+    <ul>
+      <li><code>https://aigw.portkey.ai</code></li>
+      <li><code>https://albus.portkey.ai</code></li>
+    </ul>
+    <p>If you need the traffic to stay off the public internet, each cloud has a private outbound path. All three need Palo Alto Networks to allow-list your account first, so raise that request before you start.</p>
+  </div>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="eks">A &middot; Amazon EKS</button>
+    <button class="mgmt-tab" data-plane="aks">B &middot; Azure AKS</button>
+    <button class="mgmt-tab" data-plane="gke">C &middot; Google GKE</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="eks">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>7.3 &mdash; Private outbound over AWS PrivateLink</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Send your AWS account ARN to the Palo Alto Networks team and wait for confirmation that it is allow-listed.</li>
+          <li>In the VPC console, in the region where the gateway runs, create an endpoint under <strong>PrivateLink Ready partner services</strong>.</li>
+          <li>For <strong>Service name</strong>, enter <code>com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95</code>. If the gateway is outside <code>us-east-1</code>, select <strong>Enable Cross Region endpoint</strong>, choose <code>us-east-1</code>, and click <strong>Verify service</strong>.</li>
+          <li>Under <strong>Network settings</strong>, choose the gateway's VPC and at least two subnets in different Availability Zones. Attach a security group that allows inbound TCP 443 from the gateway pods.</li>
+          <li>Wait for the status to reach <code>Available</code>, then choose <strong>Actions &gt; Modify private DNS name</strong> and enable it for the endpoint.</li>
+          <li>Add the basepaths to <code>values.yaml</code> and re-run the install.</li>
+        </ol>
+        <div class="code-block">
+          <pre><code class="language-yaml">environment:
+  create: true
+  secret: true
+  data:
+    ALBUS_BASEPATH: "https://aws-cp.portkey.ai/albus"
+    CONTROL_PLANE_BASEPATH: "https://aws-cp.portkey.ai/api/v1"
+    SOURCE_SYNC_API_BASEPATH: "https://aws-cp.portkey.ai/api/v1/sync"
+    CONFIG_READER_PATH: "https://aws-cp.portkey.ai/api/model-configs"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>from a gateway pod, <code>nslookup aws-cp.portkey.ai</code> resolves to a private address inside your VPC. A public address means private DNS is not enabled on the endpoint.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="aks">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>7.3 &mdash; Private outbound over Azure Private Link</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Send your Azure subscription ID to the Palo Alto Networks team and wait for confirmation.</li>
+          <li>Create the private endpoint in the subnet where the gateway runs. <code>&lt;SUBNET_ID&gt;</code> is the full resource ID, not the name.</li>
+        </ol>
+        <div class="code-block">
+          <pre><code class="language-bash">az network private-endpoint create \
+  --name portkey-cp-pvt-endpoint \
+  --resource-group ${RESOURCE_GROUP} \
+  --subnet &lt;SUBNET_ID&gt; \
+  --private-connection-resource-alias "portkey-privatelink-pls.4c0cb660-8f0d-49ad-beee-b234fa25cb40.eastus2.azure.privatelinkservice" \
+  --connection-name portkey-cp-pvt-connection
+
+PE_IP=$(az network nic show --ids $(az network private-endpoint show \
+  --name portkey-cp-pvt-endpoint --resource-group ${RESOURCE_GROUP} \
+  --query "networkInterfaces[0].id" -o tsv) \
+  --query "ipConfigurations[0].privateIPAddress" -o tsv)
+echo ${PE_IP}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <ol start="3">
+          <li>Send the endpoint name to the Palo Alto Networks team and wait for the connection to be approved.</li>
+          <li>Create the private DNS zone and link it to the AKS <strong>node group's</strong> VNet. That VNet is in the <code>MC_*</code> resource group, not the one holding the cluster object, and <code>&lt;VNET_ID&gt;</code> must be the full resource ID. Getting this wrong is the usual cause of a connection that approves cleanly and then never resolves.</li>
+        </ol>
+        <div class="code-block">
+          <pre><code class="language-bash">az network private-dns zone create \
+  --resource-group ${RESOURCE_GROUP} \
+  --name privatelink-az.portkey.ai
+
+az network private-dns link vnet create \
+  --resource-group ${RESOURCE_GROUP} \
+  --zone-name privatelink-az.portkey.ai \
+  --name portkey-gateway-vnet-link \
+  --virtual-network "&lt;VNET_ID&gt;" \
+  --registration-enabled false
+
+az network private-dns record-set a add-record \
+  --resource-group ${RESOURCE_GROUP} \
+  --zone-name privatelink-az.portkey.ai \
+  --record-set-name azure-cp \
+  --ipv4-address ${PE_IP}</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <ol start="5">
+          <li>Add the basepaths and re-run the install.</li>
+        </ol>
+        <div class="code-block">
+          <pre><code class="language-yaml">environment:
+  create: true
+  secret: true
+  data:
+    ALBUS_BASEPATH: "https://private.azure-cp.portkey.ai/albus"
+    CONTROL_PLANE_BASEPATH: "https://private.azure-cp.portkey.ai/api/v1"
+    SOURCE_SYNC_API_BASEPATH: "https://private.azure-cp.portkey.ai/api/v1/sync"
+    CONFIG_READER_PATH: "https://private.azure-cp.portkey.ai/api/model-configs"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>from a gateway pod, <code>nslookup azure-cp.privatelink-az.portkey.ai</code> returns <code>${PE_IP}</code>.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="gke">
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>7.3 &mdash; Private outbound over GCP Private Service Connect</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Create a subnet in <code>us-east4</code> if you do not already have one, and an address for the endpoint.</li>
+        </ol>
+        <div class="code-block">
+          <pre><code class="language-bash">gcloud compute networks subnets create psc-endpoint-subnet \
+  --network=${VPC_NAME} \
+  --range=&lt;SUBNET_CIDR&gt; \
+  --region=us-east4
+
+gcloud compute addresses create psc-endpoint-ip \
+  --region=us-east4 \
+  --subnet=psc-endpoint-subnet</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <ol start="2">
+          <li>Send your GCP project ID to the Palo Alto Networks team and request private connectivity. They return a <code>SERVICE_ATTACHMENT_URI</code>.</li>
+          <li>Create the forwarding rule against that attachment.</li>
+        </ol>
+        <div class="code-block">
+          <pre><code class="language-bash">gcloud compute forwarding-rules create portkey-cp-pvt-endpoint-rule \
+  --region=us-east4 \
+  --network=${VPC_NAME} \
+  --address=psc-endpoint-ip \
+  --target-service-attachment=&lt;SERVICE_ATTACHMENT_URI&gt;
+
+# If the cluster is outside us-east4
+gcloud compute forwarding-rules update portkey-cp-pvt-endpoint-rule \
+  --region=us-east4 \
+  --allow-psc-global-access</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <ol start="4">
+          <li>Send the connection ID for approval, then confirm the status.</li>
+        </ol>
+        <div class="code-block">
+          <pre><code class="language-bash">gcloud compute forwarding-rules describe portkey-cp-pvt-endpoint-rule \
+  --region=us-east4 --format="value(pscConnectionId)"
+
+gcloud compute forwarding-rules describe portkey-cp-pvt-endpoint-rule \
+  --region=us-east4 --format="get(pscConnectionStatus)"
+# Should return ACCEPTED</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <ol start="5">
+          <li>Create the private zone and the A record.</li>
+        </ol>
+        <div class="code-block">
+          <pre><code class="language-bash">PSC_IP=$(gcloud compute addresses describe psc-endpoint-ip \
+  --region=us-east4 --format="value(address)")
+
+gcloud dns managed-zones create portkey-control-plane-pdz \
+  --dns-name="privatelink-gcp.portkey.ai." \
+  --description="DNS resolution for the AI Gateway management plane endpoint" \
+  --visibility="private" \
+  --networks="${VPC_NAME}"
+
+gcloud dns record-sets create "us-east4-gcp-cp.privatelink-gcp.portkey.ai." \
+  --rrdatas="${PSC_IP}" \
+  --type="A" \
+  --ttl=300 \
+  --zone="portkey-control-plane-pdz"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <ol start="6">
+          <li>Add the basepaths and re-run the install.</li>
+        </ol>
+        <div class="code-block">
+          <pre><code class="language-yaml">environment:
+  create: true
+  secret: true
+  data:
+    ALBUS_BASEPATH: "https://us-east4-gcp-cp.privatelink-gcp.portkey.ai/albus"
+    CONTROL_PLANE_BASEPATH: "https://us-east4-gcp-cp.privatelink-gcp.portkey.ai/api/v1"
+    SOURCE_SYNC_API_BASEPATH: "https://us-east4-gcp-cp.privatelink-gcp.portkey.ai/api/v1/sync"
+    CONFIG_READER_PATH: "https://us-east4-gcp-cp.privatelink-gcp.portkey.ai/api/model-configs"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>the gateway pod logs show no DNS resolution or connection timeout errors after the restart.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.4 &mdash; Inbound is not supported with Strata Cloud Manager (all platforms)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>All three platform deployment pages describe a second direction, running from the management plane inbound to your gateway over AWS PrivateLink, Azure Private Link, or GCP Private Service Connect, with IP whitelisting as the alternative. Do not build it.</p>
+    <p>Palo Alto Networks confirmed on 2026-09-27 that private link is not supported with Strata Cloud Manager today, and that the only network connectivity between a gateway and the cloud is outbound from the gateway. Those procedures describe the Portkey product, which shares the charts and the tooling but not this part of the architecture.</p>
+    <p>In practice that means three things you do not do:</p>
+    <ul>
+      <li>Do not create a VPC endpoint service, a Private Link Service, or a published Private Service Connect service for the gateway.</li>
+      <li>Do not authorise <code>arn:aws:iam::299329113195:root</code>, or any Palo Alto Networks principal, into your account.</li>
+      <li>Do not add <code>54.81.226.149</code>, <code>34.200.113.35</code>, or <code>44.221.117.129</code> to <code>inbound-cidrs</code>, <code>azure-allowed-ip-ranges</code>, <code>spec.loadBalancerSourceRanges</code>, or any security group rule. Your load balancer admits your own applications and nothing else.</li>
+    </ul>
+    <p>A gateway registers and stays visible in Strata Cloud Manager on outbound connectivity alone. If it does not appear, the cause is in step 7.1, 7.2, or 7.3.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">An inbound path built earlier is now an unused hole</div>
+      <p>If a deployment predates 2026-09-27 and followed the platform pages, it may have an endpoint service with a Palo Alto Networks principal authorised, or three management plane addresses in a security group. Nothing uses either one. Remove them, and tell your account team you have done so in case they still hold a connection on their side.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">This is also the likely reason a local log store breaks the SCM log views</div>
+      <p>On the Portkey product the Backend retrieves an individual log body from your bucket on demand, over exactly this inbound path, which is what makes a customer-held log store workable there. Without the path, Strata Cloud Manager has no way to fetch a log it does not hold. Treat that as an inference rather than a published explanation. <!-- TODO: verify whether inbound private link returns to AIRS, and whether restoring it is what unblocks SCM log views on a local log store. Tracked as question 5 in workspace/airs/aigw-product-questions.md. --></p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     8. Verify
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="verify">8. Verify</h2>
+
+<p>Test the gateway from inside the cluster first, then through the load balancer, then confirm the request reached the management plane. Each step isolates a different failure.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.1 &mdash; Test the pod directly</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code class="language-bash">kubectl port-forward &lt;POD_NAME&gt; -n $namespace 9000:8787</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>In a second terminal:</p>
+    <div class="code-block">
+      <pre><code class="language-bash">OPENAI_API_KEY=&lt;OPENAI_API_KEY&gt;
+PORTKEY_API_KEY=&lt;GATEWAY_API_KEY&gt;       # Created in Strata Cloud Manager
+
+curl 'http://localhost:9000/v1/chat/completions' \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "x-portkey-provider: openai" \
+  -H "x-portkey-api-key: $PORTKEY_API_KEY" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "What is a fractal?"}]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verify</div>
+      <p>a completion returns. A 401 means the gateway API key is wrong or the gateway has not finished syncing with the management plane. A connection error means the pod is not serving on <code>8787</code>.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">The gateway API key is shown once</div>
+      <p>Create it in Strata Cloud Manager and copy it immediately. It cannot be retrieved afterwards, only replaced.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.2 &mdash; Test through the load balancer</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code class="language-bash">curl 'http://&lt;LB_ADDRESS&gt;:&lt;LISTENER_PORT&gt;/v1/chat/completions' \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "x-portkey-provider: openai" \
+  -H "x-portkey-api-key: $PORTKEY_API_KEY" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "What is a fractal?"}]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verify</div>
+      <p>the same completion returns. If step 8.1 worked and this does not, the problem is the load balancer, the health check, or the source range from step 6, and not the gateway.</p>
+    </div>
+    <p>The listener port is not published for any of the three platforms. Read it from the Ingress or Service you created rather than assuming 80. <!-- TODO: verify --></p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.3 &mdash; Confirm the request reached the management plane</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Open Strata Cloud Manager and go to <strong>Logs</strong>. Your test request appears there, and selecting the entry shows the full prompt and completion.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verify</div>
+      <p>the entry is present and expands. If the gateway serves traffic but nothing appears in SCM, the outbound path in step 7.2 or 7.3 is the place to look. If entries appear but their bodies do not load, and you configured a log store of your own, read the note in step 7.4.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     Scaling, Upgrades, and Teardown
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="day2">Scaling, Upgrades, and Teardown</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Scale the gateway</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The gateway pods are stateless, so scaling is a replica count. Set <code>replicaCount</code> in <code>values.yaml</code> and re-run the install, or attach a HorizontalPodAutoscaler against CPU. Keep replicas spread across zones with a pod topology spread constraint so that a zone failure does not take every replica.</p>
+    <p>No requests-per-second figure is published for any platform, so size from your own load test rather than from the documentation.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Upgrade</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code class="language-bash">helm repo update
+helm upgrade --install portkey-ai portkey-ai/gateway \
+  -f ./values.yaml -n $namespace</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>There is no published compatibility matrix between chart versions and gateway image versions, and no tested rollback procedure. Pin your image tag, upgrade in a non-production cluster first, and keep the previous <code>values.yaml</code> so that <code>helm rollback</code> has something consistent to return to.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Tear down</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code class="language-bash">helm uninstall portkey-ai --namespace $namespace</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><code>helm uninstall</code> removes the release. It does not remove the namespace, the cloud identity from step 3, the cache, the log bucket, or a load balancer created outside the chart. Remove those in the reverse order you created them, and delete only what this deployment created.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     Reference
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="reference">Reference</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Endpoints, addresses, and identifiers</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Value</th><th>What it is</th><th>Used in</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>https://portkey-ai.github.io/helm</code></td><td>Helm repository for the full <code>gateway</code> chart</td><td>Step 5.1</td></tr>
+        <tr><td><code>https://portkey-ai.github.io/airs-gw-helm</code></td><td>Helm repository for the SCM wizard's <code>airs-gw</code> chart</td><td>Not used in this guide</td></tr>
+        <tr><td><code>aigw.portkey.ai</code></td><td>Management plane, outbound over the internet</td><td>Egress allow-list</td></tr>
+        <tr><td><code>albus.portkey.ai</code></td><td>Configuration sync, outbound over the internet</td><td>Egress allow-list</td></tr>
+        <tr><td><code>aws-cp.portkey.ai</code></td><td>Management plane over AWS PrivateLink</td><td>EKS step 7.3</td></tr>
+        <tr><td><code>private.azure-cp.portkey.ai</code></td><td>Management plane over Azure Private Link</td><td>AKS step 7.3</td></tr>
+        <tr><td><code>us-east4-gcp-cp.privatelink-gcp.portkey.ai</code></td><td>Management plane over GCP Private Service Connect</td><td>GKE step 7.3</td></tr>
+        <tr><td><code>com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95</code></td><td>Endpoint service name for outbound PrivateLink</td><td>EKS step 7.3</td></tr>
+        <tr><td><code>portkey-privatelink-pls.4c0cb660-8f0d-49ad-beee-b234fa25cb40.eastus2.azure.privatelinkservice</code></td><td>Private Link Service alias for outbound Private Link</td><td>AKS step 7.3</td></tr>
+        <tr><td><code>arn:aws:iam::299329113195:root</code></td><td>Management plane AWS principal, published for an inbound path AIRS does not support</td><td>Do not authorise; see 7.4</td></tr>
+        <tr><td><code>54.81.226.149</code>, <code>34.200.113.35</code>, <code>44.221.117.129</code></td><td>Management plane source addresses, published for an inbound path AIRS does not support</td><td>Do not allow them; see 7.4</td></tr>
+        <tr><td><code>8787</code></td><td>Gateway container port and the default <code>PORT</code></td><td>All platforms</td></tr>
+        <tr><td><code>8788</code></td><td>MCP gateway container port</td><td><code>SERVER_MODE: "mcp"</code> or <code>"all"</code></td></tr>
+        <tr><td><code>/v1/health</code></td><td>Health check path for every load balancer</td><td>Step 6</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Platform differences</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th></th><th>Amazon EKS</th><th>Azure AKS</th><th>Google GKE</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Suggested node type</td><td><code>t4g.medium</code></td><td><code>B2ms</code></td><td>2 vCPU, 4 GiB or larger</td></tr>
+        <tr><td>Extra CLI</td><td><code>eksctl</code></td><td>None</td><td>None</td></tr>
+        <tr><td>Identity mechanism</td><td>IRSA or Pod Identity</td><td>Workload identity, managed identity, or Entra</td><td>Workload Identity Federation</td></tr>
+        <tr><td>Service account annotation</td><td><code>eks.amazonaws.com/role-arn</code></td><td><code>azure.workload.identity/client-id</code></td><td><code>iam.gke.io/gcp-service-account</code></td></tr>
+        <tr><td>Cache value</td><td><code>aws-elastic-cache</code></td><td><code>azure-redis</code></td><td><code>gcp-memory-store</code></td></tr>
+        <tr><td>Log store value</td><td><code>s3_assume</code></td><td><code>azure</code></td><td><code>gcs_assume</code> or <code>gcs</code></td></tr>
+        <tr><td>Ingress prerequisite</td><td>AWS Load Balancer Controller</td><td>Application routing add-on</td><td><code>REGIONAL_MANAGED_PROXY</code> subnet</td></tr>
+        <tr><td>Ingress class</td><td><code>alb</code></td><td><code>nginx-static</code> or <code>nginx-internal</code></td><td><code>gce</code> or <code>gce-internal</code></td></tr>
+        <tr><td>Private outbound region</td><td><code>us-east-1</code></td><td><code>eastus2</code></td><td><code>us-east4</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Undocumented areas</span>
+  </div>
+  <div class="collapsible-body">
+    <p>These questions come up in the field and the published material does not currently answer them. Raise them with the product team rather than inferring an answer, and treat anything below as unresolved when writing a customer commitment.</p>
+    <ul>
+      <li><strong>Throughput sizing</strong> &mdash; no requests-per-second figures for any of the three platforms. The published CPU and memory numbers are minimums to run, not a capacity model.</li>
+      <li><strong>Image and chart versioning</strong> &mdash; every example pins <code>tag: "latest"</code>, no versioned tags are published, and no compatibility matrix exists between chart versions and image versions. <!-- TODO: verify --></li>
+      <li><strong>Upgrade and rollback</strong> &mdash; no supported upgrade path and no tested rollback procedure.</li>
+      <li><strong>TLS on ingress</strong> &mdash; every published example serves plain HTTP, and no recommended certificate or TLS policy configuration is given for any of the three platforms. <!-- TODO: verify --></li>
+      <li><strong>Load balancer listener port</strong> &mdash; not published, while your own firewall rules depend on it. Read it from the created Ingress or Service. <!-- TODO: verify --></li>
+      <li><strong>Region placement and data residency</strong> &mdash; Strata Cloud Manager runs in the Americas only today, with other regions planned, and prompt bodies land there regardless of the log store setting. Retention and custody for that store are still unpublished.</li>
+      <li><strong>Air-gapped deployment</strong> &mdash; no documented configuration for a cluster with no path to <code>portkey.ai</code>.</li>
+      <li><strong>TLS inspection</strong> &mdash; behavior of the outbound links through an intercepting proxy is not described, and streaming through one is untested.</li>
+      <li><strong>Private outbound regions</strong> &mdash; the private endpoint for each cloud lives in one fixed region, and no other region is offered. Cross-region access works but adds a hop and a cost. <!-- TODO: verify whether additional regions are planned --></li>
+    </ul>
+    <div class="callout callout-note">
+      <div class="callout-title">The two documentation paths no longer disagree</div>
+      <p>The SCM Gateway Registration wizard produces an outbound-only deployment, and the platform pages this guide follows describe an inbound path as well. Palo Alto Networks confirmed on 2026-09-27 that outbound-only is correct for AIRS, so the wizard's model is the accurate one and the platform pages are describing the Portkey product. Both send prompt content to the Strata Cloud Manager backend on the default log store, so the difference was never about residency.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Sources</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This guide is derived from the published self-hosting documentation for the three Kubernetes platforms.</p>
+    <ul>
+      <li><strong>Amazon EKS</strong> &mdash; <code>self-hosting/hybrid-deployments/aws/eks</code></li>
+      <li><strong>Azure AKS</strong> &mdash; <code>self-hosting/hybrid-deployments/azure/aks</code></li>
+      <li><strong>Google GKE</strong> &mdash; <code>self-hosting/hybrid-deployments/gcp</code></li>
+      <li><strong>Architecture</strong> &mdash; <code>self-hosting/hybrid-deployments/architecture</code></li>
+    </ul>
+    <p>The doc pages are published twice, on <code>docs.portkey.ai/docs/aigw/</code> and on <code>portkey.ai/docs/</code>, and the two versions differ. See <a href="SOURCES.md">SOURCES.md</a> in this directory for which to prefer and where the local mirrors are.</p>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<!-- ── Floating Buttons ──────────────────────────────────────── -->
+<button class="download-md-btn" id="downloadMdBtn" onclick="downloadAsMarkdown()">&#8681; Markdown</button>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>

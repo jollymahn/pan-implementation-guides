@@ -305,6 +305,8 @@ If the request succeeds but never appears in Logs, the outbound path is working 
 
 The AWS topology is the one drawn in [Hybrid Architecture](#hybrid-architecture). The checklist below is that diagram expressed as things to build before you deploy.
 
+> **Note &mdash; full procedure in a separate guide:** This section is the planning checklist. The step-by-step deployment, with cluster preparation, the cache and log store, workload identity, the `values.yaml` file, the Helm install, ingress, management plane connectivity, and verification, is in [AI Gateway on EKS, AKS, and GKE](kubernetes-deployment.md).
+
 ### AWS checklist
 
 - **EKS cluster** &mdash; at least 2 worker nodes, ideally one per Availability Zone.
@@ -341,7 +343,9 @@ For EKS Pod Identity the configuration is the same minus the annotation, since t
 
 ## Prerequisites: Azure (AKS)
 
-The same topology with Azure equivalents substituted. The boundary behaves identically.
+Azure uses the same topology with Azure equivalents substituted. The boundary behaves identically.
+
+> **Note &mdash; full procedure in a separate guide:** This section is the planning checklist. The step-by-step deployment, with cluster preparation, the cache and log store, workload identity, the `values.yaml` file, the Helm install, ingress, management plane connectivity, and verification, is in [AI Gateway on EKS, AKS, and GKE](kubernetes-deployment.md).
 
 ![AI Gateway hybrid data plane on Azure](diagrams/aigw-hybrid-azure-vnet.svg)
 
@@ -362,6 +366,8 @@ The same topology with Azure equivalents substituted. The boundary behaves ident
 ## Prerequisites: GCP (GKE)
 
 GKE follows the same pattern as EKS and AKS, with one networking requirement that catches people out on the first deployment.
+
+> **Note &mdash; full procedure in a separate guide:** This section is the planning checklist. The step-by-step deployment, with cluster preparation, the cache and log store, workload identity, the `values.yaml` file, the Helm install, ingress, management plane connectivity, and verification, is in [AI Gateway on EKS, AKS, and GKE](kubernetes-deployment.md).
 
 ![AI Gateway hybrid data plane on GCP](diagrams/aigw-hybrid-gcp-vpc.svg)
 
@@ -396,7 +402,7 @@ The Terraform minimums genuinely differ between the two: v1.13 for ECS and v1.5 
 - **Secrets** &mdash; you create the Docker credentials and the Client Auth Key in AWS Secrets Manager yourself, before Terraform runs. The module is given the secret ARNs, not the values, so raw secret values do not enter Terraform state.
 - **Log store** &mdash; Amazon S3 or any S3-compatible store, optional.
 - **Cache store** &mdash; built-in Redis, or ElastiCache for Redis OSS or Valkey in the same VPC.
-- **Compute model** &mdash; with `create_cluster = true` the module registers one capacity provider backed by an EC2 Auto Scaling group, so tasks run on container instances you own. Fargate is not a documented option; see the Fargate section of the [deployment guide](serverless-deployment.md) for what the module actually supports.
+- **Compute model** &mdash; with `create_cluster = true` the module registers one capacity provider backed by an EC2 Auto Scaling group, so tasks run on container instances you own. Fargate is not a documented option; see [ECS Fargate](serverless-deployment.md#fargate) in the ECS and Container Apps guide for what the module actually supports.
 - **Connectivity** &mdash; outbound to the management plane endpoints. There is no inbound path to build, so the load balancer type is yours to choose on its merits.
 
 ### Azure Container Apps
