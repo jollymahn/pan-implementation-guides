@@ -2,13 +2,13 @@
 
 Deploy a Prisma AIRS AI Gateway hybrid data plane on Amazon EKS, Azure AKS, or Google GKE with Helm, from cluster preparation through the cache and log store, workload identity, `values.yaml`, ingress, outbound connectivity to the management plane, and end-to-end verification.
 
-**Related:** [Deployment Guide](ai-gateway-deployment.md) | [Hybrid Infrastructure](hybrid-infrastructure.md) | [ECS and Container Apps](serverless-deployment.md) | [LLM API Key Management](llm-api-key-management.md)
+**Related:** [Deployment Guide](ai-gateway-deployment.html) | [Hybrid Infrastructure](hybrid-infrastructure.md) | [ECS and Container Apps](serverless-deployment.md) | [LLM API Key Management](llm-api-key-management.html)
 
 ---
 
 ## Guide Approach
 
-This is a companion to the [AI Gateway Deployment Guide](ai-gateway-deployment.md) and to the [AI Gateway Hybrid Infrastructure](hybrid-infrastructure.md) guide. It covers the three managed Kubernetes platforms: Amazon EKS, Azure AKS, and Google GKE. All three are delivered by Helm and a `values.yaml` file, so the workflow is the same on each and only the cloud-specific pieces differ.
+This is a companion to the [AI Gateway Deployment Guide](ai-gateway-deployment.html) and to the [AI Gateway Hybrid Infrastructure](hybrid-infrastructure.md) guide. It covers the three managed Kubernetes platforms: Amazon EKS, Azure AKS, and Google GKE. All three are delivered by Helm and a `values.yaml` file, so the workflow is the same on each and only the cloud-specific pieces differ.
 
 It does not repeat licensing, activation, or the Strata Cloud Manager (SCM) configuration that follows deployment. Those live in the deployment guide and you need them whichever platform you land on. It also does not repeat the two-plane architecture discussion or the platform comparison, which live in the hybrid infrastructure guide. If you are not on Kubernetes, the Terraform path for Amazon ECS and Azure Container Apps is in [ECS and Container Apps](serverless-deployment.md).
 
@@ -18,14 +18,14 @@ Prisma AIRS AI Gateway is the Portkey gateway, acquired by Palo Alto Networks. Y
 
 > **Warning: Two different Helm charts exist, and this guide follows one of them.**
 >
-> - **`airs-gw`**, from `https://portkey-ai.github.io/airs-gw-helm`, is what the SCM Gateway Registration wizard generates. It is a shorter, opinionated install driven by the values the wizard hands you. That path is documented in Phase 2 of the [AI Gateway Deployment Guide](ai-gateway-deployment.md).
+> - **`airs-gw`**, from `https://portkey-ai.github.io/airs-gw-helm`, is what the SCM Gateway Registration wizard generates. It is a shorter, opinionated install driven by the values the wizard hands you. That path is documented in Phase 2 of the [AI Gateway Deployment Guide](ai-gateway-deployment.html).
 > - **`portkey-ai/gateway`**, from `https://portkey-ai.github.io/helm`, is the full chart the platform deployment pages use. It exposes the cache, the log store, the Data Service, the MCP gateway, ingress, and workload identity as configuration. This guide follows that chart.
 >
 > Pick one and stay on it. The two charts use different release names and different value keys, and installing both into one namespace produces two gateway Deployments competing for the same registration.
 
 > **Warning: Before you start.** Everything below assumes two things are already done.
 >
-> - **Licensing and activation** &mdash; Phase 1 of the [AI Gateway Deployment Guide](ai-gateway-deployment.md). The gateway will deploy without it, but it will not serve traffic.
+> - **Licensing and activation** &mdash; Phase 1 of the [AI Gateway Deployment Guide](ai-gateway-deployment.html). The gateway will deploy without it, but it will not serve traffic.
 > - **Credentials from Palo Alto Networks** &mdash; you send your Organisation ID and the email address used at signup; they return Docker registry credentials for the gateway images and a Client Auth Key. There is no self-service path to these, and nothing in this guide works without them. Request them early, because this is the step most likely to add days to a deployment.
 >
 > Raise that request through your Palo Alto Networks account team, or open a case in the [Customer Support Portal](https://support.paloaltonetworks.com/) against Prisma AIRS AI Gateway. Every later step that says "contact the Palo Alto Networks team" means the same channel.

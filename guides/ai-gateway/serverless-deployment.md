@@ -2,13 +2,13 @@
 
 Deploy a Prisma AIRS AI Gateway hybrid data plane on Amazon ECS or Azure Container Apps with Terraform, from secret preparation through ingress, outbound connectivity to the management plane, and end-to-end verification.
 
-**Related:** [Deployment Guide](ai-gateway-deployment.md) | [Hybrid Infrastructure](hybrid-infrastructure.md) | [EKS, AKS, and GKE](kubernetes-deployment.md) | [LLM API Key Management](llm-api-key-management.md)
+**Related:** [Deployment Guide](ai-gateway-deployment.html) | [Hybrid Infrastructure](hybrid-infrastructure.md) | [EKS, AKS, and GKE](kubernetes-deployment.md) | [LLM API Key Management](llm-api-key-management.html)
 
 ---
 
 ## Guide Approach
 
-This is a companion to the [AI Gateway Deployment Guide](ai-gateway-deployment.md) and to the [AI Gateway Hybrid Infrastructure](hybrid-infrastructure.md) guide. It covers the two container platforms that are **not** Kubernetes: Amazon ECS and Azure Container Apps. Both are delivered by Terraform rather than Helm, which changes the workflow enough that the Kubernetes instructions do not transfer.
+This is a companion to the [AI Gateway Deployment Guide](ai-gateway-deployment.html) and to the [AI Gateway Hybrid Infrastructure](hybrid-infrastructure.md) guide. It covers the two container platforms that are **not** Kubernetes: Amazon ECS and Azure Container Apps. Both are delivered by Terraform rather than Helm, which changes the workflow enough that the Kubernetes instructions do not transfer.
 
 It does not repeat licensing, activation, or the Strata Cloud Manager (SCM) configuration that follows deployment. Those live in the deployment guide and you need them whichever platform you land on. It also does not repeat the two-plane architecture discussion or the platform comparison, which live in the hybrid infrastructure guide.
 
@@ -18,7 +18,7 @@ Prisma AIRS AI Gateway is the Portkey gateway, acquired by Palo Alto Networks. Y
 
 > **Warning: Before you start.** Everything below assumes two things are already done.
 >
-> - **Licensing and activation** &mdash; Phase 1 of the [AI Gateway Deployment Guide](ai-gateway-deployment.md). The gateway will deploy without it, but it will not serve traffic.
+> - **Licensing and activation** &mdash; Phase 1 of the [AI Gateway Deployment Guide](ai-gateway-deployment.html). The gateway will deploy without it, but it will not serve traffic.
 > - **Credentials from Palo Alto Networks** &mdash; you send your Organisation ID and the email address used at signup; they return Docker registry credentials for the gateway images and a Client Auth Key. There is no self-service path to these, and nothing in this guide works without them. Request them early, because this is the step most likely to add days to a deployment.
 >
 > Raise that request through your Palo Alto Networks account team, or open a case in the [Customer Support Portal](https://support.paloaltonetworks.com/) against Prisma AIRS AI Gateway. <!-- TODO: verify the exact support case category with the product team --> Every later step that says "send this to the Palo Alto Networks team" means the same channel. There are six such requests in this guide; they are listed in [Deployment Requirements](#deployment-requirements) so you can raise the early ones before you start building.
@@ -1286,7 +1286,7 @@ One request proves the whole chain: ingress, gateway, provider egress, log store
 
 Replace `<GATEWAY_ENDPOINT>` with the load balancer DNS name, the Container Apps FQDN, or your custom hostname. Use `https` wherever you configured TLS in step 3. The ECS configuration in step 2.2 creates an internal load balancer, so run this from a host inside the VPC, or through ECS Exec on a gateway task, rather than from your laptop. On ACA with the built-in ingress the FQDN is public and you can run it from anywhere. Append the listener port if your endpoint does not listen on 443. <!-- TODO: verify the NLB and Application Gateway listener port; the container port is 8787 but the listener port is not published -->
 
-`PORTKEY_API_KEY` is a workspace API key, created in Strata Cloud Manager under the workspace this gateway syncs, in [Phase 3 of the AI Gateway Deployment Guide](ai-gateway-deployment.md#llm-integration). Create one there and copy it here before running the request, and use the same key each time you re-run this check. `OPENAI_API_KEY` is your own provider key.
+`PORTKEY_API_KEY` is a workspace API key, created in Strata Cloud Manager under the workspace this gateway syncs, in [Phase 3 of the AI Gateway Deployment Guide](ai-gateway-deployment.html#llm-integration). Create one there and copy it here before running the request, and use the same key each time you re-run this check. `OPENAI_API_KEY` is your own provider key.
 
 > **Warning: This request is a path test, not the calling convention.** This first request passes your own provider key through the gateway so the path can be tested before any provider credential is configured in Strata Cloud Manager. Once you configure a provider in Strata Cloud Manager, drop the `Authorization` header entirely and applications send only `x-portkey-api-key`, which is the steady-state behavior described in the Architecture section. Do not run this test against a plain-HTTP listener. Unset `OPENAI_API_KEY` from your shell afterwards, and treat the key as used in the clear if the listener had no TLS.
 
