@@ -70,7 +70,7 @@
 <div class="article">
 
 <h1>AI Gateway on ECS and Container Apps</h1>
-<p class="subtitle">Deploy a Prisma AIRS AI Gateway hybrid data plane on Amazon ECS or Azure Container Apps with Terraform, from secret preparation through ingress, connectivity to the management plane in both directions, and end-to-end verification</p>
+<p class="subtitle">Deploy a Prisma AIRS AI Gateway hybrid data plane on Amazon ECS or Azure Container Apps with Terraform, from secret preparation through ingress, outbound connectivity to the management plane, and end-to-end verification</p>
 
 <div class="cloud-links">
   <a href="ai-gateway-deployment.html">Deployment Guide</a>
@@ -111,7 +111,7 @@
 <div class="callout callout-note">
   <div class="callout-title">Which platform should I pick?</div>
   <ul>
-    <li><strong>Amazon ECS</strong> &mdash; you are on AWS, you want the deployment inside a VPC you control, and you want ALB or NLB semantics you already understand. This is the more configurable of the two and the one with a documented inbound PrivateLink path.</li>
+    <li><strong>Amazon ECS</strong> &mdash; you are on AWS, you want the deployment inside a VPC you control, and you want ALB or NLB semantics you already understand. This is the more configurable of the two, and the one where you pick the load balancer type yourself.</li>
     <li><strong>Azure Container Apps</strong> &mdash; you are on Azure and you want the least infrastructure. A VNet is optional here, which is unique among the five supported platforms: the simplest ACA deployment has no network of your own at all.</li>
   </ul>
   <p>Your selection persists as you scroll, and the same choice applies to every tabbed step below.</p>
@@ -124,7 +124,7 @@
   </div>
 
   <div class="mgmt-panel active" data-plane="ecs">
-    <img src="diagrams/aigw-serverless-aws-ecs.svg" alt="AI Gateway hybrid data plane on Amazon ECS: applications call a load balancer inside your VPC, which balances across gateway tasks running on an ECS cluster in two Availability Zones. Tasks read their secrets from AWS Secrets Manager, read configuration from a Redis cache, write full logs to S3, and reach the Palo Alto Networks management plane, model providers, and the container registry through a NAT gateway. The management plane also connects inbound over a VPC endpoint service or an IP allow-list." loading="lazy">
+    <img src="diagrams/aigw-serverless-aws-ecs.svg" alt="AI Gateway hybrid data plane on Amazon ECS: applications call a load balancer inside your VPC, which balances across gateway tasks running on an ECS cluster in two Availability Zones. Tasks read their secrets from AWS Secrets Manager, read configuration from a Redis cache, write full logs to S3, and reach the Palo Alto Networks management plane, model providers, and the container registry through a NAT gateway." loading="lazy">
 
     <p>Reading the flows in order:</p>
     <ol>
@@ -137,12 +137,11 @@
       <li>The gateway reports configuration sync, metrics, and usage to the management plane. No prompt content travels on this path.</li>
       <li>The gateway makes the actual model call. Provider egress rules now follow the gateway, not your applications.</li>
       <li>Image pulls happen at install and upgrade only.</li>
-      <li>The management plane connects <em>inbound</em> to the gateway.</li>
-    </ol>
+          </ol>
   </div>
 
   <div class="mgmt-panel" data-plane="aca">
-    <img src="diagrams/aigw-serverless-azure-aca.svg" alt="AI Gateway hybrid data plane on Azure Container Apps: applications call the ingress, either the built-in Container Apps FQDN or an Application Gateway, which balances across gateway replicas in a Container Apps environment. Replicas resolve secrets from Azure Key Vault, read configuration from a Redis cache, write full logs to Blob Storage, and reach the Palo Alto Networks management plane, model providers, and the container registry through egress. The management plane also connects inbound over a private endpoint or an IP allow-list." loading="lazy">
+    <img src="diagrams/aigw-serverless-azure-aca.svg" alt="AI Gateway hybrid data plane on Azure Container Apps: applications call the ingress, either the built-in Container Apps FQDN or an Application Gateway, which balances across gateway replicas in a Container Apps environment. Replicas resolve secrets from Azure Key Vault, read configuration from a Redis cache, write full logs to Blob Storage, and reach the Palo Alto Networks management plane, model providers, and the container registry through egress." loading="lazy">
 
     <p>Reading the flows in order:</p>
     <ol>
@@ -155,15 +154,14 @@
       <li>The gateway reports configuration sync, metrics, and usage to the management plane. No prompt content travels on this path.</li>
       <li>The gateway makes the actual model call. Provider egress rules now follow the gateway, not your applications.</li>
       <li>Image pulls happen at install and upgrade only.</li>
-      <li>The management plane connects <em>inbound</em> to the gateway.</li>
-    </ol>
+          </ol>
   </div>
 </div>
 
 <div class="callout callout-warning">
-  <div class="callout-title">Both directions are mandatory on this path</div>
-  <p>There are two ways to stand up a hybrid data plane, and they disagree about connectivity. The Gateway Registration wizard in SCM produces an outbound-only deployment. The platform deployment pages, which are what this guide follows, require the management plane to reach your gateway <em>inbound</em> as well, over a private link or an IP allow-list.</p>
-  <p>Configure outbound only and you get a gateway that serves traffic correctly but never appears in Strata Cloud Manager. That failure looks like a licensing or activation problem and is usually diagnosed as one, so settle the inbound path in <a href="#connectivity">step 4</a> before you conclude anything is wrong upstream.</p>
+  <div class="callout-title">The platform deployment pages describe a connection you should not build</div>
+  <p>Those pages require the management plane to reach your gateway inbound, over a private link or an IP allow-list. Palo Alto Networks confirmed on 2026-09-27 that private link is not supported with Strata Cloud Manager today and that connectivity is outbound from the gateway only.</p>
+  <p>Build the outbound direction in <a href="#connectivity">step 4</a> and stop there. If you follow the platform pages literally you will authorise a Palo Alto Networks account into your VPC, or put three management plane addresses into a load balancer allow-list, for a path that nothing uses.</p>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════
@@ -215,8 +213,6 @@
         <tr><td>Initial credentials</td><td>Organisation ID and the signup email address</td><td>Now</td><td>Step 1, and everything after it</td></tr>
         <tr><td>Account allow-listing for outbound PrivateLink (ECS)</td><td>Your AWS account root ARN</td><td>Now, it depends on nothing Terraform builds</td><td>Step 4.2, ECS</td></tr>
         <tr><td>Subscription allow-listing for outbound Private Link (ACA)</td><td>Your Azure subscription ID</td><td>Now, it depends on nothing Terraform builds</td><td>Step 4.2, ACA</td></tr>
-        <tr><td>Inbound endpoint service details (ECS)</td><td>Service name, DNS names, private DNS name, region, listener port</td><td>After step 4.3 creates the endpoint service</td><td>Step 4.3 approval, and therefore step 5</td></tr>
-        <tr><td>Inbound environment details (ACA)</td><td>Container Apps environment ID and inbound gateway FQDN</td><td>After step 2.3</td><td>Step 4.3 approval, and therefore step 5</td></tr>
         <tr><td>Teardown</td><td>A request to remove their side of any private link</td><td>Before <code>terraform destroy</code></td><td>Clean removal, see Scaling and Upgrades</td></tr>
       </tbody>
     </table>
@@ -534,7 +530,7 @@ az keyvault secret set --vault-name ${kv} --name organisations-to-sync  --value 
         <span>2.0 &mdash; Decide the load balancer type first</span>
       </div>
       <div class="collapsible-body">
-        <p>The configuration in 2.2 creates a load balancer, so settle the type before you apply it. The choice matters on ECS, because it decides whether inbound PrivateLink works directly in step 4, and changing it afterwards replaces the load balancer rather than editing it.</p>
+        <p>The configuration in 2.2 creates a load balancer, so settle the type before you apply it. Changing the type afterwards replaces the load balancer rather than editing it, and the replacement takes a new DNS name with it.</p>
 
         <table>
           <thead>
@@ -543,15 +539,9 @@ az keyvault secret set --vault-name ${kv} --name organisations-to-sync  --value 
           <tbody>
             <tr><td>TLS termination, WAF, access logs</td><td>ALB</td></tr>
             <tr><td>Host-based routing, required when <code>server_mode = "all"</code></td><td>ALB</td></tr>
-            <tr><td>Inbound PrivateLink to the management plane, directly</td><td>NLB</td></tr>
             <tr><td>Layer-4 pass-through and lowest latency</td><td>NLB</td></tr>
           </tbody>
         </table>
-
-        <div class="callout callout-warning">
-          <div class="callout-title">An ALB cannot back an inbound PrivateLink endpoint service</div>
-          <p>An AWS VPC endpoint service can only be created against a Network Load Balancer or a Gateway Load Balancer. If you pick an ALB, which <code>server_mode = "all"</code> forces you to, you cannot hand that ALB to the endpoint service in step 4. You will need a separate NLB in front of the ALB, provisioned outside this module, using a target group of type <code>alb</code>. Decide this now rather than after the ALB is carrying traffic.</p>
-        </div>
 
         <p>Set <code>lb_type</code> to match your answer in 2.2, then use the matching block in <a href="#ingress">step 3.1</a> for the listener details.</p>
       </div>
@@ -678,7 +668,7 @@ aws s3api put-bucket-encryption \
       <div class="collapsible-body">
         <p>Substitute the two ARNs from step 1 and the log bucket you created in 2.1b. The <code>docker-credentials</code> ARN from the 1.1 verification goes into <code>docker_cred_secret_arn</code>; the <code>client-org</code> ARN goes into both keys of the <code>secrets</code> block. The <code>allowed_lb_cidrs</code> value is the only one with a security consequence: it is the set of CIDRs permitted to reach the load balancer, and for an internal load balancer the VPC CIDR is the usual answer.</p>
 
-        <p>Leave <code>server_mode</code> as <code>gateway</code> unless you are also publishing MCP servers through this deployment. Choosing <code>all</code> on ECS forces an Application Load Balancer, which changes the inbound options in step 4.3.</p>
+        <p>Leave <code>server_mode</code> as <code>gateway</code> unless you are also publishing MCP servers through this deployment. Choosing <code>all</code> on ECS forces an Application Load Balancer, so if you already applied step 2.2 with <code>lb_type = "network"</code> this replaces the load balancer.</p>
 
         <div class="code-block">
           <pre><code>terraform {
@@ -800,7 +790,7 @@ output "service_name" {
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
 
-        <p><code>allowed_lb_cidrs</code> is the source list for the load balancer's inbound rule. The listener port and protocol the module configures are not documented upstream, so read them out of the plan output or the created listener before you write any firewall rule against them, and record the value, because step 4.3 asks you to send it to the Palo Alto Networks team. <!-- TODO: verify the NLB listener port and protocol against the created listener; not published in aws/ecs.md --></p>
+        <p><code>allowed_lb_cidrs</code> is the source list for the load balancer's inbound rule. The listener port and protocol the module configures are not documented upstream, so read them out of the plan output or the created listener before you write any firewall rule against them, and record the value, because your own firewall and security group rules depend on it. <!-- TODO: verify the NLB listener port and protocol against the created listener; not published in aws/ecs.md --></p>
 
         <div class="callout callout-note">
           <div class="callout-title">Pin the module version</div>
@@ -1145,7 +1135,7 @@ terraform apply</code></pre>
 
         <div class="callout callout-warning">
           <div class="callout-title">Changing the load balancer type replaces it</div>
-          <p>Altering <code>lb_type</code> or <code>internal_lb</code> replaces the load balancer rather than modifying it, so the DNS name from step 2 changes and anything pointing at it has to be repointed. Read <code>terraform plan</code> for a <code>must be replaced</code> line before applying, and redo step 4.3 if you have already completed it.</p>
+          <p>Altering <code>lb_type</code> or <code>internal_lb</code> replaces the load balancer rather than modifying it, so the DNS name from step 2 changes and anything pointing at it has to be repointed. Read <code>terraform plan</code> for a <code>must be replaced</code> line before applying.</p>
         </div>
 
         <p>For an ALB you need a certificate in AWS Certificate Manager, in the same region as the load balancer, covering the hostname your applications will call. Request one, complete the DNS validation it returns, then copy the certificate ARN into <code>tls_certificate_arn</code>:</p>
@@ -1278,7 +1268,7 @@ secrets = {
 
         <div class="callout callout-danger">
           <div class="callout-title">Moving into a VNet is a rebuild, not an edit</div>
-          <p>A Container Apps environment cannot be joined to a VNet after it is created, so changing <code>network_mode</code> destroys and recreates the environment and every container app in it, including the built-in Redis. The FQDN from step 2.2 changes. The auto-created storage account is recreated, taking every prompt and completion body logged into it. And if you have already completed step 4.3, the environment ID you sent to Palo Alto Networks becomes stale and the private endpoint connection has to be redone. Read <code>terraform plan</code> for <code>must be replaced</code> before applying, and if you know you need a VNet, set <code>network_mode</code> in step 2.2 rather than changing it here.</p>
+          <p>A Container Apps environment cannot be joined to a VNet after it is created, so changing <code>network_mode</code> destroys and recreates the environment and every container app in it, including the built-in Redis. The FQDN from step 2.2 changes. The auto-created storage account is recreated, taking every prompt and completion body logged into it. Read <code>terraform plan</code> for <code>must be replaced</code> before applying, and if you know you need a VNet, set <code>network_mode</code> in step 2.2 rather than changing it here.</p>
         </div>
 
         <p>To move into a VNet, replace <code>network_mode = "none"</code> with either:</p>
@@ -1415,7 +1405,7 @@ secrets = {
 
 <p>Steps 2 and 3 left a gateway running and reachable. This step adds the two links between your data plane and the management plane. The Terraform blocks below are edits to the <code>module "portkey_gateway"</code> block in the <code>main.tf</code> you wrote in step 2.2, and each one needs <code>terraform plan</code> and <code>terraform apply</code> after it. The console procedures are outside Terraform, so <code>terraform plan</code> will not show them.</p>
 
-<p>The two directions are configured separately and both are required. Outbound carries configuration sync, metrics, and usage from your gateway to Palo Alto Networks. Inbound lets the management plane reach your gateway, which is what makes it manageable from Strata Cloud Manager.</p>
+<p>Only one direction is required, and it is outbound. It carries configuration sync, metrics, and usage from your gateway to Palo Alto Networks, and it is what registers the gateway and keeps it visible in Strata Cloud Manager. Choose between 4.1 and 4.2 for how that traffic leaves your network, then read 4.3 for why there is no second direction to configure.</p>
 
 <div class="callout callout-warning">
   <div class="callout-title">Where prompt logs are stored, and what each choice costs</div>
@@ -1558,90 +1548,6 @@ dig +short aws-cp.portkey.ai</code></pre>
       </div>
     </div>
 
-    <div class="collapsible">
-      <div class="collapsible-header">
-        <span class="chevron">&#9654;</span>
-        <span>4.3 &mdash; Inbound: VPC endpoint service or IP allow-list</span>
-      </div>
-      <div class="collapsible-body">
-        <p>Teams skip this direction most often, and skipping it is what keeps the gateway out of Strata Cloud Manager. Pick one of the two options.</p>
-
-        <div class="callout callout-danger">
-          <div class="callout-title">What this link carries</div>
-          <p>The inbound link is an on-demand retrieval path. When a user opens a log detail view in Strata Cloud Manager, the management plane requests that log from the gateway and the gateway returns the stored prompt and completion document.</p>
-          <p>Terminate TLS on this listener before enabling either option, because the plain-TCP NLB from step 2 would carry retrieved prompt bodies in cleartext. PrivateLink and the IP allow-list control reachability, not identity, so neither is a substitute for TLS. The credential the management plane presents on this connection is not documented, so confirm it with the product team before approving the path. <!-- TODO: verify the credential the management plane presents on the inbound connection --></p>
-        </div>
-
-        <h4>Option A &mdash; VPC endpoint service (PrivateLink)</h4>
-        <p>This option requires an NLB. If you deployed with <code>lb_type = "network"</code> the module already made one. If you are on an ALB, build an NLB in front of it first, with a target group of type <code>alb</code> and a listener forwarding to the ALB's port.</p>
-
-        <p>Check whether an endpoint service already exists before you create one:</p>
-        <div class="code-block">
-          <pre><code>aws ec2 describe-vpc-endpoint-service-configurations \
-  --query "ServiceConfigurations[].{Service:ServiceName,State:ServiceState}" --output table</code></pre>
-          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-        </div>
-        <p>If one already points at your NLB, work with that one rather than creating a second.</p>
-
-        <ol>
-          <li>In the VPC console, in the region where the gateway runs, select <strong>Endpoint services</strong> in the left navigation, then <strong>Create endpoint service</strong>. Choose <strong>Network</strong> as the load balancer type and select your NLB, set IP address type to <strong>IPv4</strong>, and leave <strong>Acceptance required</strong> switched on. With acceptance off, any principal in the allow-listed account can attach to your load balancer without you seeing it, and step 5 below assumes you approve the connection explicitly.</li>
-          <li>If you enable a private DNS name, verify domain ownership: <strong>Actions</strong>, then <strong>Verify domain ownership for private DNS name</strong>, create the record it gives you, then <strong>Verify</strong>.</li>
-          <li>Authorise the management plane to connect. <strong>Actions</strong>, then <strong>Allow principals</strong>, and add:
-            <div class="code-block">
-              <pre><code>arn:aws:iam::299329113195:root</code></pre>
-              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-            </div>
-            <p><code>arn:aws:iam::299329113195:root</code> authorises every principal in the Palo Alto Networks account, which is wider than the one service that needs it. Ask whether they can supply a role ARN instead, and record the grant either way.</p>
-          </li>
-          <li>Send the Palo Alto Networks team the service name, DNS names, private DNS name, region, and the load balancer's listener port.</li>
-          <li>They initiate a connection request. Approve it under <strong>Endpoint connections</strong>.</li>
-        </ol>
-
-        <div class="callout callout-success">
-          <div class="callout-title">Verify</div>
-          <div class="code-block">
-            <pre><code>aws ec2 describe-vpc-endpoint-connections --region us-east-1 \
-  --query "VpcEndpointConnections[].{Owner:VpcEndpointOwner,State:VpcEndpointState}"</code></pre>
-            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-          </div>
-          <p>This must show the management plane account in state <code>available</code>. A state of <code>pendingAcceptance</code> means the connection was requested but not approved.</p>
-        </div>
-
-        <h4>Option B &mdash; IP allow-list</h4>
-        <p>This option needs a publicly reachable, TLS-terminating endpoint, which is a change to what step 2.2 deployed rather than a property of it. Apply the whole block:</p>
-        <div class="code-block">
-          <pre><code># Option B needs a public, TLS-terminating listener. Do not use the
-# plain-TCP NLB from step 2: that puts bearer workspace keys and retrieved
-# prompt bodies on the public internet in cleartext. If you cannot
-# terminate TLS, use Option A.
-create_lb           = true
-internal_lb         = false
-lb_type             = "application"
-tls_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx"
-
-# allowed_lb_cidrs is the complete list, not an addition.
-# Keep your own client CIDRs alongside the three management plane addresses.
-allowed_lb_cidrs = [
-  "10.0.0.0/16",        # your applications, from step 2.2
-  "54.81.226.149/32",   # management plane
-  "34.200.113.35/32",
-  "44.221.117.129/32",
-]</code></pre>
-          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-        </div>
-        <p>Changing <code>lb_type</code> away from the value step 2.2 applied replaces the load balancer and its DNS name, so read the replacement warning in step 3.1 before you apply. Then send the public endpoint to the Palo Alto Networks team so they can complete the integration on their side.</p>
-
-        <div class="callout callout-warning">
-          <div class="callout-title">Allow-listing replaces your own CIDRs rather than extending them</div>
-          <p><code>allowed_lb_cidrs</code> is the complete list. Setting it to the three management plane addresses alone will lock out your own applications. Include your client CIDRs in the same list.</p>
-        </div>
-
-        <div class="callout callout-note">
-          <div class="callout-title">Hard-coded addresses are a maintenance item</div>
-          <p>Three fixed IPv4 addresses and one account ARN are published values that can change without appearing in your monitoring. Record where you used them so a future change is a lookup rather than an investigation.</p>
-        </div>
-      </div>
-    </div>
   </div>
 
   <div class="mgmt-panel" data-plane="aca">
@@ -1746,76 +1652,31 @@ terraform apply</code></pre>
       </div>
     </div>
 
-    <div class="collapsible">
-      <div class="collapsible-header">
-        <span class="chevron">&#9654;</span>
-        <span>4.3 &mdash; Inbound: private endpoint or IP allow-list</span>
-      </div>
-      <div class="collapsible-body">
-        <p>Inbound on ACA targets the Container Apps environment itself rather than a load balancer, which means it works with the built-in ingress and does not force you onto Application Gateway.</p>
+  </div>
+</div>
 
-        <div class="callout callout-danger">
-          <div class="callout-title">What this link carries</div>
-          <p>The inbound link is an on-demand retrieval path. When a user opens a log detail view in Strata Cloud Manager, the management plane requests that log from the gateway and the gateway returns the stored prompt and completion document.</p>
-          <p>Make sure the listener terminates TLS before enabling either option, because retrieved prompt bodies cross it. The built-in ACA ingress is HTTPS; an Application Gateway listener is only HTTPS if you configured it that way in step 3.1. The private endpoint and the IP allow-list control reachability, not identity, so neither is a substitute for TLS. The credential the management plane presents on this connection is not documented, so confirm it with the product team before approving the path. <!-- TODO: verify the credential the management plane presents on the inbound connection --></p>
-        </div>
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.3 &mdash; Inbound is not supported with Strata Cloud Manager today (both platforms)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Both platform deployment pages describe a second connection, running from the management plane inbound to your gateway over a VPC endpoint service on AWS or a private endpoint on Azure, with an IP allow-list as the alternative. Do not build it for an AIRS gateway.</p>
 
-        <h4>Option A &mdash; Azure Private Link</h4>
-        <ol>
-          <li>Collect the two values they need:
-            <div class="code-block">
-              <pre><code>terraform output container_app_environment_id
-terraform output inbound_gateway_fqdn</code></pre>
-              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-            </div>
-          </li>
-          <li>Send both to the Palo Alto Networks team. They create a private endpoint in their subscription targeting your environment.</li>
-          <li>Poll for the connection the vendor creates:
-            <div class="code-block">
-              <pre><code>az network private-endpoint-connection list \
-  --id $(terraform output -raw container_app_environment_id) \
-  --type Microsoft.App/managedEnvironments \
-  --query "[].{Name:name, Id:id, Status:properties.privateLinkServiceConnectionState.status}"</code></pre>
-              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-            </div>
-            <p>The connection appears only after they act, so an empty result means they have not created it yet rather than that something is wrong on your side. Re-run this every few hours rather than continuously. There is no published turnaround for this step, so agree one with the team when you send the request and chase them against it.</p>
-          </li>
-          <li>Approve it, using the <code>Id</code> value from the row above:
-            <div class="code-block">
-              <pre><code>az network private-endpoint-connection approve \
-  --id "&lt;connection-id&gt;" \
-  --description "Approved for AIRS AI Gateway control plane"</code></pre>
-              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-            </div>
-            <p>Do not ask for a second endpoint while one is pending. Each request creates another connection on the same environment, and the list above will then show several with no way to tell which belongs to the current request. If you already have more than one, approve the newest and ask the team to remove the rest.</p>
-          </li>
-        </ol>
-        <p>The portal path is the same thing: <strong>Container Apps Environment</strong>, then <strong>Networking</strong>, then <strong>Private endpoint connections</strong>.</p>
+    <p>Palo Alto Networks confirmed on 2026-09-27 that private link is not supported with Strata Cloud Manager today, and that the only network connectivity between a gateway and the cloud is outbound from the gateway. The inbound procedures on those pages belong to the Portkey product, which shares the deployment tooling but not this part of the architecture.</p>
 
-        <div class="callout callout-success">
-          <div class="callout-title">Verify</div>
-          <p>Re-run the list command above. The <code>Status</code> for the connection must read <code>Approved</code>. Any other value means the management plane cannot reach the gateway yet.</p>
-        </div>
+    <p>Four things follow from that:</p>
 
-        <h4>Option B &mdash; IP allow-list</h4>
-        <p>This option needs a publicly reachable endpoint, and how you restrict the source depends on which ingress path you deployed in step 3.1. The three management plane addresses are:</p>
-        <div class="code-block">
-          <pre><code>54.81.226.149
-34.200.113.35
-44.221.117.129</code></pre>
-          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-        </div>
-        <ul>
-          <li><strong>With Application Gateway</strong> &mdash; add an inbound rule on the network security group (NSG) attached to the Application Gateway subnet permitting the three addresses, plus your own client ranges, on the listener port.</li>
-          <li><strong>With the built-in ACA ingress and <code>network_mode = "none"</code></strong> &mdash; there is no NSG, because no VNet exists, so the source restriction has to be applied to the container app's own ingress rather than at the network layer. The module variable that sets this is not documented upstream. Until it is confirmed, either apply the restriction outside Terraform with <code>az containerapp ingress access-restriction add</code> and accept that the next <code>apply</code> may revert it, or take Option A, which does not depend on it. Do not leave the FQDN open to the internet as the default. <!-- TODO: verify whether the terraform/aca module exposes a source restriction for the built-in container app ingress --></li>
-        </ul>
-        <p>Then send the public endpoint to the Palo Alto Networks team so they can complete the integration.</p>
+    <ul>
+      <li>Do not create a VPC endpoint service, and do not authorise <code>arn:aws:iam::299329113195:root</code> in your account.</li>
+      <li>Do not add <code>54.81.226.149</code>, <code>34.200.113.35</code>, or <code>44.221.117.129</code> to <code>allowed_lb_cidrs</code> or to any network security group rule. Your load balancer admits your own applications and nothing else.</li>
+      <li>Your gateway registers and appears in Strata Cloud Manager on outbound connectivity alone. If it does not appear, the cause is in 4.1 or 4.2 rather than a missing inbound path.</li>
+      <li>The <code>lb_type</code> choice in step 2.2 is now yours to make on its merits. It no longer has to be a Network Load Balancer to back an endpoint service.</li>
+    </ul>
 
-        <div class="callout callout-note">
-          <div class="callout-title">These are the same three addresses as on AWS</div>
-          <p>The management plane egresses from AWS regardless of which cloud your data plane runs in. That is expected behavior rather than a documentation error. Raise it in an Azure security review before someone else does.</p>
-        </div>
-      </div>
+    <div class="callout callout-note">
+      <div class="callout-title">If a platform deployment page tells you otherwise</div>
+      <p>The published platform pages have not caught up with this position. Treat outbound-only as current, and ask the product team to confirm before building an inbound path for a specific customer. <!-- TODO: verify whether inbound private link returns to AIRS, and whether restoring it is what unblocks the SCM log views on a local log store. Tracked as question 5 in workspace/airs/aigw-product-questions.md. --></p>
     </div>
   </div>
 </div>
@@ -1867,7 +1728,7 @@ curl 'https://&lt;GATEWAY_ENDPOINT&gt;/v1/chat/completions' \
     <div class="callout callout-note">
       <div class="callout-title">Reading a partial success</div>
       <ul>
-        <li><strong>Completion returns, nothing in Logs</strong> &mdash; the data plane works and the management plane link does not. The cause is almost always the inbound direction in step 4.3. Check that the endpoint service connection or private endpoint connection was actually approved, not merely requested.</li>
+        <li><strong>Completion returns, nothing in Logs</strong> &mdash; the data plane works and the outbound link to the management plane does not. Check the egress allow-list from 4.1, or the PrivateLink endpoint and its private DNS resolution from 4.2. Do not go looking for a missing inbound path, because there is not one.</li>
         <li><strong>Completion returns, log entry has no body</strong> &mdash; the log store is not wired up. On ECS, check <code>LOG_STORE</code> and the task role's permission on the bucket. On ACA, check that <code>storage_config</code> resolved to a real container and that the replica identity can write to it.</li>
         <li><strong>401 from the gateway</strong> &mdash; the workspace key is wrong, or the gateway has not finished its first configuration sync. Check outbound reachability to <code>albus.portkey.ai</code>.</li>
         <li><strong>Connection resets on long responses</strong> &mdash; the load balancer idle timeout is cutting the connection, not the model. See step 3.</li>
@@ -2045,13 +1906,12 @@ terraform apply</code></pre>
     </div>
     <div class="callout callout-warning">
       <div class="callout-title">Destroy deletes a log store the module created for you</div>
-      <p>The secrets you created in step 1 are outside the module, so they survive. So does an existing log store you brought yourself. A storage account or bucket the module created for you does <strong>not</strong> survive, and it holds every prompt and completion body the gateway has written. Copy anything you need to keep before destroying, and tell the Palo Alto Networks team to tear down their side of any private link.</p>
+      <p>The secrets you created in step 1 are outside the module, so they survive. So does an existing log store you brought yourself. A storage account or bucket the module created for you does <strong>not</strong> survive, and it holds every prompt and completion body the gateway has written. Copy anything you need to keep before destroying.</p>
     </div>
 
     <p>Work through the following after the destroy. Revocation comes first, because it is the only part that matters if the teardown is happening because something went wrong.</p>
     <ol>
       <li>Schedule deletion of the step 1 secrets, and ask Palo Alto Networks to invalidate the Client Auth Key unless the organisation is being redeployed.</li>
-      <li>Delete the VPC endpoint service from step 4.3, so that <code>arn:aws:iam::299329113195:root</code> is no longer authorised, and ask the team to remove their endpoint.</li>
       <li>Delete the interface VPC endpoint created in step 4.2.</li>
       <li>Remove the three management plane addresses from any allow-list you added outside the module.</li>
       <li>Remove the Key Vault role assignment created in step 1.1, and purge the vault if the name is to be reused inside 90 days.</li>
@@ -2081,11 +1941,11 @@ terraform apply</code></pre>
         <tr><td><code>aws-cp.portkey.ai</code></td><td>Management plane over AWS PrivateLink</td><td>ECS outbound private path</td></tr>
         <tr><td><code>private.azure-cp.portkey.ai</code></td><td>Management plane over Azure Private Link</td><td>ACA outbound private path</td></tr>
         <tr><td><code>com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95</code></td><td>Endpoint service name for outbound PrivateLink</td><td>ECS step 4.2</td></tr>
-        <tr><td><code>arn:aws:iam::299329113195:root</code></td><td>Management plane AWS principal</td><td>ECS step 4.3, allowed principals</td></tr>
-        <tr><td><code>54.81.226.149</code>, <code>34.200.113.35</code>, <code>44.221.117.129</code></td><td>Management plane source addresses</td><td>Inbound IP allow-list, both platforms</td></tr>
+        <tr><td><code>arn:aws:iam::299329113195:root</code></td><td>Management plane AWS principal, published for an inbound path AIRS does not support</td><td>Do not authorise; see 4.3</td></tr>
+        <tr><td><code>54.81.226.149</code>, <code>34.200.113.35</code>, <code>44.221.117.129</code></td><td>Management plane source addresses, published for an inbound path AIRS does not support</td><td>Do not allow-list these; see 4.3</td></tr>
         <tr><td><code>8787</code></td><td>Gateway container port</td><td>Both platforms</td></tr>
         <tr><td><code>8788</code></td><td>MCP gateway container port</td><td><code>server_mode = "all"</code></td></tr>
-        <tr><td>Load balancer listener port and protocol</td><td>Not documented; read from the created listener</td><td><code>allowed_lb_cidrs</code>, step 4.3 handover, step 5.1 URL</td></tr>
+        <tr><td>Load balancer listener port and protocol</td><td>Not documented; read from the created listener</td><td><code>allowed_lb_cidrs</code>, step 5.1 URL</td></tr>
       </tbody>
     </table>
   </div>
@@ -2109,7 +1969,6 @@ terraform apply</code></pre>
         <tr><td>TLS out of the box</td><td>No, add an ALB and a certificate</td><td>Yes, on the built-in FQDN</td></tr>
         <tr><td>Managed cache option</td><td>ElastiCache for Redis OSS or Valkey</td><td>Azure Managed Redis</td></tr>
         <tr><td>Log store</td><td>S3 or S3-compatible</td><td>Blob Storage or S3-compatible</td></tr>
-        <tr><td>Inbound private link target</td><td>Network Load Balancer only</td><td>Container Apps environment</td></tr>
         <tr><td>Blue/green and canary</td><td>Yes, in the module</td><td>No, use ACA revisions</td></tr>
         <tr><td>Compute model</td><td>EC2-backed by default</td><td>Fully managed</td></tr>
       </tbody>
@@ -2129,19 +1988,19 @@ terraform apply</code></pre>
       <li><strong>Throughput sizing</strong> &mdash; no requests-per-second figures for either platform. The published CPU and memory numbers are minimums to run, not a capacity model.</li>
       <li><strong>ECS Fargate</strong> &mdash; not documented. See the Fargate section under <a href="#requirements">Deployment Requirements</a> for what the module actually supports.</li>
       <li><strong>Upgrade and rollback</strong> &mdash; no compatibility matrix between module versions and gateway image versions, no supported upgrade path, no tested rollback.</li>
-      <li><strong>Region placement and data residency</strong> &mdash; the management plane egresses from AWS <code>us-east-1</code> addresses regardless of data plane location. Where management plane metadata is processed and stored is not documented, which matters for EU deals.</li>
+      <li><strong>Region placement and data residency</strong> &mdash; Strata Cloud Manager runs in the Americas only today, with other regions planned, and prompt bodies land there on the default log store. Retention and custody for that store are still unpublished.</li>
       <li><strong>Air-gapped deployment</strong> &mdash; no documented configuration for an environment with no path to <code>portkey.ai</code>.</li>
       <li><strong>TLS inspection</strong> &mdash; behavior of the outbound links through an intercepting proxy is not described, and streaming through one is untested.</li>
       <li><strong>On-premises</strong> &mdash; confirmed supported but with no published procedure for these two platforms.</li>
-      <li><strong>Load balancer listener port and protocol</strong> &mdash; not published for either platform, while step 4.3 asks you to send the value to the Palo Alto Networks team. Read it from the created listener. <!-- TODO: verify --></li>
+      <li><strong>Load balancer listener port and protocol</strong> &mdash; not published for either platform, while your own security group and firewall rules depend on it. Read it from the created listener. <!-- TODO: verify --></li>
       <li><strong>Private built-in ingress on ACA</strong> &mdash; whether the module can make the built-in container app ingress private without moving to a VNet and Application Gateway is not documented. <!-- TODO: verify --></li>
-      <li><strong>Source restriction on built-in ACA ingress</strong> &mdash; the module variable that restricts source addresses on the built-in ingress is not documented, which is what makes 4.3 Option B hard to execute with <code>network_mode = "none"</code>. <!-- TODO: verify --></li>
+      <li><strong>Source restriction on built-in ACA ingress</strong> &mdash; the module variable that restricts source addresses on the built-in ingress is not documented, so a <code>network_mode = "none"</code> deployment has no in-module way to keep its public FQDN off the open internet. <!-- TODO: verify --></li>
       <li><strong>ALB TLS policy and HTTP listener</strong> &mdash; the TLS security policy the module applies, and whether it also creates a port 80 listener, are not published. <!-- TODO: verify --></li>
     </ul>
 
     <div class="callout callout-note">
-      <div class="callout-title">The two documentation paths disagree on purpose</div>
-      <p>The SCM Gateway Registration wizard produces an outbound-only deployment. The platform pages this guide follows require inbound as well, for the reason given in <a href="#architecture">Architecture</a>. Establish which one a deployment is on before troubleshooting it. The difference is not about where prompt content is stored, because in the current AIRS release both send it to the Strata Cloud Manager backend. What the inbound path is for on the platform-page deployment is itself unconfirmed. <!-- TODO: verify against the SCM tenant what the inbound path carries in the current AIRS release, given that log detail views are served from the backend rather than pulled from the customer store. --></p>
+      <div class="callout-title">The two documentation paths no longer disagree</div>
+      <p>The SCM Gateway Registration wizard produces an outbound-only deployment, and the platform pages this guide follows describe an inbound path as well. Palo Alto Networks confirmed on 2026-09-27 that outbound-only is correct for AIRS, so the wizard's model is the accurate one and the platform pages are describing the Portkey product. Both send prompt content to the Strata Cloud Manager backend on the default log store, so the difference was never about residency.</p>
     </div>
   </div>
 </div>
