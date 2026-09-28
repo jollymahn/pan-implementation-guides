@@ -39,7 +39,7 @@ The data plane processes every LLM request. The management plane is where you au
 | Redis | Management plane cache for auth context, configs, rate limit counters, and circuit breaker state. |
 | Blob Store | Object storage for full request and response bodies, read by the Backend to serve log detail views. |
 
-> **Note &mdash; log storage location is not configurable in the current AIRS release:** Both tables list a blob store. In the current Prisma AIRS GA release, prompt and completion bodies go to the Strata Cloud Manager AI Gateway backend, and keeping them in your own environment is a fast-follow feature that has not shipped. Do not tell a customer that prompt content stays in their account.
+> **Note &mdash; where prompt logs are stored:** Both tables list a blob store. By default, prompt and completion bodies go to the Strata Cloud Manager AI Gateway backend and are held in the region Strata Cloud Manager runs in, which today is the Americas only. Setting the log store to local keeps them in your own environment, at the cost of breaking log viewing from the Strata Cloud Manager management plane; Palo Alto Networks has that logged as a bug. Do not tell a customer that prompt content stays in their account unless they have taken that trade deliberately.
 >
 > The `LOG_STORE` mechanism described below is the Portkey product's, documented on the platform deployment pages this guide follows. Pointed at your own bucket it writes bodies there, and the Backend reads them across the link when an operator opens a log entry; `control_plane` sends them to the management plane instead. Whether any of that takes effect on an AIRS gateway is not confirmed, so treat the snippets below as the published platform-page procedure rather than as a residency control you can rely on.
 >
@@ -323,7 +323,7 @@ The AWS topology is the one drawn in [Hybrid Architecture](#hybrid-architecture)
 - **Connectivity** &mdash; outbound and inbound paths per [Connectivity](#connectivity). The inbound half applies only on the platform-page path; a gateway registered through the SCM wizard needs outbound only.
 - **Credentials from Palo Alto Networks** &mdash; Docker credentials for the gateway images and the Client Auth Key, issued against your Organisation ID.
 
-The snippet below is the published platform-page procedure for the Portkey chart. Customer-side log storage is not in the current AIRS GA release, so on the SCM wizard path (`airs-gw`) these keys may have no effect; see the log storage note under [Hybrid Architecture](#hybrid-architecture) before you plan around a customer-held bucket. With IRSA, the service account carries the role ARN annotation and the log store is configured in the same file:
+The snippet below is the published platform-page procedure for the Portkey chart. The key AIRS uses for a local log store is not confirmed, so on the SCM wizard path (`airs-gw`) these keys may have no effect; see the log storage note under [Hybrid Architecture](#hybrid-architecture) for the trade a customer-held bucket involves before you plan around one. With IRSA, the service account carries the role ARN annotation and the log store is configured in the same file:
 
 ```yaml
 serviceAccount:
