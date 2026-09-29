@@ -1,6 +1,21 @@
 # Cloud NGFW Guide — TODO
 
-## Remaining (all blocked on live deployments)
+## Remaining
+
+### Not blocked
+
+- [ ] **Strata Logging Service onboarding troubleshooting** — Add a troubleshooting entry to the onboarding/logging section covering the `lcaas_agent` cert-fetch failure. Points to cover:
+  - Log signature: `Failed to fetch LCaaS server cert for validation check after 5 retries`, then `Failed to validate server certificate for endpoint lic.lc.prod.us.cs.paloaltonetworks.com. Error (28, 'Connection timed out after 60000 milliseconds')`
+  - The wording says certificate validation, but curl error 28 is a TCP timeout. No connection was made, so it is a reachability problem, not a trust problem. Call this out explicitly, since the message misdirects.
+  - `lic.lc.prod.us.cs.paloaltonetworks.com` is **TCP 444**, not 443. Allowing `*.paloaltonetworks.com` on 443 only reproduces this exactly. Source: `pan-docs-reference/docs/strata-logging-service/activation-and-onboarding/ports-and-fqdns.md:456` and `pan-docs-reference/docs/pan-os/11-1/ports-used-for-panorama.md:423`
+  - Service route: the agent reads `cfg.net.s0.srcif`. A service route for Palo Alto Networks Services pointing at a dataplane interface needs a route, NAT, and a security rule, or it times out silently.
+  - Proxy that only permits `CONNECT` to 443 breaks the 444 endpoint.
+  - Region caveat: `lic.lc.prod.**us**.cs...` is the Americas endpoint. Non-US tenants need the region-specific FQDNs.
+  - Triage commands: `request certificate fetch`, `request logging-service-forwarding status`, `show system state filter cfg.lcaas*`
+  - **Needs from Sean:** the actual root causes from the 2026-09-29 case. It was a combination of factors, not just the port. Get the full list before writing, so the entry reflects what really happened rather than only the textbook cause.
+  - Cross-check: `docs/scm-onboarding/index.html:618` already lists the FQDN and port in a table but never links the log signature to it. Consider adding the same troubleshooting entry there.
+
+### Blocked on live deployments
 
 - [ ] **SCM DAG nav path** — Verify `Objects > Address Groups` vs `Policies > Objects > Address Groups` in SCM UI
 - [ ] **Match criteria format** — Verify `vnet_name` vs `vnet-name` for DAG match expressions in SCM
