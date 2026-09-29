@@ -1446,7 +1446,17 @@ kubectl logs <POD_NAME> -n $namespace --tail=100
 
 Your applications need a stable address for the gateway. Each platform offers an Ingress path and a Service path, and the choice changes which load balancer the cloud creates. Add the block to `values.yaml` and re-run the `helm upgrade --install` command from step 5.1.
 
-> **Warning: These examples serve plain HTTP.** Every published example listens on port 80 with no certificate, and the gateway carries workspace keys and prompt content. Attach a certificate through the platform's own annotations before any application sends real traffic. The chart does not do this for you. <!-- TODO: verify the recommended TLS annotation set per platform with the product team -->
+> **Warning: Add TLS before real traffic reaches the gateway.** The vendor's published examples all listen on port 80 with no certificate. The gateway carries workspace API keys in a bearer header and full prompt and response bodies, so anything beyond a lab test needs a certificate in front of it.
+>
+> The chart does support this. `ingress.tls` is listed in the chart's `Configuration.md` as "TLS configuration for ingress", an array defaulting to `[]`. What you put in it depends on the controller, because the three platforms source a certificate in different ways:
+>
+> | Platform | Certificate source | Uses `ingress.tls`? |
+> |---|---|---|
+> | EKS &mdash; ALB | An ACM certificate named in an annotation. The ALB terminates TLS itself. | No, annotation only |
+> | AKS &mdash; NGINX | A Kubernetes Secret holding the certificate and key, usually issued by cert-manager. | Yes |
+> | GKE &mdash; GCE | A Google-managed certificate by annotation, or your own Secret. | Either |
+>
+> Each platform section below adds the TLS lines to its own example. <!-- TODO: verify the recommended cipher suite and minimum TLS version with the product team; confirm the chart template renders ingress.tls into the Ingress spec.tls field (chart templates are not in the doc mirror, only values.yaml and Configuration.md) -->
 
 ### A. Amazon EKS
 
@@ -1474,7 +1484,12 @@ ingress:
     alb.ingress.kubernetes.io/healthcheck-path: /v1/health
     alb.ingress.kubernetes.io/inbound-cidrs: <X.X.X.X/Y>  # Your application CIDRs only
     alb.ingress.kubernetes.io/manage-backend-security-group-rules: "true"
+    # TLS: the ALB terminates it, so leave ingress.tls empty and point at ACM
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:<region>:<account-id>:certificate/<cert-id>
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
 ```
+
+Listing only `HTTPS` in `listen-ports` means no port 80 listener is created, so there is nothing to redirect and no plaintext path to leave open by accident. If you do add an `HTTP` entry, pair it with `alb.ingress.kubernetes.io/ssl-redirect: "443"`.
 
 NLB with a Service:
 
@@ -1572,12 +1587,21 @@ EOF
 ingress:
   enabled: true
   ingressClassName: "nginx-internal"     # or 'nginx-static'
-  # hostname: "<AI Gateway Hostname>"
+  hostname: "<AI Gateway Hostname>"
   # hostBased: true
   # mcpHostname: "<MCP Gateway Hostname>"
   annotations:
     service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: "/v1/health"
+    cert-manager.io/cluster-issuer: "<your-cluster-issuer>"   # omit if you supply the Secret yourself
+  tls:
+    - secretName: aigw-tls
+      hosts:
+        - "<AI Gateway Hostname>"
 ```
+
+NGINX reads the certificate from the Secret named in `tls.secretName`. With the cert-manager annotation present, cert-manager creates that Secret for you and renews it; without it, create the Secret yourself with `kubectl create secret tls aigw-tls --cert=<file> --key=<file> -n ${NAMESPACE}`. The `hosts` entry has to match `hostname`, or NGINX serves its own default certificate and clients see a name mismatch.
+
+If you set `hostBased: true` for a separate MCP hostname, add that hostname to the same `hosts` list, or give it its own `tls` entry.
 
 The alternative, skipping NGINX entirely, is an Azure Load Balancer fronting a Kubernetes Service:
 
@@ -1622,7 +1646,20 @@ ingress:
   annotations:
     kubernetes.io/ingress.class: gce     # 'gce-internal' for an internal load balancer
     ingress.gcp.kubernetes.io/healthcheck-path: /v1/health
+    networking.gke.io/managed-certificates: "aigw-cert"   # external only; see below
+  # Bring your own certificate instead of a Google-managed one:
+  # tls:
+  #   - secretName: aigw-tls
+  #     hosts:
+  #       - "<AI Gateway Hostname>"
 ```
+
+GKE offers two certificate mechanisms and the load balancer scheme decides which is available to you.
+
+- **Google-managed certificate** &mdash; create a `ManagedCertificate` resource named `aigw-cert` and reference it by annotation. Google provisions and renews it, but only for an external load balancer, and the hostname must already resolve publicly to the ingress IP before provisioning completes.
+- **Your own Secret** &mdash; uncomment the `tls` block. This is the only option on `gce-internal`, since managed certificates do not support internal load balancers.
+
+A managed certificate stays in `Provisioning` until DNS resolves to the ingress address, which can take up to roughly fifteen minutes after the record propagates. Check it with `kubectl describe managedcertificate aigw-cert -n ${NAMESPACE}` and wait for `Active` before testing over HTTPS.
 
 Load balancer with a Service:
 
@@ -1999,7 +2036,7 @@ These questions come up in the field and the published material does not current
 - **Throughput sizing** &mdash; no requests-per-second figures for any of the three platforms. The published CPU and memory numbers are minimums to run, not a capacity model.
 - **Image and chart versioning** &mdash; every example pins `tag: "latest"`, no versioned tags are published, and no compatibility matrix exists between chart versions and image versions. <!-- TODO: verify -->
 - **Upgrade and rollback** &mdash; no supported upgrade path and no tested rollback procedure.
-- **TLS on ingress** &mdash; every published example serves plain HTTP, and no recommended certificate or TLS policy configuration is given for any of the three platforms. <!-- TODO: verify -->
+- **TLS policy on ingress** &mdash; the mechanism is settled: the chart exposes `ingress.tls` and each platform has a documented certificate source, all covered in [step 6](#6-expose-the-gateway). What remains unpublished is the policy: no recommended cipher suite, no minimum TLS version, and no statement on whether the gateway expects TLS to terminate at the load balancer or pass through to the pod. Every vendor example still serves plain HTTP.
 - **Load balancer listener port** &mdash; not published, while your own firewall rules depend on it. Read it from the created Ingress or Service. <!-- TODO: verify -->
 - **Region placement and data residency** &mdash; Strata Cloud Manager runs in the Americas only today, with other regions planned, and prompt bodies land there regardless of the log store setting. Retention and custody for that store are still unpublished.
 - **Air-gapped deployment** &mdash; no documented configuration for a cluster with no path to `portkey.ai`.
