@@ -388,7 +388,7 @@ GKE follows the same pattern as EKS and AKS, with one networking requirement tha
 - **Proxy-only subnet** &mdash; the cluster VPC needs an `ACTIVE` subnet with purpose `REGIONAL_MANAGED_PROXY` in the cluster region, or the regional load balancer never provisions and Helm reports nothing. Create it first: `gcloud compute networks subnets create <NAME> --network=<VPC> --region=<REGION> --range=<CIDR> --purpose=REGIONAL_MANAGED_PROXY --role=ACTIVE`. Confirm with `gcloud compute networks subnets list`, filtering on purpose `REGIONAL_MANAGED_PROXY`, that one subnet in your region shows role `ACTIVE`.
 - **Workload Identity** &mdash; must be enabled on the cluster and on the node pool before the bucket binding below will work.
 - **Tooling** &mdash; gcloud CLI, kubectl, and Helm v3 or above.
-- **Cloud Storage bucket** &mdash; for logs. Bind the gateway's Kubernetes service account to a Google service account with object create and read permissions on this bucket only (bucket-level IAM rather than project-level); take the exact role names from the GKE platform page.
+- **Cloud Storage bucket** &mdash; for logs. Bind the gateway's Kubernetes service account to a Google service account with `roles/iam.workloadIdentityUser`, then grant that Google service account `roles/storage.objectAdmin` on this bucket only, using bucket-level IAM rather than project-level. `roles/storage.objectAdmin` also permits deletion, so prefer a custom role carrying only `storage.objects.create` and `storage.objects.get` if your policy forbids the gateway deleting its own logs.
 - **Cache store** &mdash; Memorystore for Redis or Valkey in the same VPC, or the built-in Redis.
 - **External access** &mdash; an internal load balancer in front of the gateway Service or Ingress. You do not publish it as a service attachment.
 - **Connectivity** &mdash; Private Service Connect or internet, outbound only. There is no inbound path to build.
@@ -479,7 +479,8 @@ Deleting a workspace requires removing every resource inside it first, including
 
 Two independent paths, and you want both.
 
-- **Prometheus metrics** &mdash; the gateway exposes a Prometheus endpoint for infrastructure-level monitoring in your own stack.
+- **Prometheus metrics** &mdash; the gateway serves `GET /metrics` on its own container port, 8787, for infrastructure-level monitoring in your own stack. `ENABLE_PROMETHEUS` defaults to `true`; setting it to `false` makes the path return 404.
+- **The metrics endpoint is unauthenticated by default** &mdash; the published behaviour is "Authentication: Typically open". Because it shares the gateway's container port rather than sitting on a separate admin port, any ingress that exposes the gateway also exposes `/metrics` unless you block the path.
 - **Analytics export** &mdash; ClickHouse analytics can be exported to any OpenTelemetry-compatible collector, which is how you get gateway telemetry into an existing observability platform.
 
 The SCM dashboard covers request-level analytics. It does not replace infrastructure monitoring of the pods, nodes, cache, and load balancer, which stays your responsibility.

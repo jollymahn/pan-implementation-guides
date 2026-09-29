@@ -260,7 +260,7 @@ helm upgrade --install portkey-ai portkey-ai/gateway \
   </div>
 </div>
 
-<div class="collapsible">
+<div class="collapsible" id="data-residency">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
     <span>Data residency and encryption</span>
@@ -278,7 +278,7 @@ helm upgrade --install portkey-ai portkey-ai/gateway \
       <li><strong>Access control</strong> &mdash; network-level controls restrict management plane access to authorised IPs, administrative functions use scope-based access control, all administrative actions are audit logged, and access tokens are short lived with automatic rotation.</li>
     </ul>
 
-    <p>Region placement is unconfirmed; see <a href="#open-questions">Open Questions</a> before designing for EU residency.</p>
+    <p>Strata Cloud Manager runs in the Americas only today, with other regions planned, so that is where backend-stored bodies land. See <a href="#open-questions">Open Questions</a> before designing for EU residency.</p>
   </div>
 </div>
 
@@ -391,8 +391,7 @@ helm upgrade --install portkey-ai portkey-ai/gateway \
         <tr><td>An object store</td><td>Any S3-compatible endpoint, including in-cluster MinIO. Nothing requires it to be a cloud service.</td></tr>
         <tr><td>A Redis the pods can reach</td><td>The chart can deploy its own, or you can point it at one you run.</td></tr>
         <tr><td>A load balancer or ingress</td><td>To publish the gateway endpoint to your own workloads. The idle timeout must exceed your longest generation.</td></tr>
-        <tr><td>Gateway listener</td><td>The pod listens on HTTP on port <code>&lt;PORT&gt;</code> (confirm against the chart's <code>service.port</code>). Terminate TLS on the load balancer or ingress with your own certificate and keep the load balancer to pod hop inside the cluster network.</td></tr>
-        <!-- TODO: verify the gateway container port and whether the pod speaks HTTP or TLS; fill <PORT> from the chart's service.port (WN-6) -->
+        <tr><td>Gateway listener</td><td>The pod listens on plain HTTP on container port <code>8787</code>, which the platform pages set as both <code>containerPort</code> and the <code>PORT</code> environment variable. Terminate TLS on the load balancer or ingress with your own certificate and keep the load balancer to pod hop inside the cluster network.</td></tr>
       </tbody>
     </table>
 
@@ -647,11 +646,13 @@ environment:
 # (environment.create, environment.secret, and the existing data entries stay as they are)
 environment:
   data:
-    # LOG_STORE and the Blob Storage account and container variables:
-    # take the exact key names and values from the AKS platform page</code></pre>
+    LOG_STORE: azure
+    AZURE_STORAGE_ACCOUNT: &lt;STORAGE_ACCOUNT_NAME&gt;   # storage account holding the LLM logs
+    AZURE_STORAGE_CONTAINER: &lt;STORAGE_CONTAINER&gt;    # blob container inside that account
+    AZURE_AUTH_MODE: workload                        # 'workload' for workload identity, 'managed' for a managed identity</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
-    <!-- TODO: verify the Blob Storage LOG_STORE value and the storage account and container variable names from the AKS platform page and fill the environment.data block (WO-14) -->
+    <p>Set <code>AZURE_AUTH_MODE</code> to match the identity you configured above: use <code>workload</code> with Azure AD workload identity federation, and <code>managed</code> when the cluster reaches the storage account through a managed identity. Neither mode takes a storage account key, so there is no credential to rotate here.</p>
 
     <p><em>Verify before moving on:</em> <code>az aks get-credentials</code> followed by <code>kubectl get nodes</code> shows at least 2 nodes <code>Ready</code>; <code>az storage container show --name &lt;container&gt; --account-name &lt;account&gt;</code> returns the log container; the cache endpoint resolves and answers on 6380 from inside the VNet (or you have chosen the built-in Redis); and the cache endpoint is reachable from the node subnet. Any item that fails is safe to re-create; none of these commands changes state.</p>
   </div>
@@ -683,8 +684,7 @@ environment:
       <!-- TODO: verify whether a load balancer stuck on a missing proxy-only subnet provisions on its own once the subnet exists, or whether the gateway Service must be recreated (WR-12) -->
       <li><strong>Workload Identity</strong> &mdash; must be enabled on the cluster and on the node pool before the bucket binding below will work.</li>
       <li><strong>Tooling</strong> &mdash; gcloud CLI, kubectl, and Helm v3 or above.</li>
-      <li><strong>Cloud Storage bucket</strong> &mdash; for logs. Bind the gateway's Kubernetes service account to a Google service account with object create and read permissions on this bucket only (bucket-level IAM rather than project-level); take the exact role names from the GKE platform page.</li>
-      <!-- TODO: verify the Cloud Storage IAM roles the GKE platform page grants to the gateway's Google service account (WN-15) -->
+      <li><strong>Cloud Storage bucket</strong> &mdash; for logs. Bind the gateway's Kubernetes service account to a Google service account through <code>roles/iam.workloadIdentityUser</code>, then grant that Google service account <code>roles/storage.objectAdmin</code> on the log bucket. Apply it at the bucket level rather than the project level. The published alternative is a custom role carrying only <code>storage.objects.create</code> and <code>storage.objects.get</code>, which is the tighter choice and the one to prefer, since <code>objectAdmin</code> also permits deletion.</li>
       <li><strong>Cache store</strong> &mdash; Memorystore for Redis or Valkey in the same VPC, or the built-in Redis.</li>
       <li><strong>External access</strong> &mdash; an internal load balancer in front of the gateway Service or Ingress. You do not publish it as a service attachment.</li>
       <li><strong>Connectivity</strong> &mdash; Private Service Connect or internet, outbound only. There is no inbound path to build.</li>
@@ -861,8 +861,8 @@ curl '&lt;GATEWAY_BASE_URL&gt;/v1/chat/completions' \
     <p>There are two independent monitoring paths, and you want both.</p>
 
     <ul>
-      <li><strong>Prometheus metrics</strong> &mdash; the gateway serves a Prometheus metrics endpoint for infrastructure-level monitoring in your own stack; its path and port are on the <code>self-hosting/prometheus-metrics</code> page at <code>docs.portkey.ai</code>, and this guide does not restate them. Scrape it from inside the cluster only, with a ServiceMonitor or scrape job against the gateway Service; do not include that port in the load balancer listener or in any security group rule that also serves the management plane or the internet.</li>
-      <!-- TODO: verify the Prometheus metrics path and port against the chart and the prometheus-metrics page, and whether the endpoint is authenticated (WB-27, WO-18, WN-19) -->
+      <li><strong>Prometheus metrics</strong> &mdash; the gateway serves <code>GET /metrics</code> on its own container port (8787), enabled by default. Set <code>ENABLE_PROMETHEUS=false</code> to switch it off, which unregisters the middleware and makes the path return 404. Scrape it from inside the cluster only, with a ServiceMonitor or scrape job against the gateway Service; do not include that port in the load balancer listener or in any security group rule that also serves the management plane or the internet.</li>
+      <li><strong>The metrics endpoint is unauthenticated by default</strong> &mdash; the upstream documentation describes access as typically open and advises securing it yourself. Because it shares the gateway's container port rather than sitting on a separate admin port, any ingress that exposes the gateway also exposes <code>/metrics</code> unless you block the path. If your ingress is internet-facing, add a path rule denying <code>/metrics</code> and scrape the Service directly from inside the cluster.</li>
       <li><strong>Analytics export</strong> &mdash; ClickHouse analytics can be exported to any OpenTelemetry-compatible collector, which is how you get gateway telemetry into an existing observability platform.</li>
     </ul>
 
