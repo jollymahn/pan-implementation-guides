@@ -12,6 +12,8 @@ This is a companion to the [AI Gateway Deployment Guide](ai-gateway-deployment.h
 
 It does not repeat licensing, activation, or the Strata Cloud Manager (SCM) configuration that follows deployment. Those live in the deployment guide and you need them whichever platform you land on. It also does not repeat the two-plane architecture discussion or the platform comparison, which live in the hybrid infrastructure guide. If you are not on Kubernetes, the Terraform path for Amazon ECS and Azure Container Apps is in [ECS and Container Apps](serverless-deployment.md).
 
+It does assume you can reach a Kubernetes cluster. If you do not have one, or you have never created one, step 0 builds the account, the tooling, and the cluster from nothing on whichever of the three platforms you choose. Readers who already run clusters should skip that phase and begin at step 1.
+
 Two terms carry the whole guide. The **data plane** is the gateway you run in your own cluster: the pods, the cache, the log store, and the load balancer in front of them. The **management plane** is the Palo Alto Networks service that holds configuration, policy, and analytics, and that you reach through Strata Cloud Manager.
 
 Prisma AIRS AI Gateway is the Portkey gateway, acquired by Palo Alto Networks. You will see the name Portkey throughout: in chart names, repository URLs, environment variable names, hostnames, and the vendor's own documentation. The rebrand has not reached the code, so treat `portkey` and `AIRS AI Gateway` as the same product wherever they appear below.
@@ -82,7 +84,9 @@ Log documents are roughly 10 KB each uncompressed. Multiply by your expected req
 |---|---|
 | Amazon EKS | AWS CLI, `eksctl`, `kubectl`, Helm v3 or above |
 | Azure AKS | Azure CLI, `kubectl`, Helm v3 or above |
-| Google GKE | gcloud CLI, `kubectl`, Helm v3 or above |
+| Google GKE | gcloud CLI, `kubectl`, Helm v3 or above, `gke-gcloud-auth-plugin` |
+
+If any of those are not installed and signed in yet, step 0.4 has the install commands for macOS, Linux, and WSL2, and step 0.5 covers signing in.
 
 ### What you request from Palo Alto Networks
 
@@ -102,9 +106,541 @@ Your Organisation ID is self-service. Read it out of the SCM browser URL.
 
 ---
 
+## 0. Start Here: Accounts, Tools, and a Cluster
+
+Everything from step 1 onwards assumes three things already exist: a running Kubernetes cluster, a terminal that can talk to it, and a cloud account with enough permission to create load balancers and identities. This phase builds all three from nothing.
+
+If you already have a cluster and `kubectl get nodes` lists it, skip this phase and start at [step 1](#1-prepare-the-cluster).
+
+> **Note: who this phase is for.** You are comfortable pasting commands into a terminal, but you have never created a Kubernetes cluster and you may never have opened your cloud provider's console. You do not need to know Kubernetes before you begin. Each step states what it creates, gives you the command, and tells you what a correct result looks like. The work is done from the command line rather than by clicking through the console, because commands can be copied exactly and reproduced later. The console is used for orientation and for checking results.
+
+### 0.1 &mdash; The vocabulary you need
+
+Eleven terms cover almost everything in this guide. Read them once and refer back when a later step uses one.
+
+| Term | What it means here |
+|---|---|
+| **Cluster** | The whole Kubernetes system: a control plane run by your cloud provider, plus worker machines that run your software. You create one in step 0.7. |
+| **Node** | One worker machine in the cluster, which is a virtual machine you pay for by the hour. This guide uses two so that losing one does not take the gateway down. |
+| **Pod** | The smallest unit Kubernetes runs, normally one container. The gateway runs as several identical pods spread across your nodes. |
+| **Namespace** | A folder inside the cluster that keeps one application's objects separate from another's. Everything in this guide goes into a namespace called `portkeyai`. |
+| **Deployment** | The object that says "keep N copies of this pod running". If a pod dies, the Deployment replaces it. |
+| **Service** | A stable internal address for a set of pods. Pod addresses change constantly; the Service address does not. |
+| **Ingress** | The object that asks your cloud provider for a real load balancer so traffic from outside the cluster can reach a Service. Step 6 covers this. |
+| **ServiceAccount** | An identity inside the cluster. Step 3 links it to a cloud identity so the gateway can reach your cache and your bucket without a stored password. |
+| **kubectl** | The command line tool that talks to a cluster. Pronounced "cube control". |
+| **Context** | Which cluster `kubectl` is currently pointed at. Getting this wrong is the most common way to configure the wrong cluster, so step 0.8 has you confirm it. |
+| **Helm, chart, release** | Helm is a package manager for Kubernetes. A chart is the package. A release is one installation of a chart. `values.yaml` is the settings file you hand the chart, and you build it in step 4. |
+
+> **Verify.** you can answer one question before moving on: what is the difference between a Deployment and a Service? The Deployment keeps the pods running. The Service gives them one address. Steps 5 and 6 create them in that order.
+
+### 0.2 &mdash; What this costs, and how to stop paying
+
+A cluster bills by the hour from the moment it is created, whether or not anything uses it. The charges do not stop when you close your laptop. Nothing in this phase is free tier on any of the three clouds once you add a second node and a load balancer.
+
+| What charges you | Notes |
+|---|---|
+| Managed control plane | A flat hourly charge on EKS and on GKE. AKS charges nothing for the free tier control plane, which is the default. |
+| Worker nodes | Ordinary virtual machine pricing, multiplied by node count. This is usually the largest line. |
+| Load balancer | Created in step 6, charged hourly plus a data processing fee, and it keeps charging with zero traffic. |
+| Managed cache | Created in step 2. The smallest tier is inexpensive but continuous. |
+| Object storage and egress | Small for a trial. Log documents are roughly 10 KB each. |
+| Private connectivity | If you complete step 7.3, a private endpoint carries its own hourly charge on all three clouds. |
+
+Price the exact shape you intend to build before you build it, using [the AWS calculator](https://calculator.aws/), [the Azure calculator](https://azure.microsoft.com/pricing/calculator/), or [the Google Cloud calculator](https://cloud.google.com/products/calculator). Rates differ enough by region that a figure quoted here would mislead you.
+
+> **Warning: set a budget alert now, not later.** Each cloud can email you when spend crosses a threshold: AWS Budgets, Azure Cost Management budgets, or Google Cloud budget alerts. Set one before you create the cluster. An alert is the only thing that catches a lab environment left running over a holiday. When you are finished, [Scaling, Upgrades, and Teardown](#scaling-upgrades-and-teardown) has the teardown commands. Delete the cluster rather than scaling it to zero, because the control plane, the load balancer, and the cache all keep billing after the pods are gone.
+
+The remaining steps differ by platform. Pick yours below.
+
+### A. Amazon EKS
+
+#### 0.3 &mdash; Get an AWS account and find your way around the console
+
+If your organisation already has AWS, ask for access to a sandbox or development account rather than a production one. If you are starting alone, create an account at [portal.aws.amazon.com](https://portal.aws.amazon.com/billing/signup). It needs a credit card and takes a few minutes to activate.
+
+Sign in at [console.aws.amazon.com](https://console.aws.amazon.com/). Four controls matter and the rest can wait.
+
+| Control | Where it is | Why you care |
+|---|---|---|
+| Region selector | Top right, next to your account name | Almost every resource belongs to one region. A cluster created in `us-east-1` is invisible while the console is set to `eu-west-1`. |
+| Search bar | Top left | The fastest way to any service. Type `EKS` and press Enter rather than hunting through menus. |
+| Account menu | Top right | Shows your 12 digit account ID, which step 3 needs when it builds IAM role ARNs. |
+| CloudShell | Terminal icon in the top bar | A browser terminal with the AWS CLI already installed and already signed in. If installing tools locally turns into a fight, do this guide from CloudShell instead. |
+
+> **Warning: the region selector causes more confusion than anything else in the console.** Pick one region now, write it down, and use it for every step in this guide. When a resource you just created does not appear in the console, check the region selector before you check anything else.
+
+> **Verify.** you can sign in, you can read your 12 digit account ID from the account menu, and the region selector shows the region you intend to use.
+
+#### 0.4 &mdash; Install the command line tools
+
+You need four: the AWS CLI to talk to AWS, `eksctl` to create the cluster, `kubectl` to talk to the cluster, and Helm to install the gateway.
+
+**macOS**, using [Homebrew](https://brew.sh/):
+
+```bash
+brew install awscli eksctl kubernetes-cli helm
+```
+
+**Linux**, x86_64:
+
+```bash
+# AWS CLI v2
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
+unzip -q awscliv2.zip && sudo ./aws/install
+
+# eksctl
+curl -sL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz" \
+  | tar xz -C /tmp
+sudo mv /tmp/eksctl /usr/local/bin/
+
+# kubectl
+curl -LO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -m 0755 kubectl /usr/local/bin/kubectl
+
+# Helm
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+```
+
+> **Note: on Windows, use WSL2.** Every command in this guide is bash, and several use shell features that PowerShell does not share. Install [WSL2 with Ubuntu](https://learn.microsoft.com/windows/wsl/install), open the Ubuntu terminal, and follow the Linux instructions. Trying to translate these commands into PowerShell will cost you more time than installing WSL2.
+
+If a package name has drifted, the vendor instructions are authoritative: [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html), [eksctl](https://docs.aws.amazon.com/eks/latest/eksctl/installation.html), [kubectl](https://kubernetes.io/docs/tasks/tools/), [Helm](https://helm.sh/docs/intro/install/).
+
+```bash
+aws --version      # aws-cli/2.x
+eksctl version     # 0.2xx.x
+kubectl version --client
+helm version       # v3.x
+```
+
+> **Verify.** All four print a version. The AWS CLI must report version 2, and Helm must report version 3. Version 1 of the AWS CLI and version 2 of Helm both behave differently enough to break later steps.
+
+#### 0.5 &mdash; Sign in from the terminal
+
+Installing the CLI does not sign you in. There are two ways to do it and the right one depends on how your account is managed.
+
+**If your organisation uses AWS IAM Identity Center or single sign-on**, which most do, this is the preferred path because it issues short lived credentials:
+
+```bash
+aws configure sso
+# Answer the prompts, then sign in in the browser window it opens.
+# Give the profile a name you will remember, then export it:
+export AWS_PROFILE=<PROFILE_NAME>
+```
+
+**If you are using a standalone account**, create an access key under IAM, then:
+
+```bash
+aws configure
+# AWS Access Key ID:     paste from the IAM console
+# AWS Secret Access Key: paste from the IAM console
+# Default region name:   the region you chose in step 0.3
+# Default output format: json
+```
+
+> **Warning: never create an access key for the root user.** The root user is the email address you signed up with. Create an IAM user or an Identity Center user instead, and turn on multi-factor authentication for the root user while you are in the console. A leaked root access key gives away the entire account with no way to limit the damage.
+
+```bash
+aws sts get-caller-identity
+```
+
+> **Verify.** This prints your account ID, your user ID, and your ARN. If it reports `Unable to locate credentials`, the sign in did not take. If it prints a different account than you expected, you have another profile set in `AWS_PROFILE`.
+
+#### 0.6 &mdash; Confirm you have enough permission
+
+`eksctl` builds the cluster through CloudFormation, so it needs to create far more than EKS alone: a VPC, subnets, route tables, NAT gateways, security groups, EC2 instances, IAM roles, and an OIDC identity provider. Later steps add ElastiCache, S3, an Elastic Load Balancer, and a PrivateLink endpoint.
+
+In a personal or sandbox account, attach `AdministratorAccess` to your user and move on. In a corporate account, send your cloud administrator the [eksctl minimum IAM policies](https://docs.aws.amazon.com/eks/latest/eksctl/minimum-iam-policies.html) and ask for those plus ElastiCache, S3, and VPC endpoint permissions.
+
+```bash
+aws eks list-clusters --region <AWS_REGION>
+aws ec2 describe-vpcs --region <AWS_REGION> --max-items 1 >/dev/null && echo "ec2 ok"
+aws iam list-roles --max-items 1 >/dev/null && echo "iam ok"
+```
+
+> **Verify.** All three succeed. An empty cluster list is a correct answer. An `AccessDenied` on any of them means step 0.7 will fail partway through and leave a half built CloudFormation stack behind, which is tedious to clean up. Resolve the permission first.
+
+#### 0.7 &mdash; Create the cluster
+
+This single command creates a VPC across two Availability Zones, an EKS control plane, a managed node group with two nodes, and the IAM OIDC provider that step 1.3 would otherwise ask you to add by hand.
+
+```bash
+cluster_name=aigw-cluster        # lower case, starts with a letter, hyphens allowed
+region=<AWS_REGION>              # the region you chose in step 0.3
+
+eksctl create cluster \
+  --name $cluster_name \
+  --region $region \
+  --version 1.31 \
+  --nodegroup-name aigw-nodes \
+  --node-type t4g.medium \
+  --nodes 2 \
+  --nodes-min 2 \
+  --nodes-max 4 \
+  --with-oidc \
+  --managed
+```
+
+Expect this to take 15 to 20 minutes. It prints a long stream of CloudFormation progress lines and appears to hang at several points. That is normal. Do not interrupt it, because a cancelled run leaves a partial stack that you then have to delete by hand.
+
+| Flag | Why it is there |
+|---|---|
+| `--node-type t4g.medium` | Matches the floor in [Deployment Requirements](#deployment-requirements): 2 vCPU and 4 GiB. These are Arm nodes and the gateway image supports them. If you hit an image architecture error later, switch to `t3.medium` and recreate the node group. |
+| `--nodes 2` | Two nodes, which eksctl spreads across Availability Zones. One node means a single zone failure takes the gateway down. |
+| `--with-oidc` | Creates and associates the IAM OIDC provider. This is exactly what step 1.3 does, so doing it here means step 1.3 becomes a check rather than a task. |
+| `--managed` | AWS manages the node group lifecycle, including upgrades and replacement. |
+| `--version 1.31` | Pins the Kubernetes version so you get a predictable result. Substitute a version your organisation supports if it has a standard. |
+
+> **Note: if it fails in us-east-1.** AWS documents an `UnsupportedAvailabilityZoneException` that occurs most often in `us-east-1`. The error text names the zones that do work. Re-run with those added, for example `--zones=us-east-1a,us-east-1b,us-east-1d`.
+
+```bash
+aws eks describe-cluster --name $cluster_name --region $region \
+  --query cluster.status --output text
+```
+
+> **Verify.** Returns `ACTIVE`. In the console, search for `EKS`, open **Clusters**, and confirm your cluster is listed with status **Active**. If the list is empty, check the region selector.
+
+#### 0.8 &mdash; Point kubectl at the cluster
+
+`eksctl` writes the kubeconfig entry for you, so this usually works already. Run the update command anyway, because it is also how you recover if the file is lost or you move to another workstation.
+
+```bash
+aws eks update-kubeconfig --name $cluster_name --region $region
+
+kubectl config current-context
+kubectl get nodes
+```
+
+> **Warning: check the context before every destructive command.** `kubectl` remembers every cluster you have ever connected to and points at whichever was last selected. If you work with more than one cluster, run `kubectl config current-context` before anything that changes state. Configuring the wrong cluster is the single most common mistake in this phase.
+
+> **Verify.** `kubectl get nodes` lists two nodes, both `Ready`, and `kubectl config current-context` names the cluster you just created. A node stuck in `NotReady` for more than five minutes usually means the node group could not reach the control plane. `kubectl describe node <NAME>` names the reason.
+
+### B. Azure AKS
+
+#### 0.3 &mdash; Get an Azure subscription and find your way around the portal
+
+If your organisation already has Azure, ask for Contributor access to a development subscription. If you are starting alone, sign up at [azure.microsoft.com/free](https://azure.microsoft.com/free/).
+
+Sign in at [portal.azure.com](https://portal.azure.com/). Azure organises things differently from AWS, and two concepts explain most of it.
+
+| Concept | What it does |
+|---|---|
+| **Subscription** | The billing and quota boundary. You may have access to several, so every command in this guide has to run against the right one. Step 0.5 sets it explicitly. |
+| **Resource group** | A named container that holds related resources. Everything you create in this guide goes into one resource group, which makes teardown a single command. There is no AWS equivalent. |
+| **Search bar** | Top centre. Type `Kubernetes services` to reach AKS. Faster than the menu. |
+| **Cloud Shell** | Terminal icon in the top bar. A browser terminal with the Azure CLI, `kubectl`, and Helm already installed and signed in. A good fallback if local installation gives you trouble. |
+
+Regions exist on Azure too, but they are a property of each resource rather than a global selector, so the portal shows you resources from every region at once. That removes the AWS style "where did it go" problem and replaces it with needing to be deliberate about which region each resource lands in.
+
+> **Verify.** you can sign in, and **Subscriptions** in the portal lists at least one subscription that is **Active**. Note its name or ID; step 0.5 needs it.
+
+#### 0.4 &mdash; Install the command line tools
+
+You need three: the Azure CLI, `kubectl`, and Helm.
+
+**macOS**:
+
+```bash
+brew install azure-cli kubernetes-cli helm
+```
+
+**Linux**, Debian or Ubuntu:
+
+```bash
+# Azure CLI
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+# kubectl, installed through the Azure CLI
+sudo az aks install-cli
+
+# Helm
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+```
+
+> **Note: on Windows, use WSL2.** Every command in this guide is bash. Install [WSL2 with Ubuntu](https://learn.microsoft.com/windows/wsl/install) and follow the Linux instructions rather than translating to PowerShell.
+
+Vendor instructions, if a package name has drifted: [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli), [kubectl](https://kubernetes.io/docs/tasks/tools/), [Helm](https://helm.sh/docs/intro/install/).
+
+```bash
+az version
+kubectl version --client
+helm version       # v3.x
+```
+
+> **Verify.** All three print a version, and Helm reports version 3.
+
+#### 0.5 &mdash; Sign in and select your subscription
+
+```bash
+az login
+# Opens a browser. Sign in there, then return to the terminal.
+
+# List what you can see, then pin the one you want
+az account list --output table
+az account set --subscription "<SUBSCRIPTION_NAME_OR_ID>"
+```
+
+Setting the subscription explicitly matters more on Azure than the equivalent step does elsewhere, because the CLI silently uses a default subscription that may not be the one you intend.
+
+```bash
+az account show --query "{name:name, id:id, user:user.name}" -o table
+```
+
+> **Verify.** The subscription named is the one you intend to build in.
+
+#### 0.6 &mdash; Confirm you have enough permission
+
+Two Azure roles matter here, and having only the first is a common way to get stuck in step 3.
+
+- **Contributor** &mdash; creates the resource group, the cluster, the cache, and the storage account. Enough for steps 0.7 through 2.
+- **User Access Administrator**, or **Owner**, or **Role Based Access Control Administrator** &mdash; creates role assignments. Step 3 grants the gateway's managed identity access to your storage account, and a Contributor cannot do that.
+
+If you only hold Contributor, you can still finish this phase. Raise the access request now so it is resolved before you reach step 3.
+
+```bash
+az role assignment list \
+  --assignee $(az ad signed-in-user show --query id -o tsv) \
+  --query "[].roleDefinitionName" -o tsv
+```
+
+> **Verify.** The output includes `Owner`, or both `Contributor` and one of the access administrator roles. Subscription level assignments may be inherited from a management group and not appear here, so an empty result is not conclusive. If it is empty, ask your Azure administrator to confirm rather than assuming you are blocked.
+
+#### 0.7 &mdash; Create the resource group and the cluster
+
+The resource group comes first, because on Azure everything has to live inside one.
+
+```bash
+RESOURCE_GROUP=aigw-rg
+CLUSTER_NAME=aigw-cluster
+LOCATION=<AZURE_REGION>          # for example eastus, westeurope
+
+az group create \
+  --name ${RESOURCE_GROUP} \
+  --location ${LOCATION}
+
+az aks create \
+  --resource-group ${RESOURCE_GROUP} \
+  --name ${CLUSTER_NAME} \
+  --node-count 2 \
+  --node-vm-size Standard_B2ms \
+  --zones 1 2 \
+  --enable-oidc-issuer \
+  --enable-workload-identity \
+  --generate-ssh-keys
+```
+
+Expect 5 to 10 minutes for the cluster.
+
+| Flag | Why it is there |
+|---|---|
+| `--node-vm-size Standard_B2ms` | Matches the floor in [Deployment Requirements](#deployment-requirements): 2 vCPU and 4 GiB. |
+| `--zones 1 2` | Spreads the two nodes across Availability Zones. Not every Azure region offers zones; if the command rejects this flag, drop it and accept that the cluster is single zone. |
+| `--enable-oidc-issuer` and `--enable-workload-identity` | These are precisely what step 1.3 applies with `az aks update`. Setting them at creation means step 1.3 becomes a check rather than a task, and you avoid the node pool restart that enabling them later can trigger. |
+
+> **Note: if the command reports that a resource provider is not registered.** A new subscription sometimes has not registered the required providers. Register them, wait a minute, and re-run.
+>
+> ```bash
+> az provider register --namespace Microsoft.ContainerService
+> az provider register --namespace Microsoft.Network
+> az provider register --namespace Microsoft.Compute
+> ```
+
+```bash
+az aks show --name ${CLUSTER_NAME} --resource-group ${RESOURCE_GROUP} \
+  --query provisioningState -o tsv
+```
+
+> **Verify.** Returns `Succeeded`. In the portal, search for **Kubernetes services** and confirm the cluster is listed with status **Succeeded**.
+
+#### 0.8 &mdash; Point kubectl at the cluster
+
+```bash
+az aks get-credentials \
+  --resource-group ${RESOURCE_GROUP} \
+  --name ${CLUSTER_NAME}
+
+kubectl config current-context
+kubectl get nodes
+```
+
+> **Warning: check the context before every destructive command.** `kubectl` points at whichever cluster was selected last. If you work with more than one, run `kubectl config current-context` before anything that changes state.
+
+> **Verify.** `kubectl get nodes` lists two nodes, both `Ready`, and the current context names your cluster. A node stuck in `NotReady` for more than five minutes needs `kubectl describe node <NAME>` to explain itself.
+
+### C. Google GKE
+
+#### 0.3 &mdash; Get a Google Cloud project and find your way around the console
+
+If your organisation already has Google Cloud, ask for Editor access to a development project. If you are starting alone, sign up at [console.cloud.google.com/freetrial](https://console.cloud.google.com/freetrial).
+
+Sign in at [console.cloud.google.com](https://console.cloud.google.com/). Three things govern everything else.
+
+| Concept | What it does |
+|---|---|
+| **Project** | The container for all resources, and the equivalent of an AWS account boundary rather than a resource group. The project selector sits in the top bar next to the logo, and picking the wrong project is the Google Cloud version of picking the wrong AWS region. |
+| **Billing account** | Must be linked to the project or every create command fails. A new project created outside a trial often has no billing link, and the error message does not always make that obvious. |
+| **APIs** | Each service is switched off until you enable its API. This has no equivalent on AWS and catches people constantly. Step 0.6 enables the two you need. |
+| **Cloud Shell** | Terminal icon in the top bar. Has gcloud, kubectl, and Helm preinstalled and already signed in. A good fallback. |
+
+> **Verify.** you can sign in, the project selector shows a project you intend to use, and **Billing** shows that project linked to an active billing account.
+
+#### 0.4 &mdash; Install the command line tools
+
+You need the gcloud CLI, `kubectl`, Helm, and one extra component that is easy to miss.
+
+**macOS**:
+
+```bash
+brew install --cask google-cloud-sdk
+brew install kubernetes-cli helm
+gcloud components install gke-gcloud-auth-plugin
+```
+
+**Linux**:
+
+```bash
+# gcloud CLI
+curl -sSL https://sdk.cloud.google.com | bash
+exec -l $SHELL
+
+# kubectl and the auth plugin, both through gcloud
+gcloud components install kubectl gke-gcloud-auth-plugin
+
+# Helm
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+```
+
+> **Warning: `gke-gcloud-auth-plugin` is required, and its absence produces a confusing error.** Without it, `kubectl` fails against a GKE cluster with a message about no auth provider or an executable not being found, which reads like a broken kubeconfig rather than a missing package. Install it now, in step 0.4, rather than debugging it in step 0.8.
+
+> **Note: on Windows, use WSL2.** Every command in this guide is bash. Install [WSL2 with Ubuntu](https://learn.microsoft.com/windows/wsl/install) and follow the Linux instructions.
+
+Vendor instructions: [gcloud CLI](https://cloud.google.com/sdk/docs/install), [kubectl](https://kubernetes.io/docs/tasks/tools/), [Helm](https://helm.sh/docs/intro/install/).
+
+```bash
+gcloud version
+kubectl version --client
+helm version
+gke-gcloud-auth-plugin --version
+```
+
+> **Verify.** All four print a version. The fourth is the one people skip, and it is the one that breaks step 0.8.
+
+#### 0.5 &mdash; Sign in and select your project
+
+```bash
+gcloud auth login
+# Opens a browser. Sign in there, then return to the terminal.
+
+PROJECT_ID_A=<PROJECT_ID>         # the project ID, not the display name
+REGION=<GKE_CLUSTER_REGION>      # for example us-central1
+
+gcloud config set project ${PROJECT_ID_A}
+gcloud config set compute/region ${REGION}
+
+# Credentials for tools and libraries, which is separate from the CLI sign in
+gcloud auth application-default login
+```
+
+> **Note: project ID is not project name.** The display name is what you typed at creation. The project ID is the globally unique string Google derived from it, often with digits appended, and it is what every command wants. Read it from the project selector in the console or from `gcloud projects list`.
+
+```bash
+gcloud config list
+gcloud auth list
+```
+
+> **Verify.** The project shown matches `${PROJECT_ID_A}` and your account is marked as active.
+
+#### 0.6 &mdash; Enable the APIs and confirm your permission
+
+Nothing works until the APIs are on. Enabling one takes a few seconds and is safe to repeat.
+
+```bash
+gcloud services enable \
+  container.googleapis.com \
+  compute.googleapis.com \
+  iam.googleapis.com \
+  storage.googleapis.com
+```
+
+For permission, the `roles/container.admin` and `roles/compute.admin` roles cover this phase, and step 3 additionally needs `roles/iam.serviceAccountAdmin` to bind a Kubernetes service account to a Google service account. In a personal project, `roles/owner` covers all of it.
+
+```bash
+gcloud services list --enabled --filter="name:container.googleapis.com OR name:compute.googleapis.com" \
+  --format="value(config.name)"
+```
+
+> **Verify.** Both API names are listed. If the enable command failed with a billing error, the project is not linked to a billing account. Fix that in the console under **Billing** before continuing.
+
+#### 0.7 &mdash; Create the cluster
+
+This creates a regional cluster with Workload Identity Federation already enabled, which is what step 1.3 checks for.
+
+```bash
+CLUSTER_NAME=aigw-cluster
+
+gcloud container clusters create ${CLUSTER_NAME} \
+  --location=${REGION} \
+  --workload-pool=${PROJECT_ID_A}.svc.id.goog \
+  --machine-type=e2-standard-2 \
+  --num-nodes=1 \
+  --enable-ip-alias
+```
+
+Expect 5 to 10 minutes.
+
+| Flag | Why it is there |
+|---|---|
+| `--location=${REGION}` | A region rather than a single zone, so GKE spreads nodes across the zones in that region. Later steps in this guide use `--region`, which remains valid for regional clusters. |
+| `--num-nodes=1` | On a regional cluster this is nodes *per zone*, not in total. A three zone region therefore gives you three nodes, which satisfies the two node floor. Check the actual count in the verify step rather than assuming. |
+| `--machine-type=e2-standard-2` | 2 vCPU and 8 GiB, which clears the floor in [Deployment Requirements](#deployment-requirements). |
+| `--workload-pool` | Turns on Workload Identity Federation. This is what step 1.3 verifies and what step 3 builds on. |
+| `--enable-ip-alias` | VPC-native networking, which the load balancer path in step 6 requires. |
+
+> **Note: this uses the default VPC.** Without a `--network` flag the cluster lands in the project's `default` VPC. Step 1.4 asks for `VPC_NAME` when it creates the proxy subnet, so set `VPC_NAME=default` unless you created the cluster in a VPC of your own.
+
+```bash
+gcloud container clusters describe ${CLUSTER_NAME} --location=${REGION} \
+  --format="value(status)"
+```
+
+> **Verify.** Returns `RUNNING`. In the console, open **Kubernetes Engine** and then **Clusters**, and confirm a green tick next to your cluster. If the page offers to enable the API, step 0.6 did not complete.
+
+#### 0.8 &mdash; Point kubectl at the cluster
+
+```bash
+gcloud container clusters get-credentials ${CLUSTER_NAME} --location=${REGION}
+
+kubectl config current-context
+kubectl get nodes
+```
+
+> **Note: if kubectl reports a missing auth provider or plugin.** That is the `gke-gcloud-auth-plugin` from step 0.4. Install it, then re-run `get-credentials` so the kubeconfig entry is rewritten to use it.
+>
+> ```bash
+> gcloud components install gke-gcloud-auth-plugin
+> gcloud container clusters get-credentials ${CLUSTER_NAME} --location=${REGION}
+> ```
+
+> **Verify.** `kubectl get nodes` lists at least two nodes, all `Ready`, spread across more than one zone, and the current context names your cluster. If you see only one node, the region has a single zone and you should recreate with `--num-nodes=2`.
+
+### You now have what step 1 assumes
+
+A running cluster with at least two nodes, a terminal signed in to your cloud, and `kubectl` pointed at the right place. Creating the cluster the way this phase does also completes some of what follows.
+
+| Later step | State after Phase 0 |
+|---|---|
+| 1.1 Set your environment variables | Still to do. It re-declares the same variables, which matters if you open a new shell, and it creates the `portkeyai` namespace and the `values.yaml` working directory. |
+| 1.2 Confirm node count and sizing | Already satisfied. Run the check anyway; it takes a second. |
+| 1.3 Identity prerequisites | Already done on all three platforms. `--with-oidc` on EKS, `--enable-oidc-issuer` with `--enable-workload-identity` on AKS, `--workload-pool` on GKE. Treat step 1.3 as a check. |
+| 1.4 Ingress prerequisites | Still to do on every platform. The AWS Load Balancer Controller, the AKS application routing add-on, and the GKE proxy subnet are all separate installs. |
+
+---
+
 ## 1. Prepare the Cluster
 
 The chart assumes a cluster that already exists, already has two or more worker nodes spread across zones, and already has the platform features that identity and ingress depend on. Turning those on afterwards usually means recreating something, so do this first.
+
+If you built your cluster in step 0, the identity prerequisite in step 1.3 is already satisfied and you only need to confirm it. Step 1.1 and the ingress prerequisite in step 1.4 still apply.
 
 ### A. Amazon EKS
 

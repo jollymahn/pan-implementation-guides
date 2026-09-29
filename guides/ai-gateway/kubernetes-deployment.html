@@ -41,6 +41,7 @@
   </div>
   <div class="sidebar-section">
     <div class="sidebar-section-title">Deploy</div>
+    <a href="#start-here" data-section="start-here">0. Start Here</a>
     <a href="#cluster" data-section="cluster">1. Prepare the Cluster</a>
     <a href="#dependencies" data-section="dependencies">2. Cache and Log Store</a>
     <a href="#identity" data-section="identity">3. Grant an Identity</a>
@@ -87,6 +88,7 @@
   <div class="callout-title">Guide Approach</div>
   <p>This is a companion to the <a href="ai-gateway-deployment.html">AI Gateway Deployment Guide</a> and to the <a href="hybrid-infrastructure.html">AI Gateway Hybrid Infrastructure</a> guide. It covers the three managed Kubernetes platforms: Amazon EKS, Azure AKS, and Google GKE. All three are delivered by Helm and a <code>values.yaml</code> file, so the workflow is the same on each and only the cloud-specific pieces differ.</p>
   <p>It does not repeat licensing, activation, or the Strata Cloud Manager (SCM) configuration that follows deployment. Those live in the deployment guide and you need them whichever platform you land on. It also does not repeat the two-plane architecture discussion or the platform comparison, which live in the hybrid infrastructure guide. If you are not on Kubernetes, the Terraform path for Amazon ECS and Azure Container Apps is in <a href="serverless-deployment.html">ECS and Container Apps</a>.</p>
+  <p>It does assume you can reach a Kubernetes cluster. If you do not have one, or you have never created one, <a href="#start-here">step 0</a> builds the account, the tooling, and the cluster from nothing on whichever of the three platforms you choose. Readers who already run clusters should collapse that phase and begin at <a href="#cluster">step 1</a>.</p>
   <p>Two terms carry the whole guide. The <strong>data plane</strong> is the gateway you run in your own cluster: the pods, the cache, the log store, and the load balancer in front of them. The <strong>management plane</strong> is the Palo Alto Networks service that holds configuration, policy, and analytics, and that you reach through Strata Cloud Manager.</p>
   <p>Prisma AIRS AI Gateway is the Portkey gateway, acquired by Palo Alto Networks. You will see the name Portkey throughout: in chart names, repository URLs, environment variable names, hostnames, and the vendor's own documentation. The rebrand has not reached the code, so treat <code>portkey</code> and <code>AIRS AI Gateway</code> as the same product wherever they appear below.</p>
 </div>
@@ -192,9 +194,10 @@
       <tbody>
         <tr><td>Amazon EKS</td><td>AWS CLI, <code>eksctl</code>, <code>kubectl</code>, Helm v3 or above</td></tr>
         <tr><td>Azure AKS</td><td>Azure CLI, <code>kubectl</code>, Helm v3 or above</td></tr>
-        <tr><td>Google GKE</td><td>gcloud CLI, <code>kubectl</code>, Helm v3 or above</td></tr>
+        <tr><td>Google GKE</td><td>gcloud CLI, <code>kubectl</code>, Helm v3 or above, <code>gke-gcloud-auth-plugin</code></td></tr>
       </tbody>
     </table>
+    <p>If any of those are not installed and signed in yet, <a href="#start-here">step 0.4</a> has the install commands for macOS, Linux, and WSL2, and <a href="#start-here">step 0.5</a> covers signing in.</p>
   </div>
 </div>
 
@@ -226,11 +229,775 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════
+     0. Start Here
+     ══════════════════════════════════════════════════════════════ -->
+<h2 id="start-here">0. Start Here: Accounts, Tools, and a Cluster</h2>
+
+<p>Everything from step 1 onwards assumes three things already exist: a running Kubernetes cluster, a terminal that can talk to it, and a cloud account with enough permission to create load balancers and identities. This phase builds all three from nothing.</p>
+
+<p>If you already have a cluster and <code>kubectl get nodes</code> lists it, collapse this phase and start at <a href="#cluster">step 1</a>.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Who this phase is for</div>
+  <p>You are comfortable pasting commands into a terminal, but you have never created a Kubernetes cluster and you may never have opened your cloud provider's console. You do not need to know Kubernetes before you begin. Each step states what it creates, gives you the command, and tells you what a correct result looks like.</p>
+  <p>The work is done from the command line rather than by clicking through the console, because commands can be copied exactly and reproduced later. The console is used for orientation and for checking results, so that you can also find these resources by eye.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>0.1 &mdash; The vocabulary you need</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Eleven terms cover almost everything in this guide. Read them once and refer back when a later step uses one.</p>
+    <table>
+      <thead>
+        <tr><th>Term</th><th>What it means here</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Cluster</strong></td><td>The whole Kubernetes system: a control plane run by your cloud provider, plus worker machines that run your software. You create one in step 0.7.</td></tr>
+        <tr><td><strong>Node</strong></td><td>One worker machine in the cluster, which is a virtual machine you pay for by the hour. This guide uses two so that losing one does not take the gateway down.</td></tr>
+        <tr><td><strong>Pod</strong></td><td>The smallest unit Kubernetes runs, normally one container. The gateway runs as several identical pods spread across your nodes.</td></tr>
+        <tr><td><strong>Namespace</strong></td><td>A folder inside the cluster that keeps one application's objects separate from another's. Everything in this guide goes into a namespace called <code>portkeyai</code>.</td></tr>
+        <tr><td><strong>Deployment</strong></td><td>The object that says "keep N copies of this pod running". If a pod dies, the Deployment replaces it.</td></tr>
+        <tr><td><strong>Service</strong></td><td>A stable internal address for a set of pods. Pod addresses change constantly; the Service address does not.</td></tr>
+        <tr><td><strong>Ingress</strong></td><td>The object that asks your cloud provider for a real load balancer so traffic from outside the cluster can reach a Service. Step 6 covers this.</td></tr>
+        <tr><td><strong>ServiceAccount</strong></td><td>An identity inside the cluster. Step 3 links it to a cloud identity so the gateway can reach your cache and your bucket without a stored password.</td></tr>
+        <tr><td><strong>kubectl</strong></td><td>The command line tool that talks to a cluster. Pronounced "cube control".</td></tr>
+        <tr><td><strong>Context</strong></td><td>Which cluster <code>kubectl</code> is currently pointed at. Getting this wrong is the most common way to configure the wrong cluster, so step 0.8 has you confirm it.</td></tr>
+        <tr><td><strong>Helm, chart, release</strong></td><td>Helm is a package manager for Kubernetes. A chart is the package. A release is one installation of a chart. <code>values.yaml</code> is the settings file you hand the chart, and you build it in step 4.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verify</div>
+      <p>you can answer one question before moving on: what is the difference between a Deployment and a Service? The Deployment keeps the pods running. The Service gives them one address. Steps 5 and 6 create them in that order.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>0.2 &mdash; What this costs, and how to stop paying</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A cluster bills by the hour from the moment it is created, whether or not anything uses it. The charges do not stop when you close your laptop. Nothing in this phase is free tier on any of the three clouds once you add a second node and a load balancer.</p>
+    <table>
+      <thead>
+        <tr><th>What charges you</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Managed control plane</td><td>A flat hourly charge on EKS and on GKE. AKS charges nothing for the free tier control plane, which is the default.</td></tr>
+        <tr><td>Worker nodes</td><td>Ordinary virtual machine pricing, multiplied by node count. This is usually the largest line.</td></tr>
+        <tr><td>Load balancer</td><td>Created in step 6, charged hourly plus a data processing fee, and it keeps charging with zero traffic.</td></tr>
+        <tr><td>Managed cache</td><td>Created in step 2. The smallest tier is inexpensive but continuous.</td></tr>
+        <tr><td>Object storage and egress</td><td>Small for a trial. Log documents are roughly 10 KB each.</td></tr>
+        <tr><td>Private connectivity</td><td>If you complete step 7.3, a private endpoint carries its own hourly charge on all three clouds.</td></tr>
+      </tbody>
+    </table>
+    <p>Price the exact shape you intend to build before you build it, using <a href="https://calculator.aws/" target="_blank" rel="noopener">the AWS calculator</a>, <a href="https://azure.microsoft.com/pricing/calculator/" target="_blank" rel="noopener">the Azure calculator</a>, or <a href="https://cloud.google.com/products/calculator" target="_blank" rel="noopener">the Google Cloud calculator</a>. Rates differ enough by region that a figure quoted here would mislead you.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Set a budget alert now, not later</div>
+      <p>Each cloud can email you when spend crosses a threshold: AWS Budgets, Azure Cost Management budgets, or Google Cloud budget alerts. Set one before you create the cluster. An alert is the only thing that catches a lab environment left running over a holiday.</p>
+      <p>When you are finished, <a href="#day2">Scaling, Upgrades, and Teardown</a> has the teardown commands. Delete the cluster rather than scaling it to zero, because the control plane, the load balancer, and the cache all keep billing after the pods are gone.</p>
+    </div>
+  </div>
+</div>
+
+<p>The remaining steps differ by platform. Pick yours below. Your choice follows you through the rest of the guide, so you only have to select it once.</p>
+
+<div class="mgmt-tabs" data-tab-group="platform">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="eks">A &middot; Amazon EKS</button>
+    <button class="mgmt-tab" data-plane="aks">B &middot; Azure AKS</button>
+    <button class="mgmt-tab" data-plane="gke">C &middot; Google GKE</button>
+  </div>
+
+  <!-- ─────────────── EKS ─────────────── -->
+  <div class="mgmt-panel active" data-plane="eks">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.3 &mdash; Get an AWS account and find your way around the console</span>
+      </div>
+      <div class="collapsible-body">
+        <p>If your organisation already has AWS, ask for access to a sandbox or development account rather than a production one. If you are starting alone, create an account at <a href="https://portal.aws.amazon.com/billing/signup" target="_blank" rel="noopener">portal.aws.amazon.com</a>. It needs a credit card and takes a few minutes to activate.</p>
+        <p>Sign in at <a href="https://console.aws.amazon.com/" target="_blank" rel="noopener">console.aws.amazon.com</a>. Four controls matter and the rest can wait.</p>
+        <table>
+          <thead>
+            <tr><th>Control</th><th>Where it is</th><th>Why you care</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Region selector</td><td>Top right, next to your account name</td><td>Almost every resource belongs to one region. A cluster created in <code>us-east-1</code> is invisible while the console is set to <code>eu-west-1</code>.</td></tr>
+            <tr><td>Search bar</td><td>Top left</td><td>The fastest way to any service. Type <code>EKS</code> and press Enter rather than hunting through menus.</td></tr>
+            <tr><td>Account menu</td><td>Top right</td><td>Shows your 12 digit account ID, which step 3 needs when it builds IAM role ARNs.</td></tr>
+            <tr><td>CloudShell</td><td>Terminal icon in the top bar</td><td>A browser terminal with the AWS CLI already installed and already signed in. If installing tools locally turns into a fight, do this guide from CloudShell instead.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout callout-warning">
+          <div class="callout-title">The region selector causes more confusion than anything else in the console</div>
+          <p>Pick one region now, write it down, and use it for every step in this guide. When a resource you just created does not appear in the console, check the region selector before you check anything else.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>you can sign in, you can read your 12 digit account ID from the account menu, and the region selector shows the region you intend to use.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.4 &mdash; Install the command line tools</span>
+      </div>
+      <div class="collapsible-body">
+        <p>You need four: the AWS CLI to talk to AWS, <code>eksctl</code> to create the cluster, <code>kubectl</code> to talk to the cluster, and Helm to install the gateway.</p>
+        <p><strong>macOS</strong>, using <a href="https://brew.sh/" target="_blank" rel="noopener">Homebrew</a>:</p>
+        <div class="code-block">
+          <pre><code class="language-bash">brew install awscli eksctl kubernetes-cli helm</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p><strong>Linux</strong>, x86_64:</p>
+        <div class="code-block">
+          <pre><code class="language-bash"># AWS CLI v2
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
+unzip -q awscliv2.zip &amp;&amp; sudo ./aws/install
+
+# eksctl
+curl -sL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz" \
+  | tar xz -C /tmp
+sudo mv /tmp/eksctl /usr/local/bin/
+
+# kubectl
+curl -LO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -m 0755 kubectl /usr/local/bin/kubectl
+
+# Helm
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-note">
+          <div class="callout-title">On Windows, use WSL2</div>
+          <p>Every command in this guide is bash, and several use shell features that PowerShell does not share. Install <a href="https://learn.microsoft.com/windows/wsl/install" target="_blank" rel="noopener">WSL2 with Ubuntu</a>, open the Ubuntu terminal, and follow the Linux instructions. Trying to translate these commands into PowerShell will cost you more time than installing WSL2.</p>
+        </div>
+        <p>If a package name has drifted, the vendor instructions are authoritative: <a href="https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html" target="_blank" rel="noopener">AWS CLI</a>, <a href="https://docs.aws.amazon.com/eks/latest/eksctl/installation.html" target="_blank" rel="noopener">eksctl</a>, <a href="https://kubernetes.io/docs/tasks/tools/" target="_blank" rel="noopener">kubectl</a>, <a href="https://helm.sh/docs/intro/install/" target="_blank" rel="noopener">Helm</a>.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">aws --version      # aws-cli/2.x
+eksctl version     # 0.2xx.x
+kubectl version --client
+helm version       # v3.x</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>All four print a version. The AWS CLI must report version 2, and Helm must report version 3. Version 1 of the AWS CLI and version 2 of Helm both behave differently enough to break later steps.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.5 &mdash; Sign in from the terminal</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Installing the CLI does not sign you in. There are two ways to do it and the right one depends on how your account is managed.</p>
+        <p><strong>If your organisation uses AWS IAM Identity Center or single sign-on</strong>, which most do, this is the preferred path because it issues short lived credentials:</p>
+        <div class="code-block">
+          <pre><code class="language-bash">aws configure sso
+# Answer the prompts, then sign in in the browser window it opens.
+# Give the profile a name you will remember, then export it:
+export AWS_PROFILE=&lt;PROFILE_NAME&gt;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p><strong>If you are using a standalone account</strong>, create an access key under IAM, then:</p>
+        <div class="code-block">
+          <pre><code class="language-bash">aws configure
+# AWS Access Key ID:     paste from the IAM console
+# AWS Secret Access Key: paste from the IAM console
+# Default region name:   the region you chose in step 0.3
+# Default output format: json</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-warning">
+          <div class="callout-title">Never create an access key for the root user</div>
+          <p>The root user is the email address you signed up with. Create an IAM user or an Identity Center user instead, and turn on multi-factor authentication for the root user while you are in the console. A leaked root access key gives away the entire account with no way to limit the damage.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">aws sts get-caller-identity</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>This prints your account ID, your user ID, and your ARN. If it reports <code>Unable to locate credentials</code>, the sign in did not take. If it prints a different account than you expected, you have another profile set in <code>AWS_PROFILE</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.6 &mdash; Confirm you have enough permission</span>
+      </div>
+      <div class="collapsible-body">
+        <p><code>eksctl</code> builds the cluster through CloudFormation, so it needs to create far more than EKS alone: a VPC, subnets, route tables, NAT gateways, security groups, EC2 instances, IAM roles, and an OIDC identity provider. Later steps add ElastiCache, S3, an Elastic Load Balancer, and a PrivateLink endpoint.</p>
+        <p>In a personal or sandbox account, attach <code>AdministratorAccess</code> to your user and move on. In a corporate account, send your cloud administrator the <a href="https://docs.aws.amazon.com/eks/latest/eksctl/minimum-iam-policies.html" target="_blank" rel="noopener">eksctl minimum IAM policies</a> and ask for those plus ElastiCache, S3, and VPC endpoint permissions.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">aws eks list-clusters --region &lt;AWS_REGION&gt;
+aws ec2 describe-vpcs --region &lt;AWS_REGION&gt; --max-items 1 &gt;/dev/null &amp;&amp; echo "ec2 ok"
+aws iam list-roles --max-items 1 &gt;/dev/null &amp;&amp; echo "iam ok"</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>All three succeed. An empty cluster list is a correct answer. An <code>AccessDenied</code> on any of them means step 0.7 will fail partway through and leave a half built CloudFormation stack behind, which is tedious to clean up. Resolve the permission first.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.7 &mdash; Create the cluster</span>
+      </div>
+      <div class="collapsible-body">
+        <p>This single command creates a VPC across two Availability Zones, an EKS control plane, a managed node group with two nodes, and the IAM OIDC provider that step 1.3 would otherwise ask you to add by hand.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">cluster_name=aigw-cluster        # lower case, starts with a letter, hyphens allowed
+region=&lt;AWS_REGION&gt;              # the region you chose in step 0.3
+
+eksctl create cluster \
+  --name $cluster_name \
+  --region $region \
+  --version 1.31 \
+  --nodegroup-name aigw-nodes \
+  --node-type t4g.medium \
+  --nodes 2 \
+  --nodes-min 2 \
+  --nodes-max 4 \
+  --with-oidc \
+  --managed</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Expect this to take 15 to 20 minutes. It prints a long stream of CloudFormation progress lines and appears to hang at several points. That is normal. Do not interrupt it, because a cancelled run leaves a partial stack that you then have to delete by hand.</p>
+        <table>
+          <thead>
+            <tr><th>Flag</th><th>Why it is there</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>--node-type t4g.medium</code></td><td>Matches the floor in <a href="#requirements">Deployment Requirements</a>: 2 vCPU and 4 GiB. These are Arm nodes and the gateway image supports them. If you hit an image architecture error later, switch to <code>t3.medium</code> and recreate the node group.</td></tr>
+            <tr><td><code>--nodes 2</code></td><td>Two nodes, which eksctl spreads across Availability Zones. One node means a single zone failure takes the gateway down.</td></tr>
+            <tr><td><code>--with-oidc</code></td><td>Creates and associates the IAM OIDC provider. This is exactly what step 1.3 does, so doing it here means step 1.3 becomes a check rather than a task.</td></tr>
+            <tr><td><code>--managed</code></td><td>AWS manages the node group lifecycle, including upgrades and replacement.</td></tr>
+            <tr><td><code>--version 1.31</code></td><td>Pins the Kubernetes version so you get a predictable result. Substitute a version your organisation supports if it has a standard.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout callout-note">
+          <div class="callout-title">If it fails in us-east-1</div>
+          <p>AWS documents an <code>UnsupportedAvailabilityZoneException</code> that occurs most often in <code>us-east-1</code>. The error text names the zones that do work. Re-run with those added, for example <code>--zones=us-east-1a,us-east-1b,us-east-1d</code>.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">aws eks describe-cluster --name $cluster_name --region $region \
+  --query cluster.status --output text</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>Returns <code>ACTIVE</code>. In the console, search for <code>EKS</code>, open <strong>Clusters</strong>, and confirm your cluster is listed with status <strong>Active</strong>. If the list is empty, check the region selector.</p>
+        </div>
+        <!-- TODO: capture console screenshots for step 0.7 on AWS: EKS > Clusters list showing Active status, and the cluster Compute tab showing two nodes. Store as aigw-screenshots/aigw-eks-console-*.png -->
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.8 &mdash; Point kubectl at the cluster</span>
+      </div>
+      <div class="collapsible-body">
+        <p><code>eksctl</code> writes the kubeconfig entry for you, so this usually works already. Run the update command anyway, because it is also how you recover if the file is lost or you move to another workstation.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">aws eks update-kubeconfig --name $cluster_name --region $region
+
+kubectl config current-context
+kubectl get nodes</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-warning">
+          <div class="callout-title">Check the context before every destructive command</div>
+          <p><code>kubectl</code> remembers every cluster you have ever connected to and points at whichever was last selected. If you work with more than one cluster, run <code>kubectl config current-context</code> before anything that changes state. Configuring the wrong cluster is the single most common mistake in this phase.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>kubectl get nodes</code> lists two nodes, both <code>Ready</code>, and <code>kubectl config current-context</code> names the cluster you just created. A node stuck in <code>NotReady</code> for more than five minutes usually means the node group could not reach the control plane. <code>kubectl describe node &lt;NAME&gt;</code> names the reason.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─────────────── AKS ─────────────── -->
+  <div class="mgmt-panel" data-plane="aks">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.3 &mdash; Get an Azure subscription and find your way around the portal</span>
+      </div>
+      <div class="collapsible-body">
+        <p>If your organisation already has Azure, ask for Contributor access to a development subscription. If you are starting alone, sign up at <a href="https://azure.microsoft.com/free/" target="_blank" rel="noopener">azure.microsoft.com/free</a>.</p>
+        <p>Sign in at <a href="https://portal.azure.com/" target="_blank" rel="noopener">portal.azure.com</a>. Azure organises things differently from AWS, and two concepts explain most of it.</p>
+        <table>
+          <thead>
+            <tr><th>Concept</th><th>What it does</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Subscription</strong></td><td>The billing and quota boundary. You may have access to several, so every command in this guide has to run against the right one. Step 0.5 sets it explicitly.</td></tr>
+            <tr><td><strong>Resource group</strong></td><td>A named container that holds related resources. Everything you create in this guide goes into one resource group, which makes teardown a single command. There is no AWS equivalent.</td></tr>
+            <tr><td><strong>Search bar</strong></td><td>Top centre. Type <code>Kubernetes services</code> to reach AKS. Faster than the menu.</td></tr>
+            <tr><td><strong>Cloud Shell</strong></td><td>Terminal icon in the top bar. A browser terminal with the Azure CLI, <code>kubectl</code>, and Helm already installed and signed in. A good fallback if local installation gives you trouble.</td></tr>
+          </tbody>
+        </table>
+        <p>Regions exist on Azure too, but they are a property of each resource rather than a global selector, so the portal shows you resources from every region at once. That removes the AWS style "where did it go" problem and replaces it with needing to be deliberate about which region each resource lands in.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>you can sign in, and <strong>Subscriptions</strong> in the portal lists at least one subscription that is <strong>Active</strong>. Note its name or ID; step 0.5 needs it.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.4 &mdash; Install the command line tools</span>
+      </div>
+      <div class="collapsible-body">
+        <p>You need three: the Azure CLI, <code>kubectl</code>, and Helm.</p>
+        <p><strong>macOS</strong>:</p>
+        <div class="code-block">
+          <pre><code class="language-bash">brew install azure-cli kubernetes-cli helm</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p><strong>Linux</strong>, Debian or Ubuntu:</p>
+        <div class="code-block">
+          <pre><code class="language-bash"># Azure CLI
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+# kubectl, installed through the Azure CLI
+sudo az aks install-cli
+
+# Helm
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-note">
+          <div class="callout-title">On Windows, use WSL2</div>
+          <p>Every command in this guide is bash. Install <a href="https://learn.microsoft.com/windows/wsl/install" target="_blank" rel="noopener">WSL2 with Ubuntu</a> and follow the Linux instructions rather than translating to PowerShell.</p>
+        </div>
+        <p>Vendor instructions, if a package name has drifted: <a href="https://learn.microsoft.com/cli/azure/install-azure-cli" target="_blank" rel="noopener">Azure CLI</a>, <a href="https://kubernetes.io/docs/tasks/tools/" target="_blank" rel="noopener">kubectl</a>, <a href="https://helm.sh/docs/intro/install/" target="_blank" rel="noopener">Helm</a>.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">az version
+kubectl version --client
+helm version       # v3.x</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>All three print a version, and Helm reports version 3.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.5 &mdash; Sign in and select your subscription</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">az login
+# Opens a browser. Sign in there, then return to the terminal.
+
+# List what you can see, then pin the one you want
+az account list --output table
+az account set --subscription "&lt;SUBSCRIPTION_NAME_OR_ID&gt;"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Setting the subscription explicitly matters more on Azure than the equivalent step does elsewhere, because the CLI silently uses a default subscription that may not be the one you intend.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">az account show --query "{name:name, id:id, user:user.name}" -o table</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>The subscription named is the one you intend to build in.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.6 &mdash; Confirm you have enough permission</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Two Azure roles matter here, and having only the first is a common way to get stuck in step 3.</p>
+        <ul>
+          <li><strong>Contributor</strong> &mdash; creates the resource group, the cluster, the cache, and the storage account. Enough for steps 0.7 through 2.</li>
+          <li><strong>User Access Administrator</strong>, or <strong>Owner</strong>, or <strong>Role Based Access Control Administrator</strong> &mdash; creates role assignments. Step 3 grants the gateway's managed identity access to your storage account, and a Contributor cannot do that.</li>
+        </ul>
+        <p>If you only hold Contributor, you can still finish this phase. Raise the access request now so it is resolved before you reach step 3.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">az role assignment list \
+  --assignee $(az ad signed-in-user show --query id -o tsv) \
+  --query "[].roleDefinitionName" -o tsv</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>The output includes <code>Owner</code>, or both <code>Contributor</code> and one of the access administrator roles. Subscription level assignments may be inherited from a management group and not appear here, so an empty result is not conclusive. If it is empty, ask your Azure administrator to confirm rather than assuming you are blocked.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.7 &mdash; Create the resource group and the cluster</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The resource group comes first, because on Azure everything has to live inside one.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">RESOURCE_GROUP=aigw-rg
+CLUSTER_NAME=aigw-cluster
+LOCATION=&lt;AZURE_REGION&gt;          # for example eastus, westeurope
+
+az group create \
+  --name ${RESOURCE_GROUP} \
+  --location ${LOCATION}
+
+az aks create \
+  --resource-group ${RESOURCE_GROUP} \
+  --name ${CLUSTER_NAME} \
+  --node-count 2 \
+  --node-vm-size Standard_B2ms \
+  --zones 1 2 \
+  --enable-oidc-issuer \
+  --enable-workload-identity \
+  --generate-ssh-keys</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Expect 5 to 10 minutes for the cluster.</p>
+        <table>
+          <thead>
+            <tr><th>Flag</th><th>Why it is there</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>--node-vm-size Standard_B2ms</code></td><td>Matches the floor in <a href="#requirements">Deployment Requirements</a>: 2 vCPU and 4 GiB.</td></tr>
+            <tr><td><code>--zones 1 2</code></td><td>Spreads the two nodes across Availability Zones. Not every Azure region offers zones; if the command rejects this flag, drop it and accept that the cluster is single zone.</td></tr>
+            <tr><td><code>--enable-oidc-issuer</code> and <code>--enable-workload-identity</code></td><td>These are precisely what step 1.3 applies with <code>az aks update</code>. Setting them at creation means step 1.3 becomes a check rather than a task, and you avoid the node pool restart that enabling them later can trigger.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout callout-note">
+          <div class="callout-title">If the command reports that a resource provider is not registered</div>
+          <p>A new subscription sometimes has not registered the required providers. Register them, wait a minute, and re-run.</p>
+          <div class="code-block">
+            <pre><code class="language-bash">az provider register --namespace Microsoft.ContainerService
+az provider register --namespace Microsoft.Network
+az provider register --namespace Microsoft.Compute</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">az aks show --name ${CLUSTER_NAME} --resource-group ${RESOURCE_GROUP} \
+  --query provisioningState -o tsv</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>Returns <code>Succeeded</code>. In the portal, search for <strong>Kubernetes services</strong> and confirm the cluster is listed with status <strong>Succeeded</strong>.</p>
+        </div>
+        <!-- TODO: capture portal screenshots for step 0.7 on Azure: Kubernetes services list showing Succeeded, and the cluster Node pools blade showing two nodes. Store as aigw-screenshots/aigw-aks-portal-*.png -->
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.8 &mdash; Point kubectl at the cluster</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">az aks get-credentials \
+  --resource-group ${RESOURCE_GROUP} \
+  --name ${CLUSTER_NAME}
+
+kubectl config current-context
+kubectl get nodes</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-warning">
+          <div class="callout-title">Check the context before every destructive command</div>
+          <p><code>kubectl</code> points at whichever cluster was selected last. If you work with more than one, run <code>kubectl config current-context</code> before anything that changes state.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>kubectl get nodes</code> lists two nodes, both <code>Ready</code>, and the current context names your cluster. A node stuck in <code>NotReady</code> for more than five minutes needs <code>kubectl describe node &lt;NAME&gt;</code> to explain itself.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─────────────── GKE ─────────────── -->
+  <div class="mgmt-panel" data-plane="gke">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.3 &mdash; Get a Google Cloud project and find your way around the console</span>
+      </div>
+      <div class="collapsible-body">
+        <p>If your organisation already has Google Cloud, ask for Editor access to a development project. If you are starting alone, sign up at <a href="https://console.cloud.google.com/freetrial" target="_blank" rel="noopener">console.cloud.google.com/freetrial</a>.</p>
+        <p>Sign in at <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">console.cloud.google.com</a>. Three things govern everything else.</p>
+        <table>
+          <thead>
+            <tr><th>Concept</th><th>What it does</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Project</strong></td><td>The container for all resources, and the equivalent of an AWS account boundary rather than a resource group. The project selector sits in the top bar next to the logo, and picking the wrong project is the Google Cloud version of picking the wrong AWS region.</td></tr>
+            <tr><td><strong>Billing account</strong></td><td>Must be linked to the project or every create command fails. A new project created outside a trial often has no billing link, and the error message does not always make that obvious.</td></tr>
+            <tr><td><strong>APIs</strong></td><td>Each service is switched off until you enable its API. This has no equivalent on AWS and catches people constantly. Step 0.6 enables the two you need.</td></tr>
+            <tr><td><strong>Cloud Shell</strong></td><td>Terminal icon in the top bar. Has gcloud, kubectl, and Helm preinstalled and already signed in. A good fallback.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p>you can sign in, the project selector shows a project you intend to use, and <strong>Billing</strong> shows that project linked to an active billing account.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.4 &mdash; Install the command line tools</span>
+      </div>
+      <div class="collapsible-body">
+        <p>You need the gcloud CLI, <code>kubectl</code>, Helm, and one extra component that is easy to miss.</p>
+        <p><strong>macOS</strong>:</p>
+        <div class="code-block">
+          <pre><code class="language-bash">brew install --cask google-cloud-sdk
+brew install kubernetes-cli helm
+gcloud components install gke-gcloud-auth-plugin</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p><strong>Linux</strong>:</p>
+        <div class="code-block">
+          <pre><code class="language-bash"># gcloud CLI
+curl -sSL https://sdk.cloud.google.com | bash
+exec -l $SHELL
+
+# kubectl and the auth plugin, both through gcloud
+gcloud components install kubectl gke-gcloud-auth-plugin
+
+# Helm
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-warning">
+          <div class="callout-title"><code>gke-gcloud-auth-plugin</code> is required, and its absence produces a confusing error</div>
+          <p>Without it, <code>kubectl</code> fails against a GKE cluster with a message about no auth provider or an executable not being found, which reads like a broken kubeconfig rather than a missing package. Install it now, in step 0.4, rather than debugging it in step 0.8.</p>
+        </div>
+        <div class="callout callout-note">
+          <div class="callout-title">On Windows, use WSL2</div>
+          <p>Every command in this guide is bash. Install <a href="https://learn.microsoft.com/windows/wsl/install" target="_blank" rel="noopener">WSL2 with Ubuntu</a> and follow the Linux instructions.</p>
+        </div>
+        <p>Vendor instructions: <a href="https://cloud.google.com/sdk/docs/install" target="_blank" rel="noopener">gcloud CLI</a>, <a href="https://kubernetes.io/docs/tasks/tools/" target="_blank" rel="noopener">kubectl</a>, <a href="https://helm.sh/docs/intro/install/" target="_blank" rel="noopener">Helm</a>.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">gcloud version
+kubectl version --client
+helm version
+gke-gcloud-auth-plugin --version</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>All four print a version. The fourth is the one people skip, and it is the one that breaks step 0.8.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.5 &mdash; Sign in and select your project</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">gcloud auth login
+# Opens a browser. Sign in there, then return to the terminal.
+
+PROJECT_ID_A=&lt;PROJECT_ID&gt;         # the project ID, not the display name
+REGION=&lt;GKE_CLUSTER_REGION&gt;      # for example us-central1
+
+gcloud config set project ${PROJECT_ID_A}
+gcloud config set compute/region ${REGION}
+
+# Credentials for tools and libraries, which is separate from the CLI sign in
+gcloud auth application-default login</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-note">
+          <div class="callout-title">Project ID is not project name</div>
+          <p>The display name is what you typed at creation. The project ID is the globally unique string Google derived from it, often with digits appended, and it is what every command wants. Read it from the project selector in the console or from <code>gcloud projects list</code>.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">gcloud config list
+gcloud auth list</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>The project shown matches <code>${PROJECT_ID_A}</code> and your account is marked as active.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.6 &mdash; Enable the APIs and confirm your permission</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Nothing works until the APIs are on. Enabling one takes a few seconds and is safe to repeat.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">gcloud services enable \
+  container.googleapis.com \
+  compute.googleapis.com \
+  iam.googleapis.com \
+  storage.googleapis.com</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>For permission, the <code>roles/container.admin</code> and <code>roles/compute.admin</code> roles cover this phase, and step 3 additionally needs <code>roles/iam.serviceAccountAdmin</code> to bind a Kubernetes service account to a Google service account. In a personal project, <code>roles/owner</code> covers all of it.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">gcloud services list --enabled --filter="name:container.googleapis.com OR name:compute.googleapis.com" \
+  --format="value(config.name)"</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>Both API names are listed. If the enable command failed with a billing error, the project is not linked to a billing account. Fix that in the console under <strong>Billing</strong> before continuing.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.7 &mdash; Create the cluster</span>
+      </div>
+      <div class="collapsible-body">
+        <p>This creates a regional cluster with Workload Identity Federation already enabled, which is what step 1.3 checks for.</p>
+        <div class="code-block">
+          <pre><code class="language-bash">CLUSTER_NAME=aigw-cluster
+
+gcloud container clusters create ${CLUSTER_NAME} \
+  --location=${REGION} \
+  --workload-pool=${PROJECT_ID_A}.svc.id.goog \
+  --machine-type=e2-standard-2 \
+  --num-nodes=1 \
+  --enable-ip-alias</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Expect 5 to 10 minutes.</p>
+        <table>
+          <thead>
+            <tr><th>Flag</th><th>Why it is there</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>--location=${REGION}</code></td><td>A region rather than a single zone, so GKE spreads nodes across the zones in that region. Later steps in this guide use <code>--region</code>, which remains valid for regional clusters.</td></tr>
+            <tr><td><code>--num-nodes=1</code></td><td>On a regional cluster this is nodes <em>per zone</em>, not in total. A three zone region therefore gives you three nodes, which satisfies the two node floor. Check the actual count in the verify step rather than assuming.</td></tr>
+            <tr><td><code>--machine-type=e2-standard-2</code></td><td>2 vCPU and 8 GiB, which clears the floor in <a href="#requirements">Deployment Requirements</a>.</td></tr>
+            <tr><td><code>--workload-pool</code></td><td>Turns on Workload Identity Federation. This is what step 1.3 verifies and what step 3 builds on.</td></tr>
+            <tr><td><code>--enable-ip-alias</code></td><td>VPC-native networking, which the load balancer path in step 6 requires.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout callout-note">
+          <div class="callout-title">This uses the default VPC</div>
+          <p>Without a <code>--network</code> flag the cluster lands in the project's <code>default</code> VPC. Step 1.4 asks for <code>VPC_NAME</code> when it creates the proxy subnet, so set <code>VPC_NAME=default</code> unless you created the cluster in a VPC of your own.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <div class="code-block">
+            <pre><code class="language-bash">gcloud container clusters describe ${CLUSTER_NAME} --location=${REGION} \
+  --format="value(status)"</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>Returns <code>RUNNING</code>. In the console, open <strong>Kubernetes Engine</strong> and then <strong>Clusters</strong>, and confirm a green tick next to your cluster. If the page offers to enable the API, step 0.6 did not complete.</p>
+        </div>
+        <!-- TODO: capture console screenshots for step 0.7 on GCP: Kubernetes Engine > Clusters list showing the green status, and the Nodes tab showing the node count. Store as aigw-screenshots/aigw-gke-console-*.png -->
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>0.8 &mdash; Point kubectl at the cluster</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code class="language-bash">gcloud container clusters get-credentials ${CLUSTER_NAME} --location=${REGION}
+
+kubectl config current-context
+kubectl get nodes</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-note">
+          <div class="callout-title">If kubectl reports a missing auth provider or plugin</div>
+          <p>That is the <code>gke-gcloud-auth-plugin</code> from step 0.4. Install it, then re-run <code>get-credentials</code> so the kubeconfig entry is rewritten to use it.</p>
+          <div class="code-block">
+            <pre><code class="language-bash">gcloud components install gke-gcloud-auth-plugin
+gcloud container clusters get-credentials ${CLUSTER_NAME} --location=${REGION}</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verify</div>
+          <p><code>kubectl get nodes</code> lists at least two nodes, all <code>Ready</code>, spread across more than one zone, and the current context names your cluster. If you see only one node, the region has a single zone and you should recreate with <code>--num-nodes=2</code>.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">You now have what step 1 assumes</div>
+  <p>A running cluster with at least two nodes, a terminal signed in to your cloud, and <code>kubectl</code> pointed at the right place. Creating the cluster the way this phase does also completes some of what follows.</p>
+  <table>
+    <thead>
+      <tr><th>Later step</th><th>State after Phase 0</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1.1 Set your environment variables</td><td>Still to do. It re-declares the same variables, which matters if you open a new shell, and it creates the <code>portkeyai</code> namespace and the <code>values.yaml</code> working directory.</td></tr>
+      <tr><td>1.2 Confirm node count and sizing</td><td>Already satisfied. Run the check anyway; it takes a second.</td></tr>
+      <tr><td>1.3 Identity prerequisites</td><td>Already done on all three platforms. <code>--with-oidc</code> on EKS, <code>--enable-oidc-issuer</code> with <code>--enable-workload-identity</code> on AKS, <code>--workload-pool</code> on GKE. Treat step 1.3 as a check.</td></tr>
+      <tr><td>1.4 Ingress prerequisites</td><td>Still to do on every platform. The AWS Load Balancer Controller, the AKS application routing add-on, and the GKE proxy subnet are all separate installs.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
      1. Prepare the Cluster
      ══════════════════════════════════════════════════════════════ -->
 <h2 id="cluster">1. Prepare the Cluster</h2>
 
 <p>The chart assumes a cluster that already exists, already has two or more worker nodes spread across zones, and already has the platform features that identity and ingress depend on. Turning those on afterwards usually means recreating something, so do this first.</p>
+
+<p>If you built your cluster in <a href="#start-here">step 0</a>, the identity prerequisite in step 1.3 is already satisfied and you only need to confirm it. Step 1.1 and the ingress prerequisite in step 1.4 still apply.</p>
 
 <div class="mgmt-tabs" data-tab-group="platform">
   <div class="mgmt-tab-bar">
