@@ -471,24 +471,38 @@ document.addEventListener('click', (e) => {
 }());
 
 // ── Global Navigation ──────────────────────────────────────────
+//
+// Entries are read in order. An entry with `section` draws a band heading and
+// holds no links; everything after it belongs to that band until the next one.
+// An entry with `id` is a collapsible group.
+//
+// Two rules keep the rail readable as it grows:
+//
+//   1. A group holds one product family. AIRS once held four (AIRS proper, AI
+//      Gateway, AI Integrations, Hybrid Data Plane) behind `label` dividers,
+//      which put 38% of the rail inside a single group and made those dividers
+//      do a job they are not visually strong enough for.
+//   2. Inside a group, `label` divides a run of items and `sub` marks items
+//      belonging to the link above them. Pick whichever matches the content and
+//      do not use one to imitate the other.
 const GLOBAL_NAV_GROUPS = [
-  { id: 'vm-cloud', label: 'VM-Series Cloud', links: [
+  { section: 'Network Security' },
+  { id: 'vm-series', label: 'VM-Series', links: [
     { t: 'AWS', h: 'guides/aws/index.html' },
-    { t: 'VM-Series Deploy', h: 'guides/aws/vm-series-deployment.html', sub: true },
-    { t: 'Panorama Deploy', h: 'guides/aws/panorama-deployment.html', sub: true },
-    { t: 'AWS Plugin Monitor', h: 'guides/aws/aws-plugin-monitoring.html', sub: true },
+    { t: 'Deploy', h: 'guides/aws/vm-series-deployment.html', sub: true },
+    { t: 'Panorama', h: 'guides/aws/panorama-deployment.html', sub: true },
+    { t: 'Plugin Monitor', h: 'guides/aws/aws-plugin-monitoring.html', sub: true },
     { t: 'Azure', h: 'guides/azure/index.html' },
-    { t: 'VM-Series Deploy', h: 'guides/azure/vm-series-deployment.html', sub: true },
-    { t: 'VM-Series HA', h: 'guides/azure/vm-series-ha.html', sub: true },
-    { t: 'Panorama Deploy', h: 'guides/azure/panorama-deployment.html', sub: true },
+    { t: 'Deploy', h: 'guides/azure/vm-series-deployment.html', sub: true },
+    { t: 'HA', h: 'guides/azure/vm-series-ha.html', sub: true },
+    { t: 'Panorama', h: 'guides/azure/panorama-deployment.html', sub: true },
     { t: 'GCP', h: 'guides/gcp/index.html' },
-    { t: 'VM-Series Deploy', h: 'guides/gcp/vm-series-deployment.html', sub: true },
-    { t: 'Panorama Deploy', h: 'guides/gcp/panorama-deployment.html', sub: true },
+    { t: 'Deploy', h: 'guides/gcp/vm-series-deployment.html', sub: true },
+    { t: 'Panorama', h: 'guides/gcp/panorama-deployment.html', sub: true },
     { t: 'OCI', h: 'guides/oci/index.html' },
-    { t: 'VM-Series Deploy', h: 'guides/oci/vm-series-deployment.html', sub: true },
-    { t: 'Panorama Deploy', h: 'guides/oci/panorama-deployment.html', sub: true },
-    { label: 'Bootstrap' },
-    { t: 'VM-Series Bootstrap', h: 'guides/bootstrap/vm-series-bootstrap.html', sub: true },
+    { t: 'Deploy', h: 'guides/oci/vm-series-deployment.html', sub: true },
+    { t: 'Panorama', h: 'guides/oci/panorama-deployment.html', sub: true },
+    { t: 'Bootstrap', h: 'guides/bootstrap/vm-series-bootstrap.html' },
   ]},
   { id: 'cngfw', label: 'Cloud NGFW', links: [
     { t: 'Overview & Deploy', h: 'guides/cngfw/cloud-ngfw-deployment.html' },
@@ -496,57 +510,54 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'Azure Native', h: 'guides/cngfw/cloud-ngfw-azure-native.html', sub: true },
     { t: 'Azure', h: 'guides/cngfw/cloud-ngfw-azure.html', sub: true },
   ]},
-  { id: 'airs', label: 'AIRS', links: [
-    { t: 'Overview', h: 'guides/airs/index.html' },
-    { label: 'Planning Tools' },
-    { t: 'Engagement Planner', h: 'guides/airs-planner/index.html', sub: true },
-    { t: 'Network Intercept', h: 'guides/airs/airs-network-intercept.html', sub: true },
-    { t: 'Cloud Deploy', h: 'guides/airs/airs-cloud-deployment.html', sub: true },
-    { t: 'API Intercept', h: 'guides/airs/airs-api-intercept.html', sub: true },
-    { t: 'Kubernetes', h: 'guides/airs/airs-k8s-protection.html', sub: true },
-    { t: 'Microperimeter', h: 'guides/airs/airs-microperimeter.html', sub: true },
-    { t: 'Model Security', h: 'guides/airs-model/airs-model-security.html', sub: true },
-    { t: 'Red Teaming', h: 'guides/airs-red/airs-red-teaming.html', sub: true },
-    { label: 'AI Gateway' },
-    { t: 'Overview', h: 'guides/ai-gateway/index.html', sub: true },
-    { t: 'Core Deployment', h: 'guides/ai-gateway/ai-gateway-deployment.html', sub: true },
-    { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html', sub: true },
-    { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html', sub: true },
-    { label: 'Hybrid Data Plane' },
-    { t: 'Hybrid Infrastructure', h: 'guides/ai-gateway/hybrid-infrastructure.html', sub: true },
-    { t: 'EKS, AKS, and GKE', h: 'guides/ai-gateway/kubernetes-deployment.html', sub: true },
-    { t: 'ECS and Container Apps', h: 'guides/ai-gateway/serverless-deployment.html', sub: true },
-    { label: 'AI Integrations' },
-    { t: 'Overview', h: 'guides/airs-integrations/index.html', sub: true },
-    { t: 'Claude Code', h: 'guides/airs-integrations/claude-code.html', sub: true },
-    { t: 'Codex CLI', h: 'guides/airs-integrations/codex-cli.html', sub: true },
-    { t: 'GitHub Actions', h: 'guides/airs-integrations/github-actions.html', sub: true },
-    { t: 'IDE Assistants', h: 'guides/airs-integrations/ide-assistants.html', sub: true },
-    { t: 'Jenkins', h: 'guides/airs-integrations/jenkins.html', sub: true },
-    { t: 'Kong', h: 'guides/airs-integrations/kong.html', sub: true },
-    { t: 'LiteLLM', h: 'guides/airs-integrations/litellm.html', sub: true },
-    { t: 'n8n', h: 'guides/airs-integrations/n8n.html', sub: true },
-    { t: 'TrueFoundry', h: 'guides/airs-integrations/truefoundry.html', sub: true },
-    { t: 'Apigee', h: 'guides/airs-integrations/apigee.html', sub: true },
-    { t: 'Azure APIM', h: 'guides/airs-integrations/azure-apim.html', sub: true },
-  ]},
-  { id: 'labs', label: 'Hands-On Labs', links: [
-    { t: 'AIRS MLOps Lab', h: 'labs/airs-mlops/index.html' },
-    { t: 'How the Lab Works', h: 'labs/airs-mlops/how-it-works.html', sub: true },
-    { t: 'Student Setup', h: 'labs/airs-mlops/student-setup.html', sub: true },
-    { t: 'Modules', h: 'labs/airs-mlops/modules.html', sub: true },
-    { label: 'Español' },
-    { t: 'AIRS MLOps Lab (ES)', h: 'labs/airs-mlops/es/index.html', sub: true },
-    { label: 'Português' },
-    { t: 'AIRS MLOps Lab (PT)', h: 'labs/airs-mlops/pt/index.html', sub: true },
-  ]},
   { id: 'globalprotect', label: 'GlobalProtect', links: [
     { t: 'Overview', h: 'globalprotect/index.html' },
     { t: 'Linear Deploy Guide', h: 'globalprotect/linear-guide.html', sub: true },
   ]},
-  { id: 'specialty', label: 'Specialty Guides', links: [
-    { t: 'Branch NGFW ZTP+HA+SDWAN', h: 'guides/branch/branch-ngfw-ztp-ha-sdwan.html' },
+  { id: 'branch', label: 'Branch NGFW', links: [
+    { t: 'ZTP, HA, and SD-WAN', h: 'guides/branch/branch-ngfw-ztp-ha-sdwan.html' },
   ]},
+
+  { section: 'AI Security' },
+  { id: 'airs', label: 'AIRS', links: [
+    { t: 'Overview', h: 'guides/airs/index.html' },
+    { t: 'Engagement Planner', h: 'guides/airs-planner/index.html' },
+    { t: 'Network Intercept', h: 'guides/airs/airs-network-intercept.html' },
+    { t: 'Cloud Deploy', h: 'guides/airs/airs-cloud-deployment.html' },
+    { t: 'API Intercept', h: 'guides/airs/airs-api-intercept.html' },
+    { t: 'Kubernetes', h: 'guides/airs/airs-k8s-protection.html' },
+    { t: 'Microperimeter', h: 'guides/airs/airs-microperimeter.html' },
+    { t: 'Model Security', h: 'guides/airs-model/airs-model-security.html' },
+    { t: 'Red Teaming', h: 'guides/airs-red/airs-red-teaming.html' },
+  ]},
+  { id: 'ai-gateway', label: 'AI Gateway', links: [
+    { t: 'Overview', h: 'guides/ai-gateway/index.html' },
+    { t: 'Core Deployment', h: 'guides/ai-gateway/ai-gateway-deployment.html' },
+    { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html' },
+    { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html' },
+    { label: 'Hybrid Data Plane' },
+    { t: 'Hybrid Infrastructure', h: 'guides/ai-gateway/hybrid-infrastructure.html', sub: true },
+    { t: 'EKS, AKS, and GKE', h: 'guides/ai-gateway/kubernetes-deployment.html', sub: true },
+    { t: 'ECS and Container Apps', h: 'guides/ai-gateway/serverless-deployment.html', sub: true },
+  ]},
+  // Overview first, then alphabetical. Apigee and Azure APIM arrived last and
+  // were appended after TrueFoundry, where nobody scanning the list finds them.
+  { id: 'ai-integrations', label: 'AI Integrations', links: [
+    { t: 'Overview', h: 'guides/airs-integrations/index.html' },
+    { t: 'Apigee', h: 'guides/airs-integrations/apigee.html' },
+    { t: 'Azure APIM', h: 'guides/airs-integrations/azure-apim.html' },
+    { t: 'Claude Code', h: 'guides/airs-integrations/claude-code.html' },
+    { t: 'Codex CLI', h: 'guides/airs-integrations/codex-cli.html' },
+    { t: 'GitHub Actions', h: 'guides/airs-integrations/github-actions.html' },
+    { t: 'IDE Assistants', h: 'guides/airs-integrations/ide-assistants.html' },
+    { t: 'Jenkins', h: 'guides/airs-integrations/jenkins.html' },
+    { t: 'Kong', h: 'guides/airs-integrations/kong.html' },
+    { t: 'LiteLLM', h: 'guides/airs-integrations/litellm.html' },
+    { t: 'n8n', h: 'guides/airs-integrations/n8n.html' },
+    { t: 'TrueFoundry', h: 'guides/airs-integrations/truefoundry.html' },
+  ]},
+
+  { section: 'Platform & Identity' },
   { id: 'scm', label: 'SCM Onboarding', links: [
     { t: 'Firewall Onboarding', h: 'scm-onboarding/index.html' },
     { t: 'Okta SSO', h: 'scm-onboarding/okta-sso.html', sub: true },
@@ -555,7 +566,9 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'CIE Implementation', h: 'guides/cloud-identity-engine/cie-implementation.html' },
     { t: 'Cloud Tags', h: 'guides/cloud-identity-engine/cie-cloud-tags.html', sub: true },
   ]},
-  { id: 'panos-cli', label: 'PanOS CLI', links: [
+
+  { section: 'Reference' },
+  { id: 'panos-cli', label: 'PAN-OS CLI', links: [
     { t: 'CLI Reference', h: 'guides/panorama-cli/firewall-cli-reference.html' },
     { t: 'FW Configuration', h: 'guides/panorama-cli/firewall-cli-configuration.html', sub: true },
     { t: 'FW Operational', h: 'guides/panorama-cli/firewall-cli-operational.html', sub: true },
@@ -567,6 +580,18 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'Panorama Config', h: 'guides/panorama-cli/panorama-cli-configuration.html', sub: true },
     { t: 'Panorama Ops', h: 'guides/panorama-cli/panorama-cli-operational.html', sub: true },
   ]},
+
+  { section: 'Labs' },
+  { id: 'labs', label: 'AIRS MLOps Lab', links: [
+    { t: 'Overview', h: 'labs/airs-mlops/index.html' },
+    { t: 'How the Lab Works', h: 'labs/airs-mlops/how-it-works.html', sub: true },
+    { t: 'Student Setup', h: 'labs/airs-mlops/student-setup.html', sub: true },
+    { t: 'Modules', h: 'labs/airs-mlops/modules.html', sub: true },
+    { label: 'Español' },
+    { t: 'AIRS MLOps Lab (ES)', h: 'labs/airs-mlops/es/index.html', sub: true },
+    { label: 'Português' },
+    { t: 'AIRS MLOps Lab (PT)', h: 'labs/airs-mlops/pt/index.html', sub: true },
+  ]},
 ];
 
 function initGlobalNav() {
@@ -577,24 +602,42 @@ function initGlobalNav() {
   var basePath = nav.dataset.basePath || '../..';
   var currentHref = window.location.href.split('?')[0].split('#')[0];
 
+  function resolve(h) {
+    return new URL(basePath + '/' + h, window.location.href).href.split('?')[0].split('#')[0];
+  }
+
   var activeGroupId = null;
   GLOBAL_NAV_GROUPS.forEach(function(group) {
+    if (group.section) return;
     group.links.forEach(function(link) {
       if (link.label) return;
-      var resolved = new URL(basePath + '/' + link.h, window.location.href).href.split('?')[0].split('#')[0];
-      if (resolved === currentHref) activeGroupId = group.id;
+      if (resolve(link.h) === currentHref) activeGroupId = group.id;
     });
   });
 
   var html = '<div class="gnav-home"><a href="' + basePath + '/index.html">&#8962; Home</a></div>';
 
   GLOBAL_NAV_GROUPS.forEach(function(group) {
+    if (group.section) {
+      html += '<span class="gnav-section">' + group.section + '</span>';
+      return;
+    }
+
+    // Collapsed unless this group holds the current page, or the reader opened
+    // it before. Opening everything by default put 2,377px of rail behind a
+    // ~930px viewport, so the groups below the fold were never seen at all.
     var savedState = localStorage.getItem('gnav-' + group.id);
-    var isOpen = (group.id === activeGroupId) || (savedState === 'open') || (savedState === null);
+    var isOpen = group.id === activeGroupId
+      ? savedState !== 'closed'
+      : savedState === 'open';
+
+    var count = group.links.filter(function(link) { return !link.label; }).length;
+
     html += '<div class="gnav-group' + (isOpen ? ' open' : '') + '" data-gnav-id="' + group.id + '">';
-    html += '<div class="gnav-group-header">';
-    html += '<span class="gnav-chevron">&#9658;</span> ' + group.label;
-    html += '</div>';
+    html += '<button type="button" class="gnav-group-header" aria-expanded="' + isOpen + '">';
+    html += '<span class="gnav-chevron" aria-hidden="true">&#9658;</span> ' + group.label;
+    html += '<span class="gnav-count">' + count + '</span>';
+    html += '</button>';
     html += '<div class="gnav-group-body">';
     group.links.forEach(function(link) {
       if (link.label) {
@@ -602,8 +645,7 @@ function initGlobalNav() {
         return;
       }
       var href = basePath + '/' + link.h;
-      var resolved = new URL(href, window.location.href).href.split('?')[0].split('#')[0];
-      var isActive = resolved === currentHref;
+      var isActive = resolve(link.h) === currentHref;
       var cls = (link.sub ? 'gnav-sub' : '') + (isActive ? ' active' : '');
       html += '<a href="' + href + '"' + (cls ? ' class="' + cls.trim() + '"' : '') + '>' + link.t + '</a>';
     });
@@ -612,14 +654,23 @@ function initGlobalNav() {
 
   nav.innerHTML = html;
 
+  // Headers are buttons, so Enter and Space arrive here as clicks and the
+  // focus ring comes for free. They used to be divs, which left every group
+  // unopenable without a mouse.
   nav.querySelectorAll('.gnav-group-header').forEach(function(header) {
     header.addEventListener('click', function() {
       var group = header.parentElement;
-      var id = group.dataset.gnavId;
       var isOpen = group.classList.toggle('open');
-      localStorage.setItem('gnav-' + id, isOpen ? 'open' : 'closed');
+      header.setAttribute('aria-expanded', String(isOpen));
+      localStorage.setItem('gnav-' + group.dataset.gnavId, isOpen ? 'open' : 'closed');
     });
   });
+
+  // Keep the open group in view when it sits below the fold on a short window.
+  var active = nav.querySelector('.gnav-group-body a.active');
+  if (active && active.offsetTop > nav.clientHeight) {
+    nav.scrollTop = active.offsetTop - nav.clientHeight / 2;
+  }
 }
 
 document.addEventListener('DOMContentLoaded', initGlobalNav);

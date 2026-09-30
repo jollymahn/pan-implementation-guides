@@ -39,6 +39,13 @@ var NEWS_ITEMS = [
   {
     badge: "Updated",
     date: "2026-09-29",
+    title: "Site navigation regrouped into five sections",
+    href: "index.html",
+    tags: "Collapsed by default, AIRS split into three, Keyboard operable"
+  },
+  {
+    badge: "Updated",
+    date: "2026-09-29",
     title: "AIRS guides carry their own Prerequisites",
     href: "guides/airs/airs-cloud-deployment.html",
     tags: "Phases 1-3 now inline, No hop to the intercept guide, Shared content"
