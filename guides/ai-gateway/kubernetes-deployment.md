@@ -1409,6 +1409,50 @@ dataservice:
 
 > **Warning: `SERVER_MODE: "all"` forces host-based ingress.** Running both gateways behind one load balancer requires `ingress.hostBased: true`, a hostname for each gateway, and two DNS records. Decide this before step 6, because switching later means rebuilding the ingress and the DNS records.
 
+### 4.5 &mdash; Service type and health probes (all platforms)
+
+Two chart defaults are worth setting deliberately rather than inheriting. Both are visible in the chart's `values.yaml`, and neither is called out on the platform deployment pages.
+
+> **Warning: always set `service.type` explicitly.** The chart ships `service.type: NodePort`. If you leave it out, Kubernetes opens a high-numbered port on every node in the cluster and forwards it to the gateway, so anything that can reach a node IP reaches the gateway directly. That path skips your ingress, and with it the TLS you configure in step 6, while the gateway API key still travels as a bearer header in plain HTTP. Every example in step 6 sets `type:` explicitly for this reason: `ClusterIP` when an Ingress fronts the gateway, `LoadBalancer` when the Service itself is the entry point.
+
+The chart also defines liveness and readiness probes against `/v1/health` on the gateway port, so you do not need to write them. What you may want to change is the timing:
+
+```yaml
+service:
+  type: ClusterIP        # or LoadBalancer; never inherit the NodePort default
+  port: 8787
+
+livenessProbe:
+  httpGet:
+    path: /v1/health     # port omitted: the chart targets the active server port
+  initialDelaySeconds: 5
+  periodSeconds: 10      # chart default is 60
+  timeoutSeconds: 3
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /v1/health
+  initialDelaySeconds: 5
+  periodSeconds: 10      # chart default is 60
+  timeoutSeconds: 3
+  successThreshold: 1
+  failureThreshold: 3
+```
+
+At the chart's 60-second period and a failure threshold of 3, both probes take roughly two minutes to react. A wedged pod keeps its place in the Service endpoints and keeps taking requests for that whole window. Dropping the period to 10 seconds cuts it to about 30 seconds at a negligible cost, since `/v1/health` is a local check.
+
+The chart defines no `startupProbe`. With liveness on the same endpoint, a pod that is slow to start gets restarted at around the two-minute mark and then restarts again on the next attempt. If your first sync with the management plane is slow, or the node is pulling the image cold, add a `startupProbe` on `/v1/health` with a high `failureThreshold`: Kubernetes suspends liveness until the startup probe passes, so a slow start no longer looks like a failure.
+
+If you enabled the Data Service in step 4.4, note that it uses a different endpoint: `/health` on port `8081`, not `/v1/health` on `8787`. The chart already ships startup, liveness, and readiness probes for it on a 10-second period, so there is nothing to tune there.
+
+> **Verify.** After the install in step 5, confirm the Service type is what you set and that no unexpected node port was allocated:
+>
+> ```bash
+> kubectl get svc -n $namespace -o custom-columns=NAME:.metadata.name,TYPE:.spec.type,PORTS:.spec.ports[*].port,NODEPORTS:.spec.ports[*].nodePort
+> ```
+>
+> The `NODEPORTS` column reads `<none>` on a `ClusterIP` Service. A number there on a Service you expected to be internal means the gateway is reachable on every node.
+
 ---
 
 ## 5. Install the Chart
@@ -2017,7 +2061,9 @@ helm uninstall portkey-ai --namespace $namespace
 | `54.81.226.149`, `34.200.113.35`, `44.221.117.129` | Management plane source addresses, published for an inbound path AIRS does not support | Do not allow them; see 7.4 |
 | `8787` | Gateway container port and the default `PORT` | All platforms |
 | `8788` | MCP gateway container port | `SERVER_MODE: "mcp"` or `"all"` |
-| `/v1/health` | Health check path for every load balancer | Step 6 |
+| `8081` | Data Service port, used only by its own probes | `dataservice.enabled: true` |
+| `/v1/health` | Health check path for every load balancer, and for the chart's gateway probes | Steps 4.5 and 6 |
+| `/health` | Data Service health path on port `8081`, not the gateway's | Step 4.5 |
 
 ### Platform differences
 

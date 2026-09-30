@@ -608,7 +608,9 @@ terraform apply
 >   --command "curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8787/v1/health"
 > ```
 >
-> An HTTP status in the 200 range means the process is serving. ECS Exec has to be enabled on the service for this to work; if it is not, read the same answer out of the target group's health check status in the EC2 console. <!-- TODO: verify the gateway's health endpoint path; not published in aws/ecs.md -->
+> An HTTP status in the 200 range means the process is serving. ECS Exec has to be enabled on the service for this to work; if it is not, read the same answer out of the target group's health check status in the EC2 console.
+>
+> `/v1/health` on the gateway port is the endpoint the image serves. The ECS page does not state it, but the Helm chart for the same gateway image points its own liveness and readiness probes at that path, so use it for the target group health check as well as for this manual test.
 
 ### B. Azure Container Apps
 

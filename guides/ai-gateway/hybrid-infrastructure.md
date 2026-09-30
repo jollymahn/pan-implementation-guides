@@ -546,7 +546,7 @@ These are not documented anywhere in the published material. Each one changes a 
 - **Region and data residency** &mdash; can the SCM tenant be placed in the same region as the data plane, and does hybrid satisfy EU data residency obligations?
 - **Upgrade lifecycle** &mdash; supported Kubernetes version range, chart compatibility matrix, minimum data plane version for sync, deprecation policy, and rollback safety.
 - **Throughput sizing** &mdash; requests per second at the published node and task sizes, and how that scales with concurrency and payload size.
-- **Air-gapped** &mdash; is there a supported fully disconnected mode beyond the `LOG_STORE: control_plane` references?
+- **Air-gapped** &mdash; is there a supported fully disconnected mode beyond the `LOG_STORE: control_plane` references? Hybrid is not it: the data plane holds a local cache and keeps serving through a management plane outage, but it still requires the outbound link. The nearest thing that exists upstream is a second chart, `portkey-app`, which deploys the management plane into your own environment as a licensed add-on. Ask whether Palo Alto Networks sells and supports that under Prisma AIRS, because it is a different product from the one this guide covers.
 - **Streaming and inspection** &mdash; behaviour of streaming responses through an inspecting proxy, and any published position on TLS inspection of the management plane path.
 
 ### Source documentation

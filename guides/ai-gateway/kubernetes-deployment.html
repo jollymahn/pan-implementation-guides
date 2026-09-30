@@ -2087,6 +2087,62 @@ volumeMounts:
   </div>
 </div>
 
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.5 &mdash; Service type and health probes (all platforms)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two chart defaults are worth setting deliberately rather than inheriting. Both are visible in the chart's <code>values.yaml</code>, and neither is called out on the platform deployment pages.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Always set <code>service.type</code> explicitly</div>
+      <p>The chart ships <code>service.type: NodePort</code>. If you leave it out, Kubernetes opens a high-numbered port on every node in the cluster and forwards it to the gateway, so anything that can reach a node IP reaches the gateway directly. That path skips your ingress, and with it the TLS you configure in step 6, while the gateway API key still travels as a bearer header in plain HTTP. Every example in step 6 sets <code>type:</code> explicitly for this reason: <code>ClusterIP</code> when an Ingress fronts the gateway, <code>LoadBalancer</code> when the Service itself is the entry point.</p>
+    </div>
+
+    <p>The chart also defines liveness and readiness probes against <code>/v1/health</code> on the gateway port, so you do not need to write them. What you may want to change is the timing:</p>
+
+    <div class="code-block">
+      <pre><code class="language-yaml">service:
+  type: ClusterIP        # or LoadBalancer; never inherit the NodePort default
+  port: 8787
+
+livenessProbe:
+  httpGet:
+    path: /v1/health     # port omitted: the chart targets the active server port
+  initialDelaySeconds: 5
+  periodSeconds: 10      # chart default is 60
+  timeoutSeconds: 3
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /v1/health
+  initialDelaySeconds: 5
+  periodSeconds: 10      # chart default is 60
+  timeoutSeconds: 3
+  successThreshold: 1
+  failureThreshold: 3</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>At the chart's 60-second period and a failure threshold of 3, both probes take roughly two minutes to react. A wedged pod keeps its place in the Service endpoints and keeps taking requests for that whole window. Dropping the period to 10 seconds cuts it to about 30 seconds at a negligible cost, since <code>/v1/health</code> is a local check.</p>
+
+    <p>The chart defines no <code>startupProbe</code>. With liveness on the same endpoint, a pod that is slow to start gets restarted at around the two-minute mark and then restarts again on the next attempt. If your first sync with the management plane is slow, or the node is pulling the image cold, add a <code>startupProbe</code> on <code>/v1/health</code> with a high <code>failureThreshold</code>: Kubernetes suspends liveness until the startup probe passes, so a slow start no longer looks like a failure.</p>
+
+    <p>If you enabled the Data Service in step 4.4, note that it uses a different endpoint: <code>/health</code> on port <code>8081</code>, not <code>/v1/health</code> on <code>8787</code>. The chart already ships startup, liveness, and readiness probes for it on a 10-second period, so there is nothing to tune there.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verify</div>
+      <p>After the install in step 5, confirm the Service type is what you set and that no unexpected node port was allocated:</p>
+      <div class="code-block">
+        <pre><code class="language-bash">kubectl get svc -n $namespace -o custom-columns=NAME:.metadata.name,TYPE:.spec.type,PORTS:.spec.ports[*].port,NODEPORTS:.spec.ports[*].nodePort</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>The <code>NODEPORTS</code> column reads <code>&lt;none&gt;</code> on a <code>ClusterIP</code> Service. A number there on a Service you expected to be internal means the gateway is reachable on every node.</p>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════════════════════════
      5. Install the Chart
      ══════════════════════════════════════════════════════════════ -->
@@ -2881,7 +2937,9 @@ helm upgrade --install portkey-ai portkey-ai/gateway \
         <tr><td><code>54.81.226.149</code>, <code>34.200.113.35</code>, <code>44.221.117.129</code></td><td>Management plane source addresses, published for an inbound path AIRS does not support</td><td>Do not allow them; see 7.4</td></tr>
         <tr><td><code>8787</code></td><td>Gateway container port and the default <code>PORT</code></td><td>All platforms</td></tr>
         <tr><td><code>8788</code></td><td>MCP gateway container port</td><td><code>SERVER_MODE: "mcp"</code> or <code>"all"</code></td></tr>
-        <tr><td><code>/v1/health</code></td><td>Health check path for every load balancer</td><td>Step 6</td></tr>
+        <tr><td><code>8081</code></td><td>Data Service port, used only by its own probes</td><td><code>dataservice.enabled: true</code></td></tr>
+        <tr><td><code>/v1/health</code></td><td>Health check path for every load balancer, and for the chart's gateway probes</td><td>Steps 4.5 and 6</td></tr>
+        <tr><td><code>/health</code></td><td>Data Service health path on port <code>8081</code>, not the gateway's</td><td>Step 4.5</td></tr>
       </tbody>
     </table>
   </div>
