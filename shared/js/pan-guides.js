@@ -563,67 +563,38 @@ document.addEventListener('click', (e) => {
 //   2. Inside a group, `label` divides a run of items and `sub` marks items
 //      belonging to the link above them. Pick whichever matches the content and
 //      do not use one to imitate the other.
+//
+// Everything here is alphabetical: the sections, the groups inside a section,
+// and the links inside a group. build-catalog.js enforces all three, and also
+// checks that these sections match the bands in catalog.js so the rail and the
+// landing page cannot diverge.
+//
+// Two things bend the alphabet, both on purpose and both encoded in the
+// checker. Labs sorts last rather than second, because it holds training
+// material rather than a deployment guide. A group's `Overview` (or, in AIRS,
+// `AI Overview`) leads its group.
+//
+// Links sort within their tier, never across one: a parent is compared against
+// the other parents, and a `sub: true` child only against its siblings. Where a
+// group is a reading order rather than a list, say so in the markup by making
+// the prerequisite the parent, as AI Gateway does with Hybrid Infrastructure.
 const GLOBAL_NAV_GROUPS = [
-  { section: 'Network Security' },
-  { id: 'vm-series', label: 'VM-Series', links: [
-    { t: 'AWS', h: 'guides/aws/index.html' },
-    { t: 'Deploy', h: 'guides/aws/vm-series-deployment.html', sub: true },
-    { t: 'Panorama', h: 'guides/aws/panorama-deployment.html', sub: true },
-    { t: 'Plugin Monitor', h: 'guides/aws/aws-plugin-monitoring.html', sub: true },
-    { t: 'Active/Passive HA', h: 'guides/aws/vm-series-ha-deployment.html', sub: true },
-    { t: 'GWLB Teardown', h: 'guides/aws/gwlb-teardown-procedure.html', sub: true },
-    { t: 'Azure', h: 'guides/azure/index.html' },
-    { t: 'Deploy', h: 'guides/azure/vm-series-deployment.html', sub: true },
-    { t: 'HA', h: 'guides/azure/vm-series-ha.html', sub: true },
-    { t: 'Panorama', h: 'guides/azure/panorama-deployment.html', sub: true },
-    { t: 'Prerequisites', h: 'guides/azure/azure-phase1-prerequisites.html', sub: true },
-    { t: 'Questionnaire', h: 'guides/azure/azure-deployment-questionnaire.html', sub: true },
-    { t: 'GCP', h: 'guides/gcp/index.html' },
-    { t: 'Deploy', h: 'guides/gcp/vm-series-deployment.html', sub: true },
-    { t: 'Panorama', h: 'guides/gcp/panorama-deployment.html', sub: true },
-    { t: 'OCI', h: 'guides/oci/index.html' },
-    { t: 'Deploy', h: 'guides/oci/vm-series-deployment.html', sub: true },
-    { t: 'Panorama', h: 'guides/oci/panorama-deployment.html', sub: true },
-    { t: 'Bootstrap', h: 'guides/bootstrap/vm-series-bootstrap.html' },
-  ]},
-  { id: 'cngfw', label: 'Cloud NGFW', links: [
-    { t: 'Overview & Deploy', h: 'guides/cngfw/cloud-ngfw-deployment.html' },
-    { t: 'AWS', h: 'guides/cngfw/cloud-ngfw-aws.html', sub: true },
-    { t: 'Azure Native', h: 'guides/cngfw/cloud-ngfw-azure-native.html', sub: true },
-    { t: 'Azure', h: 'guides/cngfw/cloud-ngfw-azure.html', sub: true },
-  ]},
-  { id: 'globalprotect', label: 'GlobalProtect', links: [
-    { t: 'Overview', h: 'globalprotect/index.html' },
-    { t: 'Linear Deploy Guide', h: 'globalprotect/linear-guide.html', sub: true },
-  ]},
-  { id: 'branch', label: 'Branch NGFW', links: [
-    { t: 'ZTP, HA, and SD-WAN', h: 'guides/branch/branch-ngfw-ztp-ha-sdwan.html' },
-  ]},
-
   { section: 'AI Security' },
-  { id: 'airs', label: 'AIRS', links: [
-    { t: 'Overview', h: 'guides/airs/index.html' },
-    { t: 'Engagement Planner', h: 'guides/airs-planner/index.html' },
-    { t: 'Network Intercept', h: 'guides/airs/airs-network-intercept.html' },
-    { t: 'Cloud Deploy', h: 'guides/airs/airs-cloud-deployment.html' },
-    { t: 'API Intercept', h: 'guides/airs/airs-api-intercept.html' },
-    { t: 'Kubernetes', h: 'guides/airs/airs-k8s-protection.html' },
-    { t: 'Microperimeter', h: 'guides/airs/airs-microperimeter.html' },
-    { t: 'Model Security', h: 'guides/airs-model/airs-model-security.html' },
-    { t: 'Red Teaming', h: 'guides/airs-red/airs-red-teaming.html' },
-  ]},
   { id: 'ai-gateway', label: 'AI Gateway', links: [
     { t: 'Overview', h: 'guides/ai-gateway/index.html' },
     { t: 'Core Deployment', h: 'guides/ai-gateway/ai-gateway-deployment.html' },
-    { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html' },
     { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html' },
+    { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html' },
     { label: 'Hybrid Data Plane' },
-    { t: 'Hybrid Infrastructure', h: 'guides/ai-gateway/hybrid-infrastructure.html', sub: true },
-    { t: 'EKS, AKS, and GKE', h: 'guides/ai-gateway/kubernetes-deployment.html', sub: true },
+    // Hybrid Infrastructure carries the sizing and prerequisites both container
+    // paths depend on, so it is their parent here rather than a third sibling.
+    // That was implicit in the old order and would have been lost to sorting.
+    { t: 'Hybrid Infrastructure', h: 'guides/ai-gateway/hybrid-infrastructure.html' },
     { t: 'ECS and Container Apps', h: 'guides/ai-gateway/serverless-deployment.html', sub: true },
+    { t: 'EKS, AKS, and GKE', h: 'guides/ai-gateway/kubernetes-deployment.html', sub: true },
   ]},
-  // Overview first, then alphabetical. Apigee and Azure APIM arrived last and
-  // were appended after TrueFoundry, where nobody scanning the list finds them.
+  // Apigee and Azure APIM arrived last and were appended after TrueFoundry,
+  // where nobody scanning the list finds them. Hence the checker.
   { id: 'ai-integrations', label: 'AI Integrations', links: [
     { t: 'Overview', h: 'guides/airs-integrations/index.html' },
     { t: 'Apigee', h: 'guides/airs-integrations/apigee.html' },
@@ -638,38 +609,90 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'n8n', h: 'guides/airs-integrations/n8n.html' },
     { t: 'TrueFoundry', h: 'guides/airs-integrations/truefoundry.html' },
   ]},
+  // "AI Overview", not "Overview": three of the four groups in this section
+  // had an entry called Overview, and this is the one that introduces AI
+  // Security as a whole. It is also the section overview on the landing page.
+  { id: 'airs', label: 'AIRS', links: [
+    { t: 'AI Overview', h: 'guides/airs/index.html' },
+    { t: 'API Intercept', h: 'guides/airs/airs-api-intercept.html' },
+    { t: 'Cloud Deploy', h: 'guides/airs/airs-cloud-deployment.html' },
+    { t: 'Engagement Planner', h: 'guides/airs-planner/index.html' },
+    { t: 'Kubernetes', h: 'guides/airs/airs-k8s-protection.html' },
+    { t: 'Microperimeter', h: 'guides/airs/airs-microperimeter.html' },
+    { t: 'Model Security', h: 'guides/airs-model/airs-model-security.html' },
+    { t: 'Network Intercept', h: 'guides/airs/airs-network-intercept.html' },
+    { t: 'Red Teaming', h: 'guides/airs-red/airs-red-teaming.html' },
+  ]},
+
+  { section: 'Network Security' },
+  { id: 'branch', label: 'Branch NGFW', links: [
+    { t: 'ZTP, HA, and SD-WAN', h: 'guides/branch/branch-ngfw-ztp-ha-sdwan.html' },
+  ]},
+  { id: 'cngfw', label: 'Cloud NGFW', links: [
+    { t: 'Overview & Deploy', h: 'guides/cngfw/cloud-ngfw-deployment.html' },
+    { t: 'AWS', h: 'guides/cngfw/cloud-ngfw-aws.html', sub: true },
+    { t: 'Azure', h: 'guides/cngfw/cloud-ngfw-azure.html', sub: true },
+    { t: 'Azure Native', h: 'guides/cngfw/cloud-ngfw-azure-native.html', sub: true },
+  ]},
+  { id: 'globalprotect', label: 'GlobalProtect', links: [
+    { t: 'Overview', h: 'globalprotect/index.html' },
+    { t: 'Linear Deploy Guide', h: 'globalprotect/linear-guide.html', sub: true },
+  ]},
+  { id: 'vm-series', label: 'VM-Series', links: [
+    { t: 'AWS', h: 'guides/aws/index.html' },
+    { t: 'Active/Passive HA', h: 'guides/aws/vm-series-ha-deployment.html', sub: true },
+    { t: 'Deploy', h: 'guides/aws/vm-series-deployment.html', sub: true },
+    { t: 'GWLB Teardown', h: 'guides/aws/gwlb-teardown-procedure.html', sub: true },
+    { t: 'Panorama', h: 'guides/aws/panorama-deployment.html', sub: true },
+    { t: 'Plugin Monitor', h: 'guides/aws/aws-plugin-monitoring.html', sub: true },
+    { t: 'Azure', h: 'guides/azure/index.html' },
+    { t: 'Deploy', h: 'guides/azure/vm-series-deployment.html', sub: true },
+    { t: 'HA', h: 'guides/azure/vm-series-ha.html', sub: true },
+    { t: 'Panorama', h: 'guides/azure/panorama-deployment.html', sub: true },
+    { t: 'Prerequisites', h: 'guides/azure/azure-phase1-prerequisites.html', sub: true },
+    { t: 'Questionnaire', h: 'guides/azure/azure-deployment-questionnaire.html', sub: true },
+    { t: 'Bootstrap', h: 'guides/bootstrap/vm-series-bootstrap.html' },
+    { t: 'GCP', h: 'guides/gcp/index.html' },
+    { t: 'Deploy', h: 'guides/gcp/vm-series-deployment.html', sub: true },
+    { t: 'Panorama', h: 'guides/gcp/panorama-deployment.html', sub: true },
+    { t: 'OCI', h: 'guides/oci/index.html' },
+    { t: 'Deploy', h: 'guides/oci/vm-series-deployment.html', sub: true },
+    { t: 'Panorama', h: 'guides/oci/panorama-deployment.html', sub: true },
+  ]},
 
   { section: 'Platform & Identity' },
-  { id: 'scm', label: 'SCM Onboarding', links: [
-    { t: 'Firewall Onboarding', h: 'scm-onboarding/index.html' },
-    { t: 'Okta SSO', h: 'scm-onboarding/okta-sso.html', sub: true },
-  ]},
   { id: 'cie', label: 'Cloud Identity Engine', links: [
     { t: 'CIE Implementation', h: 'guides/cloud-identity-engine/cie-implementation.html' },
     { t: 'Cloud Tags', h: 'guides/cloud-identity-engine/cie-cloud-tags.html', sub: true },
+  ]},
+  { id: 'scm', label: 'SCM Onboarding', links: [
+    { t: 'Firewall Onboarding', h: 'scm-onboarding/index.html' },
+    { t: 'Okta SSO', h: 'scm-onboarding/okta-sso.html', sub: true },
   ]},
 
   { section: 'Reference' },
   { id: 'panos-cli', label: 'PAN-OS CLI', links: [
     { t: 'Both Command Trees', h: 'guides/panorama-cli/panos-cli-reference.html' },
     { t: 'Firewall CLI', h: 'guides/panorama-cli/firewall-cli-reference.html' },
+    { t: 'Config: Copy', h: 'guides/panorama-cli/firewall-cli-config-copy.html', sub: true },
+    { t: 'Config: Delete', h: 'guides/panorama-cli/firewall-cli-config-delete.html', sub: true },
+    { t: 'Config: Other', h: 'guides/panorama-cli/firewall-cli-config-other.html', sub: true },
+    { t: 'Config: Rename', h: 'guides/panorama-cli/firewall-cli-config-rename.html', sub: true },
+    { t: 'Config: Set', h: 'guides/panorama-cli/firewall-cli-config-set.html', sub: true },
     { t: 'FW Configuration', h: 'guides/panorama-cli/firewall-cli-configuration.html', sub: true },
     { t: 'FW Operational', h: 'guides/panorama-cli/firewall-cli-operational.html', sub: true },
-    { t: 'Config: Set', h: 'guides/panorama-cli/firewall-cli-config-set.html', sub: true },
-    { t: 'Config: Delete', h: 'guides/panorama-cli/firewall-cli-config-delete.html', sub: true },
-    { t: 'Config: Copy', h: 'guides/panorama-cli/firewall-cli-config-copy.html', sub: true },
-    { t: 'Config: Rename', h: 'guides/panorama-cli/firewall-cli-config-rename.html', sub: true },
-    { t: 'Config: Other', h: 'guides/panorama-cli/firewall-cli-config-other.html', sub: true },
     { t: 'Panorama Config', h: 'guides/panorama-cli/panorama-cli-configuration.html', sub: true },
     { t: 'Panorama Ops', h: 'guides/panorama-cli/panorama-cli-operational.html', sub: true },
   ]},
 
+  // Last, not second: training material you run in your own environment, not a
+  // guide to a deployment. See SECTION_PINNED_LAST in build-catalog.js.
   { section: 'Labs' },
   { id: 'labs', label: 'AIRS MLOps Lab', links: [
     { t: 'Overview', h: 'labs/airs-mlops/index.html' },
     { t: 'How the Lab Works', h: 'labs/airs-mlops/how-it-works.html', sub: true },
-    { t: 'Student Setup', h: 'labs/airs-mlops/student-setup.html', sub: true },
     { t: 'Modules', h: 'labs/airs-mlops/modules.html', sub: true },
+    { t: 'Student Setup', h: 'labs/airs-mlops/student-setup.html', sub: true },
     { label: 'Español' },
     { t: 'AIRS MLOps Lab (ES)', h: 'labs/airs-mlops/es/index.html', sub: true },
     { label: 'Português' },

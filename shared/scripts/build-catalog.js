@@ -41,7 +41,7 @@ const LANDING = path.join(DOCS_ROOT, 'index.html');
 
 // Two marker forms. `section="X"` fills one landing page section with
 // per-family cards; bare `hub` fills a hub page with per-guide cards.
-const BEGIN_RE = /^([ \t]*)<!--\s*catalog:begin(?:\s+section="([^"]+)")?\s*(?:(hub)(?:\s+group="([^"]+)")?)?\s*-->[ \t]*$/;
+const BEGIN_RE = /^([ \t]*)<!--\s*catalog:begin(?:\s+(section|overview)="([^"]+)")?\s*(?:(hub)(?:\s+group="([^"]+)")?)?\s*-->[ \t]*$/;
 const END_RE = /^[ \t]*<!--\s*catalog:end\s*-->[ \t]*$/;
 
 // ── Inputs ──────────────────────────────────────────────────────────────
@@ -198,6 +198,21 @@ function renderSection(sectionLabel, indent) {
   return lines.join('\n');
 }
 
+/**
+ * The one page that introduces a whole section, rendered above its cards.
+ *
+ * Not a card. A card fronts a product family and lists its guides; a section
+ * overview explains what the family names mean, so putting it in the grid asks
+ * the reader to choose between it and the things it is there to explain.
+ */
+function renderOverview(sectionLabel, indent) {
+  const s = CATALOG_SECTIONS.find(x => x.label === sectionLabel);
+  if (!s || !s.overview) return '';
+  const o = s.overview;
+  const note = o.note ? `<span class="catalog-overview-note">${esc(o.note)}</span>` : '';
+  return `${indent}<a class="catalog-overview" href="${o.h}">${esc(o.t)}${note}</a>`;
+}
+
 // ── Marker rewriting ────────────────────────────────────────────────────
 
 /** `rel` is the file's path relative to docs/, which is how HUBS names it. */
@@ -212,20 +227,28 @@ function rewrite(file, rel) {
     const m = lines[i].match(BEGIN_RE);
     if (!m) { out.push(lines[i++]); continue; }
 
-    const [, indent, section, hub, group] = m;
+    const [, indent, kind, label, hub, group] = m;
     const where = `${path.relative(REPO_ROOT, file)}:${i + 1}`;
-    if (!section && !hub) throw new Error(`${where}: catalog:begin needs section="..." or hub`);
-    if (section && !CATALOG_SECTIONS.some(s => s.label === section)) {
-      throw new Error(`${where}: unknown section "${section}"`);
+    if (!kind && !hub) {
+      throw new Error(`${where}: catalog:begin needs section="...", overview="...", or hub`);
+    }
+    if (kind && !CATALOG_SECTIONS.some(s => s.label === label)) {
+      throw new Error(`${where}: unknown section "${label}"`);
+    }
+    if (kind === 'overview' && !CATALOG_SECTIONS.find(s => s.label === label).overview) {
+      throw new Error(`${where}: section "${label}" has no overview in CATALOG_SECTIONS`);
     }
     let j = i + 1;
     while (j < lines.length && !END_RE.test(lines[j])) j++;
     if (j >= lines.length) throw new Error(`${where}: catalog:begin with no catalog:end`);
 
-    out.push(lines[i],
-             section ? renderSection(section, indent) : renderHub(rel, group, indent),
-             lines[j]);
-    seen.push(section || (group ? 'hub:' + group : 'hub'));
+    const body = kind === 'overview' ? renderOverview(label, indent)
+               : kind === 'section'  ? renderSection(label, indent)
+               :                       renderHub(rel, group, indent);
+    out.push(lines[i], body, lines[j]);
+    seen.push(kind === 'overview' ? 'overview:' + label
+            : kind === 'section'  ? label
+            : (group ? 'hub:' + group : 'hub'));
     i = j + 1;
   }
 
@@ -234,8 +257,168 @@ function rewrite(file, rel) {
 
 // ── Coverage ────────────────────────────────────────────────────────────
 
-function coverage() {
+/**
+ * Cards within a section run alphabetically by title, so a reader scanning the
+ * landing page for a product name lands on it. AI Security is curated instead:
+ * AIRS Platform is the product the other two extend, and AIRS Integrations is
+ * a list of third-party hosts rather than a product, so it trails.
+ *
+ * Checked rather than sorted at render time, because the file is the registry
+ * a person reads and edits. Sorting silently would let the source drift out of
+ * the order the page actually shows.
+ */
+const SECTION_CARD_ORDER = {
+  'AI Security': ['AIRS Platform', 'AI Gateway', 'AIRS Integrations']
+};
+
+/**
+ * Sections run alphabetically, with one exception. Labs holds training material
+ * you run in your own environment, not a guide to a deployment, so it sits
+ * after the four guide sections rather than second, where the alphabet puts it.
+ */
+const SECTION_PINNED_LAST = ['Labs'];
+
+function bySection(a, b) {
+  const pa = SECTION_PINNED_LAST.indexOf(a);
+  const pb = SECTION_PINNED_LAST.indexOf(b);
+  if (pa !== pb) return (pa < 0 ? -1 : pa) - (pb < 0 ? -1 : pb);
+  return a.localeCompare(b, 'en');
+}
+
+/** A group's overview link leads the group, wherever its title falls. */
+const LINK_PINNED_FIRST = ['Overview', 'AI Overview'];
+
+function byLink(a, b) {
+  const pa = LINK_PINNED_FIRST.includes(a);
+  const pb = LINK_PINNED_FIRST.includes(b);
+  if (pa !== pb) return pa ? -1 : 1;
+  return a.localeCompare(b, 'en');
+}
+
+function unsorted(problems, what, found, cmp) {
+  const want = found.slice().sort(cmp);
+  if (found.join('\u0000') !== want.join('\u0000')) {
+    problems.push(`${what} is not in order.\n` +
+                  `      found: ${found.join(', ')}\n` +
+                  `      want:  ${want.join(', ')}`);
+  }
+}
+
+function orderProblems() {
   const problems = [];
+
+  for (const s of CATALOG_SECTIONS) {
+    const titles = CATALOG.filter(c => c.section === s.label).map(c => c.title);
+    const want = SECTION_CARD_ORDER[s.label] ||
+                 titles.slice().sort((a, b) => a.localeCompare(b, 'en'));
+    if (titles.join('\u0000') !== want.join('\u0000')) {
+      problems.push(`section "${s.label}" cards are out of order.\n` +
+                    `      found: ${titles.join(', ')}\n` +
+                    `      want:  ${want.join(', ')}`);
+    }
+  }
+
+  const labels = CATALOG_SECTIONS.map(s => s.label);
+  unsorted(problems, 'CATALOG_SECTIONS', labels, bySection);
+
+  // Cards are grouped by section in CATALOG, in the CATALOG_SECTIONS order, so
+  // reading the file gives the same sequence as reading the page.
+  const seen = [];
+  for (const c of CATALOG) if (seen[seen.length - 1] !== c.section) seen.push(c.section);
+  if (seen.join('\u0000') !== labels.join('\u0000')) {
+    problems.push(`CATALOG sections run ${seen.join(', ')}, ` +
+                  `but CATALOG_SECTIONS runs ${labels.join(', ')}`);
+  }
+
+  problems.push(...navOrderProblems());
+  return problems;
+}
+
+/**
+ * Links inside a group, checked one tier at a time.
+ *
+ * A `label` entry starts a new run, and within a run the top-level links are
+ * one list while each top-level link's `sub: true` children are another. Tiers
+ * are never compared against each other, so sorting cannot lift a child out
+ * from under its parent, and a group that is genuinely a hierarchy (VM-Series:
+ * five clouds, each with its own guides) reads the same after sorting as
+ * before. A run holding only sub items and no parent is checked on its own.
+ */
+function linkOrderProblems(group) {
+  const problems = [];
+  const where = `nav group "${group.label}"`;
+  let run = 0;
+  let tops = [];
+  let subs = [];
+  let parent = null;
+
+  const flushSubs = () => {
+    if (subs.length > 1) {
+      unsorted(problems, parent ? `${where}, under "${parent}"` : `${where}, run ${run + 1}`,
+               subs, byLink);
+    }
+    subs = [];
+  };
+  const flushRun = () => {
+    flushSubs();
+    if (tops.length > 1) {
+      unsorted(problems, run ? `${where}, run ${run + 1}` : where, tops, byLink);
+    }
+    tops = [];
+    parent = null;
+  };
+
+  for (const link of group.links) {
+    if (link.label) { flushRun(); run += 1; continue; }
+    if (link.sub) { subs.push(link.t); continue; }
+    flushSubs();
+    parent = link.t;
+    tops.push(link.t);
+  }
+  flushRun();
+  return problems;
+}
+
+/**
+ * The same ordering rules, applied to the rail: sections against each other,
+ * the groups inside each section, and the links inside each group.
+ */
+function navOrderProblems() {
+  const problems = [];
+
+  const sections = [];
+  const groupsBySection = new Map();
+  let current = null;
+
+  for (const g of readNavGroups()) {
+    if (g.section) {
+      current = g.section;
+      sections.push(current);
+      groupsBySection.set(current, []);
+      continue;
+    }
+    if (!current) { problems.push(`nav group "${g.label}" sits above the first section`); continue; }
+    groupsBySection.get(current).push(g.label);
+    problems.push(...linkOrderProblems(g));
+  }
+
+  unsorted(problems, 'nav sections', sections, bySection);
+  for (const [s, gs] of groupsBySection) {
+    unsorted(problems, `nav section "${s}"`, gs, (a, b) => a.localeCompare(b, 'en'));
+  }
+
+  const navLabels = sections.join('\u0000');
+  const catLabels = CATALOG_SECTIONS.map(s => s.label).join('\u0000');
+  if (navLabels !== catLabels) {
+    problems.push(`the rail and the landing page disagree on sections.\n` +
+                  `      rail:    ${sections.join(', ')}\n` +
+                  `      catalog: ${CATALOG_SECTIONS.map(s => s.label).join(', ')}`);
+  }
+  return problems;
+}
+
+function coverage() {
+  const problems = orderProblems();
   const catalogHrefs = new Map();      // href -> card id
 
   for (const card of CATALOG) {
@@ -367,7 +550,12 @@ function main(argv) {
   }
 
   // The landing page plus every hub page, all from the one registry.
-  const targets = [{ rel: 'index.html', required: CATALOG_SECTIONS.map(s => s.label) }]
+  const landing = [];
+  for (const s of CATALOG_SECTIONS) {
+    if (s.overview) landing.push('overview:' + s.label);
+    landing.push(s.label);
+  }
+  const targets = [{ rel: 'index.html', required: landing, ordered: true }]
     .concat(HUBS.map(h => {
       const groups = [...new Set(h.cards.map(c => c.group).filter(Boolean))];
       return { rel: h.file, required: groups.length ? groups.map(g => 'hub:' + g) : ['hub'] };
@@ -387,6 +575,16 @@ function main(argv) {
     const missing = t.required.filter(r => !result.seen.includes(r));
     if (missing.length) {
       console.error(`docs/${t.rel} has no catalog:begin marker for: ${missing.join(', ')}`);
+      return 1;
+    }
+
+    // The landing page's band order is the alphabetical order the registry
+    // declares, and the filter chips are built from the DOM, so a band moved by
+    // hand silently reorders the chips too.
+    if (t.ordered && result.seen.join('\u0000') !== t.required.join('\u0000')) {
+      console.error(`docs/${t.rel} sections are in the wrong order.\n` +
+                    `  found: ${result.seen.join(', ')}\n` +
+                    `  want:  ${t.required.join(', ')}`);
       return 1;
     }
 
@@ -417,4 +615,4 @@ if (require.main === module) {
   process.exit(main(process.argv.slice(2)));
 }
 
-module.exports = { CATALOG, CATALOG_SECTIONS, HUBS, navTargets, coverage };
+module.exports = { CATALOG, CATALOG_SECTIONS, HUBS, navTargets, coverage, linkOrderProblems };

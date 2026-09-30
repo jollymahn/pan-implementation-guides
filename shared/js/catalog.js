@@ -42,18 +42,40 @@
  * than as a guide. `soon: true` on a card marks it unbuilt and renders it
  * dimmed with no links.
  *
- * Order cards within a section by descending link count. Each section renders
- * as its own grid, and a two-link card sitting beside an eleven-link card
- * stretches to match it, leaving a hole.
+ * Order cards within a section alphabetically by title. The one exception is
+ * AI Security, where AIRS Platform leads because it is the product the other
+ * two extend, AI Gateway follows, and AIRS Integrations trails because it is a
+ * list of third-party hosts rather than a product of ours.
+ *
+ * Cards used to be ordered by descending link count, because the grid stretched
+ * a two-link card to match an eleven-link neighbour and left a hole. That is now
+ * handled in CSS: `.guide-catalog` sets `align-items: start`, so each card sizes
+ * to its own content and any order reads cleanly.
  */
 
-/* Section bands, in page order. These mirror the bands in GLOBAL_NAV_GROUPS
- * so the landing page and the left rail present the same shape. */
+/* Section bands, alphabetical by label with Labs pinned last. These mirror the
+ * bands in GLOBAL_NAV_GROUPS so the landing page and the left rail present the
+ * same shape, and the filter chips are built from this order too.
+ *
+ * Alphabetical rather than curated, because a reader looking for a section
+ * scans for its name. The previous order put Network Security first on the
+ * grounds that most readers want it, which is true and did not help anyone
+ * find Labs. Labs is the exception to the alphabet: it holds training material
+ * you run in your own environment, so it follows the four guide sections
+ * instead of landing second. build-catalog.js encodes that in
+ * SECTION_PINNED_LAST and checks the order here against it.
+ *
+ * `overview` is the one page that introduces the whole section. It renders as
+ * a link directly under the band heading, above the cards, because a section
+ * overview is not a peer of the product families it explains and reads wrong
+ * as another card among them. Only AI Security has one. */
 var CATALOG_SECTIONS = [
+  { id: 'ai-security',        label: 'AI Security',
+    blurb: 'Prisma AIRS: securing LLM prompts, model artefacts, agent traffic, and the platforms your AI workloads already run on.',
+    overview: { t: 'AI Overview', h: 'guides/airs/index.html',
+                note: 'How API Intercept, Network Intercept, and Model Security divide the work' } },
   { id: 'network-security',   label: 'Network Security',
     blurb: 'Firewall deployment across the public clouds, the managed Cloud NGFW service, remote access, and branch hardware.' },
-  { id: 'ai-security',        label: 'AI Security',
-    blurb: 'Prisma AIRS: securing LLM prompts, model artefacts, agent traffic, and the platforms your AI workloads already run on.' },
   { id: 'platform-identity',  label: 'Platform & Identity',
     blurb: 'Onboarding devices into Strata Cloud Manager, and wiring identity sources into policy.' },
   { id: 'reference',          label: 'Reference',
@@ -67,133 +89,13 @@ var CATALOG_SECTIONS = [
  * must be an accent class defined in pan-guides.css, and every `links` entry
  * must resolve to a file on disk: build-catalog.js asserts all three.
  *
- * Cards are ordered by descending link count within a section, because each
- * section is its own grid and a short card stretches to match a tall
- * neighbour. Putting the tall ones first keeps the ragged edge at the bottom.
+ * Sections appear here in the CATALOG_SECTIONS order, and cards within a
+ * section alphabetically by title, AI Security excepted. build-catalog.js
+ * asserts both.
  */
 var CATALOG = [
 
-  {
-    id: 'aws', section: 'Network Security', accent: 'card-aws',
-    badge: 'Amazon Web Services',
-    title: 'VM-Series on AWS',
-    blurb: 'VM-Series behind a Gateway Load Balancer, with the Panorama plane that drives them.',
-    links: [
-      { t: 'VM-Series Deployment', h: 'guides/aws/vm-series-deployment.html', note: 'Network foundation through Day 2' },
-      { t: 'Active/Passive HA', h: 'guides/aws/vm-series-ha-deployment.html', note: 'Cross-AZ failover, floating EIP' },
-      { t: 'Panorama Deployment', h: 'guides/aws/panorama-deployment.html', note: 'VPC, EC2, EBS logging volumes' },
-      { t: 'AWS Plugin for VPC Monitoring', h: 'guides/aws/aws-plugin-monitoring.html', note: 'IP-to-tag, Dynamic Address Groups' },
-      { t: 'Gateway Load Balancer Teardown', h: 'guides/aws/gwlb-teardown-procedure.html', note: 'Ordered removal without orphans' },
-      { t: 'All AWS guides', h: 'guides/aws/index.html', hub: true }
-    ]
-  },
-
-  {
-    id: 'azure', section: 'Network Security', accent: 'card-azure',
-    badge: 'Microsoft Azure',
-    title: 'VM-Series on Azure',
-    blurb: 'VM-Series in the Common or Dedicated firewall model, sized and verified end to end.',
-    links: [
-      { t: 'VM-Series Deployment', h: 'guides/azure/vm-series-deployment.html', note: 'Common and Dedicated models' },
-      { t: 'Active/Passive HA', h: 'guides/azure/vm-series-ha.html', note: 'Floating IP and route failover' },
-      { t: 'Panorama Deployment', h: 'guides/azure/panorama-deployment.html', note: 'VNet, VM, NSG, first access' },
-      { t: 'Phase 1: Prerequisites', h: 'guides/azure/azure-phase1-prerequisites.html', note: 'Subscriptions, quota, permissions' },
-      { t: 'Pre-Deployment Questionnaire', h: 'guides/azure/azure-deployment-questionnaire.html', note: 'What to ask before you start' },
-      { t: 'All Azure guides', h: 'guides/azure/index.html', hub: true }
-    ]
-  },
-
-  {
-    id: 'cngfw', section: 'Network Security', accent: 'card-netsec',
-    badge: 'Managed Service',
-    title: 'Cloud NGFW',
-    blurb: 'The managed service, driven from Panorama and Terraform or from the Azure portal.',
-    links: [
-      { t: 'Overview and deployment models', h: 'guides/cngfw/cloud-ngfw-deployment.html', note: 'Which model fits, and why' },
-      { t: 'Cloud NGFW on AWS', h: 'guides/cngfw/cloud-ngfw-aws.html', note: 'Combined Design, GWLB, spokes' },
-      { t: 'Cloud NGFW on Azure', h: 'guides/cngfw/cloud-ngfw-azure.html', note: 'Centralized VNet, Panorama policy' },
-      { t: 'Azure with native rulestack', h: 'guides/cngfw/cloud-ngfw-azure-native.html', note: 'Portal deploy, SCM policy' }
-    ]
-  },
-
-  {
-    id: 'gcp', section: 'Network Security', accent: 'card-gcp',
-    badge: 'Google Cloud',
-    title: 'VM-Series on GCP',
-    blurb: 'VM-Series in the ILB sandwich, common-firewall and dedicated-inbound topologies.',
-    links: [
-      { t: 'VM-Series Deployment', h: 'guides/gcp/vm-series-deployment.html', note: 'ILB sandwich, both topologies' },
-      { t: 'Panorama Deployment', h: 'guides/gcp/panorama-deployment.html', note: 'VPC, Compute Engine, IAP access' },
-      { t: 'All GCP guides', h: 'guides/gcp/index.html', hub: true }
-    ]
-  },
-
-  {
-    id: 'oci', section: 'Network Security', accent: 'card-oci',
-    badge: 'Oracle Cloud',
-    title: 'VM-Series on OCI',
-    blurb: 'Hub-and-spoke Active/Active with a DRG, or Active/Passive with floating secondary IPs.',
-    links: [
-      { t: 'VM-Series Deployment', h: 'guides/oci/vm-series-deployment.html', note: 'Active/Active and Active/Passive' },
-      { t: 'Panorama Deployment', h: 'guides/oci/panorama-deployment.html', note: 'Compartments, VCN, block volumes' },
-      { t: 'All OCI guides', h: 'guides/oci/index.html', hub: true }
-    ]
-  },
-
-  {
-    id: 'globalprotect', section: 'Network Security', accent: 'card-netsec',
-    badge: 'Remote Access',
-    title: 'GlobalProtect VPN',
-    blurb: 'Panorama-managed remote access: certificates, authentication, gateway, portal, app.',
-    links: [
-      { t: 'GlobalProtect deployment', h: 'globalprotect/index.html', note: 'Infrastructure, auth, portal, app' },
-      { t: 'Linear deployment guide', h: 'globalprotect/linear-guide.html', note: 'Single-pass walkthrough' }
-    ]
-  },
-
-  {
-    id: 'branch', section: 'Network Security', accent: 'card-netsec',
-    badge: 'Branch Hardware',
-    title: 'Branch NGFW: ZTP, HA, and SD-WAN',
-    blurb: 'Factory-fresh PA-410 hardware to SD-WAN AutoVPN, with no console configuration.',
-    links: [
-      { t: 'ZTP to HA and SD-WAN AutoVPN', h: 'guides/branch/branch-ngfw-ztp-ha-sdwan.html', note: 'Single firewall and HA pair paths' },
-      { t: 'All branch guides', h: 'guides/branch/index.html', hub: true }
-    ]
-  },
-
-  {
-    id: 'bootstrap', section: 'Network Security', accent: 'card-netsec',
-    badge: 'Cross-Cloud',
-    title: 'VM-Series Bootstrap',
-    blurb: 'The four ways to bootstrap a VM-Series firewall on AWS, Azure, and GCP, compared.',
-    links: [
-      { t: 'VM-Series bootstrap methods', h: 'guides/bootstrap/vm-series-bootstrap.html', note: 'All four methods, one guide' }
-    ]
-  },
-
   /* ── AI Security ───────────────────────────────────────────────────── */
-
-  {
-    id: 'ai-integrations', section: 'AI Security', accent: 'card-ai',
-    badge: 'Prisma AIRS',
-    title: 'AIRS Integrations',
-    blurb: 'AIRS runtime scanning inside the platforms your AI workloads already run on.',
-    links: [
-      { t: 'Anthropic Claude Code', h: 'guides/airs-integrations/claude-code.html', note: 'Hooks, MCP server, or skill' },
-      { t: 'OpenAI Codex CLI', h: 'guides/airs-integrations/codex-cli.html', note: 'Hooks with fail-closed enforcement' },
-      { t: 'Cline, Cursor, and Windsurf', h: 'guides/airs-integrations/ide-assistants.html', note: 'IDE-native assistant hooks' },
-      { t: 'LiteLLM Proxy', h: 'guides/airs-integrations/litellm.html', note: 'Callback-based prompt scanning' },
-      { t: 'TrueFoundry AI Gateway', h: 'guides/airs-integrations/truefoundry.html', note: 'Guardrail plugin' },
-      { t: 'Kong Gateway', h: 'guides/airs-integrations/kong.html', note: 'Plugin for v1 and v2 MCP' },
-      { t: 'Microsoft Azure API Management', h: 'guides/airs-integrations/azure-apim.html', note: 'Inbound and outbound policy' },
-      { t: 'Google Apigee', h: 'guides/airs-integrations/apigee.html', note: 'Shared flow and policy attach' },
-      { t: 'GitHub Actions', h: 'guides/airs-integrations/github-actions.html', note: 'Model scanning before deploy' },
-      { t: 'Jenkins Pipeline', h: 'guides/airs-integrations/jenkins.html', note: 'Model scanning as a stage gate' },
-      { t: 'n8n Workflow Automation', h: 'guides/airs-integrations/n8n.html', note: 'Prompt and response nodes' },
-      { t: 'Integration index and coverage matrix', h: 'guides/airs-integrations/index.html', hub: true }
-    ]
-  },
 
   {
     id: 'airs', section: 'AI Security', accent: 'card-ai',
@@ -229,18 +131,129 @@ var CATALOG = [
     ]
   },
 
-  /* ── Platform & Identity ───────────────────────────────────────────── */
-
   {
-    id: 'scm', section: 'Platform & Identity', accent: 'card-platform',
-    badge: 'Strata Cloud Manager',
-    title: 'SCM Onboarding',
-    blurb: 'Devices and administrators into Strata Cloud Manager, hardware through to SSO.',
+    id: 'ai-integrations', section: 'AI Security', accent: 'card-ai',
+    badge: 'Prisma AIRS',
+    title: 'AIRS Integrations',
+    blurb: 'AIRS runtime scanning inside the platforms your AI workloads already run on.',
     links: [
-      { t: 'Firewall onboarding', h: 'scm-onboarding/index.html', note: 'Prerequisites through automation' },
-      { t: 'Administrator SSO with Okta', h: 'scm-onboarding/okta-sso.html', note: 'SAML 2.0, tenant and role mapping' }
+      { t: 'Anthropic Claude Code', h: 'guides/airs-integrations/claude-code.html', note: 'Hooks, MCP server, or skill' },
+      { t: 'OpenAI Codex CLI', h: 'guides/airs-integrations/codex-cli.html', note: 'Hooks with fail-closed enforcement' },
+      { t: 'Cline, Cursor, and Windsurf', h: 'guides/airs-integrations/ide-assistants.html', note: 'IDE-native assistant hooks' },
+      { t: 'LiteLLM Proxy', h: 'guides/airs-integrations/litellm.html', note: 'Callback-based prompt scanning' },
+      { t: 'TrueFoundry AI Gateway', h: 'guides/airs-integrations/truefoundry.html', note: 'Guardrail plugin' },
+      { t: 'Kong Gateway', h: 'guides/airs-integrations/kong.html', note: 'Plugin for v1 and v2 MCP' },
+      { t: 'Microsoft Azure API Management', h: 'guides/airs-integrations/azure-apim.html', note: 'Inbound and outbound policy' },
+      { t: 'Google Apigee', h: 'guides/airs-integrations/apigee.html', note: 'Shared flow and policy attach' },
+      { t: 'GitHub Actions', h: 'guides/airs-integrations/github-actions.html', note: 'Model scanning before deploy' },
+      { t: 'Jenkins Pipeline', h: 'guides/airs-integrations/jenkins.html', note: 'Model scanning as a stage gate' },
+      { t: 'n8n Workflow Automation', h: 'guides/airs-integrations/n8n.html', note: 'Prompt and response nodes' },
+      { t: 'Integration index and coverage matrix', h: 'guides/airs-integrations/index.html', hub: true }
     ]
   },
+
+  /* ── Network Security ──────────────────────────────────────────────── */
+
+  {
+    id: 'branch', section: 'Network Security', accent: 'card-netsec',
+    badge: 'Branch Hardware',
+    title: 'Branch NGFW: ZTP, HA, and SD-WAN',
+    blurb: 'Factory-fresh PA-410 hardware to SD-WAN AutoVPN, with no console configuration.',
+    links: [
+      { t: 'ZTP to HA and SD-WAN AutoVPN', h: 'guides/branch/branch-ngfw-ztp-ha-sdwan.html', note: 'Single firewall and HA pair paths' },
+      { t: 'All branch guides', h: 'guides/branch/index.html', hub: true }
+    ]
+  },
+
+  {
+    id: 'cngfw', section: 'Network Security', accent: 'card-netsec',
+    badge: 'Managed Service',
+    title: 'Cloud NGFW',
+    blurb: 'The managed service, driven from Panorama and Terraform or from the Azure portal.',
+    links: [
+      { t: 'Overview and deployment models', h: 'guides/cngfw/cloud-ngfw-deployment.html', note: 'Which model fits, and why' },
+      { t: 'Cloud NGFW on AWS', h: 'guides/cngfw/cloud-ngfw-aws.html', note: 'Combined Design, GWLB, spokes' },
+      { t: 'Cloud NGFW on Azure', h: 'guides/cngfw/cloud-ngfw-azure.html', note: 'Centralized VNet, Panorama policy' },
+      { t: 'Azure with native rulestack', h: 'guides/cngfw/cloud-ngfw-azure-native.html', note: 'Portal deploy, SCM policy' }
+    ]
+  },
+
+  {
+    id: 'globalprotect', section: 'Network Security', accent: 'card-netsec',
+    badge: 'Remote Access',
+    title: 'GlobalProtect VPN',
+    blurb: 'Panorama-managed remote access: certificates, authentication, gateway, portal, app.',
+    links: [
+      { t: 'GlobalProtect deployment', h: 'globalprotect/index.html', note: 'Infrastructure, auth, portal, app' },
+      { t: 'Linear deployment guide', h: 'globalprotect/linear-guide.html', note: 'Single-pass walkthrough' }
+    ]
+  },
+
+  {
+    id: 'bootstrap', section: 'Network Security', accent: 'card-netsec',
+    badge: 'Cross-Cloud',
+    title: 'VM-Series Bootstrap',
+    blurb: 'The four ways to bootstrap a VM-Series firewall on AWS, Azure, and GCP, compared.',
+    links: [
+      { t: 'VM-Series bootstrap methods', h: 'guides/bootstrap/vm-series-bootstrap.html', note: 'All four methods, one guide' }
+    ]
+  },
+
+  {
+    id: 'aws', section: 'Network Security', accent: 'card-aws',
+    badge: 'Amazon Web Services',
+    title: 'VM-Series on AWS',
+    blurb: 'VM-Series behind a Gateway Load Balancer, with the Panorama plane that drives them.',
+    links: [
+      { t: 'VM-Series Deployment', h: 'guides/aws/vm-series-deployment.html', note: 'Network foundation through Day 2' },
+      { t: 'Active/Passive HA', h: 'guides/aws/vm-series-ha-deployment.html', note: 'Cross-AZ failover, floating EIP' },
+      { t: 'Panorama Deployment', h: 'guides/aws/panorama-deployment.html', note: 'VPC, EC2, EBS logging volumes' },
+      { t: 'AWS Plugin for VPC Monitoring', h: 'guides/aws/aws-plugin-monitoring.html', note: 'IP-to-tag, Dynamic Address Groups' },
+      { t: 'Gateway Load Balancer Teardown', h: 'guides/aws/gwlb-teardown-procedure.html', note: 'Ordered removal without orphans' },
+      { t: 'All AWS guides', h: 'guides/aws/index.html', hub: true }
+    ]
+  },
+
+  {
+    id: 'azure', section: 'Network Security', accent: 'card-azure',
+    badge: 'Microsoft Azure',
+    title: 'VM-Series on Azure',
+    blurb: 'VM-Series in the Common or Dedicated firewall model, sized and verified end to end.',
+    links: [
+      { t: 'VM-Series Deployment', h: 'guides/azure/vm-series-deployment.html', note: 'Common and Dedicated models' },
+      { t: 'Active/Passive HA', h: 'guides/azure/vm-series-ha.html', note: 'Floating IP and route failover' },
+      { t: 'Panorama Deployment', h: 'guides/azure/panorama-deployment.html', note: 'VNet, VM, NSG, first access' },
+      { t: 'Phase 1: Prerequisites', h: 'guides/azure/azure-phase1-prerequisites.html', note: 'Subscriptions, quota, permissions' },
+      { t: 'Pre-Deployment Questionnaire', h: 'guides/azure/azure-deployment-questionnaire.html', note: 'What to ask before you start' },
+      { t: 'All Azure guides', h: 'guides/azure/index.html', hub: true }
+    ]
+  },
+
+  {
+    id: 'gcp', section: 'Network Security', accent: 'card-gcp',
+    badge: 'Google Cloud',
+    title: 'VM-Series on GCP',
+    blurb: 'VM-Series in the ILB sandwich, common-firewall and dedicated-inbound topologies.',
+    links: [
+      { t: 'VM-Series Deployment', h: 'guides/gcp/vm-series-deployment.html', note: 'ILB sandwich, both topologies' },
+      { t: 'Panorama Deployment', h: 'guides/gcp/panorama-deployment.html', note: 'VPC, Compute Engine, IAP access' },
+      { t: 'All GCP guides', h: 'guides/gcp/index.html', hub: true }
+    ]
+  },
+
+  {
+    id: 'oci', section: 'Network Security', accent: 'card-oci',
+    badge: 'Oracle Cloud',
+    title: 'VM-Series on OCI',
+    blurb: 'Hub-and-spoke Active/Active with a DRG, or Active/Passive with floating secondary IPs.',
+    links: [
+      { t: 'VM-Series Deployment', h: 'guides/oci/vm-series-deployment.html', note: 'Active/Active and Active/Passive' },
+      { t: 'Panorama Deployment', h: 'guides/oci/panorama-deployment.html', note: 'Compartments, VCN, block volumes' },
+      { t: 'All OCI guides', h: 'guides/oci/index.html', hub: true }
+    ]
+  },
+
+  /* ── Platform & Identity ───────────────────────────────────────────── */
 
   {
     id: 'cie', section: 'Platform & Identity', accent: 'card-platform',
@@ -250,6 +263,17 @@ var CATALOG = [
     links: [
       { t: 'CIE implementation', h: 'guides/cloud-identity-engine/cie-implementation.html', note: 'Activation through MFA' },
       { t: 'Cloud tags', h: 'guides/cloud-identity-engine/cie-cloud-tags.html', note: 'Tag ingestion into policy' }
+    ]
+  },
+
+  {
+    id: 'scm', section: 'Platform & Identity', accent: 'card-platform',
+    badge: 'Strata Cloud Manager',
+    title: 'SCM Onboarding',
+    blurb: 'Devices and administrators into Strata Cloud Manager, hardware through to SSO.',
+    links: [
+      { t: 'Firewall onboarding', h: 'scm-onboarding/index.html', note: 'Prerequisites through automation' },
+      { t: 'Administrator SSO with Okta', h: 'scm-onboarding/okta-sso.html', note: 'SAML 2.0, tenant and role mapping' }
     ]
   },
 
@@ -310,7 +334,6 @@ var CATALOG = [
       { t: 'Laborat&oacute;rio em portugu&ecirc;s', h: 'labs/airs-mlops/pt/index.html' }
     ]
   }
-
 ];
 
 /**

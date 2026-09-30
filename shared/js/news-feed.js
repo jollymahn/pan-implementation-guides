@@ -39,6 +39,13 @@ var NEWS_ITEMS = [
   {
     badge: "Updated",
     date: "2026-09-30",
+    title: "Navigation is alphabetical everywhere you scan for a name",
+    href: "index.html",
+    tags: "Sections A to Z, Rail links A to Z, Cards A to Z, AI Security first, Labs last"
+  },
+  {
+    badge: "Updated",
+    date: "2026-09-30",
     title: "Every numbered step now tells you how to confirm it worked",
     href: "guides/cngfw/cloud-ngfw-azure.html#user-id",
     tags: "28 new checks, Cloud NGFW Phase 8 User-ID, Panorama connectivity, Azure FIPS image definition"
