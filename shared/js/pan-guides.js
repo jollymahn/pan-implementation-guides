@@ -51,16 +51,6 @@ function updateDownloadMdBtn() {
   }
 }
 
-// ── Close mobile sidebar on link click ─────────────────────────────
-sidebarLinks.forEach(link => {
-  link.addEventListener('click', () => {
-    const sidebar = document.querySelector('.sidebar');
-    const backdrop = document.querySelector('.sidebar-backdrop');
-    if (sidebar) sidebar.classList.remove('open');
-    if (backdrop) backdrop.classList.remove('visible');
-  });
-});
-
 // ── Collapsible sections ───────────────────────────────────────────
 document.querySelectorAll('.collapsible-header').forEach(header => {
   header.addEventListener('click', () => {
@@ -80,29 +70,117 @@ window.addEventListener('scroll', () => {
 // Initial state
 updateActiveSection();
 
-// ── Mobile sidebar backdrop ────────────────────────────────────────
-function toggleSidebar() {
-  const sidebar = document.querySelector('.sidebar');
-  const backdrop = document.querySelector('.sidebar-backdrop');
-  if (!sidebar) return;
+// ── Mobile navigation drawer ───────────────────────────────────────
+// Below 900px the global rail is hidden, which used to leave a landing or hub
+// page with no navigation at all and a guide page with its own contents and
+// nothing else. Both navs now go into one drawer behind one button.
+//
+// The two are in different parents (.global-nav sits after the header,
+// .sidebar inside .layout), so they are moved into a shared wrapper. Moving
+// them is safe because both are position:fixed and out of flow: the wrapper
+// is display:contents above 900px, so the desktop layout is byte-identical.
 
-  sidebar.classList.toggle('open');
-  if (backdrop) {
-    backdrop.classList.toggle('visible', sidebar.classList.contains('open'));
-  }
+function getMobileDrawer() {
+  return document.querySelector('.mobile-nav');
 }
 
-// Close sidebar when backdrop is clicked
-document.addEventListener('DOMContentLoaded', () => {
+/**
+ * Open or close the drawer. Kept under this name because 58 pages call it
+ * from an inline onclick on their hamburger.
+ */
+function toggleSidebar(force) {
+  const drawer = getMobileDrawer();
+  if (!drawer) return;
+
+  const open = typeof force === 'boolean' ? force : !drawer.classList.contains('open');
+  drawer.classList.toggle('open', open);
+
   const backdrop = document.querySelector('.sidebar-backdrop');
-  if (backdrop) {
-    backdrop.addEventListener('click', () => {
-      const sidebar = document.querySelector('.sidebar');
-      if (sidebar) sidebar.classList.remove('open');
-      backdrop.classList.remove('visible');
-    });
+  if (backdrop) backdrop.classList.toggle('visible', open);
+
+  const btn = document.querySelector('.hamburger');
+  if (btn) btn.setAttribute('aria-expanded', String(open));
+
+  // Stop the page behind the drawer scrolling under the reader's finger.
+  document.body.classList.toggle('drawer-open', open);
+}
+
+function initMobileNav() {
+  const header = document.querySelector('.site-header');
+  const rail = document.querySelector('.global-nav');
+  const sidebar = document.querySelector('.sidebar');
+  if (!header || (!rail && !sidebar)) return;
+
+  const drawer = document.createElement('div');
+  drawer.className = 'mobile-nav';
+  header.parentNode.insertBefore(drawer, header.nextSibling);
+
+  // Page contents first: on a guide that is what the reader came for. The
+  // labels only render below 900px, where the two lists sit on top of each
+  // other and would otherwise run together.
+  if (sidebar) {
+    drawer.appendChild(labelFor('On this page'));
+    drawer.appendChild(sidebar);
   }
-});
+  if (rail) {
+    drawer.appendChild(labelFor('All guides'));
+    drawer.appendChild(rail);
+  }
+
+  function labelFor(text) {
+    const el = document.createElement('div');
+    el.className = 'mobile-nav-label';
+    el.textContent = text;
+    return el;
+  }
+
+  // 21 pages carrying a rail have no hamburger, because they have no in-page
+  // sidebar and nothing used to open. Give every page one rather than editing
+  // each file: the button belongs to the drawer, not to the page.
+  let btn = header.querySelector('.hamburger');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.className = 'hamburger';
+    btn.type = 'button';
+    btn.innerHTML = '&#9776;';
+    header.insertBefore(btn, header.firstChild);
+  }
+  // The inline handlers came in three versions written at different times.
+  // Ten of them toggled `.open` on the backdrop, which the stylesheet spells
+  // `.visible`, so those pages had a button that did nothing visible at all.
+  // The drawer owns the button now, so drop whatever the page had.
+  btn.removeAttribute('onclick');
+  btn.onclick = null;
+  btn.addEventListener('click', () => toggleSidebar());
+  btn.setAttribute('aria-label', 'Toggle navigation');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.setAttribute('aria-controls', 'mobile-nav');
+  drawer.id = 'mobile-nav';
+
+  let backdrop = document.querySelector('.sidebar-backdrop');
+  if (!backdrop) {
+    backdrop = document.createElement('div');
+    backdrop.className = 'sidebar-backdrop';
+    document.body.appendChild(backdrop);
+  }
+  backdrop.addEventListener('click', () => toggleSidebar(false));
+
+  // Following a link closes the drawer. Without this, an in-page jump on a
+  // guide leaves the drawer covering the heading it just scrolled to.
+  drawer.addEventListener('click', (e) => {
+    if (e.target.closest('a')) toggleSidebar(false);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') toggleSidebar(false);
+  });
+
+  // Coming back above 900px with the drawer open would otherwise leave the
+  // backdrop over a desktop layout that has no way to dismiss it.
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900) toggleSidebar(false);
+  });
+}
 
 // ── Smooth scroll with header offset ───────────────────────────────
 document.addEventListener('click', (e) => {
@@ -678,4 +756,8 @@ function initGlobalNav() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', initGlobalNav);
+document.addEventListener('DOMContentLoaded', function () {
+  initGlobalNav();
+  // After the rail is built, so the drawer moves a populated nav.
+  initMobileNav();
+});

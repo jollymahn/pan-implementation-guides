@@ -1149,6 +1149,13 @@ a.dl-btn:hover {
 @media print {
   .catalog-guide-list li.catalog-guide-hidden { display: list-item; }
   .catalog-more { display: none; }
+
+  /* Both navs are fixed panels, so printing a guide put them over the top of
+   * the first page and left the text indented past them on every page after.
+   * Now that they share a wrapper, one selector drops both. */
+  .mobile-nav, .sidebar-backdrop, .hamburger { display: none !important; }
+  .main-content, .main-content.no-sidebar,
+  body.has-global-nav .landing-container, .landing-wide { margin-left: 0 !important; }
 }
 
 /* ── Download as Markdown Button ─────────────────────────────────── */
@@ -1287,11 +1294,8 @@ a.dl-btn:hover {
 
 /* ── Responsive: Tablet ─────────────────────────────────────────── */
 @media (max-width: 900px) {
-  .sidebar { transform: translateX(-100%); }
-  .sidebar.open {
-    transform: translateX(0);
-    box-shadow: 4px 0 12px rgba(0,0,0,0.15);
-  }
+  /* The sidebar no longer slides on its own: it is one of two lists inside
+   * .mobile-nav, and the drawer does the sliding. See "Global Navigation". */
   .main-content { margin-left: 0; }
   .article { padding: 1.5rem 1.25rem 3rem; }
   .breadcrumb { padding: 0.75rem 1.25rem; }
@@ -1471,7 +1475,17 @@ a.dl-btn:hover {
   .progress-phases { flex-direction: column; }
   .progress-phase { border-right: none; border-bottom: 1px solid var(--border); }
   .progress-phase:last-child { border-bottom: none; }
-  .site-header .header-nav { display: none; }
+
+  /* The whole nav used to be hidden here, which took search with it and left
+   * a phone with no way to find anything. Home is in the drawer, so only the
+   * text links go; search stays, as its icon. */
+  .site-header .header-nav a { display: none; }
+  .header-search-btn {
+    font-size: 0;
+    gap: 0;
+    padding: 0.3rem 0.45rem;
+  }
+  .header-section-title { display: none; }
 }
 
 /* ── Update Banner ──────────────────────────────────────────────── */
@@ -1656,10 +1670,97 @@ body.has-global-nav .landing-container {
   .global-nav { background: #0a1520; border-right-color: rgba(255,255,255,0.05); }
 }
 
+/* Wrapper the script puts around both navs. It generates no box here, so the
+ * desktop layout is exactly what it was when the two were separate. */
+.mobile-nav { display: contents; }
+.mobile-nav-label { display: none; }
+
 @media (max-width: 900px) {
-  .global-nav { display: none; }
-  .sidebar { left: 0; }
   .main-content { margin-left: 0; }
   .main-content.no-sidebar { margin-left: 0; }
   body.has-global-nav .landing-container { margin-left: 0; }
+
+  /* One drawer, holding the page contents and the site rail in that order. */
+  .mobile-nav {
+    display: block;
+    position: fixed;
+    top: var(--header-height);
+    left: 0; bottom: 0;
+    width: min(320px, 86vw);
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    z-index: 120;
+    transform: translateX(-100%);
+    /* Hidden, not merely shifted. A closed panel that is still `visible`
+     * keeps its links in the tab order and in the accessibility tree, so a
+     * keyboard or screen-reader user walks the whole site nav before reaching
+     * the page. Transitioned alongside transform so it stays visible for the
+     * length of the slide. */
+    visibility: hidden;
+    transition: transform 0.25s ease, visibility 0.25s;
+    box-shadow: 4px 0 12px rgba(0,0,0,0.15);
+  }
+  .mobile-nav.open { transform: translateX(0); visibility: visible; }
+
+  /* Both navs are fixed panels on desktop. In the drawer they are just two
+   * stacked lists, so everything that positioned them has to come off. */
+  .mobile-nav .sidebar,
+  .mobile-nav .global-nav {
+    position: static;
+    width: auto;
+    height: auto;
+    top: auto; left: auto; bottom: auto;
+    transform: none;
+    overflow: visible;
+    border-right: none;
+    box-shadow: none;
+    padding: 0.5rem 0 1rem;
+  }
+  /* The rail is white-on-navy. Inside a light drawer it has to invert. */
+  .mobile-nav .global-nav { background: transparent; }
+  .mobile-nav .gnav-home a { color: var(--pan-link); }
+  .mobile-nav .gnav-home { border-bottom-color: var(--border); }
+  .mobile-nav .gnav-section { color: var(--fg-light); border-top-color: var(--border); }
+  .mobile-nav .gnav-group-header { color: var(--fg); }
+  .mobile-nav .gnav-group-header:hover { color: var(--pan-link); }
+  .mobile-nav .gnav-count { color: var(--fg-light); }
+  .mobile-nav .gnav-group-body a { color: var(--fg); }
+  .mobile-nav .gnav-group-body a:hover { background: rgba(0,0,0,0.04); color: var(--pan-link); }
+  .mobile-nav .gnav-group-body a.active {
+    background: var(--pan-link);
+    color: #fff;
+    border-left-color: var(--pan-navy);
+  }
+  .mobile-nav .gnav-group-body a.gnav-sub { color: var(--fg-light); }
+  .mobile-nav .gnav-group-body a.gnav-sub.active { color: #fff; }
+  .mobile-nav .gnav-label { color: var(--fg-light); }
+
+  /* Says which list is which, now that they sit on top of each other. */
+  .mobile-nav-label {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.55rem 1rem 0.5rem;
+    background: var(--pan-navy);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  /* Tables are authored bare, with no scrolling wrapper anywhere in the repo,
+   * so a wide one drags the whole page sideways. Scroll it in place instead. */
+  .article table,
+  .landing-container table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body.drawer-open { overflow: hidden; }
 }

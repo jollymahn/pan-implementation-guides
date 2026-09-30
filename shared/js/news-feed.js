@@ -39,6 +39,20 @@ var NEWS_ITEMS = [
   {
     badge: "Updated",
     date: "2026-09-30",
+    title: "Every numbered step now tells you how to confirm it worked",
+    href: "guides/cngfw/cloud-ngfw-azure.html#user-id",
+    tags: "28 new checks, Cloud NGFW Phase 8 User-ID, Panorama connectivity, Azure FIPS image definition"
+  },
+  {
+    badge: "Updated",
+    date: "2026-09-30",
+    title: "Every guide is reachable on a phone",
+    href: "index.html",
+    tags: "Nav drawer under 900px, Search kept on small screens, No sideways scroll"
+  },
+  {
+    badge: "Updated",
+    date: "2026-09-30",
     title: "Home page rebuilt as a generated catalog",
     href: "index.html",
     tags: "Every guide on one page, No cloud tabs, Section filter"
