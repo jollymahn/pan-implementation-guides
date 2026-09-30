@@ -38,6 +38,13 @@ var NEWS_VISIBLE_COUNT = 6;
 var NEWS_ITEMS = [
   {
     badge: "Updated",
+    date: "2026-09-30",
+    title: "Home page rebuilt as a generated catalog",
+    href: "index.html",
+    tags: "Every guide on one page, No cloud tabs, Section filter"
+  },
+  {
+    badge: "Updated",
     date: "2026-09-29",
     title: "Site navigation regrouped into five sections",
     href: "index.html",
