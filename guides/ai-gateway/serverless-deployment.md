@@ -776,6 +776,8 @@ output "app_gateway_public_ip" {
 
 The `storage_config` block above is the log store. The module creates the storage account and the container for you, and the gateway writes full prompt and completion bodies there. Naming the container means you can find it after the apply.
 
+> **Note: Check the image tag before you apply.** The `2.2.2` above is the value the vendor's published example carries, and it is well behind. The Enterprise Gateway changelog lists 130 releases, reaching `v2.22.0` on 2026-09-11, on a roughly weekly cadence. Pinning is right, but pin something current: take the newest version from the changelog, or match the `gateway_enterprise` tag the Helm chart pins as its default, which is the pairing the vendor ships and tests together. Applying this file unchanged deploys a build from many releases ago.
+
 `NODE_ENV = "development"` is the value the published examples ship. What it changes inside the gateway image is not documented, and in Node services this value commonly enables verbose error responses and stack traces, so change it before real traffic. <!-- TODO: verify what NODE_ENV changes in the gateway image -->
 
 > **Warning: The built-in cache runs without TLS or a password.** The `redis_config` block above holds the gateway's enforcement state: synced configuration, every rate limit counter, and every budget counter. It runs without TLS and without a password. With `network_mode = "none"` there is no VNet of your own, so the hop is reachable by any other app in the same managed environment and nothing in this configuration isolates it. Before real traffic, move to Azure Managed Redis over TLS with a password as described in step 3.2.

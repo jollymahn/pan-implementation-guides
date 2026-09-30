@@ -1196,12 +1196,12 @@ imageCredentials:
 images:
   gatewayImage:
     repository: "docker.io/portkeyai/gateway_enterprise"
-    pullPolicy: Always
-    tag: "latest"
+    pullPolicy: IfNotPresent
+    tag: "2.13.0"          # chart default; check the changelog for current
   dataserviceImage:
     repository: "docker.io/portkeyai/data-service"
-    pullPolicy: Always
-    tag: "latest"
+    pullPolicy: IfNotPresent
+    tag: "1.9.0"
   redisImage:
     repository: "docker.io/redis"
     pullPolicy: IfNotPresent
@@ -1217,7 +1217,11 @@ environment:
     ORGANISATIONS_TO_SYNC: <ORGANISATION_ID>
 ```
 
-> **Note: `tag: "latest"` is what the vendor publishes, and it is not what you want in production.** A pod restart can pull a different image than the one you validated, and there is no published compatibility matrix between chart versions and image versions. Pin both to a digest or a fixed tag for any environment you care about, and treat an upgrade as a deliberate change. <!-- TODO: verify whether Palo Alto Networks publishes versioned image tags for the enterprise gateway -->
+> **Warning: Pin the image version.** The gateway is versioned and released roughly weekly. The vendor's Enterprise Gateway changelog lists 130 releases, the most recent being `v2.22.0` on 2026-09-11, so `latest` is never your only option. Running `tag: "latest"` with `pullPolicy: Always` means a pod restart can pull a build you never tested, and nothing afterwards records which version was running when something broke.
+>
+> The chart does not track `latest` either. As of the documentation mirror taken 2026-09-21, its `values.yaml` shipped `gateway_enterprise:2.13.0` and `data-service:1.9.0`. The data service default was the current release; the gateway default sat nine minor versions behind the newest one. Read that as a tested pairing rather than a stale file.
+>
+> Either omit the `images` block and inherit those defaults, or pin explicitly as shown above and treat a bump as a deliberate change. Check the changelog for the current version before you pin. <!-- TODO: confirm with the product team whether the chart's pinned defaults are the supported pairing, and whether any compatibility matrix exists for running a newer gateway image against an older chart -->
 
 ### A. Amazon EKS
 
@@ -2034,7 +2038,7 @@ helm uninstall portkey-ai --namespace $namespace
 These questions come up in the field and the published material does not currently answer them. Raise them with the product team rather than inferring an answer, and treat anything below as unresolved when writing a customer commitment.
 
 - **Throughput sizing** &mdash; no requests-per-second figures for any of the three platforms. The published CPU and memory numbers are minimums to run, not a capacity model.
-- **Image and chart versioning** &mdash; every example pins `tag: "latest"`, no versioned tags are published, and no compatibility matrix exists between chart versions and image versions. <!-- TODO: verify -->
+- **Image and chart compatibility** &mdash; versioned tags are published and the chart pins its own defaults, so pinning is straightforward (see [step 4](#4-build-valuesyaml)). What remains unpublished is whether the chart's pinned pairing is the *supported* pairing, and whether any matrix covers running a newer gateway image against an older chart.
 - **Upgrade and rollback** &mdash; no supported upgrade path and no tested rollback procedure.
 - **TLS policy on ingress** &mdash; the mechanism is settled: the chart exposes `ingress.tls` and each platform has a documented certificate source, all covered in [step 6](#6-expose-the-gateway). What remains unpublished is the policy: no recommended cipher suite, no minimum TLS version, and no statement on whether the gateway expects TLS to terminate at the load balancer or pass through to the pod. Every vendor example still serves plain HTTP.
 - **Load balancer listener port** &mdash; not published, while your own firewall rules depend on it. Read it from the created Ingress or Service. <!-- TODO: verify -->

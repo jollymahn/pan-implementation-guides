@@ -1823,12 +1823,12 @@ done</code></pre>
 images:
   gatewayImage:
     repository: "docker.io/portkeyai/gateway_enterprise"
-    pullPolicy: Always
-    tag: "latest"
+    pullPolicy: IfNotPresent
+    tag: "2.13.0"          # chart default; check the changelog for current
   dataserviceImage:
     repository: "docker.io/portkeyai/data-service"
-    pullPolicy: Always
-    tag: "latest"
+    pullPolicy: IfNotPresent
+    tag: "1.9.0"
   redisImage:
     repository: "docker.io/redis"
     pullPolicy: IfNotPresent
@@ -1844,9 +1844,11 @@ environment:
     ORGANISATIONS_TO_SYNC: &lt;ORGANISATION_ID&gt;</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
-    <div class="callout callout-note">
-      <div class="callout-title"><code>tag: "latest"</code> is what the vendor publishes, and it is not what you want in production</div>
-      <p>A pod restart can pull a different image than the one you validated, and there is no published compatibility matrix between chart versions and image versions. Pin both to a digest or a fixed tag for any environment you care about, and treat an upgrade as a deliberate change. <!-- TODO: verify whether Palo Alto Networks publishes versioned image tags for the enterprise gateway --></p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Pin the image version</div>
+      <p>The gateway is versioned and released roughly weekly. The vendor's Enterprise Gateway changelog lists 130 releases, the most recent being <code>v2.22.0</code> on 2026-09-11, so <code>latest</code> is never your only option. Running <code>tag: "latest"</code> with <code>pullPolicy: Always</code> means a pod restart can pull a build you never tested, and nothing afterwards records which version was running when something broke.</p>
+      <p>The chart does not track <code>latest</code> either. As of the documentation mirror taken 2026-09-21, its <code>values.yaml</code> shipped <code>gateway_enterprise:2.13.0</code> and <code>data-service:1.9.0</code>. The data service default was the current release; the gateway default sat nine minor versions behind the newest one. Read that as a tested pairing rather than a stale file.</p>
+      <p>Either omit the <code>images</code> block and inherit those defaults, or pin explicitly as shown above and treat a bump as a deliberate change. Check the changelog for the current version before you pin. <!-- TODO: confirm with the product team whether the chart's pinned defaults are the supported pairing, and whether any compatibility matrix exists for running a newer gateway image against an older chart --></p>
     </div>
   </div>
 </div>
@@ -2919,7 +2921,7 @@ helm upgrade --install portkey-ai portkey-ai/gateway \
     <p>These questions come up in the field and the published material does not currently answer them. Raise them with the product team rather than inferring an answer, and treat anything below as unresolved when writing a customer commitment.</p>
     <ul>
       <li><strong>Throughput sizing</strong> &mdash; no requests-per-second figures for any of the three platforms. The published CPU and memory numbers are minimums to run, not a capacity model.</li>
-      <li><strong>Image and chart versioning</strong> &mdash; every example pins <code>tag: "latest"</code>, no versioned tags are published, and no compatibility matrix exists between chart versions and image versions. <!-- TODO: verify --></li>
+      <li><strong>Image and chart compatibility</strong> &mdash; versioned tags are published and the chart pins its own defaults, so pinning is straightforward (see <a href="#values">step 4</a>). What remains unpublished is whether the chart's pinned pairing is the <em>supported</em> pairing, and whether any matrix covers running a newer gateway image against an older chart.</li>
       <li><strong>Upgrade and rollback</strong> &mdash; no supported upgrade path and no tested rollback procedure.</li>
       <li><strong>TLS policy on ingress</strong> &mdash; the mechanism is settled: the chart exposes <code>ingress.tls</code> and each platform has a documented certificate source, all covered in <a href="#ingress">step 6</a>. What remains unpublished is the policy: no recommended cipher suite, no minimum TLS version, and no statement on whether the gateway expects TLS to terminate at the load balancer or pass through to the pod. Every vendor example still serves plain HTTP.</li>
       <li><strong>Load balancer listener port</strong> &mdash; not published, while your own firewall rules depend on it. Read it from the created Ingress or Service. <!-- TODO: verify --></li>
