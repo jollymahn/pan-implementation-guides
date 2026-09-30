@@ -39,12 +39,14 @@ const DOCS_ROOT = path.resolve(__dirname, '..', '..');
 const REPO_ROOT = path.resolve(DOCS_ROOT, '..');
 const LANDING = path.join(DOCS_ROOT, 'index.html');
 
-const BEGIN_RE = /^([ \t]*)<!--\s*catalog:begin\s+section="([^"]+)"\s*-->[ \t]*$/;
+// Two marker forms. `section="X"` fills one landing page section with
+// per-family cards; bare `hub` fills a hub page with per-guide cards.
+const BEGIN_RE = /^([ \t]*)<!--\s*catalog:begin(?:\s+section="([^"]+)")?\s*(?:(hub)(?:\s+group="([^"]+)")?)?\s*-->[ \t]*$/;
 const END_RE = /^[ \t]*<!--\s*catalog:end\s*-->[ \t]*$/;
 
 // ── Inputs ──────────────────────────────────────────────────────────────
 
-const { CATALOG, CATALOG_SECTIONS, CATALOG_NOT_CARDED } =
+const { CATALOG, CATALOG_SECTIONS, CATALOG_NOT_CARDED, HUBS } =
   require(path.join(DOCS_ROOT, 'shared', 'js', 'catalog.js'));
 
 /**
@@ -132,6 +134,62 @@ function renderCard(card, indent) {
   return out;
 }
 
+/**
+ * A hub card. Per-guide rather than per-family: description, tags, and a
+ * button, which is the shape these pages already used.
+ */
+function renderHubCard(card, fromDir, indent) {
+  const i = indent;
+  const out = [];
+  out.push(`${i}<div class="catalog-card${card.soon ? ' coming-soon' : ''}">`);
+  out.push(`${i}  <div class="catalog-card-header ${card.accent}">`);
+  out.push(`${i}    <span class="catalog-badge">${esc(card.badge)}</span>`);
+  out.push(`${i}    <h3>${esc(card.title)}</h3>`);
+  out.push(`${i}  </div>`);
+  out.push(`${i}  <div class="catalog-card-body">`);
+  // `desc` is authored HTML, not text: several carry inline <code> and one
+  // carries a second paragraph. Escaping it printed the tags on the page.
+  out.push(`${i}    <p>${card.desc}</p>`);
+  if (card.tags && card.tags.length) {
+    out.push(`${i}    <div class="catalog-tags">`);
+    for (const t of card.tags) out.push(`${i}      <span class="tag">${esc(t)}</span>`);
+    out.push(`${i}    </div>`);
+  }
+  if (card.soon) {
+    out.push(`${i}    <p class="catalog-soon">Not published yet.</p>`);
+  } else {
+    // Stored relative to docs/ so it can be cross-checked; written relative to
+    // the hub page so the published file still works from any directory depth.
+    const rel = path.relative(fromDir, card.h).split(path.sep).join('/');
+    out.push(`${i}    <div class="catalog-links">`);
+    // `cta` only where the default is wrong: the teardown card says
+    // "Open Procedure", because that guide is not a deployment.
+    out.push(`${i}      <a href="${rel}" class="catalog-link-primary">${esc(card.cta || 'Open Guide')}</a>`);
+    out.push(`${i}    </div>`);
+  }
+  out.push(`${i}  </div>`);
+  out.push(`${i}</div>`);
+  return out;
+}
+
+/**
+ * `group` fills one category block on a hub page that has several, which the
+ * AIRS integrations page does: four categories, each with its own intro. A
+ * hub without groups takes one marker and renders every card.
+ */
+function renderHub(file, group, indent) {
+  const hub = HUBS.find(h => h.file === file);
+  if (!hub) throw new Error(`no HUBS entry for ${file}`);
+  const cards = group ? hub.cards.filter(c => c.group === group) : hub.cards;
+  if (!cards.length) {
+    throw new Error(`no cards in ${file}${group ? ` for group "${group}"` : ''}`);
+  }
+  const dir = path.dirname(file);
+  const lines = [];
+  for (const c of cards) lines.push(...renderHubCard(c, dir, indent));
+  return lines.join('\n');
+}
+
 function renderSection(sectionLabel, indent) {
   const cards = CATALOG.filter(c => c.section === sectionLabel);
   if (!cards.length) throw new Error(`no catalog cards in section "${sectionLabel}"`);
@@ -142,7 +200,8 @@ function renderSection(sectionLabel, indent) {
 
 // ── Marker rewriting ────────────────────────────────────────────────────
 
-function rewrite(file) {
+/** `rel` is the file's path relative to docs/, which is how HUBS names it. */
+function rewrite(file, rel) {
   const original = fs.readFileSync(file, 'utf8');
   const lines = original.split('\n');
   const out = [];
@@ -153,22 +212,24 @@ function rewrite(file) {
     const m = lines[i].match(BEGIN_RE);
     if (!m) { out.push(lines[i++]); continue; }
 
-    const [, indent, section] = m;
-    if (!CATALOG_SECTIONS.some(s => s.label === section)) {
-      throw new Error(`${path.relative(REPO_ROOT, file)}:${i + 1}: unknown section "${section}"`);
+    const [, indent, section, hub, group] = m;
+    const where = `${path.relative(REPO_ROOT, file)}:${i + 1}`;
+    if (!section && !hub) throw new Error(`${where}: catalog:begin needs section="..." or hub`);
+    if (section && !CATALOG_SECTIONS.some(s => s.label === section)) {
+      throw new Error(`${where}: unknown section "${section}"`);
     }
     let j = i + 1;
     while (j < lines.length && !END_RE.test(lines[j])) j++;
-    if (j >= lines.length) {
-      throw new Error(`${path.relative(REPO_ROOT, file)}:${i + 1}: catalog:begin with no catalog:end`);
-    }
-    out.push(lines[i], renderSection(section, indent), lines[j]);
-    seen.push(section);
+    if (j >= lines.length) throw new Error(`${where}: catalog:begin with no catalog:end`);
+
+    out.push(lines[i],
+             section ? renderSection(section, indent) : renderHub(rel, group, indent),
+             lines[j]);
+    seen.push(section || (group ? 'hub:' + group : 'hub'));
     i = j + 1;
   }
 
-  const missing = CATALOG_SECTIONS.map(s => s.label).filter(l => !seen.includes(l));
-  return { text: out.join('\n'), changed: out.join('\n') !== original, sections: seen, missing };
+  return { text: out.join('\n'), changed: out.join('\n') !== original, seen };
 }
 
 // ── Coverage ────────────────────────────────────────────────────────────
@@ -215,7 +276,53 @@ function coverage() {
     problems.push(`CATALOG_NOT_CARDED lists ${h}, which is no longer a nav target`);
   }
 
-  return { problems, catalogHrefs, navHrefs };
+  // ── Hub pages ──
+  //
+  // The third registry. A guide can now be missing from the rail, from the
+  // landing page, or from its own hub page, and each of those was a real
+  // defect before this script existed. Cross-checking all three is the only
+  // reason to generate the cards rather than write them.
+  const hubHrefs = new Map();          // href -> hub file
+  const hubDirs = new Set(HUBS.map(h => path.dirname(h.file)));
+
+  for (const hub of HUBS) {
+    if (!fs.existsSync(path.join(DOCS_ROOT, hub.file))) {
+      problems.push(`HUBS names ${hub.file}, which does not exist`);
+    }
+    for (const c of hub.cards) {
+      if (c.soon) {
+        if (c.h) problems.push(`${hub.file}: "${c.title}" is marked soon but has a link`);
+        continue;
+      }
+      if (!c.h || c.h === '#') {
+        problems.push(`${hub.file}: "${c.title}" has no destination`);
+        continue;
+      }
+      if (!fs.existsSync(path.join(DOCS_ROOT, c.h.split('#')[0]))) {
+        problems.push(`${hub.file}: ${c.h} does not exist`);
+      }
+      if (hubHrefs.has(c.h)) {
+        problems.push(`${c.h} has a card on both ${hubHrefs.get(c.h)} and ${hub.file}`);
+      }
+      hubHrefs.set(c.h, hub.file);
+      // A guide on a hub page but not the landing page is unreachable from home.
+      if (!catalogHrefs.has(c.h)) {
+        problems.push(`${c.h} has a hub card on ${hub.file} but no catalog card`);
+      }
+    }
+  }
+
+  // The reverse, limited to families that actually have a hub page: a guide
+  // added to the landing page under guides/aws/ must also reach the AWS hub.
+  for (const [href, cardId] of catalogHrefs) {
+    const dir = path.dirname(href);
+    if (!hubDirs.has(dir)) continue;                 // no hub page for this family
+    if (href === path.join(dir, 'index.html')) continue;   // the hub page itself
+    if (hubHrefs.has(href)) continue;
+    problems.push(`${href} is on catalog card "${cardId}" but has no card on ${dir}/index.html`);
+  }
+
+  return { problems, catalogHrefs, navHrefs, hubHrefs };
 }
 
 // ── CLI ─────────────────────────────────────────────────────────────────
@@ -259,33 +366,49 @@ function main(argv) {
     return 1;
   }
 
-  let result;
-  try {
-    result = rewrite(LANDING);
-  } catch (err) {
-    console.error(err.message);
-    return 1;
-  }
+  // The landing page plus every hub page, all from the one registry.
+  const targets = [{ rel: 'index.html', required: CATALOG_SECTIONS.map(s => s.label) }]
+    .concat(HUBS.map(h => {
+      const groups = [...new Set(h.cards.map(c => c.group).filter(Boolean))];
+      return { rel: h.file, required: groups.length ? groups.map(g => 'hub:' + g) : ['hub'] };
+    }));
 
-  if (result.missing.length) {
-    console.error(`docs/index.html has no catalog:begin marker for: ${result.missing.join(', ')}`);
-    return 1;
-  }
-
-  if (check) {
-    if (result.changed) {
-      console.error('docs/index.html is stale. Run: node docs/shared/scripts/build-catalog.js');
+  const written = [];
+  for (const t of targets) {
+    const file = path.join(DOCS_ROOT, t.rel);
+    let result;
+    try {
+      result = rewrite(file, t.rel);
+    } catch (err) {
+      console.error(err.message);
       return 1;
     }
-    console.log(`Catalog up to date (${CATALOG.length} cards, ${cov.catalogHrefs.size} links).`);
-    return 0;
+
+    const missing = t.required.filter(r => !result.seen.includes(r));
+    if (missing.length) {
+      console.error(`docs/${t.rel} has no catalog:begin marker for: ${missing.join(', ')}`);
+      return 1;
+    }
+
+    if (result.changed) {
+      if (check) {
+        console.error(`docs/${t.rel} is stale. Run: node docs/shared/scripts/build-catalog.js`);
+        return 1;
+      }
+      fs.writeFileSync(file, result.text);
+      written.push(t.rel);
+    }
   }
 
-  if (result.changed) {
-    fs.writeFileSync(LANDING, result.text);
-    console.log(`Wrote docs/index.html (${CATALOG.length} cards, ${cov.catalogHrefs.size} links).`);
+  const tally = `${CATALOG.length} landing cards, ${cov.catalogHrefs.size} links, ` +
+                `${cov.hubHrefs.size} hub cards across ${HUBS.length} hub pages`;
+  if (check) {
+    console.log(`Catalog up to date (${tally}).`);
+  } else if (written.length) {
+    console.log(`Wrote ${written.length} file(s) (${tally}):`);
+    written.forEach(w => console.log(`  docs/${w}`));
   } else {
-    console.log(`docs/index.html already current (${CATALOG.length} cards, ${cov.catalogHrefs.size} links).`);
+    console.log(`Catalog already current (${tally}).`);
   }
   return 0;
 }
@@ -294,4 +417,4 @@ if (require.main === module) {
   process.exit(main(process.argv.slice(2)));
 }
 
-module.exports = { CATALOG, CATALOG_SECTIONS, navTargets, coverage };
+module.exports = { CATALOG, CATALOG_SECTIONS, HUBS, navTargets, coverage };

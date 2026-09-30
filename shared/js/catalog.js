@@ -314,6 +314,262 @@ var CATALOG = [
 ];
 
 /**
+ * Hub page cards.
+ *
+ * A hub page fronts one product family and gives each of its guides a card
+ * with a description and an Open Guide button, so its cards are per-guide
+ * where the landing page's are per-family. Both are generated from this file.
+ *
+ * `h` is relative to docs/, not to the hub page, so a card link can be checked
+ * against the nav and the landing page without resolving seven different base
+ * directories. The renderer converts it for output.
+ *
+ * `soon: true` marks a guide nobody has written yet. It renders with no link
+ * at all. The two cards this replaced used `href="#"`, and one of them had
+ * been calling a finished 3,152-line guide "Coming Soon".
+ */
+var HUBS = [
+
+  {
+    file: 'guides/aws/index.html',
+    cards: [
+      { accent: 'card-aws', badge: 'Panorama',
+        title: 'Panorama Deployment',
+        desc: 'Deploy Panorama management platform on AWS with Terraform. VPC setup, EC2 provisioning, EBS logging volumes, and initial configuration.',
+        tags: ['Panorama', 'EC2', 'Terraform'],
+        h: 'guides/aws/panorama-deployment.html' },
+      { accent: 'card-aws', badge: 'VM-Series',
+        title: 'VM-Series Deployment',
+        desc: 'Full Day-0 through Day-2 walkthrough. Deploy, configure, harden, and operationally validate VM-Series firewalls with GWLB-based traffic inspection.',
+        tags: ['VM-Series', 'GWLB', 'PAN-OS 11.x'],
+        h: 'guides/aws/vm-series-deployment.html' },
+      { accent: 'card-aws', badge: 'VM-Series HA',
+        title: 'Active/Passive HA Deployment',
+        desc: 'Deploy a pair of VM-Series firewalls in Active/Passive HA across two Availability Zones. Covers Security VPC design, S3 bootstrap, 5-interface layout, and IAM-based EIP and route table failover.',
+        tags: ['VM-Series', 'Active/Passive HA', 'Cross-AZ', 'Terraform'],
+        h: 'guides/aws/vm-series-ha-deployment.html' },
+      { accent: 'card-aws', badge: 'Plugin',
+        title: 'AWS Plugin for VPC Monitoring',
+        desc: 'Configure the Panorama AWS Plugin to monitor EC2 instances, create IP-to-tag mappings, and enforce dynamic security policy through Dynamic Address Groups.',
+        tags: ['Panorama Plugin', 'Dynamic Address Groups', 'IAM'],
+        h: 'guides/aws/aws-plugin-monitoring.html' },
+      { accent: 'card-aws', badge: 'GWLB',
+        title: 'Gateway Load Balancer Teardown',
+        desc: 'Step-by-step removal of GWLB endpoints, the endpoint service, and load balancer infrastructure. Ordered teardown with verification at each stage to avoid orphaned resources and route table black holes.',
+        tags: ['GWLB', 'Teardown', 'VPC Endpoints'],
+        cta: 'Open Procedure',
+        h: 'guides/aws/gwlb-teardown-procedure.html' },
+      { accent: 'card-aws', badge: 'Cloud NGFW',
+        title: 'Cloud NGFW',
+        desc: 'Deploy Cloud NGFW as a managed firewall service. Resource creation, rulestack configuration, and traffic steering.',
+        tags: ['Cloud NGFW', 'Managed Service'],
+        h: 'guides/cngfw/cloud-ngfw-aws.html' },
+    ]
+  },
+
+  {
+    file: 'guides/azure/index.html',
+    cards: [
+      { accent: 'card-azure', badge: 'Panorama',
+        title: 'Panorama Deployment',
+        desc: 'Deploy Panorama management platform on Azure with Terraform. VNet setup, VM provisioning, NSG configuration, and initial access with auto-generated credentials.',
+        tags: ['Panorama', 'Virtual Machine', 'Terraform'],
+        h: 'guides/azure/panorama-deployment.html' },
+      { accent: 'card-azure', badge: 'VM-Series',
+        title: 'VM-Series Deployment',
+        desc: 'VM-Series deployment on Azure using Common or Dedicated firewall models. End-to-end guide from Panorama / SCM configuration through Terraform deployment to verified traffic inspection. <em>Skeleton: phase content pending.</em>',
+        tags: ['VM-Series', 'Common Model', 'Dedicated Model', 'Terraform'],
+        h: 'guides/azure/vm-series-deployment.html' },
+      { accent: 'card-azure', badge: 'VM-Series',
+        title: 'VM-Series Active/Passive HA',
+        desc: 'Configure active/passive HA for VM-Series firewalls on Azure managed by Strata Cloud Manager. Covers Azure Service Principal setup, Secondary IP Move vs UDR failover modes, VM-Series plugin configuration, and SCM HA provisioning.',
+        tags: ['VM-Series', 'High Availability', 'SCM', 'Active/Passive'],
+        h: 'guides/azure/vm-series-ha.html' },
+      { accent: 'card-azure', badge: 'Cloud NGFW',
+        title: 'Cloud NGFW: Native Rulestack (SCM Managed)',
+        desc: 'Deploy Cloud NGFW with native local rulestack via the Azure portal, then connect to Strata Cloud Manager for centralized security policy. Covers VNet and vWAN topologies, NAT, logging, and advanced security features.',
+        tags: ['Cloud NGFW', 'Native Rulestack', 'SCM', 'Azure Portal'],
+        h: 'guides/cngfw/cloud-ngfw-azure-native.html' },
+      { accent: 'card-azure', badge: 'Prerequisites',
+        title: 'Phase 1: Prerequisites',
+        desc: 'One-time setup tasks to complete before configuring your management platform. Covers NGFW credit activation, deployment profiles, device certificates, Azure subscription readiness, and Terraform tooling, with a final checklist.',
+        tags: ['Licensing', 'Terraform', 'Checklist'],
+        cta: 'Open Document',
+        h: 'guides/azure/azure-phase1-prerequisites.html' },
+      { accent: 'card-azure', badge: 'Questionnaire',
+        title: 'Pre-Deployment Questionnaire',
+        desc: 'Fill-in questionnaire that collects the information needed to build and customize your Terraform deployment configuration: subscription details, existing infrastructure, network design, and firewall sizing.',
+        tags: ['VM-Series', 'Terraform', 'Planning'],
+        cta: 'Open Questionnaire',
+        h: 'guides/azure/azure-deployment-questionnaire.html' },
+    ]
+  },
+
+  {
+    file: 'guides/gcp/index.html',
+    cards: [
+      { accent: 'card-gcp', badge: 'Panorama',
+        title: 'Panorama Deployment',
+        desc: 'Deploy Panorama management platform on Google Cloud with Terraform. VPC setup, Compute Engine provisioning, firewall rules, and access via public IP or IAP tunnel.',
+        tags: ['Panorama', 'Compute Engine', 'Terraform'],
+        h: 'guides/gcp/panorama-deployment.html' },
+      { accent: 'card-gcp', badge: 'VM-Series',
+        title: 'VM-Series Deployment',
+        desc: 'Full Day-0 through Day-2 walkthrough. Deploy, configure, and verify VM-Series firewalls with ILB-based traffic inspection. Covers both common-firewall and dedicated-inbound topologies.',
+        tags: ['VM-Series', 'ILB', 'VPC Peering', 'Terraform'],
+        h: 'guides/gcp/vm-series-deployment.html' },
+      { accent: 'card-gcp', badge: 'Cloud NGFW',
+        title: 'Cloud NGFW',
+        desc: 'Deploy Cloud NGFW as a managed firewall service. Resource creation, security profile configuration, and VPC integration.',
+        tags: ['Cloud NGFW', 'Managed Service'],
+        soon: true },
+    ]
+  },
+
+  {
+    file: 'guides/oci/index.html',
+    cards: [
+      { accent: 'card-oci', badge: 'Panorama',
+        title: 'Panorama Deployment',
+        desc: 'Deploy Panorama management platform on Oracle Cloud Infrastructure. Compartment and IAM setup, VCN and subnet provisioning, Compute instance sizing, block-volume logging storage, and access via public IP or bastion.',
+        tags: ['Panorama', 'Compute', 'Block Volume', 'Terraform'],
+        h: 'guides/oci/panorama-deployment.html' },
+      { accent: 'card-oci', badge: 'VM-Series',
+        title: 'VM-Series Deployment',
+        desc: 'Full Day-0 through Day-2 walkthrough. Deploy, configure, and verify VM-Series firewalls with hub-and-spoke traffic inspection. Covers both the Active/Active Flexible NLB model and the Active/Passive built-in HA model.',
+        tags: ['VM-Series', 'Flexible NLB', 'DRG', 'Terraform'],
+        h: 'guides/oci/vm-series-deployment.html' },
+    ]
+  },
+
+  {
+    file: 'guides/branch/index.html',
+    cards: [
+      { accent: 'card-netsec', badge: 'PA-410 &middot; SCM &middot; SD-WAN',
+        title: 'ZTP to HA and SD-WAN AutoVPN',
+        desc: 'End-to-end guide: factory-fresh PA-410 hardware through Zero Touch Provisioning into Strata Cloud Manager, optionally formed into an Active/Passive HA pair, then joined to an existing SD-WAN AutoVPN cluster with an Azure hub. Zero local console configuration required.',
+        tags: ['ZTP', 'Active/Passive HA', 'SD-WAN AutoVPN', 'Azure Hub', 'CG-NAT', 'SCM-Managed'],
+        h: 'guides/branch/branch-ngfw-ztp-ha-sdwan.html' },
+    ]
+  },
+
+  {
+    file: 'guides/ai-gateway/index.html',
+    cards: [
+      { accent: 'card-ai', badge: 'Prisma AIRS',
+        title: 'Prisma AIRS AI Gateway Deployment',
+        desc: 'End-to-end deployment of the Prisma AIRS AI Gateway: flex credit licensing, SaaS or Hybrid data plane enablement, LLM integrations with workspace provisioning, budgets, rate limits, and model allowlists, plus guardrails and two-tier logging.</p> <p><strong>Start here whichever model you choose.</strong> Licensing, LLM integrations, MCP integrations, guardrails, and logging are identical for SaaS and Hybrid. Only the enablement phase differs, and it covers the SCM Gateway Registration wizard path in full.',
+        tags: ['SCM', 'SaaS / Hybrid', 'Flex Credits', 'Guardrails', 'MCP'],
+        h: 'guides/ai-gateway/ai-gateway-deployment.html' },
+      { accent: 'card-ai', badge: 'Companion',
+        title: 'Hybrid Infrastructure',
+        desc: 'Infrastructure planning for a Hybrid data plane: what the Helm chart deploys, which platforms are viable, how to size the cluster, what egress the gateway needs, and the prerequisites for EKS, AKS, and on-premises VMware.',
+        tags: ['Hybrid', 'Kubernetes', 'EKS / AKS', 'VMware', 'Sizing'],
+        h: 'guides/ai-gateway/hybrid-infrastructure.html' },
+      { accent: 'card-ai', badge: 'Companion',
+        title: 'EKS, AKS, and GKE',
+        desc: 'Deploying a Hybrid data plane on managed Kubernetes with Helm. Cluster preparation, the managed cache and log store, workload identity, the <code>values.yaml</code> file, the chart install, ingress, outbound connectivity to the management plane, and verification, with a tab per platform.',
+        tags: ['Hybrid', 'Helm', 'EKS', 'AKS', 'GKE'],
+        h: 'guides/ai-gateway/kubernetes-deployment.html' },
+      { accent: 'card-ai', badge: 'Companion',
+        title: 'ECS and Container Apps',
+        desc: 'Deploying a Hybrid data plane without Kubernetes. Terraform-driven deployment on Amazon ECS and Azure Container Apps: architecture, secret preparation, the module configuration, ingress and TLS, outbound connectivity to the management plane, and verification.',
+        tags: ['Hybrid', 'Terraform', 'ECS', 'Container Apps', 'PrivateLink'],
+        h: 'guides/ai-gateway/serverless-deployment.html' },
+      { accent: 'card-ai', badge: 'Companion',
+        title: 'LLM API Key Management',
+        desc: 'Secure key storage for customers who need a key management process in place before configuring the gateway: creating the key vault, storing provider API keys, giving the gateway an identity, granting access, retrieving secrets at runtime, and rotation with expiry alerting.',
+        tags: ['Key Vault', 'Rotation', 'RBAC', 'Managed Identity'],
+        h: 'guides/ai-gateway/llm-api-key-management.html' },
+    ]
+  },
+
+  {
+    file: 'guides/airs-integrations/index.html',
+    cards: [
+      { accent: 'card-ai', badge: 'Claude Code',
+        title: 'Anthropic Claude Code',
+        group: 'coding',
+        desc: 'Three integration methods for Claude Code: shell hooks for lifecycle interception, an MCP server for bidirectional scanning, and a Claude Code skill for on-demand security checks. Hooks provide the broadest coverage: prompt, pre-tool, and post-tool scanning.',
+        tags: ['Hooks', 'MCP', 'Skill', 'Prompt', 'Tool Calls'],
+        cta: 'Implementation Guide',
+        h: 'guides/airs-integrations/claude-code.html' },
+      { accent: 'card-ai', badge: 'Codex CLI',
+        title: 'OpenAI Codex CLI',
+        group: 'coding',
+        desc: 'Hooks-based integration for OpenAI Codex CLI. Scans prompts, bash commands, MCP tool inputs/outputs, and post-stream final responses with fail-closed enforcement.',
+        tags: ['Hooks', 'Prompt', 'Bash', 'MCP'],
+        cta: 'Implementation Guide',
+        h: 'guides/airs-integrations/codex-cli.html' },
+      { accent: 'card-ai', badge: 'IDE Assistants',
+        title: 'Cline, Cursor &amp; Windsurf',
+        group: 'coding',
+        desc: 'Hooks-based integrations for VS Code and IDE-native AI coding assistants. Each uses the platform\'s hook system to intercept prompts and tool calls with AIRS scanning. Covers Cline (VS Code extension), Cursor (IDE), and Windsurf (IDE).',
+        tags: ['Hooks', 'VS Code', 'Prompt', 'Tool Calls'],
+        cta: 'Implementation Guide',
+        h: 'guides/airs-integrations/ide-assistants.html' },
+      { accent: 'card-ai', badge: 'LiteLLM',
+        title: 'LiteLLM Proxy',
+        group: 'ai-gateways',
+        desc: 'Native guardrails integration for LiteLLM Proxy. AIRS scans prompts pre-call or during-call, responses post-call, and MCP tool inputs pre-execution. Configuration-only: add a guardrail block to your <code>config.yaml</code>.',
+        tags: ['Guardrails', 'Prompt', 'Response', 'MCP'],
+        cta: 'Implementation Guide',
+        h: 'guides/airs-integrations/litellm.html' },
+      { accent: 'card-ai', badge: 'TrueFoundry',
+        title: 'TrueFoundry AI Gateway',
+        group: 'ai-gateways',
+        desc: 'Middleware integration for TrueFoundry AI Gateway. AIRS scans prompts and responses with partial streaming support.',
+        tags: ['Middleware', 'Prompt', 'Response'],
+        cta: 'Implementation Guide',
+        h: 'guides/airs-integrations/truefoundry.html' },
+      { accent: 'card-ai', badge: 'Kong',
+        title: 'Kong Gateway',
+        group: 'api-gateways',
+        desc: 'Three integration options: a custom Lua plugin (v1) for LLM-only traffic with full AI Gateway multi-provider support, an MCP-aware v2 plugin that also inspects tool calls and buffered SSE streams, and a Kong Konnect SaaS request callout for prompt-only scanning.',
+        tags: ['Custom Plugin', 'MCP', 'Streaming', 'Multi-Provider'],
+        cta: 'Implementation Guide',
+        h: 'guides/airs-integrations/kong.html' },
+      { accent: 'card-ai', badge: 'Azure APIM',
+        title: 'Microsoft Azure API Management',
+        group: 'api-gateways',
+        desc: 'Policy fragment for Azure API Management configured as an AI Gateway. Dual-layer security scanning of prompts and responses using APIM\'s <code>send-request</code> policy to call the AIRS API inline.',
+        tags: ['Policy Fragment', 'Prompt', 'Response'],
+        cta: 'Implementation Guide',
+        h: 'guides/airs-integrations/azure-apim.html' },
+      { accent: 'card-ai', badge: 'Apigee',
+        title: 'Google Apigee',
+        group: 'api-gateways',
+        desc: 'API proxy and SharedFlow integration for Google Apigee. Scans prompts and responses for Vertex AI and other LLM backends using Apigee\'s service callout policies.',
+        tags: ['API Proxy', 'SharedFlow', 'Prompt', 'Response'],
+        cta: 'Implementation Guide',
+        h: 'guides/airs-integrations/apigee.html' },
+      { accent: 'card-ai', badge: 'GitHub Actions',
+        title: 'GitHub Actions',
+        group: 'cicd',
+        desc: 'Pre-deployment model file scanning using Prisma AIRS Model Security in GitHub Actions workflows. Detects malicious models, backdoors, and supply chain risks at the CI layer before models reach production.',
+        tags: ['Model Security', 'CI/CD', 'Supply Chain'],
+        cta: 'Implementation Guide',
+        h: 'guides/airs-integrations/github-actions.html' },
+      { accent: 'card-ai', badge: 'Jenkins',
+        title: 'Jenkins Pipeline',
+        group: 'cicd',
+        desc: 'Declarative pipeline integration for Jenkins. Scans AI model files using AIRS Model Security as a pipeline stage, gating deployment on scan results.',
+        tags: ['Model Security', 'CI/CD', 'Pipeline'],
+        cta: 'Implementation Guide',
+        h: 'guides/airs-integrations/jenkins.html' },
+      { accent: 'card-ai', badge: 'n8n',
+        title: 'n8n Workflow Automation',
+        group: 'cicd',
+        desc: 'Workflow node integration for n8n. Embed AIRS prompt and response scanning into AI-powered automation workflows using n8n\'s HTTP request nodes.',
+        tags: ['Workflow', 'Prompt', 'Response'],
+        cta: 'Implementation Guide',
+        h: 'guides/airs-integrations/n8n.html' },
+    ]
+  },
+
+];
+
+/**
  * Nav targets that deliberately have no catalog link of their own, with the
  * reason. The build fails on any other nav target that is missing, so this
  * list is the only way to leave one out, and it has to be argued for.
@@ -326,5 +582,6 @@ var CATALOG_NOT_CARDED = {
 };
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { CATALOG: CATALOG, CATALOG_SECTIONS: CATALOG_SECTIONS, CATALOG_NOT_CARDED: CATALOG_NOT_CARDED };
+  module.exports = { CATALOG: CATALOG, CATALOG_SECTIONS: CATALOG_SECTIONS,
+                     CATALOG_NOT_CARDED: CATALOG_NOT_CARDED, HUBS: HUBS };
 }
