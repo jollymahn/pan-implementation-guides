@@ -2117,7 +2117,7 @@ curl 'http://<LB_ADDRESS>:<LISTENER_PORT>/v1/chat/completions' \
 
 > **Verify.** the same completion returns. If step 8.1 worked and this does not, the problem is the load balancer, the health check, or the source range from step 6, and not the gateway.
 
-The listener port is not published for any of the three platforms. Read it from the Ingress or Service you created rather than assuming 80. <!-- TODO: verify -->
+On the LoadBalancer path the listener port is 80. All three platform pages set `service.port: 80` against `containerPort: 8787`, and the AWS and GCP pages label that line as the load balancer listener port. On the Ingress path the Service is `ClusterIP` on 8787 and the listener comes from the Ingress and its annotations instead. Confirm against the object you actually created, because a values file you have edited governs over the vendor default.
 
 ### 8.3 &mdash; Confirm the request reached the management plane
 
@@ -2200,7 +2200,6 @@ These questions come up in the field and the published material does not current
 - **Image and chart compatibility** &mdash; versioned tags are published and the chart pins its own defaults, so pinning is straightforward (see [step 4](#4-build-valuesyaml)). What remains unpublished is whether the chart's pinned pairing is the *supported* pairing, and whether any matrix covers running a newer gateway image against an older chart.
 - **Upgrade and rollback** &mdash; no supported upgrade path and no tested rollback procedure.
 - **TLS policy on ingress** &mdash; the mechanism is settled: the chart exposes `ingress.tls` and each platform has a documented certificate source, all covered in [step 6](#6-expose-the-gateway). What remains unpublished is the policy: no recommended cipher suite, no minimum TLS version, and no statement on whether the gateway expects TLS to terminate at the load balancer or pass through to the pod. Every vendor example still serves plain HTTP.
-- **Load balancer listener port** &mdash; not published, while your own firewall rules depend on it. Read it from the created Ingress or Service. <!-- TODO: verify -->
 - **Region placement and data residency** &mdash; Strata Cloud Manager runs in the Americas only today, with other regions planned, and prompt bodies land there regardless of the log store setting. Retention and custody for that store are still unpublished.
 - **Air-gapped deployment** &mdash; no documented configuration for a cluster with no path to `portkey.ai`.
 - **TLS inspection** &mdash; behavior of the outbound links through an intercepting proxy is not described, and streaming through one is untested.

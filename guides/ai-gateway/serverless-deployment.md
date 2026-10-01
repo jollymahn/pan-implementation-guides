@@ -673,7 +673,7 @@ output "service_name" {
 }
 ```
 
-`allowed_lb_cidrs` is the source list for the load balancer's inbound rule. The listener port and protocol the module configures are not documented upstream, so read them out of the plan output or the created listener before you write any firewall rule against them, and record the value, because your own firewall and security group rules depend on it. <!-- TODO: verify the NLB listener port and protocol against the created listener; not published in aws/ecs.md -->
+`allowed_lb_cidrs` is the source list for the load balancer's inbound rule. The listener port and protocol are not yours to set here. The module's load balancer inputs are `create_lb`, `internal_lb`, `lb_type`, and `allowed_lb_cidrs`, with no listener-port variable among them, so the port is chosen inside the module and the published page never states it. The `gateway_config` block's `gateway_port = 8787` and `mcp_port = 8788` are container-side ports, not listener ports; do not write a firewall rule against them by mistake. Read the real value out of the plan output or the created listener, and record the value, because your own firewall and security group rules depend on it. <!-- TODO: verify the NLB listener port and protocol against the created listener; not published in aws/ecs.md -->
 
 > **Note: Pin the module version.** The `?ref=v2.0.0` suffix on the source matters. Without it Terraform tracks the default branch and a later `apply` can pull an unrelated change into an unrelated deployment. Bump the ref deliberately, as described under Scaling and Upgrades.
 
@@ -893,7 +893,21 @@ The `storage_config` block above is the log store. The module creates the storag
 
 > **Note: Check the image tag before you apply.** The `2.2.2` above is the value the vendor's published example carries, and it is well behind. The Enterprise Gateway changelog lists 130 releases, reaching `v2.22.0` on 2026-09-11, on a roughly weekly cadence. Pinning is right, but pin something current: take the newest version from the changelog, or match the `gateway_enterprise` tag the Helm chart pins as its default, which is the pairing the vendor ships and tests together. Applying this file unchanged deploys a build from many releases ago.
 
-`NODE_ENV = "development"` is the value the published examples ship. What it changes inside the gateway image is not documented, and in Node services this value commonly enables verbose error responses and stack traces, so change it before real traffic. <!-- TODO: verify what NODE_ENV changes in the gateway image -->
+`NODE_ENV = "development"` is the value the published examples ship, and it is not a cosmetic setting. It selects the default trusted-hosts allowlist, so leaving it at `development` weakens an SSRF control on a gateway that proxies requests on your behalf.
+
+> **Danger: NODE_ENV controls the SSRF guard, and the shipped example relaxes it.**
+> The gateway blocks requests to private and reserved IP ranges, and the `TRUSTED_CUSTOM_HOSTS` allowlist is the documented way to bypass that check. Trusted hostnames bypass the private and reserved IP check at request time, and their DNS-resolved addresses bypass it again at connection time. What populates that allowlist by default depends entirely on `NODE_ENV`:
+>
+> | NODE_ENV | Default when TRUSTED_CUSTOM_HOSTS is unset |
+> |---|---|
+> | Anything other than `production` | `localhost`, `127.0.0.1`, `::1`, and `host.docker.internal` are trusted |
+> | `production` | Empty. Localhost and private IPs are blocked until you opt in |
+>
+> Set `NODE_ENV = "production"` before the gateway serves real traffic. If you genuinely need a private destination, add it explicitly to `TRUSTED_CUSTOM_HOSTS` as a comma-separated list. Setting that variable replaces the defaults rather than merging with them, so an explicit list in non-production must restate the four localhost-family entries if you still want them.
+>
+> `TRUSTED_CUSTOM_HOSTS` exists only on self-hosted hybrid and air-gapped deployments, which is what this guide builds. It is not available on SaaS.
+
+Two smaller effects follow the same variable. `NODE_ENV` supplies the `env` label on every Prometheus metric the gateway exports, so a fleet left at `development` is hard to separate from a real staging tier on a dashboard. Beyond the allowlist, the vendor does not document what else the value changes inside the image; in Node services it commonly enables verbose error responses and stack traces, which is a second reason not to ship it. <!-- TODO: verify with the product team whether NODE_ENV also changes error verbosity or stack trace exposure in the gateway image; the allowlist and metrics-label effects are documented, the rest is inference from Node convention. -->
 
 > **Warning: The built-in cache runs without TLS or a password.** The `redis_config` block above holds the gateway's enforcement state: synced configuration, every rate limit counter, and every budget counter. It runs without TLS and without a password. With `network_mode = "none"` there is no VNet of your own, so the hop is reachable by any other app in the same managed environment and nothing in this configuration isolates it. Before real traffic, move to Azure Managed Redis over TLS with a password as described in step 3.2.
 
@@ -901,7 +915,7 @@ The `storage_config` block above is the log store. The module creates the storag
 
 > **Note: Pin the module version and the image tag.** ACA pins in two places: `?ref=v1.1.3` on the module source and `tag` in `gateway_image`. They move independently. Note also that the ECS and ACA modules carry different version numbers despite living in the same repository, so do not copy a `ref` between platforms.
 
-> **Warning: This configuration is public with no VNet.** `network_mode = "none"` with `public_ingress = true` gives the gateway a publicly resolvable FQDN reachable from anywhere. That is convenient for a first deployment and wrong for production. Until you change it, the FQDN printed by `terraform apply` is reachable from the internet. Step 3.1 shows the Application Gateway path; set `public = false` there for a private Application Gateway. Whether the built-in ACA ingress can be made internal through this module is not documented, so if you need a private endpoint without Application Gateway, confirm the variable with the product team before planning around it. <!-- TODO: verify whether the terraform/aca module exposes a private built-in ingress option -->
+> **Warning: This configuration is public with no VNet.** `network_mode = "none"` with `public_ingress = true` gives the gateway a publicly resolvable FQDN reachable from anywhere. That is convenient for a first deployment and wrong for production. Until you change it, the FQDN printed by `terraform apply` is reachable from the internet. Step 3.1 shows the Application Gateway path; set `public = false` there for a private Application Gateway. The module also takes `public_ingress` as a plain boolean alongside `ingress_type`, which accepts `aca` or `application_gateway`, so `ingress_type = "aca"` with `public_ingress = false` is the built-in private path and needs no Application Gateway. Every published example sets it to `true`, so the private variant is untested in the vendor material: plan it, then verify the created FQDN is not publicly resolvable before you rely on it. <!-- TODO: verify against a real apply that ingress_type = "aca" with public_ingress = false produces an internal-only FQDN; the variable pair is documented but no published example exercises the false path. -->
 
 #### 2.3 — Apply
 
@@ -1617,10 +1631,9 @@ These questions come up in the field and the published material does not current
 - **Air-gapped deployment** &mdash; no documented configuration for an environment with no path to `portkey.ai`.
 - **TLS inspection** &mdash; behavior of the outbound links through an intercepting proxy is not described, and streaming through one is untested.
 - **On-premises** &mdash; confirmed supported but with no published procedure for these two platforms.
-- **Load balancer listener port and protocol** &mdash; not published for either platform, while your own security group and firewall rules depend on it. Read it from the created listener. <!-- TODO: verify -->
-- **Private built-in ingress on ACA** &mdash; whether the module can make the built-in container app ingress private without moving to a VNet and Application Gateway is not documented. <!-- TODO: verify -->
+- **Load balancer listener port and protocol** &mdash; neither the ECS nor the ACA module exposes a listener-port variable, so the value is chosen inside the module and no page states it, while your own security group and firewall rules depend on it. Read it from the created listener. The Kubernetes pages do publish theirs, and that value does not carry across to these two platforms.
 - **Source restriction on built-in ACA ingress** &mdash; the module variable that restricts source addresses on the built-in ingress is not documented, so a `network_mode = "none"` deployment has no in-module way to keep its public FQDN off the open internet. <!-- TODO: verify -->
-- **ALB TLS policy and HTTP listener** &mdash; the TLS security policy the module applies, and whether it also creates a port 80 listener, are not published. <!-- TODO: verify -->
+- **ALB TLS policy and HTTP listener** &mdash; the TLS security policy the module applies, and whether it also creates a port 80 listener, are not published. No cipher suite or minimum TLS version appears on any platform page for any of the five deployment targets, so this is a gap in the product documentation rather than one page's omission.
 
 > **Note: The two documentation paths no longer disagree.** The SCM Gateway Registration wizard produces an outbound-only deployment, and the platform pages this guide follows describe an inbound path as well. Palo Alto Networks confirmed on 2026-09-27 that outbound-only is correct for AIRS, so the wizard's model is the accurate one and the platform pages are describing the Portkey product. Both send prompt content to the Strata Cloud Manager backend on the default log store, so the difference was never about residency.
 

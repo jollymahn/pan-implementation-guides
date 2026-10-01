@@ -1027,7 +1027,7 @@ output "service_name" {
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
 
-        <p><code>allowed_lb_cidrs</code> is the source list for the load balancer's inbound rule. The listener port and protocol the module configures are not documented upstream, so read them out of the plan output or the created listener before you write any firewall rule against them, and record the value, because your own firewall and security group rules depend on it. <!-- TODO: verify the NLB listener port and protocol against the created listener; not published in aws/ecs.md --></p>
+        <p><code>allowed_lb_cidrs</code> is the source list for the load balancer's inbound rule. The listener port and protocol are not yours to set here. The module's load balancer inputs are <code>create_lb</code>, <code>internal_lb</code>, <code>lb_type</code>, and <code>allowed_lb_cidrs</code>, with no listener-port variable among them, so the port is chosen inside the module and the published page never states it. The <code>gateway_config</code> block's <code>gateway_port = 8787</code> and <code>mcp_port = 8788</code> are container-side ports, not listener ports; do not write a firewall rule against them by mistake. Read the real value out of the plan output or the created listener, and record it, because your own firewall and security group rules depend on it. <!-- TODO: verify the NLB listener port and protocol against a created listener. The module exposes no variable for it and aws/ecs.md never states it, so this needs an apply or the module source rather than a doc lookup. --></p>
 
         <div class="callout callout-note">
           <div class="callout-title">Pin the module version</div>
@@ -1284,7 +1284,25 @@ output "app_gateway_public_ip" {
           <p>The <code>2.2.2</code> above is the value the vendor's published example carries, and it is well behind. The Enterprise Gateway changelog lists 130 releases, reaching <code>v2.22.0</code> on 2026-09-11, on a roughly weekly cadence. Pinning is right, but pin something current: take the newest version from the changelog, or match the <code>gateway_enterprise</code> tag the Helm chart pins as its default, which is the pairing the vendor ships and tests together. Applying this file unchanged deploys a build from many releases ago.</p>
         </div>
 
-        <p><code>NODE_ENV = "development"</code> is the value the published examples ship. What it changes inside the gateway image is not documented, and in Node services this value commonly enables verbose error responses and stack traces, so change it before real traffic. <!-- TODO: verify what NODE_ENV changes in the gateway image --></p>
+        <p><code>NODE_ENV = "development"</code> is the value the published examples ship, and it is not a cosmetic setting. It selects the default trusted-hosts allowlist, so leaving it at <code>development</code> weakens an SSRF control on a gateway that proxies requests on your behalf.</p>
+
+        <div class="callout callout-danger">
+          <div class="callout-title">NODE_ENV controls the SSRF guard, and the shipped example relaxes it</div>
+          <p>The gateway blocks requests to private and reserved IP ranges, and the <code>TRUSTED_CUSTOM_HOSTS</code> allowlist is the documented way to bypass that check. Trusted hostnames bypass the private and reserved IP check at request time, and their DNS-resolved addresses bypass it again at connection time. What populates that allowlist by default depends entirely on <code>NODE_ENV</code>:</p>
+          <table>
+            <thead>
+              <tr><th>NODE_ENV</th><th>Default when TRUSTED_CUSTOM_HOSTS is unset</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Anything other than <code>production</code></td><td><code>localhost</code>, <code>127.0.0.1</code>, <code>::1</code>, and <code>host.docker.internal</code> are trusted</td></tr>
+              <tr><td><code>production</code></td><td>Empty. Localhost and private IPs are blocked until you opt in</td></tr>
+            </tbody>
+          </table>
+          <p>Set <code>NODE_ENV = "production"</code> before the gateway serves real traffic. If you genuinely need a private destination, add it explicitly to <code>TRUSTED_CUSTOM_HOSTS</code> as a comma-separated list. Setting that variable replaces the defaults rather than merging with them, so an explicit list in non-production must restate the four localhost-family entries if you still want them.</p>
+          <p><code>TRUSTED_CUSTOM_HOSTS</code> exists only on self-hosted hybrid and air-gapped deployments, which is what this guide builds. It is not available on SaaS.</p>
+        </div>
+
+        <p>Two smaller effects follow the same variable. <code>NODE_ENV</code> supplies the <code>env</code> label on every Prometheus metric the gateway exports, so a fleet left at <code>development</code> is hard to separate from a real staging tier on a dashboard. Beyond the allowlist, the vendor does not document what else the value changes inside the image; in Node services it commonly enables verbose error responses and stack traces, which is a second reason not to ship it. <!-- TODO: verify with the product team whether NODE_ENV also changes error verbosity or stack trace exposure in the gateway image; the allowlist and metrics-label effects are documented, the rest is inference from Node convention. --></p>
 
         <div class="callout callout-warning">
           <div class="callout-title">The built-in cache runs without TLS or a password</div>
@@ -1303,7 +1321,7 @@ output "app_gateway_public_ip" {
 
         <div class="callout callout-warning">
           <div class="callout-title">This configuration is public with no VNet</div>
-          <p><code>network_mode = "none"</code> with <code>public_ingress = true</code> gives the gateway a publicly resolvable FQDN reachable from anywhere. That is convenient for a first deployment and wrong for production. Until you change it, the FQDN printed by <code>terraform apply</code> is reachable from the internet. Step 3.1 shows the Application Gateway path; set <code>public = false</code> there for a private Application Gateway. Whether the built-in ACA ingress can be made internal through this module is not documented, so if you need a private endpoint without Application Gateway, confirm the variable with the product team before planning around it. <!-- TODO: verify whether the terraform/aca module exposes a private built-in ingress option --></p>
+          <p><code>network_mode = "none"</code> with <code>public_ingress = true</code> gives the gateway a publicly resolvable FQDN reachable from anywhere. That is convenient for a first deployment and wrong for production. Until you change it, the FQDN printed by <code>terraform apply</code> is reachable from the internet. Step 3.1 shows the Application Gateway path; set <code>public = false</code> there for a private Application Gateway. The module also takes <code>public_ingress</code> as a plain boolean alongside <code>ingress_type</code>, which accepts <code>aca</code> or <code>application_gateway</code>, so <code>ingress_type = "aca"</code> with <code>public_ingress = false</code> is the built-in private path and needs no Application Gateway. Every published example sets it to <code>true</code>, so the private variant is untested in the vendor material: plan it, then verify the created FQDN is not publicly resolvable before you rely on it. <!-- TODO: verify against a real apply that ingress_type = "aca" with public_ingress = false produces an internal-only FQDN; the variable pair is documented but no published example exercises the false path. --></p>
         </div>
       </div>
     </div>
@@ -1402,7 +1420,7 @@ allowed_lb_cidrs    = ["&lt;X.X.X.X/Y&gt;"]   # never 0.0.0.0/0</code></pre>
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
 
-        <p><code>allowed_lb_cidrs</code> is the complete source list for the HTTPS listener. Two properties of this listener are not exposed as documented module variables: the TLS security policy and whether a plain-HTTP listener is created alongside it. Read both out of the created listener after the first apply, set the security policy to a TLS 1.2 minimum on the listener resource if the module does not, and remove or redirect any port 80 listener before sending real traffic. <!-- TODO: verify the ALB TLS security policy and whether a port 80 listener is created --></p>
+        <p><code>allowed_lb_cidrs</code> is the complete source list for the HTTPS listener. Two properties of this listener are not exposed as documented module variables: the TLS security policy and whether a plain-HTTP listener is created alongside it. Read both out of the created listener after the first apply, set the security policy to a TLS 1.2 minimum on the listener resource if the module does not, and remove or redirect any port 80 listener before sending real traffic. <!-- TODO: verify the ALB TLS security policy and whether a port 80 listener is created. A mirror sweep for ssl-policy, ELBSecurityPolicy, minimum-protocol, cipher, and TLSv1 returned nothing across every platform page, so no TLS policy is published anywhere and this needs an apply or the module source, not a doc lookup. --></p>
 
         <p>With <code>server_mode = "all"</code>, add host-based routing and point both names at the ALB:</p>
         <div class="code-block">
@@ -1938,7 +1956,7 @@ terraform apply</code></pre>
     <span>5.1 &mdash; Send a request through the gateway</span>
   </div>
   <div class="collapsible-body">
-    <p>Replace <code>&lt;GATEWAY_ENDPOINT&gt;</code> with the load balancer DNS name, the Container Apps FQDN, or your custom hostname. Use <code>https</code> wherever you configured TLS in step 3. The ECS configuration in step 2.2 creates an internal load balancer, so run this from a host inside the VPC, or through ECS Exec on a gateway task, rather than from your laptop. On ACA with the built-in ingress the FQDN is public and you can run it from anywhere. Append the listener port if your endpoint does not listen on 443. <!-- TODO: verify the NLB and Application Gateway listener port; the container port is 8787 but the listener port is not published --></p>
+    <p>Replace <code>&lt;GATEWAY_ENDPOINT&gt;</code> with the load balancer DNS name, the Container Apps FQDN, or your custom hostname. Use <code>https</code> wherever you configured TLS in step 3. The ECS configuration in step 2.2 creates an internal load balancer, so run this from a host inside the VPC, or through ECS Exec on a gateway task, rather than from your laptop. On ACA with the built-in ingress the FQDN is public and you can run it from anywhere. Append the listener port if your endpoint does not listen on 443. <!-- TODO: verify the NLB and Application Gateway listener port against a created listener. Neither the ECS nor the ACA terraform module exposes a listener-port variable, so the value is module-internal and cannot be looked up: 8787 and 8788 in gateway_config are container ports, not listener ports. Note the Kubernetes platform pages do publish theirs (service.port 80 against containerPort 8787), so do not carry that 80 across to ECS or ACA on the strength of the Kubernetes pages. --></p>
 
     <p><code>PORTKEY_API_KEY</code> is a workspace API key, created in Strata Cloud Manager under the workspace this gateway syncs, in <a href="ai-gateway-deployment.html#llm-integration">Phase 3 of the AI Gateway Deployment Guide</a>. Create one there and copy it here before running the request, and use the same key each time you re-run this check. <code>OPENAI_API_KEY</code> is your own provider key.</p>
 
@@ -2236,10 +2254,9 @@ terraform apply</code></pre>
       <li><strong>Air-gapped deployment</strong> &mdash; no documented configuration for an environment with no path to <code>portkey.ai</code>.</li>
       <li><strong>TLS inspection</strong> &mdash; behavior of the outbound links through an intercepting proxy is not described, and streaming through one is untested.</li>
       <li><strong>On-premises</strong> &mdash; confirmed supported but with no published procedure for these two platforms.</li>
-      <li><strong>Load balancer listener port and protocol</strong> &mdash; not published for either platform, while your own security group and firewall rules depend on it. Read it from the created listener. <!-- TODO: verify --></li>
-      <li><strong>Private built-in ingress on ACA</strong> &mdash; whether the module can make the built-in container app ingress private without moving to a VNet and Application Gateway is not documented. <!-- TODO: verify --></li>
+      <li><strong>Load balancer listener port and protocol</strong> &mdash; neither the ECS nor the ACA module exposes a listener-port variable, so the value is chosen inside the module and no page states it, while your own security group and firewall rules depend on it. Read it from the created listener. The Kubernetes pages do publish theirs, and that value does not carry across to these two platforms.</li>
       <li><strong>Source restriction on built-in ACA ingress</strong> &mdash; the module variable that restricts source addresses on the built-in ingress is not documented, so a <code>network_mode = "none"</code> deployment has no in-module way to keep its public FQDN off the open internet. <!-- TODO: verify --></li>
-      <li><strong>ALB TLS policy and HTTP listener</strong> &mdash; the TLS security policy the module applies, and whether it also creates a port 80 listener, are not published. <!-- TODO: verify --></li>
+      <li><strong>ALB TLS policy and HTTP listener</strong> &mdash; the TLS security policy the module applies, and whether it also creates a port 80 listener, are not published. No cipher suite or minimum TLS version appears on any platform page for any of the five deployment targets, so this is a gap in the product documentation rather than one page's omission.</li>
     </ul>
 
     <div class="callout callout-note">
