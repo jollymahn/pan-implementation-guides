@@ -929,7 +929,7 @@ dhcp-accept-server-domain=yes</code></pre>
 
 <h2 id="prerequisites">Phase 1: Prerequisites</h2>
 
-<p>Complete these one-time setup tasks before configuring Panorama. If you've already completed them, skip to <a href="#licensing-plugin">Phase 2</a>.</p>
+<p>Complete these one-time setup tasks before configuring your management platform, whether that is Panorama or SCM. If you've already completed them, skip to <a href="#licensing-plugin">Phase 2</a>.</p>
 
 <!-- Prereq 1 -->
 <div class="collapsible">
@@ -962,28 +962,69 @@ dhcp-accept-server-domain=yes</code></pre>
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>1.2 Verify Strata Cloud Manager (SCM) — SCM Deployment</span>
+    <span>1.2 Verify an Active Panorama or SCM</span>
   </div>
   <div class="collapsible-body">
-    <p>Strata Cloud Manager provides centralized management for your Palo Alto Networks deployment. It must be provisioned before deployment.</p>
-    <ol>
-      <li>Log in to <a href="https://stratacloud.paloaltonetworks.com">Strata Cloud Manager</a>.</li>
-      <li>Verify your tenant is active and you can access the management console.</li>
-      <li>Under <strong>Products</strong> for your tenant, confirm the following are listed:
-        <ul>
-          <li>Strata Cloud Manager</li>
-          <li>Strata Logging Service</li>
-          <li>Telemetry</li>
-        </ul>
-      </li>
-    </ol>
+    <p>VM-Series firewalls register with a management platform the moment they finish bootstrapping, so that platform has to be running, licensed, and reachable before you build anything in AWS. Verify whichever one you plan to use. This is the same choice you make in <a href="#management-config">Phase 2</a>, and the selection persists across the page: picking a tab here sets the Phase 2 path too.</p>
+
     <div class="callout callout-note">
-      <div class="callout-title">Note</div>
-      <p>NGFW Management is enabled by default on new tenants; no separate flag request is required.</p>
+      <div class="callout-title">Which path should I pick?</div>
+      <ul>
+        <li><strong>Panorama</strong> &mdash; you already operate Panorama, need on-prem control, or will license firewalls through the SW Firewall License plugin.</li>
+        <li><strong>SCM</strong> &mdash; greenfield deployments, cloud-native operations, or consolidating onto Strata's SaaS management plane.</li>
+      </ul>
     </div>
-    <div class="callout callout-success">
-      <div class="callout-title">Verification</div>
-      <p>The tenant dashboard loads without errors, and Strata Cloud Manager, Strata Logging Service, and Telemetry all appear under <strong>Products</strong> for your tenant. If any product is missing, contact your account team before continuing.</p>
+
+    <div class="mgmt-tabs" data-tab-group="mgmt">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="Panorama">1A &middot; Panorama</button>
+        <button class="mgmt-tab" data-plane="SCM">1B &middot; SCM</button>
+      </div>
+
+      <!-- ── 1A · Panorama ─────────────────────────────────── -->
+      <div class="mgmt-panel active" data-plane="Panorama">
+        <p>This guide assumes an existing Panorama. If you still need to build one on AWS, that is a separate deployment covered by the <a href="panorama-deployment.html">Panorama on AWS guide</a>; come back here once it is running.</p>
+        <ol>
+          <li>Log in to the Panorama web UI.</li>
+          <li>Go to <strong>Dashboard</strong>. The <strong>General Information</strong> widget shows the hostname, model, serial number, PAN-OS version, and uptime. Record the version.</li>
+          <li>Confirm the version is <strong>10.0.0 or later</strong>. The SW Firewall License plugin you install in <a href="#licensing-plugin">Phase 2A.1</a> requires it, and the plugin will not install on anything older.</li>
+          <li>Go to <strong>Panorama &gt; Licenses</strong>. Confirm the <strong>Device Management</strong> license is active with a valid expiration date, and that its managed-device count leaves room for the firewalls you are about to onboard.</li>
+          <li>If you run a Panorama HA pair, repeat the checks on the secondary. Record both management IP addresses: bootstrap consumes them as <code>panorama-server</code> and <code>panorama-server-2</code> in <a href="#vm-launch">Phase 7</a>.</li>
+          <li>Confirm each Panorama management IP is reachable on TCP <code>3978</code> from the CIDR you plan to use for the firewall management subnet.</li>
+        </ol>
+        <div class="callout callout-note">
+          <div class="callout-title">Note</div>
+          <p>How the firewalls reach Panorama depends on where it runs: VPC peering, a Transit Gateway attachment, VPN or Direct Connect, or the public internet. <a href="#security-vpc">Phase 5.8: Panorama Connectivity</a> builds that path. If the management interface cannot reach Panorama on 3978, the firewall boots normally and then never registers, which is the most common and most confusing bootstrap failure in this guide.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The Dashboard loads and <strong>General Information</strong> reports PAN-OS 10.0.0 or later, <strong>Panorama &gt; Licenses</strong> shows an active Device Management license with capacity to spare, and you have written down one management IP per Panorama. If the version is below 10.0.0, upgrade before <a href="#licensing-plugin">Phase 2A.1</a>.</p>
+        </div>
+      </div>
+
+      <!-- ── 1B · SCM ──────────────────────────────────────── -->
+      <div class="mgmt-panel" data-plane="SCM">
+        <p>Strata Cloud Manager provides centralized management for your Palo Alto Networks deployment. It must be provisioned before deployment.</p>
+        <ol>
+          <li>Log in to <a href="https://stratacloud.paloaltonetworks.com">Strata Cloud Manager</a>.</li>
+          <li>Verify your tenant is active and you can access the management console.</li>
+          <li>Under <strong>Products</strong> for your tenant, confirm the following are listed:
+            <ul>
+              <li>Strata Cloud Manager</li>
+              <li>Strata Logging Service</li>
+              <li>Telemetry</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="callout callout-note">
+          <div class="callout-title">Note</div>
+          <p>NGFW Management is enabled by default on new tenants; no separate flag request is required.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The tenant dashboard loads without errors, and Strata Cloud Manager, Strata Logging Service, and Telemetry all appear under <strong>Products</strong> for your tenant. If any product is missing, contact your account team before continuing.</p>
+        </div>
+      </div>
     </div>
   </div>
 </div>
