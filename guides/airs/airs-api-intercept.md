@@ -227,20 +227,26 @@ Create an AI security profile in Strata Cloud Manager that defines which detecti
 
 ### Step 3.1 — Onboard API Intercept in SCM
 
-1. Log in to [Strata Cloud Manager](https://stratacloudmanager.paloaltonetworks.com).
-2. Navigate to **AI Security → AI Runtime → API Intercept**.
-3. If this is your first time, the onboarding wizard will appear. Follow the prompts to connect your deployment profile.
-4. Confirm the deployment profile, region, and TSG match what you configured in Phase 2.
+Onboarding registers an **application** in SCM and issues the API key that application will use. Run this wizard once per application you want to protect.
 
-*Verification:* The API Intercept dashboard loads without errors and shows your deployment profile details.
+1. Log in to [Strata Cloud Manager](https://stratacloudmanager.paloaltonetworks.com).
+2. Navigate to **AI Security → AI Runtime → API Applications**.
+3. Select **Manage Applications**, then select the deployment profile with the type **Prisma AIRS AI Runtime API** that you created in the Customer Support Portal in Phase 2. Choose **Next**.
+4. **Onboard API Account**: enter an Application Name, select the Cloud Provider and Environment, optionally select an AI Agent Framework (Not Applicable, GCP Agent Builder, AWS Agent Builder, Microsoft Copilot Studio, or Azure AI Agent Builder), select the default Deployment Profile, and toggle **Linked** if you want an existing security profile associated automatically. Choose **Next**.
+
+> **Note:** You do not create the deployment profile here. You created it in the Customer Support Portal in Phase 2, Step 2.3 and associated it with your Tenant Service Group. This wizard only selects it from a list. An empty dropdown means the profile was not created, was not associated with the TSG, or has already been consumed by another application.
+
+> **Note:** One deployment profile supports up to **20 applications**, and each application belongs to exactly one deployment profile. Every application on a profile draws on the same daily API call quota you set when you created that profile.
+
+*Verification:* The API Applications dashboard loads without errors and shows your deployment profile details.
 
 ### Step 3.2 — Create an AI Security Profile
 
 The AI security profile defines which detection services are active and what action (allow/block) to take for each threat category.
 
-1. In SCM, navigate to **AI Security → AI Security Profiles**.
-2. Click **Add Profile**.
-3. Name your profile (e.g., "production-api-scan"). This name is used in API requests as `profile_name`.
+1. In SCM, navigate to **AI Security → API Applications** (the **AI Sessions** page works too).
+2. In the top right corner, click **Manage** and select **Security Profiles**.
+3. Click **Create Security profile** and enter a **Security Profile Name** (e.g., "production-api-scan"). This name is used in API requests as `profile_name`.
 4. Configure detection services:
 
 | Detection Service | Recommended Setting |
@@ -258,28 +264,82 @@ The AI security profile defines which detection services are active and what act
 
 ### Step 3.3 — Generate an API Key
 
-The API key authenticates your application to the Scan API. Each deployment profile can have one API key.
+The API key authenticates your application to the Scan API. It is the value you send in the `x-pan-token` header on every scan request. Each **application** you onboarded in Step 3.1 gets its own API key.
 
-1. In SCM, navigate to **AI Security → API Intercept → API Keys**.
-2. Click **Generate API Key**.
-3. Select your deployment profile.
-4. Copy the generated API key immediately.
+If you are continuing the wizard from Step 3.1 you are already on the **Input API Details** screen. To add a key later, go to **AI Security → API Applications**, click **Manage** in the top right, select **API Keys**, then select **Add new application/API key**.
 
-> **Danger:** The API key is shown **only once**. Store it in a secrets manager (AWS Secrets Manager, Azure Key Vault, GCP Secret Manager, HashiCorp Vault, etc.). Never hardcode it in source code or commit it to version control.
+1. Enter the **API Key Name** (e.g., "chatbot-prod").
+2. Select the **Rotation** period: every month, 3 months, or 6 months.
+3. Select **Generate API Key**.
+4. On the **Implement API** screen, copy and save the **API key** and the **Code Template**, then choose **Done**.
 
-You can also generate API keys programmatically via the Management API:
+> **Danger:** The API key is shown **only once**. Store it in a secrets manager (AWS Secrets Manager, Azure Key Vault, GCP Secret Manager, HashiCorp Vault, etc.). Never hardcode it in source code or commit it to version control. If you lose it, go to **Manage → API Keys** and **Regenerate**, which revokes the old key immediately.
+
+> **Note:** A single API key can serve multiple AI security profiles, because the profile is chosen per request in the `ai_profile` field rather than being bound to the key. For production, prefer one application and one key per deployed workload so you can revoke one without affecting the others.
+
+#### OAuth 2.0 token for scan requests
+
+The Scan API also accepts an OAuth 2.0 bearer token derived from an existing API key. In SCM, go to **AI Security → API Applications → Manage → API Keys**, select the key, select **Generate Token for OAuth 2.0**, and set a lifetime of 1 hour, 3 hours, 1 day, 7 days, or 30 days. The web interface default is 24 hours and the maximum is 30 days. The token stops working as soon as the underlying API key expires, it is displayed only once, it consumes the same quota, and scans are logged against the originating API key either way.
+
+#### Creating the key programmatically — the Management API
+
+Palo Alto Networks publishes a **Prisma AIRS Management API** that creates and rotates API keys, creates AI security profiles, manages custom topics, and lists deployment profiles.
+
+> **Warning:** Two different APIs, two different credentials. The **Scan API** (`https://service.api.aisecurity.paloaltonetworks.com`) authenticates with the API key in the `x-pan-token` header. The **Management API** (`https://api.sase.paloaltonetworks.com/aisec`) authenticates with an OAuth 2.0 bearer token from an SCM service account. They are not interchangeable.
+
+**Where `<OAUTH_TOKEN>` comes from.** It is a standard Strata Cloud Manager service account access token, and it is *not* the same as the "Generate Token for OAuth 2.0" value described above. Create the service account at **Identity & Access → Service Accounts**, assign it **Superuser** or a custom role carrying the `airs_api.api_keys` permissions (**Identity & Access → Roles → Custom Roles → Add Custom Role → API** tab), save the Client ID and Client Secret, and find your TSG ID at **Common Services → Tenant Management**. Then exchange them:
+
+```bash
+export SCM_CLIENT_ID="your-service-account-client-id"
+export SCM_CLIENT_SECRET="your-service-account-client-secret"
+export TSG_ID="your-tenant-service-group-id"
+
+OAUTH_TOKEN=$(curl -s -X POST "https://auth.apps.paloaltonetworks.com/oauth2/access_token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -u "${SCM_CLIENT_ID}:${SCM_CLIENT_SECRET}" \
+  -d "grant_type=client_credentials&scope=tsg_id:${TSG_ID}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+```
+
+A successful response is JSON with `access_token` and `expires_in`. A `401` means the client ID or secret is wrong; a `400` about the scope means the TSG ID is wrong or the service account is not attached to that tenant.
 
 ```bash
 curl -X POST "https://api.sase.paloaltonetworks.com/aisec/v1/mgmt/apikey" \
-  -H "Authorization: Bearer <OAUTH_TOKEN>" \
+  -H "Authorization: Bearer ${OAUTH_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "production-api-key",
-    "deployment_profile_id": "<YOUR_PROFILE_ID>"
+    "api_key_name": "chatbot-prod",
+    "cust_app": "chatbot-prod-app",
+    "auth_code": "I0000000",
+    "created_by": "you@example.com",
+    "cust_env": "production",
+    "cust_cloud_provider": "AWS",
+    "rotation_time_interval": 3,
+    "rotation_time_unit": "months",
+    "revoked": false,
+    "dp_name": "airs-api-prod"
   }'
 ```
 
-*Verification:* Test the API key with a minimal scan request (shown in Phase 6). A successful `200` response confirms the key is valid.
+| Field | Required | Where it comes from |
+|---|---|---|
+| `api_key_name` | Yes | A label you choose, the same value as **API Key Name** in the wizard |
+| `cust_app` | Yes | The application this key belongs to, matching the **Application Name** from Step 3.1 |
+| `auth_code` | Yes | The authorization code from the deployment profile you created in the Customer Support Portal in Phase 2, Step 2.3 |
+| `created_by` | Yes | Email recorded as the key's creator; it appears in audit records |
+| `cust_env` | Yes | Your environment label, for example `production` |
+| `cust_cloud_provider` | Yes | `AWS`, `Azure`, or `GCP` |
+| `rotation_time_interval` | Yes | The number part of the rotation period |
+| `rotation_time_unit` | Yes | `days`, `months`, or `years` |
+| `revoked` | No | Defaults to `false` |
+| `dp_name` | No | The **name** of the deployment profile to associate the key with |
+| `cust_ai_agent_framework` | No | The agent framework, matching **AI Agent Framework** in the wizard |
+
+> **Note:** The Management API identifies the deployment profile by `dp_name`, not by a UUID, and the field is optional. It is **not** the AI security profile from Step 3.2. It is the **Prisma AIRS AI Runtime API** deployment profile from Phase 2, Step 2.3. List what is available with `GET /v1/mgmt/deployment-profiles`, adding `?unactivated=true` to see only profiles with no application or API key attached yet.
+
+> **Warning:** These field names come from the Palo Alto Networks Management API Python SDK documentation. Confirm them against the request schema on the [Create New API Key](https://pan.dev/prisma-airs/api/airuntimesecurity/management/create-new-api-key/) reference page before building automation on them. The `airs_api_mgmt` Python SDK wraps every endpoint and handles token refresh for you.
+
+*Verification:* Test the API key with a minimal scan request (shown in Phase 6). A successful `200` response confirms the key is valid. To check the Management API side, call `GET https://api.sase.paloaltonetworks.com/aisec/v1/mgmt/apikey` with your bearer token and confirm the new key name is listed.
 
 ---
 
@@ -380,17 +440,32 @@ Before integrating the API into your application code, verify every foundation p
 
 ### Quick Connectivity Test
 
-Run this from your application environment to verify API connectivity:
+Run this from your application environment to verify API connectivity. Two values are yours to supply:
+
+| Placeholder | Where it comes from |
+|---|---|
+| `YOUR_API_KEY` | The API key you generated and saved in Step 3.3. It is the raw key string, with no `Bearer` prefix and no quotes. If you did not save it, retrieve or regenerate it at **AI Security → API Applications → Manage → API Keys** |
+| `your-profile-name` | The **Security Profile Name** you entered in Step 3.2 |
+
+Put the key in the environment rather than the command line, so it stays out of your shell history:
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}" \
-  -X POST "https://service.api.aisecurity.paloaltonetworks.com/v1/scan/sync/request" \
-  -H "x-pan-token: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"ai_profile":{"profile_name":"your-profile-name"},"contents":[{"prompt":"test"}]}'
+read -rs AIRS_API_KEY && export AIRS_API_KEY
+export AIRS_PROFILE="your-profile-name"
 
-# Expected: 200 (scan completed) or 401/403 (auth issue — check API key)
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -X POST "https://service.api.aisecurity.paloaltonetworks.com/v1/scan/sync/request" \
+  -H "x-pan-token: $AIRS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"ai_profile\":{\"profile_name\":\"$AIRS_PROFILE\"},\"contents\":[{\"prompt\":\"test\"}]}"
 ```
+
+| Status | What it means |
+|---|---|
+| `200` | The scan completed. Connectivity, key, and profile are all good |
+| `401` or `403` | Authentication failed. The key is wrong, expired, or revoked |
+| `400` | The request reached the service but was rejected. Usually the profile name does not match a profile in your tenant |
+| `000` or a timeout | Nothing reached the service. Check egress filtering and that you are using the right regional endpoint |
 
 ---
 
@@ -431,6 +506,23 @@ Every scan request requires an **AI security profile** (by name or ID) and at le
 | `session_id` | No | Session tracking ID for multi-turn conversations |
 | `metadata` | No | App name, user, model — enriches logs and discovery dashboards |
 
+#### Finding your profile in SCM
+
+The `ai_profile` value is the security profile you created in Step 3.2. To look it up:
+
+1. Log in to [Strata Cloud Manager](https://stratacloudmanager.paloaltonetworks.com).
+2. Navigate to **AI Security → API Applications** (the **AI Sessions** page works too).
+3. Click **Manage** in the top right corner.
+4. Select **Security Profiles**.
+5. Copy the **Security Profile Name** exactly, including case and hyphens.
+
+| Identifier | Use it when |
+|---|---|
+| `profile_name` | Normal case. Readable in code and in logs. Breaks if someone renames the profile |
+| `profile_id` | You need a reference that survives a rename. It is the profile's UUID |
+
+Send one or the other, not both. Applications, API keys, security profiles, and custom topics all live behind that single **Manage** button.
+
 ### Step 6.2 — Scan API Response Format
 
 The response includes an overall verdict and per-detection-service results:
@@ -468,6 +560,34 @@ The response includes an overall verdict and per-detection-service results:
 | `prompt_detected` | Boolean flags per service | Which threats were detected in the prompt |
 | `response_detected` | Boolean flags per service | Which threats were detected in the response |
 | `prompt_masked_data` | Masked content + patterns | Use this to replace sensitive data before forwarding to the model |
+
+#### Where to view the response
+
+| Location | What you get | When to use it |
+|---|---|---|
+| HTTP response in your code | The full JSON above, including masked data | Every request. This is the only place masked content exists |
+| **API Scan Log** in SCM | One row per scan with verdict, detections, and identifiers | Confirming scans arrive, investigating a verdict after the fact |
+| **Log Viewer** in SCM | The same events through Strata Logging Service, with longer retention and SIEM forwarding | Correlation with other security telemetry |
+
+To open the **API Scan Log**:
+
+1. Log in to [Strata Cloud Manager](https://stratacloudmanager.paloaltonetworks.com).
+2. Navigate to **AI Security → API Applications**.
+3. The **API Scan Log** page shows the number of text records, API calls made, and threats detected, with scans grouped into Benign and threat categories.
+4. Each row carries the Scan ID, API Key, Profile ID, Profile Name, Application Name, Model Name, Report ID, detection type, verdict, and action taken. Use **Settings** to choose which columns are displayed.
+5. Use the **Past 24 Hours** dropdown at the top right to change the time range.
+
+To open the **Log Viewer**:
+
+1. Navigate to **Incidents and Alerts → Log Viewer**.
+2. Confirm the **AIRS AI Runtime Security API** log type is present.
+3. Select **Firewall/AI Security**.
+
+> **Note:** Log Viewer requires Strata Logging Service forwarding, which is normally enabled when you associate the deployment profile with a TSG in Phase 2. If the log type is missing, that association is the first thing to check.
+
+> **Note:** Match a row back to a specific call using `scan_id`, `report_id`, or your own `tr_id`. Setting a meaningful `tr_id` on every request is what makes this practical later.
+
+> **Warning:** Logs are written asynchronously. A scan can return `200` to your code before its row appears in SCM, so do not treat a missing row as a failed scan until a minute has passed.
 
 ### Step 6.3 — Integration Pattern: Python
 
@@ -554,13 +674,16 @@ curl -X POST "https://service.api.aisecurity.paloaltonetworks.com/v1/scan/sync/r
 
 #### Asynchronous Batch Scan
 
+Submitting is a separate call from retrieving. You post a batch, get a `scan_id` back immediately, then poll until the results are ready.
+
 ```bash
-# Submit batch scan
+# 1. Submit the batch. Each element needs its own req_id so you can
+#    tell the results apart.
 SCAN_RESPONSE=$(curl -s -X POST \
   "https://service.api.aisecurity.paloaltonetworks.com/v1/scan/async/request" \
   -H "x-pan-token: $AIRS_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '[[
+  -d '[
     {"req_id": 1, "scan_req": {
       "ai_profile": {"profile_name": "your-profile-name"},
       "contents": [{"prompt": "First prompt to scan"}]
@@ -569,48 +692,167 @@ SCAN_RESPONSE=$(curl -s -X POST \
       "ai_profile": {"profile_name": "your-profile-name"},
       "contents": [{"prompt": "Second prompt to scan"}]
     }}
-  ]]')
+  ]')
 
-# Extract scan_id
-SCAN_ID=$(echo $SCAN_RESPONSE | jq -r '.scan_id')
+# 2. Pull the scan_id out of the submission response.
+SCAN_ID=$(echo "$SCAN_RESPONSE" | jq -r '.scan_id')
 
-# Poll for results
-curl -s "https://service.api.aisecurity.paloaltonetworks.com/v1/scan/results?scan_ids=$SCAN_ID" \
-  -H "x-pan-token: $AIRS_API_KEY"
+# 3. Poll for results. An empty array means the batch is still processing,
+#    so retry rather than treating it as a failure.
+for attempt in 1 2 3 4 5; do
+  RESULTS=$(curl -s \
+    "https://service.api.aisecurity.paloaltonetworks.com/v1/scan/results?scan_ids=$SCAN_ID" \
+    -H "x-pan-token: $AIRS_API_KEY")
+
+  if [ "$(echo "$RESULTS" | jq 'length')" -gt 0 ]; then
+    echo "$RESULTS" | jq .
+    break
+  fi
+
+  echo "attempt $attempt: not ready, waiting 5s"
+  sleep 5
+done
 ```
+
+The batch is a single JSON array. Wrapping it in a second array is rejected.
+
+Each element of the results array corresponds to one element of the batch you submitted. Match them by the `req_id` values you assigned. Each element carries the same verdict information a synchronous scan returns, so the fields in Step 6.2 apply here too.
+
+> **Warning:** This guide does not reproduce the async submission and results schemas, because they are versioned and change as detection services are added. Run the submission once, print the whole body, and write your field access against what your own tenant returns. The authoritative schemas are on the [Send an Asynchronous Scan Request](https://pan.dev/prisma-airs/api/airuntimesecurity/scan/scan-async-request/) and [Retrieve Scan results by ScanIDs](https://pan.dev/prisma-airs/api/airuntimesecurity/scan/get-scan-results-by-scan-i-ds/) reference pages.
+
+> **Note:** An async submission accepts up to **25 scan requests** and a **5 MB** payload, against 2 MB for a synchronous call. `GET /v1/scan/results` accepts a **maximum of 5 scan IDs** per call, so chunk the query string if you are reconciling more than five batches at once.
 
 ### Step 6.5 — Integration Pattern: MCP Tool Events
 
-If your AI application uses MCP (Model Context Protocol) tools, you can scan tool inputs and outputs for threats:
+If your AI agent calls MCP (Model Context Protocol) tools, the thing you need to inspect is not the user's prompt. It is what the tool returned. A compromised or impersonated MCP server attacks the agent through tool descriptions and tool output, and that traffic never passes through the prompt scan from Step 6.3.
+
+Prisma AIRS scans MCP traffic through the same sync and async endpoints, using a `tool_event` content item instead of a `prompt` and `response` pair. It detects two threat classes:
+
+- **Context poisoning** — an adversary tampers with the tool definition so the agent reasons on false context and leaks data, bypasses its own rules, or runs dangerous commands.
+- **Credential leakage** — tokens, keys, or account data sitting in plaintext come back in the tool output and end up in the model's context.
+
+#### Configure the profile first
+
+MCP detection does nothing unless the security profile from Step 3.2 has the right protections enabled:
+
+- **Context poisoning** — enable a Protection Type (AI Model Protection, AI Application Protection, or AI Agent Protection), then enable **Database Security Detection** under AI Data Protection. Contextual grounding is not supported for MCP.
+- **Credential leakage** — enable **Sensitive Data Detection** under AI Data Protection, which switches on the DLP patterns.
+
+Select **Update** after each change.
+
+#### Where `server_name` comes from
+
+> **Note:** `server_name` is free text that you choose. It is not an FQDN, not an IP address, and Prisma AIRS does not resolve it or connect to it. Nothing validates the value. Palo Alto Networks uses `"Figma MCP server"` in its own example, which shows the intent: a human-readable name for the MCP server the agent called. Its only job is attribution. It is echoed back in the response and written to the API Scan Log, so keep the names stable, because renaming one breaks correlation with older logs.
+
+#### Running a scan
+
+Call this from the code that wraps your MCP client, after the tool returns and before the agent sees the result.
+
+```bash
+curl -s -X POST "$AIRS_ENDPOINT/v1/scan/sync/request" \
+  -H "x-pan-token: $AIRS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"tr_id\": \"mcp-test-001\",
+    \"ai_profile\": {\"profile_name\": \"$AIRS_PROFILE\"},
+    \"metadata\": {
+      \"ai_model\": \"gpt-4o\",
+      \"app_name\": \"support-agent\",
+      \"app_user\": \"test-user-1\"
+    },
+    \"contents\": [
+      {
+        \"tool_event\": {
+          \"metadata\": {
+            \"ecosystem\": \"mcp\",
+            \"method\": \"tools/call\",
+            \"server_name\": \"Internal file MCP server\",
+            \"tool_invoked\": \"get_file\"
+          },
+          \"input\": \"{\\\"file_key\\\": \\\"abc123\\\"}\",
+          \"output\": \"{\\\"content\\\": [{\\\"type\\\": \\\"text\\\", \\\"text\\\": \\\"Quarterly report draft.\\\"}]}\"
+        }
+      }
+    ]
+  }" | jq .
+```
+
+| Field | What to put in it |
+|---|---|
+| `ecosystem` | `"mcp"`. This is what tells the scanner to apply tool-event detection |
+| `method` | The MCP method the agent invoked, for example `"tools/call"` |
+| `server_name` | Your label for the MCP server, as described above |
+| `tool_invoked` | The tool name from the MCP server. It is echoed in each detection entry, so it identifies the offending tool when a server exposes several |
+| `input` | The arguments your agent sent to the tool, serialised as a JSON string. This is a string containing JSON, not a nested object |
+| `output` | What the tool returned, also serialised as a JSON string |
+
+#### Reading the result
+
+A clean tool call returns `"action": "allow"` and `"category": "benign"`. When something fires, the verdict arrives in a `tool_detected` object alongside the familiar `prompt_detected` and `response_detected` fields:
 
 ```json
 {
-  "ai_profile": {"profile_name": "your-profile-name"},
-  "contents": [
-    {
-      "tool_event": {
-        "metadata": {
-          "ecosystem": "mcp",
-          "method": "tools/call",
-          "server_name": "Internal MCP server",
-          "tool_invoked": "get_file"
-        },
-        "input": "{\"file_key\": \"abc123\"}",
-        "output": "{\"content\": [{\"type\": \"text\", \"text\": \"File contents here\"}]}"
-      }
-    }
-  ]
+  "action": "block",
+  "category": "malicious",
+  "profile_name": "production-api-scan",
+  "scan_id": "0a927750-805d-471b-9c1d-5b0fc4451828",
+  "report_id": "R0a927750-805d-471b-9c1d-5b0fc4451828",
+  "source": "AI-Runtime-API",
+  "tr_id": "mcp-test-001",
+  "prompt_detected": {},
+  "response_detected": {},
+  "tool_detected": {
+    "metadata": {
+      "ecosystem": "mcp",
+      "method": "tools/call",
+      "server_name": "Internal file MCP server"
+    },
+    "input_detected": {
+      "detection_entries": [
+        {
+          "tool_invoked": "get_file",
+          "detections": { "injection": false, "url_cats": true, "dlp": false },
+          "threats": ["context poisoning"]
+        }
+      ]
+    },
+    "output_detected": {
+      "detection_entries": [
+        {
+          "tool_invoked": "get_file",
+          "detections": { "dlp": true, "url_cats": false },
+          "masked_data": {
+            "data": "Fetched metadata. Card XXXXXXXXXXXXXXXXX",
+            "pattern_detections": [
+              { "pattern": "Credit Card Number", "locations": [[216, 232]] }
+            ]
+          },
+          "threats": ["credential leakage"]
+        }
+      ]
+    },
+    "summary": {
+      "detections": { "dlp": true, "url_cats": true },
+      "threats": ["context poisoning", "credential leakage"]
+    },
+    "verdict": "malicious"
+  }
 }
 ```
 
-The response includes a `tool_detected` field with tool-specific threat assessments, including credential leakage and context poisoning detection.
+Read `tool_detected.summary` first, then drill into `input_detected` and `output_detected` to see whether the problem was what your agent sent or what the server returned. The `detections` objects are abbreviated above; a real response lists every detection service with a boolean, including `agent`, `db_security`, `malicious_code`, `topic_violation`, and `toxic_content`.
+
+> **Warning:** Scan output before the agent reads it, not after. If you scan asynchronously and hand the tool result to the agent while the scan is in flight, the attack has already succeeded by the time the verdict arrives. Use the synchronous endpoint on the tool-output path and block on the result.
+
+*Verification:* Run the benign call above and confirm an `allow` verdict with a `tool_detected` object present. Then open the API Scan Log in SCM (Step 6.2) and confirm the scan appears with your `server_name` value attached.
 
 ### Step 6.6 — Handling DLP Data Masking
 
-When DLP detects sensitive data, the response includes masked content you can use instead of the original:
+> **Note:** The JSON below is a **response body, not a log entry**. It is what the Scan API returns to your code in the HTTP response to the `POST /v1/scan/sync/request` call from Step 6.3. Your application receives it inline, in the same request cycle, and it is the only place the masked text exists. You do not fetch it from anywhere and you cannot look it up later. The scan is also written to the API Scan Log in SCM, but that log records the verdict and detection metadata, not a reusable masked copy of the content. Step 6.2 covers where the logs live.
+
+When DLP detects sensitive data, the response includes a masked copy of the content alongside the verdict:
 
 ```json
-// Response when DLP detects sensitive data
 {
   "category": "malicious",
   "action": "block",
@@ -631,7 +873,35 @@ When DLP detects sensitive data, the response includes masked content you can us
 }
 ```
 
-Use `prompt_masked_data.data` as the sanitized version to forward to the AI model, preventing sensitive data from reaching the model.
+| Field | What it holds |
+|---|---|
+| `prompt_detected.dlp` | `true` when a sensitive data pattern matched in the prompt. The matching field for model output is `response_detected.dlp` |
+| `prompt_masked_data.data` | The original text with every match replaced by asterisks. This is the string you forward instead of the original |
+| `pattern_detections[].pattern` | The name of the pattern that matched, for example `SSN` or `Credit Card Number` |
+| `pattern_detections[].locations` | Character offset pairs into the original string, needed only for your own highlighting or partial redaction |
+
+Masking lets you keep a request alive that you would otherwise have to drop. Read `prompt_masked_data.data` and send that to the model in place of what the user typed.
+
+```python
+result = scan_prompt(user_prompt, tr_id)
+
+if result.get("action") == "block":
+    masked = result.get("prompt_masked_data", {}).get("data")
+    if masked:
+        # Sensitive data was the only problem. Continue on the masked text.
+        model_input = masked
+    else:
+        # Blocked for some other reason, such as injection. Do not continue.
+        raise SecurityError(f"Blocked: {result.get('category')}")
+else:
+    model_input = user_prompt
+
+answer = call_your_ai_model(model_input)
+```
+
+> **Warning:** A response can be blocked for prompt injection and carry masked data at the same time. Checking only for the presence of `prompt_masked_data` and continuing would forward an injection attempt to your model with its sensitive values conveniently removed. Branch on the reason for the block, as above, rather than on whether masked text exists.
+
+*Verification:* Send a prompt containing an obviously fake identifier, such as `My SSN is 123-45-6789`, and confirm the response sets `prompt_detected.dlp` to `true` and returns `prompt_masked_data.data` with the digits replaced. Then open the API Scan Log in SCM and confirm the same scan appears with a DLP detection against its Scan ID. If the detection fires in the response but no row appears, wait a minute: logging is asynchronous.
 
 ---
 
