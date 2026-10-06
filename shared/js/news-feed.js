@@ -38,6 +38,27 @@ var NEWS_VISIBLE_COUNT = 6;
 var NEWS_ITEMS = [
   {
     badge: "Updated",
+    date: "2026-10-06",
+    title: "The AIRS planner now starts at the sales cycle, and exports to Excel",
+    href: "guides/airs-planner/index.html#lifecycle-bands",
+    tags: "Ten-stage engagement lifecycle, Decisions that slip too late, Six-sheet workbook, Prerequisites CSV"
+  },
+  {
+    badge: "Updated",
+    date: "2026-10-01",
+    title: "API Intercept answers the questions a first-time reader actually asks",
+    href: "guides/airs/airs-api-intercept.html#api-integration",
+    tags: "Where the OAuth token comes from, SCM menu paths, Worked MCP scan, Async batch example, Four corrections"
+  },
+  {
+    badge: "Updated",
+    date: "2026-09-30",
+    title: "AWS Phase 1.2 has a Panorama path, not just an SCM one",
+    href: "guides/aws/vm-series-deployment.html#prerequisites",
+    tags: "PAN-OS 10.0 minimum, Device Management license capacity, Both HA management IPs, TCP 3978 reachability"
+  },
+  {
+    badge: "Updated",
     date: "2026-09-30",
     title: "Navigation is alphabetical everywhere you scan for a name",
     href: "index.html",
