@@ -156,9 +156,8 @@ To build the estimate, inventory the applications, agents, and MCP servers that 
 
 > **Warning: Both directions count.** Metering covers the full transaction, not just what you send. Long model responses and large context windows (retrieved documents, tool schemas, conversation history) dominate token counts in most real workloads.
 
-> **Verify.** You have a single number in billions of tokens per month (with growth headroom) to type into the **Billion tokens per month** field in the next step. Round up to a whole number of billions; enter `1` for anything under one billion.
+> **Verify.** You have a single number in billions of tokens per month (with growth headroom) to type into the **Billion tokens per month** field in the next step. Round up to a whole number of billions; enter `1` for anything under one billion. The field takes whole billions only, in steps of one billion, and rejects fractional values.
 
-<!-- TODO: verify whether the Billion tokens per month field accepts a decimal such as 0.5 -->
 
 ### Licensing step 2: Create the deployment profile and allocate flex credits
 
@@ -166,12 +165,12 @@ The deployment profile is the licensing object that funds AI Gateway. You create
 
 1. Log in to the [Palo Alto Networks Customer Support Portal](https://support.paloaltonetworks.com/).
 2. In the left navigation, expand **Products** and select **Software NGFW Credits**. (Flex credits for every Software NGFW and Prisma AIRS product, AI Gateway included, come from the same pools, so this is the right page.)
-3. Locate the credit pool that will fund the gateway and click its name (or its row) to open the pool page; if several are listed, pick one whose remaining credits cover your Licensing step 1 estimate. The pool page shows total credits, the allocated and consumed meters, the expiration date, and, at the bottom, the **Current Deployment Profiles** table.
-4. Before creating anything, scroll to the **Current Deployment Profiles** table. If a row with product type **AI-GW** already exists from an earlier attempt, do not create another; it already holds a credit allocation. Skip to Licensing step 3 and use that row's **Finish Setup** link. If you created a profile by mistake, contact your Palo Alto Networks account team or CSP Super User to have it removed and its credits returned.
+3. Locate the credit pool that will fund the gateway and click its name (or its row) to open the pool page; if several are listed, open the one with the most remaining credits. Item 8 shows how many credits this profile will draw; if that number exceeds the pool's remaining credits, close the dialog without creating the profile and repeat from this item with another pool. The pool page shows total credits, the allocated and consumed meters, the expiration date, and, at the bottom, the **Current Deployment Profiles** table.
+4. Before creating anything, scroll to the **Current Deployment Profiles** table. If a row with product type **AI-GW** and the **Profile Name** you chose (or planned to choose) already exists from an earlier attempt, do not create another; it already holds a credit allocation. Skip to Licensing step 3 and use that row's **Finish Setup** link. An AI-GW row with a different name belongs to another deployment; leave it alone and create yours. If you created a profile by mistake, open the vertical ellipsis (**More Options**) at the far right of its row and select **Delete**; Palo Alto Networks documents this control for other Software NGFW credit profiles, including Prisma AIRS ones. If the menu offers no **Delete**, open an admin case in the Customer Support Portal or ask your account team to remove the profile and return its credits.
 5. Click **Create New Profile** (above the Current Deployment Profiles table).
 6. In the **Create Deployment Profile: STEP 1** dialog, the products are laid out in labeled columns. Find the column headed **Prisma AIRS:** and click **AI Gateway** within it so its option is selected. The dialog calls this the firewall type because the same wizard provisions Software NGFW products; AI Gateway is not a firewall, and selecting it here is correct. Click **Next**.
 7. Complete the **FORM** stage:
-   - **Deployment** &mdash; select the option matching your deployment model: **Managed Service** if you chose SaaS (Palo Alto Networks hosts the data plane), or **Self Service (DIY)** if you chose Hybrid (you host the data plane). This is recorded for tracking only and is not enforced: it does not affect the credit allocation or the usage limit, so a profile created as Managed Service works unchanged for a Hybrid deployment. If you are still undecided, choose Managed Service.
+   - **Deployment** &mdash; select the option matching your deployment model: **Managed Service** if you chose SaaS, **Self Service (DIY)** if you chose Hybrid. The field is informational and does not change the credit allocation or the usage limit; if undecided, choose Managed Service.
    - **Profile Name** &mdash; a descriptive name, for example `AI-Gateway-Deployment-Profile`.
    - **Billion tokens per month** &mdash; the billions figure you calculated in Licensing step 1.
    - **Bundled** &mdash; no action needed. **Strata Cloud Manager Pro** is bundled with AI Gateway automatically and cannot be deselected. Its cost is included in the credit estimate you see in the next item, so that estimate covers more than AI Gateway alone.
@@ -179,8 +178,8 @@ The deployment profile is the licensing object that funds AI Gateway. You create
 8. Click **Calculate Estimated Cost**. The dialog shows how many credits this profile will draw and how many remain available in the pool; this is the flex credit allocation.
 9. Click **Create Deployment Profile**. The dialog closes and returns you to the **Software NGFW Credits** credit pool page, with your new profile listed in the **Current Deployment Profiles** table at the bottom.
 
-<!-- TODO: verify whether the credit pool page offers a self-service delete for a deployment profile; if it does, name the control in item 4 above -->
-<!-- TODO: verify that the Deployment field has no effect on the usage limit shown on the profile row -->
+<!-- TODO: verify that the More Options menu on an AI-GW profile row offers Delete (or requires a deactivate action first) and that deleting returns the credits to the pool -->
+<!-- TODO: PAN docs call the deployment mode "tracking only, not enforced"; confirm in CSP that switching Managed Service and Self Service (DIY) leaves the credit estimate and usage limit unchanged -->
 
 > **Verify.** The new profile appears in the **Current Deployment Profiles** table with product type **AI-GW**, your credit allocation under Credits Consumed / Allocated, a usage limit reflecting your token volume, and an **Auth Code**. Nothing in this guide asks you to enter the Auth Code. Treat it as confidential: do not paste it into tickets, chat, or screenshots you share. The **Finish Setup** link on this row is the entry point for the next step.
 
@@ -190,13 +189,13 @@ Mapping the deployment profile to a **Tenant Service Group (TSG)** is the link t
 
 1. On the same **Software NGFW Credits** credit pool page from Licensing step 2, scroll to the **Current Deployment Profiles** table and click the **Finish Setup** link on your AI-GW profile row. If you navigated away after the last step, get back via **Products > Software NGFW Credits** and reopen the same pool. The **Activate Subscriptions based on Deployment Profile(s)** page opens.
 2. Under **Select Customer Support Account**, choose the support account used to create the deployment profile.
-3. Under **Specify the Recipient**, select the **Tenant** that will own the gateway. This is the TSG. To confirm which name is yours, match it against the tenant name Strata Cloud Manager displays for the account you logged into in the prerequisites above. If only one tenant is listed, select it.
+3. Under **Specify the Recipient**, select the **Tenant** that will own the gateway. This is the TSG. To confirm which name is yours, open the [hub](https://apps.paloaltonetworks.com/) with the account you used in the prerequisites above, select **Common Services → Tenant Management**, find the tenant you work in, and select the matching **Tenant** here. If only one tenant is listed, select it.
 4. Under **Select Region**, choose your region (for example, **United States - Americas**). The form will not proceed without it.
 5. Under **Select Deployment Profile(s)**, check the AI Gateway profile you created (its services column reads **Strata Cloud Manager Pro, AI Runtime Security Gateway**). Profiles already associated with this tenant are pre-checked; leave them checked, so the selected count will read higher than one. Unchecking a pre-checked profile removes its association when you activate. Click **Done**.
-6. Leave **Data Loss Prevention** and **Additional Services** at their pre-populated defaults; AI Gateway requires neither. Pick a **Data Loss Prevention** instance from the dropdown, or check **Cloud Identity Engine** (CIE, the Palo Alto Networks directory integration service) and pick its instance, only if you are deliberately associating that service. A greyed-out DLP field means nothing is needed.
+6. Leave **Data Loss Prevention** and **Additional Services** (including **Cloud Identity Engine**) at their pre-populated defaults; AI Gateway uses neither. A greyed-out DLP field is expected.
 7. Check **Agree to the Terms and Conditions**, then click **Activate**.
 
-<!-- TODO: verify the exact SCM location where the tenant name is shown and name it in item 3 above -->
+<!-- TODO: optional: verify whether SCM itself shows the current tenant name (for example in a tenant switcher) and name that location if it is simpler than the hub -->
 
 > **Note: Checking whether activation already ran.** To check whether activation already happened, open **Products > Software NGFW Credits**, open the pool, and look at the AI-GW row: an activated profile shows the tenant it was associated with. If it does, do not run this step again; go to Licensing step 4 and wait out the delay there. Re-opening the activation form on an already-associated profile shows it pre-checked; clicking **Activate** again with it checked is harmless, but unchecking it removes the association.
 
@@ -214,7 +213,7 @@ With licensing in place, complete setup from inside SCM:
 2. In the left navigation, select **AI Security > Home**.
 3. On the Home page, locate the **AI Gateway** card under **Select a feature to begin onboarding**. On a fresh tenant (status **Not Started**) it offers three actions: **Go to Gateway Registration**, **Launch AI Gateway**, and **Deploy Hybrid**. Seeing the card is all you need here; this guide installs the data plane with Helm rather than through those actions.
 
-> **Verify.** The AI Gateway card appears on the AI Security Home page with its three actions available, confirming the deployment profile and TSG mapping took effect. A **Not Started** status on the card is expected at this point; it reflects onboarding progress, not a licensing problem. If the card or its actions are missing, wait up to 30 minutes (the deployment profile to TSG association can take that long), refresh, then recheck Licensing step 2 and Licensing step 3.
+> **Verify.** The AI Gateway card appears on the AI Security Home page, confirming the deployment profile and TSG mapping took effect. On a fresh tenant it reads **Not Started** with all three actions; if an earlier attempt already registered a gateway or launched the console, the status and the action set differ, and that is fine. If the card itself is absent, wait up to 30 minutes (the deployment profile to TSG association can take that long), refresh, then recheck Licensing step 2 and Licensing step 3.
 <!-- shared:end -->
 
 ---

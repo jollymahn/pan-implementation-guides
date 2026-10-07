@@ -106,7 +106,7 @@ Do you need Application Gateway (L7 — SSL offload, WAF, path-based routing) in
 **7. VM-SERIES CONFIGURATION**
 
 - PAN-OS Version (default: 11.1.607 — SCM requires 11.0+):
-- Azure VM Size (default: Standard_DS3_v2 — 4 vCPU, 14 GB RAM):
+- Azure VM Size (default: Standard_D8s_v6 — 8 vCPU, 32 GB RAM, 4 NICs; 4 vCPUs licensed via set-cores):
 - Marketplace plan: BYOL / Bundle 1 PAYG / Bundle 2 PAYG
 
 Firewall names and availability zone placement:

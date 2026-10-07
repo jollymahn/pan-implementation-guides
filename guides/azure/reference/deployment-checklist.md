@@ -67,7 +67,7 @@ Required values outside `bootstrap_options`. These do not break the firewall boo
 | Remote state Storage Account and container | Phase 1.9 | `backend.tf` (Phase 4.2) | `tfstate-rg` / `<your-unique-storage-account-name>` / `tfstate` | _____________ |
 | Customer prefix | 2 to 4 character code used in `dgname`, `tplname`, template names, License Manager names. Avoids collisions on shared Panoramas | (composed into above) | `AZ` | _____________ |
 | Availability Zones | 2 zones in your region (one per firewall in each tier) | `vmseries.<fw-key>.virtual_machine.zone` | `1`, `2` | _____________ |
-| PAN-OS image version | `az vm image list --publisher paloaltonetworks --offer vmseries-flex --sku byol --all --output table` | `vmseries_universal.version` | `11.1.607` | _____________ |
+| PAN-OS image version | `az vm image list --publisher paloaltonetworks --offer vmseries-flex --sku byol-gen2 --all --output table` | `vmseries_universal.version` | `11.1.607` | _____________ |
 | `tags` | Customer / project owner and cost center (shows up in Azure cost management) | `tags` | `owner = "network-security-team"` | _____________ |
 
 ---
