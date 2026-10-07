@@ -1606,6 +1606,27 @@ Both bridges expose the same two-field interface, so the console configuration i
 
 Both bridges authenticate with a bearer token they check themselves, rather than with the cloud provider's own request signing. AI Red Teaming can send an `Authorization` header but cannot compute a SigV4 signature or acquire a managed identity token, so the provider's native auth has to terminate inside the bridge.
 
+### What You Are Building, and What You Need First
+
+Each bridge is a small Python program the cloud runs on demand, reachable at a public HTTPS address. AI Red Teaming sends attack prompts to that address, the program forwards each one to the agent, and it returns the agent's answer. Four pieces make up either bridge.
+
+| Piece | What it is | Where it lives |
+|---|---|---|
+| The program | `handler.py` (AWS) or `function_app.py` (Azure) | A folder on your own computer, uploaded in the deploy step |
+| A permissions badge | IAM role (AWS) or managed identity (Azure). The program wears it while it runs, so no cloud credential is stored anywhere | Your AWS account or Azure subscription |
+| A public address | Lambda function URL (AWS) or Function App hostname (Azure) | Created by the deploy step, pasted into SCM |
+| A bearer token | A long random password. The program rejects any request that does not present it | Generated during deploy, pasted into SCM |
+
+Before either path, you need an agent that already exists and answers correctly in its own console. These bridges connect to an agent, they do not create one.
+
+**For the Bedrock path:** AWS CLI v2 (`aws --version`), working credentials (`aws sts get-caller-identity`), permission to create IAM roles, and Python 3 plus `zip` locally. Find the two agent identifiers in the Bedrock console under `Agents` -> your agent for the Agent ID, and the Aliases section for the Alias ID. Avoid `TSTALIASID`, the draft test alias.
+
+**For the Foundry path:** the Azure CLI (`az version`, then `az login`), **Azure Functions Core Tools v4** (`func --version`, a separate install from the Azure CLI and the piece most often missing), Python 3.11 or 3.12 locally, an existing resource group and storage account, and permission to create a role assignment. Find the project endpoint on the project's Overview page in the Azure AI Foundry portal, and the agent ID under `Agents`; it begins with `asst_`.
+
+> **Warning: An Azure Function is a folder, not a single file** — the AWS path writes one file and zips it. Azure's deployment tool expects a project folder containing `function_app.py` alongside `host.json`, `local.settings.json`, `requirements.txt`, and `.funcignore`. Creating `function_app.py` on its own and trying to publish it fails, because the tool has no project to publish. Bridge B creates the folder first.
+
+Work in a dedicated folder for either path, and stay in the same terminal session throughout. The deploy steps set shell variables that vanish when the terminal closes.
+
 ### Bridge A: AWS Bedrock Agent
 
 This handler validates a bearer token, calls `InvokeAgent` with SigV4 supplied by the Lambda execution role, and collapses the returned event stream into one string.
@@ -1721,47 +1742,71 @@ def handler(event, context):
 
 > **Note:** An agent with a client-side action group can ask its caller to run a tool and wait. A scan has no tool to run, so returning an empty string there would reach AI Red Teaming as a refusal and score as a passed attack. The `returnControl` branch returns an explicit marker instead.
 
-Deploy it. Replace `REGION`, `ACCOUNT`, `AGENT_ID`, and `ALIAS_ID` first.
+Save the file above as `handler.py` in your working folder. Its `handler` function is the entry point AWS calls, which is the second half of `--handler handler.handler` below: the file name, then the function name inside it. The file imports `boto3`, which the Lambda Python runtime already includes, so there is nothing to install and no `requirements.txt` on this path.
+
+> **Verification:** `python3 -m py_compile handler.py && echo "handler.py is valid"` checks the syntax without contacting AWS. An `IndentationError` means the paste lost its leading spaces.
+
+Deploy it. Edit the three marked lines, then run the rest as written.
 
 ```bash
+# ---- EDIT THESE THREE LINES ----
+export AWS_REGION="us-east-1"          # the region your Bedrock Agent lives in
+AGENT_ID="ABCDEFGHIJ"                  # Bedrock console: Agents > your agent
+AGENT_ALIAS_ID="KLMNOPQRST"            # Bedrock console: Agents > your agent > Aliases
+# --------------------------------
+
+# Looked up and generated for you. Do not edit these.
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+TOKEN=$(openssl rand -hex 32)
+NAME="airt-bedrock-agent-bridge"
+
 zip -j handler.zip handler.py
 
-aws iam create-role --role-name airt-bedrock-agent-bridge \
+aws iam create-role --role-name "$NAME" \
   --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
 
-aws iam put-role-policy --role-name airt-bedrock-agent-bridge \
-  --policy-name invoke-agent --policy-document '{
-    "Version": "2012-10-17",
-    "Statement": [{
-      "Effect": "Allow",
-      "Action": "bedrock:InvokeAgent",
-      "Resource": "arn:aws:bedrock:REGION:ACCOUNT:agent-alias/AGENT_ID/ALIAS_ID"
+aws iam put-role-policy --role-name "$NAME" \
+  --policy-name invoke-agent --policy-document "{
+    \"Version\": \"2012-10-17\",
+    \"Statement\": [{
+      \"Effect\": \"Allow\",
+      \"Action\": \"bedrock:InvokeAgent\",
+      \"Resource\": \"arn:aws:bedrock:${AWS_REGION}:${ACCOUNT_ID}:agent-alias/${AGENT_ID}/${AGENT_ALIAS_ID}\"
     }]
-  }'
+  }"
 
-aws iam attach-role-policy --role-name airt-bedrock-agent-bridge \
+aws iam attach-role-policy --role-name "$NAME" \
   --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 
-TOKEN=$(openssl rand -hex 32)
+# IAM needs a moment to propagate before Lambda can assume the new role.
+sleep 10
 
 aws lambda create-function \
-  --function-name airt-bedrock-agent-bridge \
+  --function-name "$NAME" \
   --runtime python3.12 --handler handler.handler \
-  --role arn:aws:iam::ACCOUNT:role/airt-bedrock-agent-bridge \
+  --role "arn:aws:iam::${ACCOUNT_ID}:role/${NAME}" \
   --zip-file fileb://handler.zip --timeout 180 --memory-size 512 \
-  --environment "Variables={AGENT_ID=...,AGENT_ALIAS_ID=...,AIRT_TOKEN=$TOKEN}"
+  --environment "Variables={AGENT_ID=${AGENT_ID},AGENT_ALIAS_ID=${AGENT_ALIAS_ID},AIRT_TOKEN=${TOKEN}}"
 
 # AuthType NONE because Red Teaming cannot sign SigV4. The bearer check
 # inside the handler is the actual gate.
 aws lambda create-function-url-config \
-  --function-name airt-bedrock-agent-bridge --auth-type NONE
+  --function-name "$NAME" --auth-type NONE
 
-aws lambda add-permission --function-name airt-bedrock-agent-bridge \
+aws lambda add-permission --function-name "$NAME" \
   --statement-id allow-public-url --action lambda:InvokeFunctionUrl \
   --principal '*' --function-url-auth-type NONE
 
+FUNCTION_URL=$(aws lambda get-function-url-config \
+  --function-name "$NAME" --query FunctionUrl --output text)
+
+echo "URL:   $FUNCTION_URL"
 echo "Token: $TOKEN"
 ```
+
+`--timeout 180` is deliberate: an agent that calls tools can take well over a minute on a single prompt, and the default 3 seconds would truncate almost every scan turn. `--environment` sets the three values `handler.py` reads from `os.environ`, which is why the names match exactly. Save the printed token now; it is never shown again.
+
+> **Warning:** On Windows PowerShell, use `Compress-Archive -Path handler.py -DestinationPath handler.zip` in place of the `zip` command.
 
 > **Warning:** Function URL auth is `NONE` because AI Red Teaming cannot sign SigV4, which leaves the handler's bearer check as the only gate. Treat the token as a credential, keep the timeout at 180 seconds or higher so tool-calling turns do not truncate mid-scan, and delete the function URL when the engagement ends. If your account forbids public function URLs, put the Lambda on a private endpoint and use a Network Channel.
 
@@ -1783,9 +1828,32 @@ curl -s -X POST "$FUNCTION_URL" \
 | `502 upstream_error` | Wrong `AGENT_ID` or `AGENT_ALIAS_ID`, or the alias has not been prepared |
 | HTTP 200, empty `output` | The agent returned no text. Set `enableTrace=True` and read the trace events |
 
+`$FUNCTION_URL` and `$TOKEN` come from the deploy block. In a new terminal, set them again from the values you saved.
+
+When an error is hard to explain, read what the code actually hit: `aws logs tail /aws/lambda/airt-bedrock-agent-bridge --follow` in a second terminal, then send the cURL again. To change the code after deployment, re-zip and run `aws lambda update-function-code --function-name airt-bedrock-agent-bridge --zip-file fileb://handler.zip`. Environment variables survive a code update.
+
 ### Bridge B: Azure AI Foundry Agent
 
 Foundry agents are driven through threads rather than single calls, so the bridge maps the AI Red Teaming session ID to a Foundry thread. That is what makes multi-turn attacks accumulate context instead of restarting on every prompt.
+
+Create the project folder first. This generates the supporting files Azure expects, including a placeholder `function_app.py` and `requirements.txt` that you replace in full.
+
+```bash
+func init airt-foundry-bridge --python --model V2
+cd airt-foundry-bridge
+```
+
+```
+airt-foundry-bridge/
+├── .funcignore
+├── .gitignore
+├── function_app.py      <- replace this file's contents
+├── host.json
+├── local.settings.json
+└── requirements.txt     <- replace this file's contents
+```
+
+Leave `host.json`, `local.settings.json`, and `.funcignore` alone; the defaults are correct for this bridge. Run every remaining command from inside this folder, because the publish step uploads it.
 
 `function_app.py`
 
@@ -1885,33 +1953,64 @@ azure-identity>=1.19.0
 
 > **Warning:** The Foundry agents SDK has moved more than once. It was `azure-ai-projects` with `project_client.agents.*`, then `azure-ai-agents` with `AgentsClient` and the `.threads`, `.messages`, and `.runs` sub-clients used above. Check your installed version with `pip show azure-ai-agents` before assuming these method names resolve. The logic is four calls in any version: create a thread, add a user message, run the agent, then read the newest assistant message. Only the spelling changes.
 
-Deploy it. Replace `RG`, `STORAGE`, `SUB`, `ACCOUNT`, and `PROJECT` first. The function uses a system-assigned managed identity, so no Azure credential is ever pasted into SCM.
+> **Verification:** `python3 -m py_compile function_app.py && echo "function_app.py is valid"`, run from inside the project folder.
+
+Azure installs the three libraries from `requirements.txt` during deployment, so you install nothing yourself. `DefaultAzureCredential()` picks up the Function App's managed identity at run time, which is why no Azure key appears anywhere. The `@app.route(route="scan")` decorator is the reason the deployed address ends in `/api/scan`: Azure adds the `/api` prefix.
+
+Deploy it. Edit the marked lines, then run the rest as written. The random suffix exists because Function App and storage account names must be unique across all of Azure. The function uses a system-assigned managed identity, so no Azure credential is ever pasted into SCM.
 
 ```bash
-az functionapp create --name airt-foundry-bridge \
-  --resource-group RG --consumption-plan-location eastus \
-  --runtime python --runtime-version 3.12 --functions-version 4 \
-  --storage-account STORAGE --assign-identity '[system]'
+# ---- EDIT THESE SIX LINES ----
+RG="my-resource-group"
+LOCATION="eastus"
+PROJECT_ENDPOINT="https://myresource.services.ai.azure.com/api/projects/myproject"
+AGENT_ID="asst_XXXXXXXXXXXXXXXXXXXXXXXX"
+ACCOUNT="myresource"     # the Foundry (Cognitive Services) account name
+PROJECT="myproject"      # the project inside it
+# ------------------------------
 
-PRINCIPAL=$(az functionapp identity show --name airt-foundry-bridge \
-  --resource-group RG --query principalId -o tsv)
+# Generated and looked up for you. Do not edit these.
+SUFFIX=$(openssl rand -hex 3)
+NAME="airt-foundry-bridge-${SUFFIX}"
+STORAGE="airtfoundry${SUFFIX}"
+TOKEN=$(openssl rand -hex 32)
+SUB=$(az account show --query id -o tsv)
+
+# Skip these two if the resource group and storage account already exist.
+az group create --name "$RG" --location "$LOCATION"
+az storage account create --name "$STORAGE" \
+  --resource-group "$RG" --location "$LOCATION" --sku Standard_LRS
+
+az functionapp create --name "$NAME" \
+  --resource-group "$RG" --consumption-plan-location "$LOCATION" \
+  --runtime python --runtime-version 3.12 --functions-version 4 \
+  --storage-account "$STORAGE" --assign-identity '[system]'
+
+PRINCIPAL=$(az functionapp identity show --name "$NAME" \
+  --resource-group "$RG" --query principalId -o tsv)
 
 # Grants data-plane access to the project's agents.
 az role assignment create --assignee "$PRINCIPAL" \
   --role "Azure AI User" \
-  --scope "/subscriptions/SUB/resourceGroups/RG/providers/Microsoft.CognitiveServices/accounts/ACCOUNT/projects/PROJECT"
+  --scope "/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.CognitiveServices/accounts/${ACCOUNT}/projects/${PROJECT}"
 
-TOKEN=$(openssl rand -hex 32)
-az functionapp config appsettings set --name airt-foundry-bridge --resource-group RG \
-  --settings PROJECT_ENDPOINT="https://..." AGENT_ID="asst_..." AIRT_TOKEN="$TOKEN"
+az functionapp config appsettings set --name "$NAME" --resource-group "$RG" \
+  --settings PROJECT_ENDPOINT="$PROJECT_ENDPOINT" AGENT_ID="$AGENT_ID" AIRT_TOKEN="$TOKEN"
 
-func azure functionapp publish airt-foundry-bridge
+func azure functionapp publish "$NAME" --build remote
+
+echo "URL:   https://${NAME}.azurewebsites.net/api/scan"
+echo "Token: $TOKEN"
 ```
+
+App settings become the `os.environ` values the code reads, which is why their names match the code exactly. `--build remote` installs the libraries on Azure's own servers rather than your laptop, avoiding the common failure where a package built on macOS or Windows will not load on the Linux host. Save the printed token now; it is never shown again.
+
+> **Warning:** Creating a role assignment needs Owner or User Access Administrator on the scope, which many corporate subscriptions withhold. If `az role assignment create` is refused, send that one command to whoever administers the subscription. Nothing else here needs elevated rights.
 
 Test it before touching SCM.
 
 ```bash
-curl -s -X POST "https://airt-foundry-bridge.azurewebsites.net/api/scan" \
+curl -s -X POST "https://${NAME}.azurewebsites.net/api/scan" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"prompt":"What can you help me with?"}' | python3 -m json.tool
@@ -1924,10 +2023,15 @@ curl -s -X POST "https://airt-foundry-bridge.azurewebsites.net/api/scan" \
 | `401 unauthorized` | The token in the cURL does not match the `AIRT_TOKEN` app setting |
 | `502 upstream_error` | The role assignment is missing or still propagating, or `PROJECT_ENDPOINT` is wrong |
 | `403 guardrail_blocked` | The run failed, most often an Azure content filter. Read the `message` field |
+| `404` with no JSON body | Azure answered but has no function at that path. The publish did not deploy `function_app.py`, or the Function App name in the URL is wrong |
 
 > **Note:** Azure role assignments can take several minutes to propagate. A 502 immediately after `az role assignment create` is worth one retry before you start debugging the endpoint.
 
+Stream the function's own log with `func azure functionapp logstream "$NAME"` in a second terminal and send the cURL again. On a Linux consumption plan the live stream is sometimes unavailable; read **Invocations** under the function in the Azure portal instead. To change the code after deployment, edit `function_app.py` and run `func azure functionapp publish "$NAME" --build remote` again from inside the project folder. App settings survive a republish.
+
 ### Console Configuration for Both Bridges
+
+Nothing here is installed or deployed. You are filling in a form in SCM that tells AI Red Teaming how to reach the bridge, so have the wrapper URL and the bearer token in front of you. Do not start until the cURL test above has returned HTTP 200: the wizard reports only that validation failed, so every problem you bring in with you is harder to diagnose here than it was in your terminal.
 
 1. Navigate to `AI Security` -> `AI Red Teaming` -> `Targets` and select **+ New Target**.
 2. Under Target Details, enter a target name, set Target Type to **Agent**, and set Connection Method to **Rest API or Streaming or WebSocket**.
@@ -1941,6 +2045,8 @@ curl -X POST \
   -d '{"prompt": "{INPUT}", "session_id": ""}' \
   https://YOUR_WRAPPER_URL
 ```
+
+   Replace `YOUR_TOKEN` with the saved token, keeping the word `Bearer` and the space after it, and replace the whole last line with your wrapper URL including its `https://`. Leave `{INPUT}` exactly as written: it is not a placeholder for you to fill in, it is where AI Red Teaming substitutes each attack prompt at scan time. `session_id` is empty on purpose, because the bridge generates an ID on the first request and AIRS reuses it.
 
 5. Select **Next: Add/Verify Parameters**. Enter the wrapper URL as the API endpoint, set **Supports Sessions** to **Yes** so multi-turn attacks reuse `session_id`, and configure authentication **Using Headers** with header name `Authorization` and value `Bearer YOUR_TOKEN`.
 6. Select **Next: Verify & Edit JSON** and confirm both bodies match the shared interface contract above.

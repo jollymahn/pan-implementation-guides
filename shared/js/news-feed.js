@@ -41,7 +41,7 @@ var NEWS_ITEMS = [
     date: "2026-10-07",
     title: "Red teaming a Bedrock Agent or a Foundry agent now ships with working code",
     href: "guides/airs-red/airs-red-teaming.html#wrappers-appendix",
-    tags: "No connector reaches InvokeAgent, Two deployable bridges, Bedrock model target steps, SigV4 proxy correction, Guardrails differ per runtime"
+    tags: "No connector reaches InvokeAgent, Two deployable bridges, Written for a first-timer, Prerequisites and tooling, Line-by-line explanations, Guardrails differ per runtime"
   },
   {
     badge: "Updated",
