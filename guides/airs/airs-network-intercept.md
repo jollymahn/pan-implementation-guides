@@ -493,7 +493,7 @@ Choose the deployment model that matches your infrastructure, management prefere
 
 > **Warning: [VALIDATION NEEDED] Cloud Deployment Guide**
 >
-> Detailed deployment steps for each model will be covered in the **AIRS Cloud Deployment Guide** (not yet published). For now, follow the deployment documentation for your chosen model at [Deploy Prisma AIRS AI Runtime Firewalls](https://docs.paloaltonetworks.com/ai-runtime-security/administration/deploy-ai-instances-in-public-clouds-as-a-software).
+> Detailed deployment steps for each model are in the [AIRS Cloud Deployment Guide](airs-cloud-deployment.html), which covers six deployment models including SCM Terraform, Auto-Execute, Panorama-managed, VM-Series, private cloud, and manual bootstrap. Vendor documentation for the underlying images is at [Deploy Prisma AIRS AI Runtime Firewalls](https://docs.paloaltonetworks.com/ai-runtime-security/administration/deploy-ai-instances-in-public-clouds-as-a-software).
 
 > **Success: Verification**
 >

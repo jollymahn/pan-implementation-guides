@@ -1528,7 +1528,7 @@ model-security scan \
 ```
 model-security scan \
   --security-group-uuid "${HF_GROUP_UUID}" \
-  --model-uri "https://huggingface.co//" \
+  --model-uri "https://huggingface.co/<org>/<known-unsafe-model>" \
   --model-name "validation-threat-model"
 
 echo "Exit code: $?"
@@ -1784,7 +1784,24 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install model-security-client
-        run: pip install model-security-client
+        env:
+          MODEL_SECURITY_CLIENT_ID: ${{ secrets.AIRS_CLIENT_ID }}
+          MODEL_SECURITY_CLIENT_SECRET: ${{ secrets.AIRS_CLIENT_SECRET }}
+          TSG_ID: ${{ secrets.AIRS_TSG_ID }}
+        run: |
+          ACCESS_TOKEN=$(curl -s -X POST \
+            "https://auth.apps.paloaltonetworks.com/oauth2/access_token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -u "${MODEL_SECURITY_CLIENT_ID}:${MODEL_SECURITY_CLIENT_SECRET}" \
+            -d "grant_type=client_credentials&scope=tsg_id:${TSG_ID}" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+          PYPI_URL=$(curl -s -X GET \
+            "https://api.sase.paloaltonetworks.com/aims/mgmt/v1/pypi/authenticate" \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['pypi_url'])")
+
+          pip install "model-security-client[all]" --extra-index-url "${PYPI_URL}"
 
       - name: Scan model
         env:
@@ -1820,7 +1837,20 @@ model-security-scan:
     - changes:
         - models/**
   before_script:
-    - pip install model-security-client
+    - |
+      ACCESS_TOKEN=$(curl -s -X POST \
+        "https://auth.apps.paloaltonetworks.com/oauth2/access_token" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -u "${MODEL_SECURITY_CLIENT_ID}:${MODEL_SECURITY_CLIENT_SECRET}" \
+        -d "grant_type=client_credentials&scope=tsg_id:${TSG_ID}" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+      PYPI_URL=$(curl -s -X GET \
+        "https://api.sase.paloaltonetworks.com/aims/mgmt/v1/pypi/authenticate" \
+        -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin)['pypi_url'])")
+
+      pip install "model-security-client[all]" --extra-index-url "${PYPI_URL}"
   variables:
     MODEL_SECURITY_API_ENDPOINT: "https://api.sase.paloaltonetworks.com/aims"
   script:
