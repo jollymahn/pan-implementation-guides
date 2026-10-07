@@ -442,6 +442,8 @@ The response includes the `target_uuid`. Record this value for scan configuratio
 
 > **Warning: WebSocket Limitations** — WebSocket targets do not support session management or multi-turn configuration. Attack sequences run as independent prompts — stateful multi-turn attacks cannot be chained across a WebSocket connection.
 
+> **Warning: Managed Agent Runtimes Have No Connector** — `BEDROCK` reaches `InvokeModel` only. It carries no `agent_id` or `agent_alias_id` field, so it cannot reach an AWS Bedrock Agent, and neither can any other connection type: a REST target cannot compute the SigV4 signature `InvokeAgent` requires. Azure AI Foundry has no connection type at all, and `MS_COPILOT_STUDIO` is a different product despite the shared Azure branding. Both runtimes need a bridge service. See [Appendix: Bedrock and Foundry Agent Bridges](#appendix-bedrock-and-foundry-agent-bridges).
+
 #### Authentication Types
 
 | Auth Type | Description | Key Fields |
@@ -1575,6 +1577,392 @@ Complete checklist for end-to-end AI Red Teaming deployment. Print or save for t
 - [ ] Quota consumption tracked and within allocation
 - [ ] Escalation path defined for critical vulnerability findings
 - [ ] Custom attack library plan documented for organization-specific testing
+
+---
+
+## Appendix: Bedrock and Foundry Agent Bridges
+
+Two managed agent runtimes in wide use have no native connection method, for different reasons. An AWS Bedrock Agent is unreachable because the `BEDROCK` connection type targets `InvokeModel` and carries no agent identifier. An Azure AI Foundry agent is unreachable because no Foundry connection type exists. Both are solved by the same shape of service: a small HTTPS function that accepts the REST contract AI Red Teaming speaks, calls the agent with its own SDK, and returns one JSON document.
+
+| Target | Code required | Why |
+|---|---|---|
+| Bedrock foundation **model** | No | Native `BEDROCK` connection type |
+| Bedrock **Agent** | Yes | No connection type reaches `InvokeAgent` |
+| Azure AI Foundry agent | Yes | No connection type exists |
+
+> **Note:** An agent that appears in SCM cloud discovery does not become a scannable target. Nothing in the AI Red Teaming documentation references AI Agent Discovery, and there is no action on a discovered asset that creates a target. Discovery is read-only inventory; targets are created by hand under `AI Security` -> `AI Red Teaming` -> `Targets`.
+
+### The Shared Interface Contract
+
+Both bridges expose the same two-field interface, so the console configuration is identical apart from the URL and the token.
+
+```jsonc
+// Request body pasted into Verify & Edit JSON
+{ "prompt": "{INPUT}", "session_id": "" }
+
+// Response body pasted into Verify & Edit JSON
+{ "output": "{RESPONSE}", "session_id": "" }
+```
+
+Both bridges authenticate with a bearer token they check themselves, rather than with the cloud provider's own request signing. AI Red Teaming can send an `Authorization` header but cannot compute a SigV4 signature or acquire a managed identity token, so the provider's native auth has to terminate inside the bridge.
+
+### Bridge A: AWS Bedrock Agent
+
+This handler validates a bearer token, calls `InvokeAgent` with SigV4 supplied by the Lambda execution role, and collapses the returned event stream into one string.
+
+`handler.py`
+
+```python
+"""Bridge between AIRS Red Teaming and a Bedrock Agent.
+
+Red Teaming speaks plain JSON over a bearer token. InvokeAgent needs SigV4
+and returns a chunked event stream. This translates between the two.
+"""
+import hmac
+import json
+import os
+import re
+import uuid
+
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
+
+AGENT_ID = os.environ["AGENT_ID"]
+AGENT_ALIAS_ID = os.environ["AGENT_ALIAS_ID"]
+AIRT_TOKEN = os.environ["AIRT_TOKEN"]
+
+# A scan prompt can take a while once the agent starts calling tools.
+_CFG = Config(read_timeout=120, connect_timeout=10,
+              retries={"max_attempts": 2, "mode": "standard"})
+_CLIENT = boto3.client("bedrock-agent-runtime", config=_CFG)
+
+_SESSION_ILLEGAL = re.compile(r"[^0-9a-zA-Z._:-]")
+_THROTTLE_CODES = {"ThrottlingException", "TooManyRequestsException",
+                   "ServiceQuotaExceededException"}
+
+
+def _reply(status, body):
+    return {
+        "statusCode": status,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps(body),
+    }
+
+
+def _authorized(event):
+    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+    return hmac.compare_digest(headers.get("authorization", ""),
+                               f"Bearer {AIRT_TOKEN}")
+
+
+def _session_id(raw):
+    """Bedrock wants 2-100 chars of [0-9a-zA-Z._:-] and nothing else."""
+    if not raw:
+        return uuid.uuid4().hex
+    cleaned = _SESSION_ILLEGAL.sub("-", str(raw))[:100]
+    return cleaned if len(cleaned) >= 2 else uuid.uuid4().hex
+
+
+def _map_error(err):
+    error = err.response.get("Error", {})
+    code = error.get("Code", "")
+    message = error.get("Message", "")
+    if code in _THROTTLE_CODES:
+        return _reply(429, {"error": {"code": "rate_limited", "message": message}})
+    if code == "AccessDeniedException":
+        return _reply(403, {"error": {"code": "access_denied", "message": message}})
+    return _reply(502, {"error": {"code": "upstream_error", "message": message}})
+
+
+def handler(event, context):
+    if not _authorized(event):
+        return _reply(401, {"error": {"code": "unauthorized",
+                                      "message": "Bad or missing bearer token."}})
+
+    try:
+        body = json.loads(event.get("body") or "{}")
+    except json.JSONDecodeError:
+        return _reply(400, {"error": {"code": "bad_request",
+                                      "message": "Body is not valid JSON."}})
+
+    prompt = body.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return _reply(400, {"error": {"code": "bad_request",
+                                      "message": "Field 'prompt' is required."}})
+
+    session_id = _session_id(body.get("session_id"))
+
+    try:
+        response = _CLIENT.invoke_agent(
+            agentId=AGENT_ID,
+            agentAliasId=AGENT_ALIAS_ID,
+            sessionId=session_id,
+            inputText=prompt,
+            enableTrace=False,
+        )
+        chunks = []
+        for part in response["completion"]:
+            if "chunk" in part:
+                chunks.append(part["chunk"]["bytes"].decode("utf-8"))
+            elif "returnControl" in part:
+                # The agent wants its caller to execute a tool. A scan has no
+                # tool to run, so say so rather than returning an empty string
+                # that would read as a refusal.
+                return _reply(200, {
+                    "output": "[agent requested client-side tool execution]",
+                    "session_id": session_id,
+                })
+    except ClientError as err:
+        return _map_error(err)
+
+    return _reply(200, {"output": "".join(chunks), "session_id": session_id})
+```
+
+> **Note:** An agent with a client-side action group can ask its caller to run a tool and wait. A scan has no tool to run, so returning an empty string there would reach AI Red Teaming as a refusal and score as a passed attack. The `returnControl` branch returns an explicit marker instead.
+
+Deploy it. Replace `REGION`, `ACCOUNT`, `AGENT_ID`, and `ALIAS_ID` first.
+
+```bash
+zip -j handler.zip handler.py
+
+aws iam create-role --role-name airt-bedrock-agent-bridge \
+  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+
+aws iam put-role-policy --role-name airt-bedrock-agent-bridge \
+  --policy-name invoke-agent --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Action": "bedrock:InvokeAgent",
+      "Resource": "arn:aws:bedrock:REGION:ACCOUNT:agent-alias/AGENT_ID/ALIAS_ID"
+    }]
+  }'
+
+aws iam attach-role-policy --role-name airt-bedrock-agent-bridge \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+TOKEN=$(openssl rand -hex 32)
+
+aws lambda create-function \
+  --function-name airt-bedrock-agent-bridge \
+  --runtime python3.12 --handler handler.handler \
+  --role arn:aws:iam::ACCOUNT:role/airt-bedrock-agent-bridge \
+  --zip-file fileb://handler.zip --timeout 180 --memory-size 512 \
+  --environment "Variables={AGENT_ID=...,AGENT_ALIAS_ID=...,AIRT_TOKEN=$TOKEN}"
+
+# AuthType NONE because Red Teaming cannot sign SigV4. The bearer check
+# inside the handler is the actual gate.
+aws lambda create-function-url-config \
+  --function-name airt-bedrock-agent-bridge --auth-type NONE
+
+aws lambda add-permission --function-name airt-bedrock-agent-bridge \
+  --statement-id allow-public-url --action lambda:InvokeFunctionUrl \
+  --principal '*' --function-url-auth-type NONE
+
+echo "Token: $TOKEN"
+```
+
+> **Warning:** Function URL auth is `NONE` because AI Red Teaming cannot sign SigV4, which leaves the handler's bearer check as the only gate. Treat the token as a credential, keep the timeout at 180 seconds or higher so tool-calling turns do not truncate mid-scan, and delete the function URL when the engagement ends. If your account forbids public function URLs, put the Lambda on a private endpoint and use a Network Channel.
+
+Test it before touching SCM.
+
+```bash
+curl -s -X POST "$FUNCTION_URL" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"What can you help me with?"}' | python3 -m json.tool
+```
+
+> **Verification:** HTTP 200 with a non-empty `output` field.
+
+| Result | Cause |
+|---|---|
+| `401 unauthorized` | The token in the cURL does not match the `AIRT_TOKEN` environment variable |
+| `403 access_denied` | The IAM policy resource ARN does not match your agent alias |
+| `502 upstream_error` | Wrong `AGENT_ID` or `AGENT_ALIAS_ID`, or the alias has not been prepared |
+| HTTP 200, empty `output` | The agent returned no text. Set `enableTrace=True` and read the trace events |
+
+### Bridge B: Azure AI Foundry Agent
+
+Foundry agents are driven through threads rather than single calls, so the bridge maps the AI Red Teaming session ID to a Foundry thread. That is what makes multi-turn attacks accumulate context instead of restarting on every prompt.
+
+`function_app.py`
+
+```python
+"""Bridge between AIRS Red Teaming and an Azure AI Foundry agent."""
+import hmac
+import json
+import logging
+import os
+
+import azure.functions as func
+from azure.ai.agents import AgentsClient
+from azure.core.exceptions import HttpResponseError
+from azure.identity import DefaultAzureCredential
+
+PROJECT_ENDPOINT = os.environ["PROJECT_ENDPOINT"]
+AGENT_ID = os.environ["AGENT_ID"]
+AIRT_TOKEN = os.environ["AIRT_TOKEN"]
+
+_CLIENT = AgentsClient(endpoint=PROJECT_ENDPOINT, credential=DefaultAzureCredential())
+
+# Maps a Red Teaming session id to a Foundry thread so multi-turn attacks keep
+# their context. Process-local, so it empties on cold start.
+_THREADS = {}
+
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+
+def _reply(status, body):
+    return func.HttpResponse(json.dumps(body), status_code=status,
+                             mimetype="application/json")
+
+
+def _thread_for(session_id):
+    if not session_id:
+        return _CLIENT.threads.create().id
+    if session_id not in _THREADS:
+        _THREADS[session_id] = _CLIENT.threads.create().id
+    return _THREADS[session_id]
+
+
+@app.route(route="scan", methods=["POST"])
+def scan(req: func.HttpRequest) -> func.HttpResponse:
+    if not hmac.compare_digest(req.headers.get("Authorization", ""),
+                               f"Bearer {AIRT_TOKEN}"):
+        return _reply(401, {"error": {"code": "unauthorized",
+                                      "message": "Bad or missing bearer token."}})
+
+    try:
+        body = req.get_json()
+    except ValueError:
+        return _reply(400, {"error": {"code": "bad_request",
+                                      "message": "Body is not valid JSON."}})
+
+    prompt = body.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return _reply(400, {"error": {"code": "bad_request",
+                                      "message": "Field 'prompt' is required."}})
+
+    session_id = body.get("session_id") or ""
+
+    try:
+        thread_id = _thread_for(session_id)
+        _CLIENT.messages.create(thread_id=thread_id, role="user", content=prompt)
+        run = _CLIENT.runs.create_and_process(thread_id=thread_id, agent_id=AGENT_ID)
+
+        if run.status == "failed":
+            detail = getattr(run, "last_error", None)
+            # A content filter block arrives as a failed run, not an exception.
+            return _reply(403, {"error": {"code": "guardrail_blocked",
+                                          "message": str(detail)}})
+
+        answer = ""
+        for message in _CLIENT.messages.list(thread_id=thread_id, order="desc"):
+            if message.role == "assistant":
+                answer = "".join(part.text.value for part in message.content
+                                 if getattr(part, "type", "") == "text")
+                break
+    except HttpResponseError as err:
+        if err.status_code == 429:
+            return _reply(429, {"error": {"code": "rate_limited",
+                                          "message": err.message}})
+        logging.exception("Foundry call failed")
+        return _reply(502, {"error": {"code": "upstream_error",
+                                      "message": err.message}})
+
+    return _reply(200, {"output": answer, "session_id": session_id})
+```
+
+`requirements.txt`
+
+```
+azure-functions
+azure-ai-agents==1.1.0
+azure-identity>=1.19.0
+```
+
+> **Warning:** The Foundry agents SDK has moved more than once. It was `azure-ai-projects` with `project_client.agents.*`, then `azure-ai-agents` with `AgentsClient` and the `.threads`, `.messages`, and `.runs` sub-clients used above. Check your installed version with `pip show azure-ai-agents` before assuming these method names resolve. The logic is four calls in any version: create a thread, add a user message, run the agent, then read the newest assistant message. Only the spelling changes.
+
+Deploy it. Replace `RG`, `STORAGE`, `SUB`, `ACCOUNT`, and `PROJECT` first. The function uses a system-assigned managed identity, so no Azure credential is ever pasted into SCM.
+
+```bash
+az functionapp create --name airt-foundry-bridge \
+  --resource-group RG --consumption-plan-location eastus \
+  --runtime python --runtime-version 3.12 --functions-version 4 \
+  --storage-account STORAGE --assign-identity '[system]'
+
+PRINCIPAL=$(az functionapp identity show --name airt-foundry-bridge \
+  --resource-group RG --query principalId -o tsv)
+
+# Grants data-plane access to the project's agents.
+az role assignment create --assignee "$PRINCIPAL" \
+  --role "Azure AI User" \
+  --scope "/subscriptions/SUB/resourceGroups/RG/providers/Microsoft.CognitiveServices/accounts/ACCOUNT/projects/PROJECT"
+
+TOKEN=$(openssl rand -hex 32)
+az functionapp config appsettings set --name airt-foundry-bridge --resource-group RG \
+  --settings PROJECT_ENDPOINT="https://..." AGENT_ID="asst_..." AIRT_TOKEN="$TOKEN"
+
+func azure functionapp publish airt-foundry-bridge
+```
+
+Test it before touching SCM.
+
+```bash
+curl -s -X POST "https://airt-foundry-bridge.azurewebsites.net/api/scan" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"What can you help me with?"}' | python3 -m json.tool
+```
+
+> **Verification:** HTTP 200 with a non-empty `output` field.
+
+| Result | Cause |
+|---|---|
+| `401 unauthorized` | The token in the cURL does not match the `AIRT_TOKEN` app setting |
+| `502 upstream_error` | The role assignment is missing or still propagating, or `PROJECT_ENDPOINT` is wrong |
+| `403 guardrail_blocked` | The run failed, most often an Azure content filter. Read the `message` field |
+
+> **Note:** Azure role assignments can take several minutes to propagate. A 502 immediately after `az role assignment create` is worth one retry before you start debugging the endpoint.
+
+### Console Configuration for Both Bridges
+
+1. Navigate to `AI Security` -> `AI Red Teaming` -> `Targets` and select **+ New Target**.
+2. Under Target Details, enter a target name, set Target Type to **Agent**, and set Connection Method to **Rest API or Streaming or WebSocket**.
+3. Set Endpoint Accessibility to **Public** if you followed either deployment as written. For a bridge on a private network, choose **Private**, then either **IP Allowlist** with the region-specific static IP shown in the tooltip, or a **Network Channel**.
+4. Choose **Manual Entry**, or import this cURL and let the console extract the shape:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "{INPUT}", "session_id": ""}' \
+  https://YOUR_WRAPPER_URL
+```
+
+5. Select **Next: Add/Verify Parameters**. Enter the wrapper URL as the API endpoint, set **Supports Sessions** to **Yes** so multi-turn attacks reuse `session_id`, and configure authentication **Using Headers** with header name `Authorization` and value `Bearer YOUR_TOKEN`.
+6. Select **Next: Verify & Edit JSON** and confirm both bodies match the shared interface contract above.
+7. Under Advanced Configurations, set the Endpoint Rate Limit Error Code to `429` with Sample Exception JSON `{"error":{"code":"rate_limited","message":""}}`. Guardrail handling differs per bridge:
+
+| Bridge | Guardrails setting | Reason |
+|---|---|---|
+| Azure AI Foundry | Error code `403`, Sample Exception JSON `{"error":{"code":"guardrail_blocked","message":""}}` | An Azure content filter block surfaces as `run.status == "failed"`, which the bridge converts into a distinct 403 |
+| AWS Bedrock Agent | Leave disabled | A Bedrock Agent guardrail block returns ordinary 200 text containing the guardrail's blocked message, with no distinct status to key on |
+
+8. Save the target, select **Run Profiling**, and wait for **Profiling Complete**.
+9. Select **Scan Target**.
+
+> **Verification:** The target reaches **Profiling Complete**. A scan can start in any profiling state except Profiling Failed, but a completed profile gives agent-led scans the target context they use to build better attack chains.
+
+> **Warning:** Leaving Guardrails disabled on the Bedrock bridge means attacks the guardrail blocks are recorded as ordinary responses rather than as guardrail interventions, so the report understates how much of the defence came from the guardrail rather than the model. To recover that split, set `enableTrace=True` in the handler, parse the trace events for a guardrail action, and return a 403 the way the Foundry bridge does.
+
+### Operational Notes
+
+- **The Foundry thread map is process-local** — a cold start mid-scan drops conversation history for in-flight sessions. Tolerable for a short scan; for long agent-led scans, back `_THREADS` with Table Storage or Redis keyed on `session_id`.
+- **Both bridges are internet-reachable and gated only by a bearer token** — rotate the token at the end of the engagement and delete the function URL or Function App once scanning is finished.
+- **Credential scope is a reason to prefer a bridge** — a native Bedrock model target requires pasting long-lived IAM keys into a SaaS console. Both bridges avoid that by using an execution role or a managed identity.
 
 ---
 

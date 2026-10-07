@@ -38,6 +38,13 @@ var NEWS_VISIBLE_COUNT = 6;
 var NEWS_ITEMS = [
   {
     badge: "Updated",
+    date: "2026-10-07",
+    title: "Red teaming a Bedrock Agent or a Foundry agent now ships with working code",
+    href: "guides/airs-red/airs-red-teaming.html#wrappers-appendix",
+    tags: "No connector reaches InvokeAgent, Two deployable bridges, Bedrock model target steps, SigV4 proxy correction, Guardrails differ per runtime"
+  },
+  {
+    badge: "Updated",
     date: "2026-10-06",
     title: "The AIRS planner now starts at the sales cycle, and exports to Excel",
     href: "guides/airs-planner/index.html#lifecycle-bands",

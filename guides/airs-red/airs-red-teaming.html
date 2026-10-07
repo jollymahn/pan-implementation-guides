@@ -1011,19 +1011,42 @@ kubectl auth can-i create deployment --namespace airs-red-teaming
 
       <!-- ════════════════════ MODEL TYPE ════════════════════ -->
       <div class="mgmt-panel" data-plane="model-type">
+        <p>Model targets use pre-configured native integrations: <strong>OpenAI or Hugging Face</strong>, <strong>Databricks</strong>, and <strong>AWS Bedrock</strong>. The wizard is the shortest of the three target types because there is no application layer to describe, and Target Background is optional.</p>
+
         <div class="callout callout-note">
-          <div class="callout-title">Model Target — Detailed configuration coming soon</div>
-          <p>Model targets use pre-configured native integrations: <strong>OpenAI</strong>, <strong>Hugging Face</strong>, <strong>Databricks</strong>, and <strong>AWS Bedrock</strong>. Each requires only three fields: API key, endpoint URL, and model name. Detailed provider-specific steps will be added in a future guide update.</p>
+          <div class="callout-title">Field counts differ by provider</div>
+          <p>OpenAI, Hugging Face, and Databricks take an API key, an endpoint URL, and a model name. AWS Bedrock does not: it takes a region and an IAM key pair instead of a URL and a key, because the endpoint is derived from the region. The Bedrock steps below are complete. Detailed steps for the other three providers will be added in a future guide update.</p>
         </div>
+
+        <h3>AWS Bedrock Model Target</h3>
+
+        <p>Before starting, confirm in the AWS console under Bedrock <code>Model access</code> that the model you intend to scan shows <strong>Access granted</strong>. Then create an IAM user holding only <code>bedrock:InvokeModel</code>, scoped to that model's ARN, and generate an access key for it. Add <code>bedrock:InvokeModelWithResponseStream</code> only if you plan to enable streaming.</p>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Scope the IAM policy to one model ARN</div>
+          <p>These credentials are pasted into a SaaS console and remain there for the life of the engagement. Resist the convenience of <code>"Resource": "*"</code>. If the account policy forbids long-lived access keys entirely, issue temporary STS credentials and supply the Session Token field, accepting that the target stops working when they expire.</p>
+        </div>
+
         <ol>
           <li>Navigate to <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <code>Targets</code>.</li>
-          <li>Click <code>Add Target</code>.</li>
-          <li>Enter a target name and select <strong>Model</strong>.</li>
-          <li>Select the connection method: OpenAI, Hugging Face, Databricks, or AWS Bedrock.</li>
-          <li>Enter the API key, endpoint URL, and model name for the selected provider.</li>
-          <li>Click through the wizard and complete Target Background (optional for Model).</li>
-          <li>Click <strong>Validate</strong> in Advanced Configurations to confirm connectivity.</li>
+          <li>Select <strong>+ New Target</strong>.</li>
+          <li>Under Target Details, enter a target name, set Target Type to <strong>Model</strong>, and set Connection Method to <strong>AWS Bedrock</strong>.</li>
+          <li>Select <strong>Next: Add/Verify Parameters</strong>. Under AWS Authentication Details, enter the <strong>Region</strong>, <strong>IAM Access ID</strong>, and <strong>IAM Access Secret</strong>. Leave <strong>Session Token</strong> empty unless you issued temporary STS credentials.</li>
+          <li>Under Model Details, enter the Bedrock model ID as the <strong>Model Name</strong>, then set the <strong>Model Streaming</strong> toggle to match the permission you granted in IAM.</li>
+          <li>Select <strong>Next: Verify &amp; Edit JSON</strong> and confirm the generated request structure.</li>
+          <li>Under Advanced Configurations, optionally set an Endpoint Rate Limit so the scan throttles itself against the per-model service quota.</li>
+          <li>Save the target.</li>
         </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The target appears in the list with a profiling state of <strong>Not Started</strong>. Select <strong>Run Profiling</strong>. A target whose credentials or model ID are wrong fails profiling rather than silently returning empty results for every attack in the scan, so run profiling before committing five hours to an Attack Library scan.</p>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Bedrock Agents are not Bedrock models</div>
+          <p>This connection method reaches <code>InvokeModel</code> only. It carries no <code>agentId</code> or <code>agentAliasId</code> field, so it cannot reach a Bedrock Agent, and neither can any other native connection method. Scanning a Bedrock Agent requires a bridge service. See <a href="#wrappers-appendix">Appendix: Wrappers and Proxy Services</a>.</p>
+        </div>
       </div>
 
       <!-- ════════════════════ APPLICATION TYPE ════════════════════ -->
@@ -4427,6 +4450,8 @@ curl -X GET "https://api.sase.paloaltonetworks.com/ai-red-teaming/mgmt-plane/v1/
         <tr><td>Agent uses gRPC, SOAP, or AMQP; no Kubernetes available</td><td>None — Custom Adapter requires K8s</td><td><strong>Yes</strong></td><td>Type 1: REST shim to gRPC/SOAP</td></tr>
         <tr><td>Agent requires AWS SigV4, HMAC, or mTLS; Kubernetes is available</td><td>Custom Adapter <code>pre_process()</code> can handle signing</td><td>No — use adapter instead</td><td>—</td></tr>
         <tr><td>Agent requires AWS SigV4, HMAC, or mTLS; no Kubernetes available</td><td>None</td><td><strong>Yes</strong></td><td>Type 3: Signing proxy</td></tr>
+        <tr><td>Agent is an <strong>AWS Bedrock Agent</strong> reached through <code>InvokeAgent</code></td><td>None — the Bedrock connection method reaches <code>InvokeModel</code> only and carries no <code>agentId</code></td><td><strong>Yes</strong></td><td>Type 1: Bedrock Agent bridge</td></tr>
+        <tr><td>Agent is an <strong>Azure AI Foundry</strong> agent</td><td>None — no Foundry connection method exists; Copilot Studio is a different product</td><td><strong>Yes</strong></td><td>Type 1: Foundry agent bridge</td></tr>
         <tr><td>Agent uses Okta; token lifetime is short; Strategy A/B not feasible</td><td>None — AIRS OAuth 2.0 requires the customer to manage token refresh separately</td><td><strong>Yes</strong></td><td>Type 3: Token-refresh proxy</td></tr>
         <tr><td>Agent is deployed in Microsoft Copilot Studio</td><td>Copilot Studio connection method (Agent targets only)</td><td>No</td><td>—</td></tr>
         <tr><td>Agent uses a non-standard protocol not covered above; Kubernetes available</td><td>Custom Target Adapter, Pattern B (<code>call_target</code>)</td><td>No — use adapter instead</td><td>—</td></tr>
@@ -4591,6 +4616,542 @@ async def chat(request: ChatRequest, _=Depends(verify_token)):
 </div>
 
 <div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Type 1 — Bedrock Agent and Foundry Agent Bridges</span></div>
+  <div class="collapsible-body">
+    <p>Two managed agent runtimes in wide use have no native connection method, for different reasons. An AWS Bedrock Agent is unreachable because the Bedrock connection method targets <code>InvokeModel</code> and carries no agent identifier. An Azure AI Foundry agent is unreachable because no Foundry connection method exists at all. Both are solved by the same shape of service: a small HTTPS function that accepts the REST contract AIRS speaks, calls the agent with its own SDK, and returns one JSON document.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Microsoft Copilot Studio is not Azure AI Foundry</div>
+      <p>Copilot Studio is the only Azure agent connector in the wizard, and the shared Azure branding makes it easy to read as coverage for Foundry. They are separate products with separate runtimes. A Foundry agent needs the bridge below.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Discovery does not feed Red Teaming</div>
+      <p>An agent that appears in SCM cloud discovery does not become a scannable target. Nothing in the AI Red Teaming documentation references AI Agent Discovery, and there is no action on a discovered asset that creates a target. Discovery is read-only inventory. Targets are created by hand under <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <code>Targets</code>.</p>
+    </div>
+
+    <h3>The Shared Interface Contract</h3>
+    <p>Both bridges expose the same two-field interface, so the console configuration is identical apart from the URL and the token. The request body places the prompt at <code>{INPUT}</code> and the response body places the agent's text at <code>{RESPONSE}</code>.</p>
+
+    <div class="code-block">
+      <pre><code># Request body pasted into Verify &amp; Edit JSON
+{ "prompt": "{INPUT}", "session_id": "" }
+
+# Response body pasted into Verify &amp; Edit JSON
+{ "output": "{RESPONSE}", "session_id": "" }</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Both bridges also authenticate with a bearer token they check themselves, rather than with the cloud provider's own request signing. That is deliberate: AIRS can send an <code>Authorization</code> header but cannot compute a SigV4 signature or acquire a managed identity token, so the provider's native auth has to terminate inside the bridge.</p>
+
+    <p>Pick the runtime you are scanning. The selection persists across the page.</p>
+
+    <div class="mgmt-tabs" data-tab-group="agent-bridge">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="bedrock-agent">A &middot; AWS Bedrock Agent</button>
+        <button class="mgmt-tab" data-plane="foundry-agent">B &middot; Azure AI Foundry</button>
+      </div>
+
+      <!-- ════════════════════ BEDROCK AGENT ════════════════════ -->
+      <div class="mgmt-panel active" data-plane="bedrock-agent">
+
+        <div class="collapsible">
+          <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step A.1: Write the Lambda handler</span></div>
+          <div class="collapsible-body">
+            <p>This handler does three jobs the connection method cannot: it validates a bearer token, it calls <code>InvokeAgent</code> with SigV4 supplied by the execution role, and it collapses the returned event stream into one string.</p>
+            <p>Save as <code>handler.py</code>.</p>
+            <div class="code-block">
+              <pre><code>"""Bridge between AIRS Red Teaming and a Bedrock Agent.
+
+Red Teaming speaks plain JSON over a bearer token. InvokeAgent needs SigV4
+and returns a chunked event stream. This translates between the two.
+"""
+import hmac
+import json
+import os
+import re
+import uuid
+
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
+
+AGENT_ID = os.environ["AGENT_ID"]
+AGENT_ALIAS_ID = os.environ["AGENT_ALIAS_ID"]
+AIRT_TOKEN = os.environ["AIRT_TOKEN"]
+
+# A scan prompt can take a while once the agent starts calling tools.
+_CFG = Config(read_timeout=120, connect_timeout=10,
+              retries={"max_attempts": 2, "mode": "standard"})
+_CLIENT = boto3.client("bedrock-agent-runtime", config=_CFG)
+
+_SESSION_ILLEGAL = re.compile(r"[^0-9a-zA-Z._:-]")
+_THROTTLE_CODES = {"ThrottlingException", "TooManyRequestsException",
+                   "ServiceQuotaExceededException"}
+
+
+def _reply(status, body):
+    return {
+        "statusCode": status,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps(body),
+    }
+
+
+def _authorized(event):
+    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+    return hmac.compare_digest(headers.get("authorization", ""),
+                               f"Bearer {AIRT_TOKEN}")
+
+
+def _session_id(raw):
+    """Bedrock wants 2-100 chars of [0-9a-zA-Z._:-] and nothing else."""
+    if not raw:
+        return uuid.uuid4().hex
+    cleaned = _SESSION_ILLEGAL.sub("-", str(raw))[:100]
+    return cleaned if len(cleaned) &gt;= 2 else uuid.uuid4().hex
+
+
+def _map_error(err):
+    error = err.response.get("Error", {})
+    code = error.get("Code", "")
+    message = error.get("Message", "")
+    if code in _THROTTLE_CODES:
+        return _reply(429, {"error": {"code": "rate_limited", "message": message}})
+    if code == "AccessDeniedException":
+        return _reply(403, {"error": {"code": "access_denied", "message": message}})
+    return _reply(502, {"error": {"code": "upstream_error", "message": message}})
+
+
+def handler(event, context):
+    if not _authorized(event):
+        return _reply(401, {"error": {"code": "unauthorized",
+                                      "message": "Bad or missing bearer token."}})
+
+    try:
+        body = json.loads(event.get("body") or "{}")
+    except json.JSONDecodeError:
+        return _reply(400, {"error": {"code": "bad_request",
+                                      "message": "Body is not valid JSON."}})
+
+    prompt = body.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return _reply(400, {"error": {"code": "bad_request",
+                                      "message": "Field 'prompt' is required."}})
+
+    session_id = _session_id(body.get("session_id"))
+
+    try:
+        response = _CLIENT.invoke_agent(
+            agentId=AGENT_ID,
+            agentAliasId=AGENT_ALIAS_ID,
+            sessionId=session_id,
+            inputText=prompt,
+            enableTrace=False,
+        )
+        chunks = []
+        for part in response["completion"]:
+            if "chunk" in part:
+                chunks.append(part["chunk"]["bytes"].decode("utf-8"))
+            elif "returnControl" in part:
+                # The agent wants its caller to execute a tool. A scan has no
+                # tool to run, so say so rather than returning an empty string
+                # that would read as a refusal.
+                return _reply(200, {
+                    "output": "[agent requested client-side tool execution]",
+                    "session_id": session_id,
+                })
+    except ClientError as err:
+        return _map_error(err)
+
+    return _reply(200, {"output": "".join(chunks), "session_id": session_id})</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+
+            <div class="callout callout-note">
+              <div class="callout-title">Why the returnControl branch matters</div>
+              <p>An agent configured with a client-side action group can ask its caller to run a tool and wait. A scan has no tool to run, so returning an empty string there would reach AIRS as a refusal and score as a passed attack. Returning an explicit marker keeps the result honest.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step A.2: Deploy the Lambda and its function URL</span></div>
+          <div class="collapsible-body">
+            <p>Replace <code>REGION</code>, <code>ACCOUNT</code>, <code>AGENT_ID</code>, and <code>ALIAS_ID</code> with your own values before running.</p>
+            <div class="code-block">
+              <pre><code>zip -j handler.zip handler.py
+
+aws iam create-role --role-name airt-bedrock-agent-bridge \
+  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+
+aws iam put-role-policy --role-name airt-bedrock-agent-bridge \
+  --policy-name invoke-agent --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Action": "bedrock:InvokeAgent",
+      "Resource": "arn:aws:bedrock:REGION:ACCOUNT:agent-alias/AGENT_ID/ALIAS_ID"
+    }]
+  }'
+
+aws iam attach-role-policy --role-name airt-bedrock-agent-bridge \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+TOKEN=$(openssl rand -hex 32)
+
+aws lambda create-function \
+  --function-name airt-bedrock-agent-bridge \
+  --runtime python3.12 --handler handler.handler \
+  --role arn:aws:iam::ACCOUNT:role/airt-bedrock-agent-bridge \
+  --zip-file fileb://handler.zip --timeout 180 --memory-size 512 \
+  --environment "Variables={AGENT_ID=...,AGENT_ALIAS_ID=...,AIRT_TOKEN=$TOKEN}"
+
+# AuthType NONE because Red Teaming cannot sign SigV4. The bearer check
+# inside the handler is the actual gate.
+aws lambda create-function-url-config \
+  --function-name airt-bedrock-agent-bridge --auth-type NONE
+
+aws lambda add-permission --function-name airt-bedrock-agent-bridge \
+  --statement-id allow-public-url --action lambda:InvokeFunctionUrl \
+  --principal '*' --function-url-auth-type NONE
+
+echo "Token: $TOKEN"</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">The function URL is internet-reachable</div>
+              <p>Function URL auth is set to <code>NONE</code> because AIRS cannot sign SigV4, which leaves the handler's bearer check as the only gate. Treat the token as a credential, keep the timeout at 180 seconds or higher so tool-calling turns do not truncate mid-scan, and delete the function URL when the engagement ends. If your account forbids public function URLs, put the Lambda behind a private endpoint and use a Network Channel instead, as described in the Endpoint Accessibility step below.</p>
+            </div>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>The <code>create-function-url-config</code> call returns a <code>FunctionUrl</code> value. Save it alongside the printed token; the next step needs both.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step A.3: Test the bridge before touching SCM</span></div>
+          <div class="collapsible-body">
+            <p>A bridge that fails outside AIRS fails inside AIRS with harder error messages. Confirm it works first.</p>
+            <div class="code-block">
+              <pre><code>curl -s -X POST "$FUNCTION_URL" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"What can you help me with?"}' | python3 -m json.tool</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>You want HTTP 200 and a non-empty <code>output</code> field. Anything else maps to a specific cause in the table below.</p>
+            </div>
+
+            <table>
+              <thead><tr><th>Result</th><th>Cause</th></tr></thead>
+              <tbody>
+                <tr><td><code>401 unauthorized</code></td><td>The token in the cURL does not match the <code>AIRT_TOKEN</code> environment variable</td></tr>
+                <tr><td><code>403 access_denied</code></td><td>The IAM policy resource ARN does not match your agent alias</td></tr>
+                <tr><td><code>502 upstream_error</code></td><td>Wrong <code>AGENT_ID</code> or <code>AGENT_ALIAS_ID</code>, or the alias has not been prepared</td></tr>
+                <tr><td>HTTP 200, empty <code>output</code></td><td>The agent returned no text. Set <code>enableTrace=True</code> and read the trace events</td></tr>
+              </tbody>
+            </table>
+
+            <p>Once this returns a real answer, continue to the console configuration steps below.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════ FOUNDRY AGENT ════════════════════ -->
+      <div class="mgmt-panel" data-plane="foundry-agent">
+
+        <div class="collapsible">
+          <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step B.1: Write the Azure Function</span></div>
+          <div class="collapsible-body">
+            <p>Foundry agents are driven through threads rather than single calls, so the bridge keeps a map from the AIRS session ID to a Foundry thread. That is what makes multi-turn attacks accumulate context instead of restarting on every prompt.</p>
+            <p>Save as <code>function_app.py</code>.</p>
+            <div class="code-block">
+              <pre><code>"""Bridge between AIRS Red Teaming and an Azure AI Foundry agent."""
+import hmac
+import json
+import logging
+import os
+
+import azure.functions as func
+from azure.ai.agents import AgentsClient
+from azure.core.exceptions import HttpResponseError
+from azure.identity import DefaultAzureCredential
+
+PROJECT_ENDPOINT = os.environ["PROJECT_ENDPOINT"]
+AGENT_ID = os.environ["AGENT_ID"]
+AIRT_TOKEN = os.environ["AIRT_TOKEN"]
+
+_CLIENT = AgentsClient(endpoint=PROJECT_ENDPOINT, credential=DefaultAzureCredential())
+
+# Maps a Red Teaming session id to a Foundry thread so multi-turn attacks keep
+# their context. Process-local, so it empties on cold start.
+_THREADS = {}
+
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+
+def _reply(status, body):
+    return func.HttpResponse(json.dumps(body), status_code=status,
+                             mimetype="application/json")
+
+
+def _thread_for(session_id):
+    if not session_id:
+        return _CLIENT.threads.create().id
+    if session_id not in _THREADS:
+        _THREADS[session_id] = _CLIENT.threads.create().id
+    return _THREADS[session_id]
+
+
+@app.route(route="scan", methods=["POST"])
+def scan(req: func.HttpRequest) -&gt; func.HttpResponse:
+    if not hmac.compare_digest(req.headers.get("Authorization", ""),
+                               f"Bearer {AIRT_TOKEN}"):
+        return _reply(401, {"error": {"code": "unauthorized",
+                                      "message": "Bad or missing bearer token."}})
+
+    try:
+        body = req.get_json()
+    except ValueError:
+        return _reply(400, {"error": {"code": "bad_request",
+                                      "message": "Body is not valid JSON."}})
+
+    prompt = body.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return _reply(400, {"error": {"code": "bad_request",
+                                      "message": "Field 'prompt' is required."}})
+
+    session_id = body.get("session_id") or ""
+
+    try:
+        thread_id = _thread_for(session_id)
+        _CLIENT.messages.create(thread_id=thread_id, role="user", content=prompt)
+        run = _CLIENT.runs.create_and_process(thread_id=thread_id, agent_id=AGENT_ID)
+
+        if run.status == "failed":
+            detail = getattr(run, "last_error", None)
+            # A content filter block arrives as a failed run, not an exception.
+            return _reply(403, {"error": {"code": "guardrail_blocked",
+                                          "message": str(detail)}})
+
+        answer = ""
+        for message in _CLIENT.messages.list(thread_id=thread_id, order="desc"):
+            if message.role == "assistant":
+                answer = "".join(part.text.value for part in message.content
+                                 if getattr(part, "type", "") == "text")
+                break
+    except HttpResponseError as err:
+        if err.status_code == 429:
+            return _reply(429, {"error": {"code": "rate_limited",
+                                          "message": err.message}})
+        logging.exception("Foundry call failed")
+        return _reply(502, {"error": {"code": "upstream_error",
+                                      "message": err.message}})
+
+    return _reply(200, {"output": answer, "session_id": session_id})</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+
+            <p>Save as <code>requirements.txt</code>.</p>
+            <div class="code-block">
+              <pre><code>azure-functions
+azure-ai-agents==1.1.0
+azure-identity&gt;=1.19.0</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">Confirm the SDK call surface before you deploy</div>
+              <p>The Foundry agents SDK has moved more than once. It was <code>azure-ai-projects</code> with <code>project_client.agents.*</code>, then <code>azure-ai-agents</code> with <code>AgentsClient</code> and the <code>.threads</code>, <code>.messages</code>, and <code>.runs</code> sub-clients used above. Check your installed version with <code>pip show azure-ai-agents</code> before assuming these method names resolve. The logic is four calls in any version: create a thread, add a user message, run the agent, then read the newest assistant message. Only the spelling changes.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step B.2: Deploy the Function App</span></div>
+          <div class="collapsible-body">
+            <p>Replace <code>RG</code>, <code>STORAGE</code>, <code>SUB</code>, <code>ACCOUNT</code>, and <code>PROJECT</code> with your own values. The function uses a system-assigned managed identity rather than a stored key, so no Azure credential is ever pasted into SCM.</p>
+            <div class="code-block">
+              <pre><code>az functionapp create --name airt-foundry-bridge \
+  --resource-group RG --consumption-plan-location eastus \
+  --runtime python --runtime-version 3.12 --functions-version 4 \
+  --storage-account STORAGE --assign-identity '[system]'
+
+PRINCIPAL=$(az functionapp identity show --name airt-foundry-bridge \
+  --resource-group RG --query principalId -o tsv)
+
+# Grants data-plane access to the project's agents.
+az role assignment create --assignee "$PRINCIPAL" \
+  --role "Azure AI User" \
+  --scope "/subscriptions/SUB/resourceGroups/RG/providers/Microsoft.CognitiveServices/accounts/ACCOUNT/projects/PROJECT"
+
+TOKEN=$(openssl rand -hex 32)
+az functionapp config appsettings set --name airt-foundry-bridge --resource-group RG \
+  --settings PROJECT_ENDPOINT="https://..." AGENT_ID="asst_..." AIRT_TOKEN="$TOKEN"
+
+func azure functionapp publish airt-foundry-bridge</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>The publish command prints the deployed function URL, which ends in <code>/api/scan</code>. Save it alongside the printed token.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step B.3: Test the bridge before touching SCM</span></div>
+          <div class="collapsible-body">
+            <div class="code-block">
+              <pre><code>curl -s -X POST "https://airt-foundry-bridge.azurewebsites.net/api/scan" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"What can you help me with?"}' | python3 -m json.tool</code></pre>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+
+            <div class="callout callout-success">
+              <div class="callout-title">Verification</div>
+              <p>You want HTTP 200 and a non-empty <code>output</code> field.</p>
+            </div>
+
+            <table>
+              <thead><tr><th>Result</th><th>Cause</th></tr></thead>
+              <tbody>
+                <tr><td><code>401 unauthorized</code></td><td>The token in the cURL does not match the <code>AIRT_TOKEN</code> app setting</td></tr>
+                <tr><td><code>502 upstream_error</code></td><td>The role assignment is missing or still propagating, or <code>PROJECT_ENDPOINT</code> is wrong</td></tr>
+                <tr><td><code>403 guardrail_blocked</code></td><td>The run failed, most often an Azure content filter. Read the <code>message</code> field</td></tr>
+              </tbody>
+            </table>
+
+            <div class="callout callout-note">
+              <div class="callout-title">Give the role assignment a minute</div>
+              <p>Azure role assignments can take several minutes to propagate. A 502 immediately after <code>az role assignment create</code> is worth one retry before you start debugging the endpoint.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3>Console Configuration for Both Bridges</h3>
+    <p>These steps are common to both paths, so they sit outside the tabs. The only values that differ are the wrapper URL, the token, and one Advanced Configuration setting called out in Step 4.</p>
+
+    <div class="collapsible">
+      <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 1: Create the target and set Endpoint Accessibility</span></div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Navigate to <code>AI Security</code> &rarr; <code>AI Red Teaming</code> &rarr; <code>Targets</code> and select <strong>+ New Target</strong>.</li>
+          <li>Under Target Details, enter a target name, set Target Type to <strong>Agent</strong>, and set Connection Method to <strong>Rest API or Streaming or WebSocket</strong>.</li>
+          <li>Set Endpoint Accessibility to <strong>Public</strong> if you followed either deployment above as written. If you placed the bridge on a private network instead, choose <strong>Private</strong>, then either <strong>IP Allowlist</strong> with the region-specific static IP shown in the tooltip, or a <strong>Network Channel</strong>.</li>
+        </ol>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Agent is the correct target type here</div>
+          <p>Both bridges front a system that chooses its own tools and sequences its own actions, which is the definition the Agent type exists for. Selecting Agent also enables Agentic Profiling, which is what gives agent-led scans a map of the tool surface to attack.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 2: Import the cURL or enter the shape by hand</span></div>
+      <div class="collapsible-body">
+        <p>Choose <strong>Manual Entry</strong>, or paste this cURL and let the console extract the request shape for you.</p>
+        <div class="code-block">
+          <pre><code>curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "{INPUT}", "session_id": ""}' \
+  https://YOUR_WRAPPER_URL</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 3: Set parameters and the JSON contract</span></div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Select <strong>Next: Add/Verify Parameters</strong> and enter the wrapper URL as the API endpoint.</li>
+          <li>Set <strong>Supports Sessions</strong> to <strong>Yes</strong> so multi-turn attacks reuse <code>session_id</code>.</li>
+          <li>Configure authentication <strong>Using Headers</strong>, with header name <code>Authorization</code> and value <code>Bearer YOUR_TOKEN</code>.</li>
+          <li>Select <strong>Next: Verify &amp; Edit JSON</strong> and confirm both bodies match the shared interface contract above.</li>
+        </ol>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Why Supports Sessions is Yes</div>
+          <p>Set to No, AIRS replays the whole conversation history in every request and the bridge opens a fresh thread or session each time, so multi-turn attack chains never build state. Both bridges echo <code>session_id</code> back for exactly this reason.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 4: Advanced Configurations, which differ per bridge</span></div>
+      <div class="collapsible-body">
+        <p>Set the rate limit handling for both bridges:</p>
+        <ul>
+          <li><strong>Endpoint Rate Limit Error Code</strong> &mdash; <code>429</code></li>
+          <li><strong>Sample Exception JSON</strong> &mdash; <code>{"error":{"code":"rate_limited","message":""}}</code></li>
+        </ul>
+
+        <p>Guardrail handling is where the two paths diverge, because the two runtimes report a blocked prompt differently.</p>
+
+        <table>
+          <thead><tr><th>Bridge</th><th>Guardrails setting</th><th>Reason</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Azure AI Foundry</strong></td>
+              <td>Error code <code>403</code>, Sample Exception JSON <code>{"error":{"code":"guardrail_blocked","message":""}}</code></td>
+              <td>An Azure content filter block surfaces as <code>run.status == "failed"</code>, which the bridge converts into a distinct 403</td>
+            </tr>
+            <tr>
+              <td><strong>AWS Bedrock Agent</strong></td>
+              <td>Leave disabled</td>
+              <td>A Bedrock Agent guardrail block returns ordinary 200 text containing the guardrail's blocked message, with no distinct status for AIRS to key on</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">What leaving Guardrails disabled costs you</div>
+          <p>Attacks the Bedrock guardrail blocks are recorded as ordinary responses rather than as guardrail interventions, so the report understates how much of your defence came from the guardrail rather than the model. If you need that split, set <code>enableTrace=True</code> in the handler, parse the trace events for a guardrail action, and return a 403 the way the Foundry bridge does.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Step 5: Save, profile, and scan</span></div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Save the target.</li>
+          <li>Select <strong>Run Profiling</strong> and wait for <strong>Profiling Complete</strong>.</li>
+          <li>Select <strong>Scan Target</strong>.</li>
+        </ol>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The target reaches <strong>Profiling Complete</strong>. You can start a scan in any profiling state except Profiling Failed, but a completed profile gives agent-led scans the target context they use to build better attack chains, so wait for it.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Operational Notes</h3>
+    <ul>
+      <li><strong>The Foundry thread map is process-local</strong> &mdash; a cold start mid-scan drops conversation history for in-flight sessions. That is tolerable for a short scan. For long agent-led scans, back <code>_THREADS</code> with Table Storage or Redis keyed on <code>session_id</code>.</li>
+      <li><strong>Both bridges are internet-reachable and gated only by a bearer token</strong> &mdash; rotate the token at the end of the engagement and delete the function URL or Function App once scanning is finished, the same as any other test target.</li>
+      <li><strong>Credential scope is a reason to prefer a bridge</strong> &mdash; a native Bedrock model target requires pasting long-lived IAM keys into a SaaS console. Both bridges avoid that entirely by using an execution role or a managed identity, which is worth weighing even where the native connector would work.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
   <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Type 2 — REST-to-WebSocket Adapter: Multi-Turn and OAuth 2.0 for WebSocket Agents</span></div>
   <div class="collapsible-body">
     <p>A REST-to-WebSocket adapter accepts a stateless REST POST from AIRS and manages a WebSocket connection (including session state and token refresh) entirely inside the adapter. This is the only way to achieve multi-turn stateful testing or OAuth 2.0 authentication for WebSocket-only agents, because AIRS's native WebSocket connection method supports neither.</p>
@@ -4740,6 +5301,11 @@ def get_token():
   <div class="collapsible-body">
     <h3>SigV4 Signing Proxy</h3>
     <p>AWS SigV4 requires a canonical request string that includes the exact request body, timestamp, and computed HMAC-SHA256 digest. AIRS cannot compute this because it does not have access to AWS credentials and does not sign requests. A signing proxy receives the unsigned request from AIRS, computes the SigV4 signature, adds the required headers (<code>Authorization</code>, <code>x-amz-date</code>, <code>x-amz-content-sha256</code>), and forwards the signed request to the agent.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">This proxy does not work for a Bedrock Agent</div>
+      <p>The pattern below signs the request and streams the upstream body straight back, which suits an API Gateway endpoint behind <code>execute-api</code>. It fails against <code>InvokeAgent</code> for a reason signing cannot fix: the Bedrock Agent runtime returns a chunked event stream rather than a JSON document, so AIRS receives bytes it cannot map with <code>{RESPONSE}</code>. A Bedrock Agent needs a bridge that collapses the event stream into a single JSON body, which is the subject of the <strong>Bedrock Agent and Foundry Agent Bridges</strong> section below.</p>
+    </div>
     <div class="code-block">
       <pre><code>"""
 SigV4 signing proxy using the aws-requests-auth library.
@@ -4752,7 +5318,7 @@ import httpx, os
 AWS_ACCESS_KEY = os.environ["AWS_ACCESS_KEY_ID"]
 AWS_SECRET_KEY = os.environ["AWS_SECRET_ACCESS_KEY"]
 AWS_REGION     = os.environ.get("AWS_REGION", "us-east-1")
-AWS_SERVICE    = "execute-api"  # or "bedrock" etc.
+AWS_SERVICE    = "execute-api"  # API Gateway. Not valid for Bedrock Agents.
 AGENT_HOST     = "api.agent.us-east-1.amazonaws.com"
 AGENT_URL      = f"https://{AGENT_HOST}/prod/chat"
 
