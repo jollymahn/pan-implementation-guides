@@ -69,10 +69,21 @@ function deriveBreadcrumb(relPath) {
 const files = findHtmlFiles(DOCS_ROOT, DOCS_ROOT);
 console.log(`Found ${files.length} HTML files`);
 
+// A page that tells search engines not to index it should not turn up in the
+// site's own search either. Honouring the page's own declaration keeps the
+// unlisted set in one place, on the page, rather than in a list here that has
+// to be remembered separately.
+function isNoIndex(html) {
+  const m = html.match(/<meta\s+name=["']robots["']\s+content=["']([^"']*)["']/i);
+  return !!m && /\bnoindex\b/i.test(m[1]);
+}
+
 const documents = [];
+let skipped = 0;
 for (const file of files) {
   const html = fs.readFileSync(file, 'utf8');
   const relPath = path.relative(DOCS_ROOT, file);
+  if (isNoIndex(html)) { skipped += 1; continue; }
   const title = extractTitle(html);
   if (!title) continue;
 
@@ -85,7 +96,8 @@ for (const file of files) {
   });
 }
 
-console.log(`Indexed ${documents.length} documents`);
+console.log(`Indexed ${documents.length} documents` +
+  (skipped ? `, skipped ${skipped} marked noindex` : ''));
 
 // Build Lunr index
 const lunr = require(path.join(DOCS_ROOT, 'shared', 'js', 'lunr.min.js'));
