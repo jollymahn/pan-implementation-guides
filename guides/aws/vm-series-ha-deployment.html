@@ -324,7 +324,7 @@
 
     <div class="callout callout-note">
       <div class="callout-title">IAM permissions are the prerequisite for steps 3 and 4</div>
-      <p>The Terraform creates an IAM instance profile with <code>ec2:AssociateAddress</code>, <code>ec2:DisassociateAddress</code>, and <code>ec2:ReplaceRoute</code> permissions. Without these, the EIP and route table will not update on failover and traffic will black-hole until corrected manually. Verify the profile is attached before completing Phase 6.</p>
+      <p>The Terraform creates an IAM instance profile with <code>ec2:AssociateAddress</code>, <code>ec2:DisassociateAddress</code>, and <code>ec2:ReplaceRoute</code> permissions. Without these, the EIP and route table will not update on failover and traffic will black-hole until corrected manually. Verify the profile is attached before completing Phase 6. If IAM is centrally managed in your account and you need to build the role by hand, <a href="#prerequisites">Step 1.4</a> gives the full console procedure and the policy JSON.</p>
     </div>
   </div>
 </div>
@@ -467,6 +467,299 @@ aws sts get-caller-identity</code></pre>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
       <p><code>terraform version</code> reports <code>Terraform v1.5.0</code> or later. <code>aws sts get-caller-identity</code> returns your account ID and ARN. <code>git --version</code> returns any version string without error.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4: Build the VM-Series Instance Profile in the Console</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each firewall assumes an IAM role through an instance profile attached to its EC2 instance. PAN-OS uses the temporary credentials from that role to read its bootstrap bucket at first boot, and to move the floating EIP and rewrite the trust route table on failover. Without the profile the pair will form, but failover will not move traffic.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">You usually do not need to do this by hand</div>
+      <p>The Terraform in Phase 4 creates the role, the three inline policies, and the instance profile for you. Build it in the console only when one of the following applies: IAM is centrally managed and your deploying principal cannot create roles, you are deploying the firewalls without Terraform, or you are auditing what the Terraform grants before approving it. If the Terraform is creating the profile, skip to Phase 2.</p>
+    </div>
+
+    <p>The profile carries three inline policies, each with a distinct job:</p>
+
+    <table>
+      <thead>
+        <tr><th>Policy name</th><th>Grants</th><th>Needed for</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>pan-ha-bootstrap-s3</code></td>
+          <td><code>s3:ListBucket</code>, <code>s3:GetObject</code></td>
+          <td>Reading <code>init-cfg.txt</code> and the bootstrap folders at first boot</td>
+        </tr>
+        <tr>
+          <td><code>pan-ha-ha-failover</code></td>
+          <td><code>ec2:Describe*</code>, <code>ec2:AssociateAddress</code>, <code>ec2:DisassociateAddress</code>, <code>ec2:ReplaceRoute</code>, <code>ec2:CreateRoute</code>, <code>ec2:DeleteRoute</code></td>
+          <td>Moving the floating EIP and updating the trust route table on failover</td>
+        </tr>
+        <tr>
+          <td><code>pan-ha-cloudwatch</code></td>
+          <td><code>cloudwatch:PutMetricData</code>, <code>cloudwatch:PutMetricAlarm</code>, and reads</td>
+          <td>Publishing PAN-OS metrics. Optional, omit it if you are not using CloudWatch monitoring</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p><strong>Permissions you need to perform these steps.</strong> The principal you are signed in as must hold the following. These are IAM actions on the operator, separate from the EC2 and S3 actions granted to the firewall by the policies below.</p>
+
+    <div class="code-block">
+      <pre><code>iam:CreateRole
+iam:PutRolePolicy
+iam:CreateInstanceProfile
+iam:AddRoleToInstanceProfile
+iam:GetRole
+iam:GetRolePolicy
+iam:TagRole
+iam:PassRole                      # to attach the profile to an instance
+ec2:AssociateIamInstanceProfile   # to attach it to a running instance</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>1. Create the role.</strong></p>
+
+    <ol>
+      <li>Open the <a href="https://console.aws.amazon.com/iam/">IAM console</a> and select <strong>Roles</strong>, then <strong>Create role</strong>.</li>
+      <li>For <strong>Trusted entity type</strong>, select <strong>AWS service</strong>.</li>
+      <li>Under <strong>Use case</strong>, select <strong>EC2</strong>, then the plain <strong>EC2</strong> option (not EC2 Role for AWS Systems Manager). Click <strong>Next</strong>.</li>
+      <li>On the permissions page, attach nothing. The three policies are added as inline policies in the next part. Click <strong>Next</strong>.</li>
+      <li>Set <strong>Role name</strong> to <code>pan-ha-vmseries-role</code>. The rest of this guide, including the troubleshooting commands, uses that name.</li>
+      <li>Click <strong>Create role</strong>.</li>
+    </ol>
+
+    <p>Selecting the EC2 use case writes this trust policy, which is what allows the EC2 service to hand the role's credentials to the instance. Confirm it matches under the role's <strong>Trust relationships</strong> tab:</p>
+
+    <div class="code-block">
+      <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "ec2.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>2. Add the bootstrap S3 policy.</strong> On the role's <strong>Permissions</strong> tab, select <strong>Add permissions</strong>, then <strong>Create inline policy</strong>, then the <strong>JSON</strong> tab. Paste the following, replacing both bucket names with your own, and save it as <code>pan-ha-bootstrap-s3</code>.</p>
+
+    <div class="code-block">
+      <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "S3ListBootstrap",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": [
+        "arn:aws:s3:::pan-ha-fw1-bootstrap-a1b2c3d4",
+        "arn:aws:s3:::pan-ha-fw2-bootstrap-a1b2c3d4"
+      ]
+    },
+    {
+      "Sid": "S3GetBootstrap",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::pan-ha-fw1-bootstrap-a1b2c3d4/*",
+        "arn:aws:s3:::pan-ha-fw2-bootstrap-a1b2c3d4/*"
+      ]
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Both firewalls share one role, so list both buckets</div>
+      <p>FW1 and FW2 use the same instance profile. A policy that names only one bucket will bootstrap one firewall and silently fail the other, which presents later as a firewall that boots to a factory configuration and never registers with the management platform. Note also that the Terraform appends a random 4-byte hex suffix to each bucket name, so if you are writing this policy before <code>terraform apply</code> you cannot know the final names. Either create the buckets yourself first, or scope the resource to a prefix wildcard such as <code>arn:aws:s3:::pan-ha-fw1-bootstrap-*</code>.</p>
+    </div>
+
+    <p><strong>3. Add the HA failover policy.</strong> Repeat the inline policy flow, replacing <code>123456789012</code> with your account ID and <code>us-east-1</code> with your region, and save it as <code>pan-ha-ha-failover</code>.</p>
+
+    <div class="code-block">
+      <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EC2Describe",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeAddresses",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeVpcs"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EIPFailover",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:AssociateAddress",
+        "ec2:DisassociateAddress"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RouteTableFailover",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:ReplaceRoute",
+        "ec2:CreateRoute",
+        "ec2:DeleteRoute"
+      ],
+      "Resource": "arn:aws:ec2:us-east-1:123456789012:route-table/*"
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Why the describe and EIP statements are not resource-scoped</div>
+      <p>The EC2 describe actions do not support resource-level permissions, so AWS requires <code>"Resource": "*"</code> and rejects the policy otherwise. <code>ec2:AssociateAddress</code> and <code>ec2:DisassociateAddress</code> do support resource-level permissions, but a correct scoped version has to name the Elastic IP allocation and the target network interface, and the firewall's ENIs do not exist until Terraform creates them. The route table statement is scoped because its ARN pattern is predictable. If your security posture requires the EIP statement scoped too, tighten it after Phase 5 when the allocation and ENI IDs are known.</p>
+    </div>
+
+    <p><strong>4. Add the CloudWatch policy.</strong> Optional. Skip this one if you are not publishing PAN-OS metrics to CloudWatch. Save it as <code>pan-ha-cloudwatch</code>.</p>
+
+    <div class="code-block">
+      <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CloudWatchPut",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricData",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:ListMetrics"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudWatchAlarms",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:DescribeAlarms"
+      ],
+      "Resource": "arn:aws:cloudwatch:us-east-1:123456789012:alarm:*"
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">GovCloud and China partitions use a different ARN prefix</div>
+      <p>The ARNs above assume the standard <code>aws</code> partition. In AWS GovCloud use <code>arn:aws-us-gov:</code> and in the China regions use <code>arn:aws-cn:</code>, in both the route table and the CloudWatch alarm resources. The Terraform reads the partition automatically, so this only affects a hand-built policy.</p>
+    </div>
+
+    <p><strong>5. Confirm the instance profile exists.</strong> When you create a role through the console with the EC2 use case, AWS creates an instance profile of the same name and adds the role to it. Verify it:</p>
+
+    <div class="code-block">
+      <pre><code>aws iam list-instance-profiles-for-role \
+  --role-name pan-ha-vmseries-role \
+  --query 'InstanceProfiles[].InstanceProfileName'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">The CLI and the console do not behave the same here</div>
+      <p>Only the console creates the instance profile for you. If you created the role with <code>aws iam create-role</code> instead, no instance profile exists and the role cannot be attached to an instance. The symptom is confusing: the role looks correct in the IAM console, but it never appears in the instance profile picker when you launch the firewall. Create it explicitly in that case.</p>
+    </div>
+
+    <p>To build the whole thing from the CLI instead of the console, including the instance profile step the console does implicitly:</p>
+
+    <div class="code-block">
+      <pre><code># Trust policy
+cat &gt; trust-policy.json &lt;&lt;'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "Service": "ec2.amazonaws.com" },
+    "Action": "sts:AssumeRole"
+  }]
+}
+EOF
+
+# Role
+aws iam create-role \
+  --role-name pan-ha-vmseries-role \
+  --assume-role-policy-document file://trust-policy.json \
+  --tags Key=Name,Value=pan-ha-vmseries-role
+
+# Inline policies (save each JSON block above to the matching filename first)
+aws iam put-role-policy --role-name pan-ha-vmseries-role \
+  --policy-name pan-ha-bootstrap-s3 --policy-document file://bootstrap-s3.json
+aws iam put-role-policy --role-name pan-ha-vmseries-role \
+  --policy-name pan-ha-ha-failover --policy-document file://ha-failover.json
+aws iam put-role-policy --role-name pan-ha-vmseries-role \
+  --policy-name pan-ha-cloudwatch --policy-document file://cloudwatch.json
+
+# Instance profile, which the CLI does not create for you
+aws iam create-instance-profile \
+  --instance-profile-name pan-ha-vmseries-profile
+aws iam add-role-to-instance-profile \
+  --instance-profile-name pan-ha-vmseries-profile \
+  --role-name pan-ha-vmseries-role</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>6. Attach the profile to the firewalls.</strong> If you are launching the instances yourself, select <code>pan-ha-vmseries-profile</code> under <strong>Advanced details</strong>, <strong>IAM instance profile</strong> in the launch wizard. To attach it to instances that are already running, use the EC2 console (select the instance, then <strong>Actions</strong>, <strong>Security</strong>, <strong>Modify IAM role</strong>) or the CLI:</p>
+
+    <div class="code-block">
+      <pre><code>aws ec2 associate-iam-instance-profile \
+  --instance-id i-0abc123def4567890 \
+  --iam-instance-profile Name=pan-ha-vmseries-profile \
+  --region us-east-1</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Using a pre-created profile with the Terraform</div>
+      <p>The Terraform has no variable for an existing instance profile; it always creates its own. If your account policy requires the role to be pre-created, delete the <code>aws_iam_role</code>, the three <code>aws_iam_role_policy</code> resources, and the <code>aws_iam_instance_profile</code> block from <code>main.tf</code>, then replace both <code>iam_instance_profile = aws_iam_instance_profile.vmseries.name</code> references on the instance resources with your profile name. Also remove the <code>aws_iam_instance_profile.vmseries</code> entry from each instance's <code>depends_on</code> list, or the plan will fail on an unresolved reference. The resource counts in Phase 5 will be three lower than the guide states.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The role exists with all three policies attached:</p>
+      <div class="code-block">
+        <pre><code>aws iam list-role-policies --role-name pan-ha-vmseries-role</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>Output lists <code>pan-ha-bootstrap-s3</code>, <code>pan-ha-ha-failover</code>, and <code>pan-ha-cloudwatch</code> (the last only if you added it). Read back the failover policy and confirm the three EC2 statements are present:</p>
+      <div class="code-block">
+        <pre><code>aws iam get-role-policy \
+  --role-name pan-ha-vmseries-role \
+  --policy-name pan-ha-ha-failover \
+  --query 'PolicyDocument.Statement[].Sid'</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>Returns <code>EC2Describe</code>, <code>EIPFailover</code>, and <code>RouteTableFailover</code>. Confirm the instance profile exists and contains the role:</p>
+      <div class="code-block">
+        <pre><code>aws iam get-instance-profile \
+  --instance-profile-name pan-ha-vmseries-profile \
+  --query 'InstanceProfile.Roles[].RoleName'</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>Returns <code>pan-ha-vmseries-role</code>. An empty <code>Roles</code> array means the profile was created but the role was never added to it, which fails the same way a missing profile does.</p>
     </div>
   </div>
 </div>
