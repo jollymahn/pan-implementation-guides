@@ -65,6 +65,7 @@
     <a href="#verification" data-section="verification">Post-Deployment</a>
     <a href="#failover-test">Failover Test</a>
     <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#failover-troubleshooting" data-section="failover-troubleshooting">Failover Troubleshooting</a>
   </div>
 </aside>
 
@@ -722,7 +723,14 @@ aws iam add-role-to-instance-profile \
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
-    <p><strong>6. Attach the profile to the firewalls.</strong> If you are launching the instances yourself, select <code>pan-ha-vmseries-profile</code> under <strong>Advanced details</strong>, <strong>IAM instance profile</strong> in the launch wizard. To attach it to instances that are already running, use the EC2 console (select the instance, then <strong>Actions</strong>, <strong>Security</strong>, <strong>Modify IAM role</strong>) or the CLI:</p>
+    <p><strong>6. Attach the profile to the firewalls.</strong> Attach it at launch. In the launch wizard, select <code>pan-ha-vmseries-profile</code> under <strong>Advanced details</strong>, <strong>IAM instance profile</strong>.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Attach at launch, not afterwards</div>
+      <p>Palo Alto Networks documents that the IAM role must be selected when the VM-Series firewall is launched and states that it cannot be assigned to an instance that is already running. AWS does allow the association at the infrastructure layer, but PAN-OS reads its platform values at boot, including the role name it exposes as <code>cfg.platform.iamrole</code>. A profile attached later may not be picked up until the firewall reboots. If you have to attach one to a running firewall, verify afterwards that <code>show plugins vm_series aws ha state</code> returns output, and reboot during a maintenance window if it does not. Reboot the passive firewall, never the active one.</p>
+    </div>
+
+    <p>To attach the profile to an instance that is already running, use the EC2 console (select the instance, then <strong>Actions</strong>, <strong>Security</strong>, <strong>Modify IAM role</strong>) or the CLI:</p>
 
     <div class="code-block">
       <pre><code>aws ec2 associate-iam-instance-profile \
@@ -1964,6 +1972,537 @@ terraform plan -out=ha.plan</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
     <p>The output lists each bootstrap phase with a pass or fail status. The failing phase identifies where to focus the investigation.</p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  FAILOVER TROUBLESHOOTING                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h2 id="failover-troubleshooting">Failover Troubleshooting</h2>
+
+<p>The section above diagnoses from the AWS side: security groups, route tables, IAM policy. This section diagnoses from the firewall side, which is where a stalled failover actually reports what went wrong. Nearly every "failover happened but traffic did not move" case produces a specific line in the VM-Series plugin log that names the cause directly, and the three causes below account for most of them.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>How a Failover Runs, and Where It Can Stall</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Understanding the sequence tells you which half of the system to suspect. A failover has two distinct halves, and they fail for completely different reasons.</p>
+
+    <p><strong>Half one, PAN-OS HA.</strong> FW1 stops sending HA1 hello packets. FW2 misses enough hellos to declare the peer dead, transitions passive to init to active, and the dataplane comes up. This half involves no AWS API calls at all. If this half fails, the pair never changes state and <code>show high-availability state</code> tells you so.</p>
+
+    <p><strong>Half two, the plugin HA script.</strong> The moment PAN-OS declares the local device active, it notifies the VM-Series plugin, which runs the HA transfer script. That script calls the EC2 API to associate the floating EIP with FW2's untrust ENI and to replace the trust route table's next hop. This half is entirely AWS API work, performed from the management interface using the instance profile's credentials.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">The split that matters</div>
+      <p>If <code>show high-availability state</code> reports FW2 as active but traffic has not moved, half one succeeded and half two stalled. That is the situation this section addresses. The firewall believes it is active and is happily processing nothing, because AWS is still pointing traffic at the dead peer.</p>
+    </div>
+
+    <p>Half two runs as a sequence of EC2 API calls, each of which can fail:</p>
+
+    <ol>
+      <li><strong>Identify the peer</strong> &mdash; the script reads the local and remote instance IDs</li>
+      <li><strong>Fetch the peer's interface list</strong> &mdash; a <code>DescribeInstances</code> and <code>DescribeNetworkInterfaces</code> call against the now-passive peer</li>
+      <li><strong>Move the floating EIP</strong> &mdash; <code>DisassociateAddress</code> then <code>AssociateAddress</code></li>
+      <li><strong>Update the route table</strong> &mdash; <code>ReplaceRoute</code> on the trust route table</li>
+    </ol>
+
+    <p>Step 2 is where stalls cluster, because it is the first call that has to leave the box. A firewall that cannot reach the EC2 API endpoint fails there and never attempts the EIP or the route. That is why all three causes below produce the same user-visible symptom and are distinguished only by the log line.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Read the Plugin Log First</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The plugin writes the entire failover sequence to <code>pan_vm_plugin.log</code> on the firewall that became active. Read that log before touching anything in the AWS console. It will usually name the cause in one line.</p>
+
+    <p>Raise the plugin log level before reproducing the problem:</p>
+
+    <div class="code-block">
+      <pre><code>request plugins debug plugin-name vm_series level high</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Then tail the log on the <strong>newly active</strong> firewall while you trigger the failover:</p>
+
+    <div class="code-block">
+      <pre><code>tail follow yes mp-log pan_vm_plugin.log</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>To read it after the fact instead of live, use <code>less mp-log pan_vm_plugin.log</code> and search for <code>vm_ha_state_trans</code>.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Tail the right firewall</div>
+      <p>The HA transfer script runs on the firewall that is <em>becoming</em> active, not the one that failed. If you shut down FW1 to test, the log you need is on FW2. Tailing the wrong one shows nothing and wastes the maintenance window.</p>
+    </div>
+
+    <p><strong>What a healthy failover looks like.</strong> The excerpt below is condensed, with the interface dictionaries trimmed and identifiers replaced with placeholders. The ordering and the message text are what matters:</p>
+
+    <div class="code-block">
+      <pre><code># 1. The script identifies both instances
+vm_ha_state_trans INFO: : Local instance:i-0aa11bb22cc33dd44 Remote instance:i-0ee55ff66aa77bb88
+
+# 2. It fetches the now-passive peer's interface list from the EC2 API.
+#    This is the first call that leaves the box, and the usual stall point.
+vm_ha_state_trans INFO: : passive iflist is as follows:
+vm_ha_state_trans INFO: : [{'index': 0, 'eni': 'eni-0f1e2d3c4b5a69780', ...}, ...]
+
+# 3. It determines what has to move
+vm_ha_state_trans INFO: : RU: Total routes to be updated: 1
+vm_ha_state_trans INFO: : eni-0a9b8c7d6e5f43210: Route dict: [{'dest_cidr': '0.0.0.0/0',
+    'route_table_id': 'rtb-0123456789abcdef0'}]
+
+# 4. Route table update confirmed, with an explicit failure count
+vm_ha_state_trans INFO: : RU: Successfully updated route table:rtb-0123456789abcdef0
+    with eni: eni-0a9b8c7d6e5f43210 for 0.0.0.0/0
+vm_ha_state_trans INFO: : RU: Successfully updated routes count:1
+vm_ha_state_trans INFO: : RU: Failed route update count:0
+
+# 5. Total elapsed time
+vm_ha_state_trans INFO: : FailoverTime: Overall 2 Seconds</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Three lines worth checking every time</div>
+      <ul>
+        <li><code>RU: Failed route update count:0</code> &mdash; any value above zero means a route was not written, and the log line above it names which one</li>
+        <li><code>FailoverTime: Overall</code> &mdash; a healthy cross-AZ failover completes in single-digit seconds. Tens of seconds points at API throttling or retries</li>
+        <li><strong>The last line in the sequence</strong> &mdash; if the log stops after the instance IDs and never reaches the route update, the script stalled rather than failed, and the sections below identify why</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>CLI Command Reference</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run these from the PAN-OS CLI on either firewall unless noted.</p>
+
+    <p><strong>Plugin state and AWS integration.</strong> These tell you what the plugin believes about its AWS environment:</p>
+
+    <div class="code-block">
+      <pre><code>show plugins vm_series aws ha state
+show plugins vm_series aws ha ips
+show plugins vm_series aws ha failover-mode
+request plugins debug plugin-name vm_series level &lt;off|low|medium|high&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><code>show plugins vm_series aws ha ips</code> prints a table of each interface with its ENI ID, primary private IP, and associated public IP. Running it on both firewalls before and after a failover is the fastest way to confirm the floating EIP actually moved.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">No output is itself a finding</div>
+      <p>If <code>show plugins vm_series aws ha state</code> returns nothing at all, the plugin cannot talk to AWS. That is almost always a credentials or reachability problem rather than an HA problem, and it points straight at the IAM and connectivity sections below.</p>
+    </div>
+
+    <p><strong>System state values.</strong> The plugin reads its AWS context from the system state database at boot. These four answer "does the firewall know what it is running on" in one line each:</p>
+
+    <div class="code-block">
+      <pre><code>show system state filter-pretty cfg.platform.iamrole
+show system state filter-pretty cfg.platform.region
+show system state filter-pretty cfg.platform.az
+show system state filter-pretty cfg.platform.instance-id
+show system state filter-pretty cfg.ha.script-running</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <table>
+      <thead><tr><th>Value</th><th>Expected</th><th>What a wrong answer means</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>cfg.platform.iamrole</code></td>
+          <td><code>pan-ha-vmseries-role</code></td>
+          <td>Empty means the firewall booted with no instance profile. Nothing in half two will work. See the IAM section below.</td>
+        </tr>
+        <tr>
+          <td><code>cfg.platform.az</code></td>
+          <td>FW1 and FW2 report <em>different</em> AZs</td>
+          <td>Matching values mean the pair is not actually spread across AZs and the deployment did not go as planned.</td>
+        </tr>
+        <tr>
+          <td><code>cfg.platform.region</code></td>
+          <td>Your deployment region</td>
+          <td>A mismatch against the region in your IAM policy ARNs means <code>ReplaceRoute</code> will be denied.</td>
+        </tr>
+        <tr>
+          <td><code>cfg.ha.script-running</code></td>
+          <td><code>False</code> when idle</td>
+          <td>Stuck at <code>True</code> long after a failover means the HA script never completed. See the stalled-script section below.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p><strong>PAN-OS HA state.</strong> These cover half one, and are unchanged from any other PAN-OS HA deployment:</p>
+
+    <div class="code-block">
+      <pre><code>show high-availability all
+show high-availability state
+show high-availability control-link statistics
+show high-availability state-synchronization
+show high-availability transitions
+show high-availability flap-statistics
+show high-availability interface &lt;ha1|ha2&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><code>show high-availability transitions</code> and <code>show high-availability flap-statistics</code> are the pair to reach for when the firewalls are failing over repeatedly rather than not at all. Frequent transitions with no corresponding instance failure usually mean HA1 hellos are being dropped intermittently, not that the firewalls are unhealthy.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Failover Stalls &mdash; DNS Resolution Failure</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Symptom.</strong> HA state transitions correctly, FW2 reports active, but the floating EIP and the trust route never move.</p>
+
+    <p><strong>Log signature.</strong> On the newly active firewall:</p>
+
+    <div class="code-block">
+      <pre><code>vm_ha_state_trans INFO: : Local instance:i-0ee55ff66aa77bb88 Remote instance:i-0aa11bb22cc33dd44
+vm_ha_state_trans INFO: : EC2 get interface info failed for instance-id:i-0aa11bb22cc33dd44
+ Could not connect to the endpoint URL: "https://ec2.us-east-1.amazonaws.com/"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Note the gap between the two timestamps in your own log. A delay of a minute or more before the failure line is characteristic of DNS timing out rather than refusing.</p>
+
+    <p><strong>Confirm it.</strong> From the newly active firewall:</p>
+
+    <div class="code-block">
+      <pre><code>ping host ec2.us-east-1.amazonaws.com</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><code>ping: unknown host</code> confirms name resolution is the problem rather than reachability. If the name resolves and the ping simply gets no reply, skip to the outbound path section instead.</p>
+
+    <p><strong>Cause.</strong> The usual culprit is a service route sending DNS queries out a dataplane interface. That configuration works perfectly in steady state and fails at exactly the wrong moment: when a firewall is transitioning to active, its dataplane interfaces are not yet passing traffic, so the DNS query has no path out. The script stalls at the very first API call, before it has learned anything about the peer.</p>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Why this one hides until the day it matters</div>
+      <p>Every verification you run in steady state passes. The firewall resolves names, reaches the EC2 API, and reports healthy. The dependency on a dataplane interface only becomes visible during the transition, which is the one moment you cannot afford it. A failover test is the only thing that finds it.</p>
+    </div>
+
+    <p><strong>Resolution.</strong></p>
+
+    <ol>
+      <li>Set <strong>Device &gt; Setup &gt; Services &gt; Service Route Configuration</strong> so DNS uses the management interface, not a dataplane interface.</li>
+      <li>Confirm the DNS traffic leaving the management interface is not routed back through the same HA pair, whether through a tunnel or another dataplane interface. A loop through the pair reintroduces the same dependency by another route.</li>
+      <li>Consider leaving the DNS server configuration empty. Queries then go to the VPC resolver at the second address of the VPC CIDR (<code>10.0.0.2</code> for the default <code>10.0.0.0/16</code>), which is reachable from the management subnet and has no dependency on the firewall's own dataplane.</li>
+    </ol>
+
+    <p>After fixing the configuration, the stalled script does not pick up on its own. Work through the stalled-script section below to release it.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>ping host ec2.us-east-1.amazonaws.com</code> resolves and replies from both firewalls. Re-run the failover test from Phase 7 and confirm the plugin log reaches <code>RU: Failed route update count:0</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Failover Stalls &mdash; Missing or Detached IAM Role</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Symptom.</strong> Identical to the DNS case from the outside. HA transitions, nothing moves.</p>
+
+    <p><strong>Log signature.</strong> The failure is immediate rather than delayed, and the wording is distinct:</p>
+
+    <div class="code-block">
+      <pre><code>vm_ha_state_trans INFO: : Local instance:i-0ee55ff66aa77bb88 Remote instance:i-0aa11bb22cc33dd44
+vm_ha_state_trans INFO: : EC2 get interface info failed for instance-id:i-0aa11bb22cc33dd44
+ Unable to locate credentials</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>Confirm it.</strong> Check what the firewall thinks it has, then check what AWS says it has. The two can disagree, and the disagreement is the finding:</p>
+
+    <div class="code-block">
+      <pre><code>show system state filter-pretty cfg.platform.iamrole
+show plugins vm_series aws ha state</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Then from a workstation with AWS CLI access:</p>
+
+    <div class="code-block">
+      <pre><code>aws ec2 describe-iam-instance-profile-associations \
+  --filters "Name=instance-id,Values=i-0ee55ff66aa77bb88" \
+  --query 'IamInstanceProfileAssociations[].{Profile:IamInstanceProfile.Arn,State:State}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>An empty result means no profile is attached. The diagnostic pattern to recognise is the firewall still reporting a role name in <code>cfg.platform.iamrole</code> while AWS reports no association, because PAN-OS caches that value from boot and does not re-read it.</p>
+
+    <p><strong>Cause.</strong> The instance profile was attached when the firewall was deployed and has since been detached, commonly by an IAM cleanup or a policy sweep that did not know the role was in use. The firewall keeps the cached role name and keeps asking AWS for credentials against it, and AWS keeps declining.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Only the firewall going active is affected</div>
+      <p>Losing the instance profile on the firewall that is leaving the active role causes no problem, because that firewall makes no API calls on the way out. All the AWS work happens on the peer that is coming up. A pair can therefore run for months with one firewall missing its profile and show no symptom until that firewall is the one that has to take over.</p>
+    </div>
+
+    <p><strong>Resolution.</strong> Reattach the profile:</p>
+
+    <div class="code-block">
+      <pre><code>aws ec2 associate-iam-instance-profile \
+  --instance-id i-0ee55ff66aa77bb88 \
+  --iam-instance-profile Name=pan-ha-vmseries-profile \
+  --region us-east-1</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Reattaching may not be enough on its own</div>
+      <p>Palo Alto Networks documents that the IAM role should be selected when the instance is launched and states that it cannot be assigned to an instance that is already running. AWS permits the association at the infrastructure layer, and in practice the firewall often picks up the restored credentials, but PAN-OS read its platform values at boot. If <code>show plugins vm_series aws ha state</code> still returns nothing after reattaching, reboot the firewall during a maintenance window and confirm <code>cfg.platform.iamrole</code> afterwards. Reboot the passive firewall, never the active one.</p>
+    </div>
+
+    <p>As with the DNS case, fixing the cause does not release an already-stalled script. See the next section.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>show plugins vm_series aws ha state</code> returns output on both firewalls, and <code>describe-iam-instance-profile-associations</code> reports state <code>associated</code> for both instance IDs.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Failover Stalls &mdash; No Outbound Path to the EC2 API</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Symptom.</strong> Again identical from the outside.</p>
+
+    <p><strong>Log signature.</strong> A connection timeout rather than a resolution failure or a credentials error. Note the five-minute gap between the two lines, which is the botocore retry budget expiring:</p>
+
+    <div class="code-block">
+      <pre><code>vm_ha_state_trans INFO: : Local instance:i-0ee55ff66aa77bb88 Remote instance:i-0aa11bb22cc33dd44
+vm_ha_state_trans INFO: : EC2 get interface info failed for instance-id:i-0aa11bb22cc33dd44
+ HTTPSConnectionPool(host='ec2.us-east-1.amazonaws.com', port=443): Max retries exceeded
+ with url: / (Caused by ConnectTimeoutError(..., 'Connection to ec2.us-east-1.amazonaws.com
+ timed out. (connect timeout=60)'))</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>The name resolved, so DNS is working. The packets went nowhere, so the path is the problem.</p>
+
+    <p><strong>Confirm it.</strong></p>
+
+    <div class="code-block">
+      <pre><code>ping host www.google.com</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Resolution succeeding with 100% packet loss is the signature. Then check the three things that carry management traffic outbound, in this order:</p>
+
+    <ol>
+      <li><strong>Security group egress</strong> on the management ENI must allow outbound HTTPS. Check it rather than assuming, because a hardened default-deny egress rule is an easy thing to inherit from an account baseline:</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>aws ec2 describe-security-groups \
+  --filters "Name=group-name,Values=pan-ha-sg-mgmt" \
+  --query 'SecurityGroups[0].IpPermissionsEgress'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <ol start="2">
+      <li><strong>A path to the internet or to the EC2 service.</strong> The management subnet needs one of an Elastic IP on the management ENI with a default route to the internet gateway, a NAT gateway, or an interface VPC endpoint for the EC2 service. This build uses management EIPs, so confirm both are still associated.</li>
+      <li><strong>No loop back through the firewalls.</strong> Confirm the management subnet's route table does not send management traffic through the HA pair itself. That topology deadlocks during a failover for the same reason the DNS service route does: the thing the firewall needs in order to recover is behind the firewall that is recovering.</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>aws ec2 describe-route-tables \
+  --filters "Name=tag:Name,Values=pan-ha-rt-mgmt*" \
+  --query 'RouteTables[].Routes[].{Dest:DestinationCidrBlock,GW:GatewayId,ENI:NetworkInterfaceId}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>The default route must point at an internet gateway (<code>igw-</code>) or a NAT gateway (<code>nat-</code>), never at a network interface belonging to one of the firewalls.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">An interface VPC endpoint removes the internet dependency</div>
+      <p>If account policy forbids giving the management interface a public path, an interface VPC endpoint for <code>com.amazonaws.&lt;region&gt;.ec2</code> in the management subnets lets the plugin reach the EC2 API privately. Enable private DNS on the endpoint so the existing <code>ec2.&lt;region&gt;.amazonaws.com</code> hostname resolves to it with no change on the firewall. The endpoint's own security group must allow HTTPS inbound from the management subnet CIDRs.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>ping host ec2.us-east-1.amazonaws.com</code> returns replies from both firewalls, and <code>show plugins vm_series aws ha ips</code> returns a populated interface table rather than an error.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>The Move Does Not Resume After You Fix the Cause</span>
+  </div>
+  <div class="collapsible-body">
+    <p>All three causes above share a recovery behaviour that catches people out. Fixing the underlying problem does not restart the stalled script. The HA transfer script runs once, on the transition into the active role. It has already run, it is blocked inside a failed API call, and nothing about repairing DNS or reattaching an IAM role causes it to try again.</p>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">You have to force a fresh transition</div>
+      <p>Until you do, the firewall continues to report itself active while AWS continues to point traffic at the dead peer. It is easy to conclude the fix did not work and start changing other things.</p>
+    </div>
+
+    <p><strong>Release the stalled script.</strong> Change the HA state of the <em>originally active</em> firewall once, so the peer is notified of a transition again and reruns the script:</p>
+
+    <ol>
+      <li>Confirm the cause is actually fixed. Re-run the verification from whichever section above applied. Forcing a transition against an unfixed cause just stalls again.</li>
+      <li>On the originally active firewall, navigate to <strong>Device &gt; High Availability</strong> and use the operational command to suspend the local device, or from the CLI:</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>request high-availability state suspend</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <ol start="3">
+      <li>Return it to functional:</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>request high-availability state functional</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <ol start="4">
+      <li>Watch the plugin log on the firewall that is taking over and confirm the sequence now runs to completion.</li>
+    </ol>
+
+    <p>A passive-to-suspend-to-passive toggle achieves the same thing. The point is that the peer observes a state change and reruns the transfer script.</p>
+
+    <p><strong>Check the mutex if transitions produce nothing at all.</strong> The plugin uses a system state value as a lock so that only one firewall runs the transfer script at a time:</p>
+
+    <div class="code-block">
+      <pre><code>show system state filter-pretty cfg.ha.script-running</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>A firewall going active waits for its peer's copy of this value to read <code>False</code> before starting its own script. If one firewall is wedged with <code>cfg.ha.script-running</code> stuck at <code>True</code>, its peer will block indefinitely and log nothing useful. Rebooting the wedged firewall clears it. Reboot the passive one.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The plugin log on the newly active firewall reaches <code>RU: Failed route update count:0</code>, <code>show plugins vm_series aws ha ips</code> shows the floating EIP against the active firewall's untrust ENI, and the trust route table's default route points at the active firewall's trust ENI.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Split-Brain: Both Firewalls Report Active</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Split-brain happens when HA1 communication fails between two firewalls that are both healthy. Neither can hear the other's hello packets, each concludes its peer is dead, and both become active.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">AWS has no HA1 backup link to fall back on</div>
+      <p>On hardware platforms a backup HA1 link usually prevents this. The VM-Series on AWS supports neither a backup HA1 link nor a heartbeat backup, so a single HA1 path failure is enough to split the pair. In this build HA1 rides the management interface, which means anything that disrupts management connectivity between the two firewalls can cause it: a security group change, a management subnet route change, or an AWS infrastructure event.</p>
+    </div>
+
+    <p><strong>Confirm it.</strong> Run this on both firewalls:</p>
+
+    <div class="code-block">
+      <pre><code>show high-availability state</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Both reporting <code>active</code> with the peer shown as down or unknown is split-brain. Check the HA1 path directly:</p>
+
+    <div class="code-block">
+      <pre><code>show high-availability control-link statistics
+ping source &lt;local-mgmt-private-ip&gt; host &lt;peer-mgmt-private-ip&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p><strong>Impact while it lasts.</strong> The firewall that became active second runs the HA transfer script, so the floating EIP and the trust route move to it. Traffic follows. The outage is comparable to an ordinary failover, because from AWS's point of view that is what happened.</p>
+
+    <p><strong>What happens on recovery.</strong> Once HA1 is restored, the two firewalls negotiate. The one that was active before the split stays active, and the one that became active during the split returns to passive. That second transition runs the transfer script again, so there is a second traffic move during recovery.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Recovery can take longer than the split itself</div>
+      <p>The plugin enforces that only one firewall runs the transfer script at a time, using <code>cfg.ha.script-running</code> on each peer as a lock. If the recovery negotiation completes while the other firewall's script is still running, the firewall returning to active blocks until its peer's lock clears before it starts its own run. When the first script is slow, perhaps because it is retrying failed API calls, that wait is added to the recovery time. Resolve any stalled script before expecting a clean recovery.</p>
+    </div>
+
+    <p><strong>Resolution.</strong> Restore HA1 connectivity, which in this build means restoring management plane reachability between the two firewalls:</p>
+
+    <ol>
+      <li>Confirm the <code>pan-ha-sg-mgmt</code> security group still permits traffic between the two management subnets.</li>
+      <li>Confirm neither management subnet route table has changed in a way that breaks the path between AZs.</li>
+      <li>Confirm the HA1 configuration on each firewall still points at the peer's current management private IP. Management IPs in this build are assigned by DHCP, so a firewall replaced or restarted in a way that changes its management IP breaks HA1 silently.</li>
+    </ol>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Keep the VM-Series plugin current</div>
+      <p>VM-Series plugin versions before 1.0.12 did not handle split-brain recovery. The firewall returning to passive could retain resources it should have released, which caused a severe outage rather than a brief one. Confirm your plugin version with <code>show plugins installed</code> and keep it current.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>One firewall reports <code>active</code> and the other reports <code>passive</code>, <code>show high-availability control-link statistics</code> shows hellos being sent and received, and <code>show plugins vm_series aws ha ips</code> shows the floating EIP on exactly one firewall.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Mechanisms That Do Not Apply to This Build</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Palo Alto Networks documents two other AWS HA failover mechanisms. Searching for VM-Series AWS HA troubleshooting will surface material on both, and applying that material here produces confusing results, because this build uses neither.</p>
+
+    <table>
+      <thead><tr><th>Mechanism</th><th>What moves</th><th>AZ requirement</th><th>Used here</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Interface (ENI) move</td>
+          <td>The dataplane ENIs are detached from the failed firewall and attached to the survivor</td>
+          <td>Same AZ only</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <td>Secondary IP move</td>
+          <td>Secondary private IPs move between dataplane ENIs, and route tables are updated</td>
+          <td>Same AZ only</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <td>Floating EIP and route update</td>
+          <td>The untrust EIP reassociates and the trust route table next hop is replaced</td>
+          <td>Works across AZs</td>
+          <td>Yes</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>An ENI cannot be attached to an instance in a different Availability Zone, and a secondary private IP belongs to a subnet that exists in exactly one AZ. Both mechanisms are therefore confined to a same-AZ pair, which is why this cross-AZ build uses neither. The firewalls here keep their own interfaces permanently; what moves is the EIP association and the route table entry.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">What this rules out when troubleshooting</div>
+      <ul>
+        <li><strong>Plugin log lines about detaching and attaching interfaces</strong> &mdash; expected in interface-move deployments, and their absence here is correct</li>
+        <li><strong>The plugin's same-availability-zone check</strong> &mdash; belongs to the two same-AZ mechanisms; this pair is deliberately split across AZs</li>
+        <li><strong>The DPDK restriction</strong> &mdash; interface-move does not support DPDK and requires packet MMAP. That constraint does not apply to this build, so <code>show system setting dpdk-pkt-io</code> is not a useful check here</li>
+        <li><strong>Guidance to deploy both firewalls in one AZ</strong> &mdash; written for those mechanisms. Cross-AZ placement is the point of this design and is what makes it survive an AZ failure</li>
+      </ul>
+    </div>
+
+    <p>Also worth knowing: link and path monitoring are not supported for VM-Series HA on AWS, and all firewall interfaces must have IPv4 addresses, because IPv6 is not supported for this deployment. Troubleshooting advice that depends on either will not apply.</p>
   </div>
 </div>
 
