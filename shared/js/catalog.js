@@ -128,6 +128,7 @@ var CATALOG = [
       { t: 'LLM API key management', h: 'guides/ai-gateway/llm-api-key-management.html', note: 'Vault, rotation, expiry alerting' },
       { t: 'Flow diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html', note: 'Request paths end to end' },
       { t: 'Streaming, caching, and A2A', h: 'guides/ai-gateway/streaming-caching-a2a.html', note: 'SSE guardrails, semantic cache, agents' },
+      { t: 'Agent identity with Entra ID', h: 'guides/ai-gateway/agent-identity-entra.html', note: 'CIE sync, JWT claims, attribution' },
       { t: 'All AI Gateway guides', h: 'guides/ai-gateway/index.html', hub: true }
     ]
   },
@@ -510,6 +511,11 @@ var HUBS = [
         desc: 'Three capabilities that change what the gateway can enforce and what it can see: server-sent event streaming and why an output guardrail can only report on it, semantic caching with its embedding provider and vector store, and the Agent Gateway for agent-to-agent traffic. Includes the support and roadmap position for each.',
         tags: ['Streaming', 'Guardrails', 'Semantic Cache', 'A2A', 'Agent Registry'],
         h: 'guides/ai-gateway/streaming-caching-a2a.html' },
+      { accent: 'card-ai', badge: 'Companion',
+        title: 'Agent Identity with Azure Entra ID',
+        desc: 'How an AI agent\'s identity reaches the gateway and what the gateway does with it: Cloud Identity Engine directory sync into workspaces, the Entra app registration and JWKS configuration, gateway-local JWT validation, the <code>email_id</code> to <code>sub</code> to <code>uid</code> claim precedence, the single comparison that decides attribution, and where identity forwarding stops. Carries a full flow diagram and the canonical reference URLs.',
+        tags: ['Entra ID', 'JWT', 'Cloud Identity Engine', 'Attribution', 'Directory Sync'],
+        h: 'guides/ai-gateway/agent-identity-entra.html' },
     ]
   },
 

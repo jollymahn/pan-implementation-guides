@@ -53,7 +53,8 @@ python3 clean-svg.py NAME.svg
 | `ai-gateway/diagrams/aigw-streaming-guardrails.svg` | Where a streamed response can be stopped, and where it cannot | `aigw-streaming-guardrails.drawio` |
 | `ai-gateway/diagrams/aigw-semantic-cache.svg` | How a request finds a cached answer, gate by gate | `aigw-semantic-cache.drawio` |
 | `ai-gateway/diagrams/aigw-agent-gateway-a2a.svg` | What changes when an A2A call goes through the Agent Gateway | `aigw-agent-gateway-a2a.drawio` |
+| `ai-gateway/diagrams/aigw-entra-agent-flow.svg` | The complete Azure Entra ID agent identity flow: control plane, one-off configuration, and eleven per-request steps | `aigw-entra-agent-flow.drawio` |
 | `ai-gateway/diagrams/aigw-architecture-overview.svg` | *(pre-existing, hand-authored SVG)* | none |
 | `ai-gateway/diagrams/aigw-deployment-models.svg` | *(pre-existing, hand-authored SVG)* | none |
 
-Nine of these, from the two-key model through agent identity, are presented together with commentary and open questions on the review page at `ai-gateway/diagrams/flow-diagrams-review.html`. The three streaming, caching, and A2A diagrams are embedded inline in `ai-gateway/streaming-caching-a2a.html`, one per phase, rather than on the review page.
+Nine of these, from the two-key model through agent identity, are presented together with commentary and open questions on the review page at `ai-gateway/diagrams/flow-diagrams-review.html`. The three streaming, caching, and A2A diagrams are embedded inline in `ai-gateway/streaming-caching-a2a.html`, one per phase, rather than on the review page. The Entra agent flow diagram is embedded inline in `ai-gateway/agent-identity-entra.html`, where it doubles as the page's structure: its three bands are the guide's six phases.

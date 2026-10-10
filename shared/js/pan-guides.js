@@ -582,6 +582,7 @@ const GLOBAL_NAV_GROUPS = [
   { section: 'AI Security' },
   { id: 'ai-gateway', label: 'AI Gateway', links: [
     { t: 'Overview', h: 'guides/ai-gateway/index.html' },
+    { t: 'Agent Identity with Entra ID', h: 'guides/ai-gateway/agent-identity-entra.html' },
     { t: 'Core Deployment', h: 'guides/ai-gateway/ai-gateway-deployment.html' },
     { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html' },
     { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html' },

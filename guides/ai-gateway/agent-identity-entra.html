@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Agent Identity with Azure Entra ID | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Getting Started</div>
+    <a href="#scope" data-section="scope">What This Page Covers</a>
+    <a href="#three-roles" data-section="three-roles">The Three Entra Roles</a>
+    <a href="#flow" data-section="flow">The Complete Flow</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Phases</div>
+    <a href="#phase-1" data-section="phase-1">1. Sync the Directory</a>
+    <a href="#phase-2" data-section="phase-2">2. Issue and Trust the Token</a>
+    <a href="#phase-3" data-section="phase-3">3. Choose Where to Validate</a>
+    <a href="#phase-4" data-section="phase-4">4. Send the Agent Call</a>
+    <a href="#phase-5" data-section="phase-5">5. Confirm Attribution</a>
+    <a href="#phase-6" data-section="phase-6">6. Configure Egress</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#credentials" data-section="credentials">Choosing the Credential</a>
+    <a href="#claims" data-section="claims">Claim Reference</a>
+    <a href="#limits" data-section="limits">What This Does Not Do</a>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#references" data-section="references">Reference URLs</a>
+    <a href="#sources" data-section="sources">Sources</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  Agent Identity with Azure Entra ID
+</div>
+
+<div class="article">
+
+<h1>Agent Identity with Azure Entra ID</h1>
+<p class="subtitle">How an AI agent's identity reaches the Prisma AIRS AI Gateway, what the gateway does with it, and where it stops</p>
+
+<div class="cloud-links">
+  <a href="ai-gateway-deployment.html" class="cloud-link">Core Deployment Guide</a>
+  <a href="llm-api-key-management.html" class="cloud-link">LLM API Key Management</a>
+  <a href="streaming-caching-a2a.html" class="cloud-link">Streaming, Caching, and A2A</a>
+  <a href="index.html" class="cloud-link">All AI Gateway Guides</a>
+</div>
+
+<!-- ── Scope ──────────────────────────────────────────────────── -->
+<h2 id="scope">What This Page Covers</h2>
+
+<p>An AI agent calls the AI Gateway. Somebody then asks who made that call, and whether the answer in the logs is a person, an application, or nothing useful at all. This page follows one agent request from the directory sync that ran last night through to the provider the gateway finally reaches, and names every component on the path.</p>
+
+<p>The scope is deliberately narrow. It covers identity: how a credential is issued, how the gateway validates it, what the gateway concludes about who is calling, and what it does with that conclusion. It does not cover model routing, guardrails, or cost controls beyond the point where identity feeds into them.</p>
+
+<div class="callout callout-danger">
+  <div class="callout-title">There is no User-ID in the AI Gateway</div>
+  <p>User-ID is a PAN-OS mechanism. A firewall learns an IP-to-user mapping out of band, from a domain controller or a User-ID agent, and security policy then matches on the user it found. The AI Gateway has none of that. It has no IP-to-user mapping, no User-ID agent, and no directory group travelling alongside the request. Identity arrives inside the request, as the credential itself. The useful question is therefore not how to turn User-ID on. It is which credential the agent presents, and what identity that credential carries.</p>
+</div>
+
+<h3>Who this is for</h3>
+
+<ul>
+  <li>Architects deciding how agents should authenticate to the gateway before any code is written</li>
+  <li>Engineers debugging a gateway log where every call is attributed to the same generic key</li>
+  <li>Anyone who has been asked whether Entra ID groups can drive AI Gateway policy, and wants a precise answer</li>
+</ul>
+
+<!-- ── Three roles ────────────────────────────────────────────── -->
+<h2 id="three-roles">The Three Entra Roles</h2>
+
+<p>Entra ID appears three times in this flow and means something different each time. Conflating the three is the single most common source of confusion, because all three can point at the same tenant while being configured in three different places. Breaking one does not break the others, and fixing the wrong one wastes an afternoon.</p>
+
+<table>
+  <thead><tr><th>Role</th><th>Where it is configured</th><th>When it runs</th><th>What it decides</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Source directory</strong></td><td>Strata Cloud Manager, under Cloud Identity Engine</td><td>On a background sync schedule</td><td>Who is a member of which AI Gateway workspace</td></tr>
+    <tr><td><strong>Token issuer</strong></td><td>An app registration in Entra, plus a JWKS URL in the gateway</td><td>On every request</td><td>Whether the call is authenticated, and whose identity it carries</td></tr>
+    <tr><td><strong>Egress credential</strong></td><td>The gateway's Azure provider configuration</td><td>On every request that reaches a provider</td><td>How the gateway authenticates itself to Azure AI Foundry</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Why the distinction matters in practice</div>
+  <p>A customer who says "we use Entra ID" has told you almost nothing about their gateway configuration. They may have the directory synced and no JWT path at all, or a JWT path and no directory sync, in which case every token authenticates successfully and attributes to nobody. Establish which of the three roles is actually in place before designing anything on top of it.</p>
+</div>
+
+<!-- ── Flow diagram ───────────────────────────────────────────── -->
+<h2 id="flow">The Complete Flow</h2>
+
+<p>The diagram below carries every element in scope, in three bands. Band A is the control plane, which runs on a sync schedule and never touches a request. Band B is the one-off configuration, in three separate places. Band C is a single agent call from end to end, with the one comparison that decides attribution marked in gold. The reference panels on the right cover the claim shapes, where validation runs, the failure modes, and the point at which identity stops being forwarded.</p>
+
+<p><em>Open the image in a new tab to read it at full size:</em></p>
+
+<img src="diagrams/aigw-entra-agent-flow.svg" alt="Three-band flow diagram. Band A shows the Azure Entra ID tenant feeding Cloud Identity Engine, which feeds AI Gateway Directory Sync, which produces workspace membership. Band B shows three separate configurations: an Entra app registration for the agent, the JWKS URL under Admin Settings, and the gateway environment variables for hybrid deployments. Band C shows eleven numbered steps from the agent requesting a token through signature validation, organisation and workspace resolution, scope resolution, and claim precedence, to a decision on whether the token email matches a workspace member, then policy enforcement and egress to Azure AI Foundry on a different credential." loading="lazy">
+
+<p>Each band becomes a phase below. The phases run in order, because workspace membership has to exist before a token can be matched against it.</p>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>P.1 &mdash; Tenancy and version floors</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm each of the following before starting. The directory sync path and the gateway-local validation path each carry their own floor, and discovering a version gap in the middle of phase 3 is avoidable.</p>
+    <table>
+      <thead><tr><th>Requirement</th><th>Applies to</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>A Strata Cloud Manager tenant</td><td>Directory Sync (phase 1)</td><td>Cloud Identity Engine is reached through SCM. Non-SCM tenants provision users through SCIM instead.</td></tr>
+        <tr><td>Administrator access to the Entra tenant</td><td>Phases 1 and 2</td><td>Needed to authorise the CIE directory and to create the agent's app registration.</td></tr>
+        <tr><td>Organisation owner or admin in the AI Gateway</td><td>Phase 2</td><td>The JWKS configuration lives under Admin Settings, which a workspace-scoped role cannot reach.</td></tr>
+        <tr><td>Gateway 2.5.0 or higher</td><td>Phase 3, hybrid only</td><td>Required for <code>JWT_ENABLED=ON</code>. Air-gapped deployments additionally need backend v1.13.0 or higher.</td></tr>
+        <tr><td>Gateway 2.1.0 or higher</td><td>Phase 2, Entra specifically</td><td>Entra's JWKS omits the <code>alg</code> field on its keys. Builds from 2.1.0 onward fall back to RS256; earlier builds fail validation.</td></tr>
+        <tr><td>Gateway 2.21.0 or higher</td><td>Phase 5</td><td>Carries email-based attribution of JWT callers to workspace users, and support for multiple JWKS URLs.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Verification:</strong> read the gateway version from the Admin Settings page or from the deployed image tag, and confirm it clears the highest floor that applies to the phases you intend to run. If you are on AI Gateway Cloud, phase 3 does not apply and the 2.5.0 floor is irrelevant.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>P.2 &mdash; Decide what attribution you actually need</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This decision changes which phases you run, so make it first rather than discovering it in phase 5.</p>
+    <ul>
+      <li><strong>Attribute to a person</strong> &mdash; a human is signed in and the agent acts on their behalf. Run every phase. The token must carry that person's email, and that person must already be a workspace member.</li>
+      <li><strong>Attribute to an application</strong> &mdash; the agent runs unattended on a schedule or a queue. Skip the JWT path entirely and issue the agent its own workspace service key, naming the agent in request metadata. Phases 1 and 2 are then unnecessary.</li>
+      <li><strong>Attribute to a named service account</strong> &mdash; you want the agent to appear in the workspace member list. Run phase 1, then issue a User API key against the provisioned user rather than using JWTs.</li>
+    </ul>
+    <div class="callout callout-warning">
+      <div class="callout-title">An unattended agent has no person to attribute to</div>
+      <p>A client-credentials token identifies a service principal. Building a JWT flow for an agent that no human is behind produces a token the gateway validates happily and then cannot match to anyone, which is more configuration than a service key for a worse result. Do not pretend there is a person when there is not one.</p>
+    </div>
+    <p><strong>Verification:</strong> write down which of the three you chose and which phases it implies. If the answer is the second one, stop here and follow the service key path in the <a href="llm-api-key-management.html">LLM API Key Management</a> guide instead.</p>
+  </div>
+</div>
+
+<!-- ── Phase 1 ────────────────────────────────────────────────── -->
+<h2 id="phase-1">1. Sync the Directory into Workspaces</h2>
+
+<p>This phase builds the list that phase 5 compares the token against. It runs on the control plane, on a background schedule, and is never consulted during a request. Skip it and every JWT in phase 4 will validate correctly and attribute to nobody.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 &mdash; Create a cloud directory in Cloud Identity Engine</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In Strata Cloud Manager, open <strong>Settings &rarr; Identity Services &rarr; Cloud Identity Engine</strong>.</li>
+      <li>Add a directory and choose <strong>Azure AD</strong> as the directory type. Okta and on-premises Active Directory are the other two options and behave identically from the gateway's point of view.</li>
+      <li>Authorise the directory against your Entra tenant. This grants Cloud Identity Engine read access to users and groups.</li>
+      <li>Set the <strong>User Identity Attribute</strong>. The choice is between <strong>UPN</strong> and <strong>Mail</strong>.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Pick Mail when the UPN is not the real address</div>
+      <p>Many tenants carry a UPN of the form <code>user@tenant.onmicrosoft.com</code> while the address people actually use is different. The attribute you select here becomes the key the gateway matches tokens against in phase 5, so selecting UPN in that situation guarantees that every match fails. Check a sample user in Entra before choosing.</p>
+    </div>
+    <p><strong>Verification:</strong> open the directory's user list in Cloud Identity Engine and confirm that the identity column shows the address you expect for several users, including at least one who was created recently. A user whose chosen attribute is empty is skipped during sync without raising an error, so a shorter list than you expected is a signal rather than a coincidence.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 &mdash; Map each group to one workspace</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the AI Gateway, open <strong>Admin Settings &rarr; Organisation &rarr; Directory Sync</strong>.</li>
+      <li>Select the Cloud Identity Engine groups you want to provision from.</li>
+      <li>Map each group to exactly one workspace. The relationship is one group to one workspace, not many to many.</li>
+      <li>Assign the workspace role that members of that group should inherit.</li>
+    </ol>
+    <p>Background sync then provisions new members as they appear in the directory and deprovisions them when they leave. Nothing in this step runs per request.</p>
+    <p><strong>Verification:</strong> open the target workspace's member list and confirm that users from the mapped group appear, each with the role you assigned. Then remove a test user from the group in Entra, wait for the next sync, and confirm they disappear from the workspace. Deprovisioning is the half of this that nobody tests and the half that matters at audit time.</p>
+  </div>
+</div>
+
+<!-- ── Phase 2 ────────────────────────────────────────────────── -->
+<h2 id="phase-2">2. Issue and Trust the Token</h2>
+
+<p>Two separate configurations meet here. Entra needs something for the agent to authenticate as, and the gateway needs to be told which signing keys to trust. Neither one knows about the other until a request arrives.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.1 &mdash; Register the agent in Entra</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Create an app registration in the Entra tenant for the agent.</li>
+      <li>Choose the grant that matches the attribution decision from P.2. Client credentials for an unattended agent. On-behalf-of when the agent acts for a signed-in person and the token must carry that person's identity.</li>
+      <li>Define an audience the gateway's tokens will carry, for example <code>api://ai-gateway</code>.</li>
+      <li>Note the tenant ID. It forms part of the JWKS URL in the next step.</li>
+    </ol>
+    <p><strong>Verification:</strong> acquire a token with the grant you configured and decode it. Confirm the header carries <code>alg: RS256</code>, <code>typ: JWT</code> and a <code>kid</code>, and that the payload carries <code>iss</code>, <code>aud</code>, <code>sub</code> and <code>exp</code>. If you chose on-behalf-of, confirm an email claim is present. If you chose client credentials, it will not be, and that is expected.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.2 &mdash; Configure the JWKS in the gateway</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the AI Gateway, open <strong>Admin Settings &rarr; Organisation &rarr; Authentication</strong>.</li>
+      <li>Paste either a JWKS URL or the static JWKS JSON. For Entra the URL is the tenant discovery endpoint.</li>
+      <li>If more than one issuer needs to be trusted, supply a comma-separated list of URLs. The keys from all of them are merged into one set.</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>https://login.microsoftonline.com/&lt;tenant-id&gt;/discovery/v2.0/keys</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Public key parameters only</div>
+      <p>A JWKS holds public keys. The private key is used for signing and must never be pasted into this field. If you are supplying static JSON rather than a URL, confirm it validates as JSON and that it wraps the keys in a <code>keys</code> array.</p>
+    </div>
+    <p><strong>Verification:</strong> fetch the JWKS URL from a host on the same network path the gateway uses, not from your laptop. The gateway has to be able to reach it, and an egress policy that blocks it produces a signing-key error that looks nothing like a connectivity problem. JWKS fetches honour <code>HTTPS_PROXY</code> and <code>TLS_CA</code>, so a proxied environment can be made to work rather than needing an exception.</p>
+  </div>
+</div>
+
+<!-- ── Phase 3 ────────────────────────────────────────────────── -->
+<h2 id="phase-3">3. Choose Where to Validate</h2>
+
+<p>Token validation happens on the management plane by default. Hybrid and air-gapped deployments can move it to the data plane, which removes a round trip from every call and keeps authentication working through a control-plane outage.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.1 &mdash; AI Gateway Cloud: nothing to do</span>
+  </div>
+  <div class="collapsible-body">
+    <p>On AI Gateway Cloud the management plane validates every token. There is no local validation option and no environment variable to set. Phase 2 is the whole of the configuration, and you can move straight to phase 4.</p>
+    <p><strong>Verification:</strong> confirm your deployment is Cloud rather than hybrid. If you administer the gateway containers yourself, it is not Cloud, and step 3.2 applies.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.2 &mdash; Hybrid and air-gapped: enable gateway-local validation</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Set the following on the gateway data plane. The feature requires gateway 2.5.0 or higher, and air-gapped deployments additionally require backend v1.13.0 or higher.</p>
+    <div class="code-block">
+      <pre><code>JWT_ENABLED=ON
+ORGANISATIONS_TO_SYNC=&lt;your-org-id&gt;
+PORTKEY_CLIENT_AUTH=&lt;client-auth-token&gt;
+JWT_LOCAL_AUTH_DEFAULT_SCOPES=completions.write,mcp.invoke</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <table>
+      <thead><tr><th>Variable</th><th>Required</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>JWT_ENABLED</code></td><td>Yes</td><td>Turns on local verification. Left off, JWT-shaped tokens are sent to the management plane as before.</td></tr>
+        <tr><td><code>ORGANISATIONS_TO_SYNC</code></td><td>Yes</td><td>Supplies the organisation when the token carries no organisation claim, which is the normal case with a stock Entra token.</td></tr>
+        <tr><td><code>PORTKEY_CLIENT_AUTH</code></td><td>Yes</td><td>Authenticates the data plane to the control plane so it can pull the configuration it needs.</td></tr>
+        <tr><td><code>JWT_LOCAL_AUTH_DEFAULT_SCOPES</code></td><td>Usually</td><td>Supplies scopes the IdP cannot issue. Entra generally cannot issue <code>completions.write</code>, so without this a valid token is still refused.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Verification:</strong> restart the gateway and send one authenticated call. Then make the management plane unreachable, from the gateway's network rather than by deleting anything, and send the same call again. If local validation is active the second call succeeds. If it fails with an authentication error, <code>JWT_ENABLED</code> did not take effect.</p>
+  </div>
+</div>
+
+<!-- ── Phase 4 ────────────────────────────────────────────────── -->
+<h2 id="phase-4">4. Send the Agent Call</h2>
+
+<p>The token goes in a header, and the gateway then runs four resolutions in order before it looks at identity at all.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 &mdash; Put the token in the right header</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two headers are accepted. Use either one, not both.</p>
+    <div class="code-block">
+      <pre><code># Option 1: the raw token, with no prefix
+curl https://api.portkey.ai/v1/chat/completions \
+  -H "x-portkey-api-key: $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"@azure-foundry/gpt-4o","messages":[{"role":"user","content":"ping"}]}'
+
+# Option 2: the standard Authorization header, with the Bearer prefix
+curl https://api.portkey.ai/v1/chat/completions \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"@azure-foundry/gpt-4o","messages":[{"role":"user","content":"ping"}]}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Do not write Bearer inside x-portkey-api-key</div>
+      <p>The <code>x-portkey-api-key</code> header takes the raw token with nothing in front of it. Prefixing it with the word Bearer is the most common setup failure on this path, and it returns an error that reads like a bad API key rather than a malformed header.</p>
+    </div>
+    <p><strong>Verification:</strong> the call returns a completion. If it returns an authentication error, decode the token and check its expiry before changing anything else, because an expired token and a malformed header produce the same message.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.2 &mdash; Understand the four resolutions behind that call</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A successful call ran four resolutions you did not see. Knowing their order turns a vague authentication failure into a specific one.</p>
+    <table>
+      <thead><tr><th>Order</th><th>Resolution</th><th>From the token</th><th>Fallback</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Signature</td><td><code>kid</code> resolved against the JWKS, <code>alg</code> must be RS256, RSA key 2048-bit or larger, <code>exp</code> in the future</td><td>None. This one either passes or the call is refused.</td></tr>
+        <tr><td>2</td><td>Organisation</td><td><code>portkey_oid</code> or <code>organisation_id</code></td><td><code>ORGANISATIONS_TO_SYNC</code></td></tr>
+        <tr><td>3</td><td>Workspace</td><td><code>portkey_workspace</code> or <code>workspace_slug</code></td><td>First entry in the workspace allowlist, then the organisation default workspace</td></tr>
+        <tr><td>4</td><td>Scopes</td><td><code>scope</code> as a space-separated string, or <code>scopes</code> as an array</td><td><code>JWT_LOCAL_AUTH_DEFAULT_SCOPES</code></td></tr>
+      </tbody>
+    </table>
+    <p>Small clock skew is tolerated on <code>exp</code>. The <code>iat</code> and <code>nbf</code> claims are recommended rather than required. The <code>portkey.</code> prefix on a scope is optional, so <code>completions.write</code> and <code>portkey.completions.write</code> are both accepted.</p>
+    <p><strong>Verification:</strong> deliberately request a token without the scope your endpoint needs and send the same call. It should be refused even though the signature is valid, which confirms that scope resolution is running rather than being skipped. Restore the scope afterwards.</p>
+  </div>
+</div>
+
+<!-- ── Phase 5 ────────────────────────────────────────────────── -->
+<h2 id="phase-5">5. Confirm Attribution</h2>
+
+<p>Everything so far decided whether the call is allowed. This phase decides whose name appears next to it, and it turns on a single string comparison.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 &mdash; Know which claim the gateway reads</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The gateway takes the first of these claims that is present, in this order, and uses it as the user identity for logging and metrics.</p>
+    <table>
+      <thead><tr><th>Precedence</th><th>Claim</th><th>Typical content</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><code>email_id</code></td><td>The person's email address</td></tr>
+        <tr><td>2</td><td><code>sub</code></td><td>A subject identifier, which for a client-credentials token is a service principal object ID</td></tr>
+        <tr><td>3</td><td><code>uid</code></td><td>A user identifier, where the issuer supplies one</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Verification:</strong> decode the token your agent actually sends and find the first of those three claims it carries. That value, and nothing else, is what the next step compares.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.2 &mdash; The one comparison</span>
+  </div>
+  <div class="collapsible-body">
+    <p>If the token's email matches an AI Gateway user in the target workspace, the request is attributed to that person and inherits their workspace role. Logs, metrics and per-user budget policies all then resolve to a human being.</p>
+    <div class="callout callout-danger">
+      <div class="callout-title">A miss is silent</div>
+      <p>If there is no match, the request falls back to a generic workspace service key. The call still succeeds and no error is returned. The only symptom is attribution that quietly stops naming anyone, which is why this breaks in production months after it was configured, when somebody changes a UPN or a group membership.</p>
+    </div>
+    <p><strong>Verification:</strong> send a call with a token carrying a known workspace member's email, then open the gateway logs and confirm the entry names that person. Then send a call with a token carrying an address that is deliberately not a member, and confirm the entry attributes to the workspace service key rather than failing. Seeing both outcomes is how you know the comparison is live rather than coincidental.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.3 &mdash; Attribution for an unattended agent</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A client-credentials token carries a service principal rather than a person, so precedence falls through to <code>sub</code>. There is no email to compare, so the comparison in 5.2 cannot match a workspace member.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Confirm this one against your own tenant</div>
+      <p>The product documentation states the claim precedence and it states that an email match attributes to the matched user. It does not spell out the client-credentials case. The conclusion above follows from those two statements rather than being written down anywhere, so verify it in your tenant before building a design on it.</p>
+    </div>
+    <p>Where attribution of an unattended agent matters, send metadata alongside the call. The <code>_user</code> key inside <code>x-portkey-metadata</code> is reserved, and from version 1.17.0 onward <code>metadata._user</code> can be used as a match key for budget and rate-limit policies.</p>
+    <div class="code-block">
+      <pre><code>-H 'x-portkey-metadata: {"_user":"invoice-reconciliation-agent","team":"finance"}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>Verification:</strong> send the call with the metadata header and confirm the log entry carries the value you set. Then build a budget policy keyed on <code>metadata._user</code> and confirm it matches that agent and not others.</p>
+  </div>
+</div>
+
+<!-- ── Phase 6 ────────────────────────────────────────────────── -->
+<h2 id="phase-6">6. Configure Egress</h2>
+
+<p>The gateway now has to reach the model. It does so on a credential of its own, which has nothing to do with the credential the caller presented.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.1 &mdash; Give the gateway its own Azure credential</span>
+  </div>
+  <div class="collapsible-body">
+    <p>In the gateway's provider configuration for Azure AI Foundry, supply one of:</p>
+    <ul>
+      <li><strong>API key</strong> &mdash; the simplest option, and the one that requires no Entra configuration at all</li>
+      <li><strong>Entra service principal</strong> &mdash; a client ID and secret or certificate, scoped to the Foundry resource</li>
+      <li><strong>Managed identity</strong> &mdash; available when the gateway runs on Azure compute, and the option that avoids holding a secret</li>
+    </ul>
+    <div class="callout callout-note">
+      <div class="callout-title">What the provider sees</div>
+      <p>The agent's token never leaves the gateway. Azure AI Foundry sees the gateway's own identity on every call, not the agent's and not the person's. Any per-user accounting you need has to come from the gateway's logs, because the provider cannot supply it.</p>
+    </div>
+    <p><strong>Verification:</strong> make a call through the gateway, then check the Azure activity or diagnostic log on the Foundry resource. The caller recorded there should be the gateway's service principal or managed identity. If you expected to see the end user there, this is the step that explains why you do not.</p>
+  </div>
+</div>
+
+<!-- ── Credentials ────────────────────────────────────────────── -->
+<h2 id="credentials">Choosing the Credential</h2>
+
+<p>Four credential types reach the gateway, and each one attributes differently. The choice is worth making deliberately, because changing it later means changing the agent's code.</p>
+
+<table>
+  <thead><tr><th>Credential</th><th>Attributes to</th><th>Requires directory sync</th><th>Best for</th></tr></thead>
+  <tbody>
+    <tr><td>Workspace service key</td><td>The application</td><td>No</td><td>Unattended agents, batch jobs, anything with no human behind it</td></tr>
+    <tr><td>User API key</td><td>The individual, automatically</td><td>Yes, the user must be provisioned</td><td>A named service account you want visible in the member list</td></tr>
+    <tr><td>IdP JWT with a matching email</td><td>The matched workspace user</td><td>Yes</td><td>An agent acting on behalf of a signed-in person</td></tr>
+    <tr><td>Any of the above plus <code>x-portkey-metadata</code></td><td>Whatever the application sends in <code>_user</code></td><td>No</td><td>Splitting one shared key across several logical callers</td></tr>
+  </tbody>
+</table>
+
+<p>The user picker that issues a User API key only lists people the directory has already synced into that workspace, which is why that row depends on phase 1 even though it does not use a token.</p>
+
+<!-- ── Claims ─────────────────────────────────────────────────── -->
+<h2 id="claims">Claim Reference</h2>
+
+<p>How much the gateway can read out of a token depends on whether you control the issuer. The product documentation splits this into two integration modes and names Entra as a case of the second, alongside Okta, Auth0 and Cognito.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Mode A &mdash; you control the issuer</span>
+  </div>
+  <div class="collapsible-body">
+    <p>When the token is minted by something you own, gateway-specific claims can be added to it and everything travels in the token.</p>
+    <div class="code-block">
+      <pre><code>{
+  "sub": "agent-7",
+  "email_id": "ana@corp.example",
+  "portkey_oid": "org_abc123",
+  "portkey_workspace": "ws_ai_platform",
+  "scope": "completions.write mcp.invoke",
+  "usage_limits": { "credit_limit": 1000 },
+  "rate_limits": { "requests_per_minute": 60 },
+  "defaults": { "metadata": { "team": "finance" } },
+  "exp": 1767225600
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Nothing has to be configured on the gateway side beyond the JWKS, because organisation, workspace, scopes and limits all arrive with the request.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Mode B &mdash; a stock Entra token</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A token from a commercial IdP carries a schema you cannot extend. It can be as thin as this and still authenticate.</p>
+    <div class="code-block">
+      <pre><code>{
+  "iss": "https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0",
+  "aud": "api://ai-gateway",
+  "sub": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+  "exp": 1767225600
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Everything the token cannot carry has to be supplied somewhere else.</p>
+    <table>
+      <thead><tr><th>What the token lacks</th><th>Where it comes from instead</th></tr></thead>
+      <tbody>
+        <tr><td>Organisation</td><td><code>ORGANISATIONS_TO_SYNC</code> on the gateway</td></tr>
+        <tr><td>Workspace</td><td>Deployment settings, or the organisation default workspace</td></tr>
+        <tr><td>Scopes</td><td>The IdP registration if it can issue them, otherwise <code>JWT_LOCAL_AUTH_DEFAULT_SCOPES</code></td></tr>
+        <tr><td>Usage and rate limits</td><td>Configured on the workspace, or applied through workspace policies keyed off request metadata</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Limits ─────────────────────────────────────────────────── -->
+<h2 id="limits">What This Does Not Do</h2>
+
+<p>Four things are commonly assumed to work on this path and do not. Each one is worth knowing before a design depends on it.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Directory groups do not become policy objects</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A Cloud Identity Engine group maps to a workspace, and membership of that workspace carries a workspace role. The group itself does not travel with the request and cannot be matched in a policy the way a firewall rule matches a User-ID group. If you need per-group differentiation, it has to be expressed as separate workspaces, or as metadata the application sends.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Identity is not forwarded to the model provider</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Phase 6 covers this. The provider sees the gateway. Per-user accounting against the provider's own bill is not available, and the gateway's logs are the only place that attribution exists.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A2A calls cannot carry caller identity onward</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The MCP Gateway can forward caller identity to an MCP server three ways: a claims header, passing the original bearer token straight through, or a gateway-signed JWT in a header you name. The Agent Gateway has no equivalent. A client authenticates to it with a gateway API key carrying the Agent Gateway toggle and the <code>agents.invoke</code> scope, and access control works per agent and per skill. Access control for specific users, skill control within a workspace, and skill control for an individual user are all listed as coming soon.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Raise this early in an agent-to-agent design</div>
+      <p>An A2A call can be attributed at the gateway, but the agent it invokes receives no identity from the caller. A design that assumes the downstream agent can make an authorisation decision about the original human will not work today. See the <a href="streaming-caching-a2a.html#agent-gateway">Agent Gateway phase</a> of the streaming and A2A guide for the surrounding mechanics.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>An unattended agent does not become a person</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Step 5.3 covers this. A client-credentials token has no email, so no amount of directory configuration will make it attribute to a human. Use a service key and metadata instead.</p>
+  </div>
+</div>
+
+<!-- ── Troubleshooting ────────────────────────────────────────── -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Authentication failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td>Invalid API key, with a valid-looking token</td><td>The token is signed with HS256</td><td>Only RS256 is accepted. Reconfigure the issuer. The error message does not mention the algorithm.</td></tr>
+        <tr><td><code>Error Verifying JWT token: Signing Key Not Found</code></td><td>The <code>kid</code> is missing, or it does not resolve to a key in the JWKS</td><td>Confirm the token header carries a <code>kid</code> and that the configured JWKS contains that key.</td></tr>
+        <tr><td>Authentication fails only on older gateway builds</td><td>Entra omits <code>alg</code> on its JWKS keys</td><td>Upgrade to 2.1.0 or higher, which falls back to RS256 when <code>alg</code> is absent.</td></tr>
+        <tr><td>Invalid API key, intermittently</td><td>The token expired, or clock skew exceeded the tolerance</td><td>Shorten the agent's token cache lifetime and confirm time sync on the client.</td></tr>
+        <tr><td>Every token fails after a working period</td><td>The JWKS URL became unreachable from the gateway</td><td>Fetch it from the gateway's own network path. Set <code>HTTPS_PROXY</code> or <code>TLS_CA</code> if the environment requires them.</td></tr>
+        <tr><td>Token is valid but the call is refused</td><td>The required scope is absent</td><td>Chat completions need <code>completions.write</code>. Add it at the IdP, or set <code>JWT_LOCAL_AUTH_DEFAULT_SCOPES</code>.</td></tr>
+      </tbody>
+    </table>
+    <p>Every invalid-JWT error is written to the audit log, with the token redacted to its first and last few characters. Start there rather than from the client-side error, because the audit entry names the actual reason.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Attribution failures</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td>Calls succeed but attribute to a service key</td><td>The token's email does not match a workspace member</td><td>Compare the token's <code>email_id</code> against the workspace member list character for character. Check for a UPN rather than a mail address.</td></tr>
+        <tr><td>Some users attribute, others do not</td><td>The non-matching users were skipped during directory sync</td><td>A user whose selected identity attribute is empty is skipped silently. Populate the attribute in Entra and wait for the next sync.</td></tr>
+        <tr><td>Attribution worked and then stopped for one person</td><td>Their UPN or mail attribute changed in the directory</td><td>Confirm the current value in Entra, and confirm the sync has picked it up in the workspace member list.</td></tr>
+        <tr><td>Attribution is empty rather than wrong</td><td>The token carries none of <code>email_id</code>, <code>sub</code> or <code>uid</code></td><td>Add a claim the gateway can read, or move the agent to a service key with metadata.</td></tr>
+        <tr><td>A departed employee still appears</td><td>Deprovisioning has not run, or the group mapping was removed rather than the user</td><td>Removing the group mapping stops future syncs without removing existing members. Remove the user from the group instead.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Reference URLs ─────────────────────────────────────────── -->
+<h2 id="references">Reference URLs</h2>
+
+<p>The canonical pages behind this guide, grouped by what they cover. Palo Alto Networks pages are authoritative for Cloud Identity Engine. Portkey pages are authoritative for the gateway itself, which is the upstream product behind Prisma AIRS AI Gateway.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>AI Gateway authentication and identity</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Page</th><th>Covers</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/product/enterprise-offering/org-management/jwt">JWT authentication</a></td><td>The primary source. Header and claim requirements, the JWKS configuration path, integration modes A and B, gateway-local validation, workspace resolution, scopes, and the troubleshooting list.</td></tr>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/product/enterprise-offering/org-management/api-keys-authn-and-authz">API keys, authentication and authorisation</a></td><td>Workspace service keys, User API keys, and the scopes each key type can carry.</td></tr>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/api-reference/inference-api/authentication">Inference API authentication</a></td><td>Which headers the inference endpoints accept, and in what form.</td></tr>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/api-reference/inference-api/headers">Inference API headers</a></td><td>The <code>x-portkey-metadata</code> header and the reserved <code>_user</code>, <code>_prompt</code>, <code>_organisation</code> and <code>_environment</code> keys.</td></tr>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/product/observability/metadata">Metadata</a></td><td>How metadata reaches logs, and which keys are special.</td></tr>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/product/enterprise-offering/budget-policies">Budget policies</a></td><td>Using <code>metadata._user</code> as a policy match key, available from version 1.17.0.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Directory sync and provisioning</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Page</th><th>Covers</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/product/enterprise-offering/org-management/directory-sync/cie-directory-sync">Cloud Identity Engine Directory Sync</a></td><td>The gateway side of phase 1. Group to workspace mapping, the identity attribute, and the provisioning lifecycle.</td></tr>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/product/enterprise-offering/org-management/scim/scim">SCIM provisioning</a></td><td>The alternative for tenants that are not on Strata Cloud Manager.</td></tr>
+        <tr><td><a href="https://docs.paloaltonetworks.com/identity/cloud-identity-engine/cloud-identity-engine-overview">Cloud Identity Engine overview</a></td><td>What Cloud Identity Engine is, and how it sits relative to the rest of the platform.</td></tr>
+        <tr><td><a href="https://docs.paloaltonetworks.com/identity/cloud-identity-engine/identify-users-and-devices-with-cie/choose-directory-type/configure-a-cloud-based-directory">Configure a cloud-based directory</a></td><td>The Azure AD directory type, and the authorisation flow against the tenant.</td></tr>
+        <tr><td><a href="https://docs.paloaltonetworks.com/identity/cloud-identity-engine/manage-the-cloud-identity-engine/cloud-identity-engine-attributes">Cloud Identity Engine attributes</a></td><td>The attribute set available for the User Identity Attribute choice in step 1.1.</td></tr>
+        <tr><td><a href="https://docs.paloaltonetworks.com/identity/cloud-identity-engine/authenticate-users-with-the-cloud-identity-engine/set-up-a-saml-2-0-authentication-type/configure-azure-as-an-idp-in-the-cloud-identity-engine">Configure Azure as an IdP</a></td><td>The Entra side of the directory authorisation.</td></tr>
+        <tr><td><a href="https://docs.paloaltonetworks.com/identity/cloud-identity-engine/troubleshoot-the-cloud-identity-engine/cloud-identity-engine-troubleshooting-checklist">Cloud Identity Engine troubleshooting checklist</a></td><td>First stop when users do not appear after a sync.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Deployment, egress, and release history</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Page</th><th>Covers</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/self-hosting/hybrid-deployments/architecture">Hybrid deployment architecture</a></td><td>The control plane and data plane split that phase 3 depends on.</td></tr>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/integrations/cloud/azure">Azure integration</a></td><td>Fronting Azure AI Foundry, and the credential options in phase 6.</td></tr>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/product/mcp-gateway/authentication/identity-forwarding">MCP Gateway identity forwarding</a></td><td>The three forwarding methods the MCP Gateway has and the Agent Gateway does not.</td></tr>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/product/agent-gateway/registry">Agent Registry</a></td><td>Agent Gateway access control, and the coming-soon list quoted in the limits section.</td></tr>
+        <tr><td><a href="https://docs.portkey.ai/docs/aigw/changelog/enterprise">Enterprise changelog</a></td><td>Every version floor cited in the prerequisites, including 2.1.0, 2.5.0 and 2.21.0.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Sources ────────────────────────────────────────────────── -->
+<h2 id="sources">Sources</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Where each claim comes from</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Everything in this guide is drawn from the product documentation listed above, as mirrored locally on 21 September 2026, together with the Palo Alto Networks Cloud Identity Engine documentation. One statement is an inference rather than a quotation and is marked as such where it appears.</p>
+    <table>
+      <thead><tr><th>Section</th><th>Source</th><th>What it supplies</th></tr></thead>
+      <tbody>
+        <tr><td>Phase 1</td><td>Cloud Identity Engine Directory Sync, plus the PAN Cloud Identity Engine pages</td><td>Directory types, the identity attribute choice, one-to-one group mapping, the provisioning lifecycle, and the silent skip of users with an empty attribute.</td></tr>
+        <tr><td>Phase 2</td><td>JWT authentication</td><td>The Admin Settings path, the comma-separated JWKS list, RS256, <code>typ</code>, <code>kid</code>, the 2048-bit floor, and the public-key-only warning.</td></tr>
+        <tr><td>Phase 3</td><td>JWT authentication, gateway-local section, plus the enterprise changelog</td><td>The <code>JWT_ENABLED</code> behaviour, the four environment variables, and the 2.5.0 and v1.13.0 floors.</td></tr>
+        <tr><td>Phase 4</td><td>JWT authentication, plus the inference API header reference</td><td>Both accepted headers, the Bearer prefix warning, workspace resolution order, and scope handling.</td></tr>
+        <tr><td>Phase 5</td><td>JWT authentication, the enterprise changelog at v2.21.0, and budget policies</td><td>The <code>email_id</code> to <code>sub</code> to <code>uid</code> precedence, email-based attribution to a workspace user, and <code>metadata._user</code> as a policy key.</td></tr>
+        <tr><td>Phase 6</td><td>Azure integration</td><td>The provider credential options for Azure AI Foundry.</td></tr>
+        <tr><td>Limits</td><td>MCP Gateway identity forwarding, and the Agent Registry page</td><td>The three MCP forwarding methods, the <code>agents.invoke</code> scope, and the coming-soon access control list.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Two things to re-check before a customer conversation</div>
+      <p>The coming-soon list on the Agent Registry is designed to change, so confirm it is still accurate before quoting it. The client-credentials attribution behaviour in step 5.3 is derived from two documented statements rather than being stated directly, so verify it against the customer's own tenant before it becomes a design assumption.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>

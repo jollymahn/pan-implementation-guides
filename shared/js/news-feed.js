@@ -39,6 +39,13 @@ var NEWS_ITEMS = [
   {
     badge: "New",
     date: "2026-10-10",
+    title: "Agent identity with Azure Entra ID, end to end",
+    href: "guides/ai-gateway/agent-identity-entra.html",
+    tags: "There is no User-ID in the AI Gateway, Entra does three different jobs, One string decides attribution, A miss is silent, Claim precedence and Mode B tokens, Canonical reference URLs, One new flow diagram"
+  },
+  {
+    badge: "New",
+    date: "2026-10-10",
     title: "Streaming, semantic caching, and A2A on the AI Gateway",
     href: "guides/ai-gateway/streaming-caching-a2a.html",
     tags: "An output guardrail cannot stop a stream, Streamed calls record zero cost, Semantic cache gate by gate, Embedding provider and vector store, Agent Registry and virtual servers, Three new diagrams"
