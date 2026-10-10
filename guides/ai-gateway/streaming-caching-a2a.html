@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Streaming, Semantic Caching, and A2A | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Getting Started</div>
+    <a href="#support-status" data-section="support-status">Support Status</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Phases</div>
+    <a href="#streaming" data-section="streaming">1. HTTP Streaming</a>
+    <a href="#semantic-cache" data-section="semantic-cache">2. Semantic Caching</a>
+    <a href="#agent-gateway" data-section="agent-gateway">3. Agent Gateway (A2A)</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#reference" data-section="reference">Headers, Variables, Limits</a>
+    <a href="#sources" data-section="sources">Sources</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  Streaming, Caching, and A2A
+</div>
+
+<div class="article">
+
+<h1>Streaming, Semantic Caching, and Agent-to-Agent Traffic</h1>
+<p class="subtitle">Three AI Gateway capabilities that change what the gateway can enforce, what it costs, and what it can see</p>
+
+<div class="cloud-links">
+  <a href="ai-gateway-deployment.html" class="cloud-link">Core Deployment Guide</a>
+  <a href="diagrams/flow-diagrams-review.html" class="cloud-link">Flow Diagrams</a>
+  <a href="index.html" class="cloud-link">All AI Gateway Guides</a>
+</div>
+
+<!-- ── Support status ─────────────────────────────────────────── -->
+<h2 id="support-status">Support Status</h2>
+
+<p>All three capabilities are available on the Prisma AIRS AI Gateway today. They are grouped into one guide because each one changes an assumption the core deployment guide makes about a request: streaming changes when a guardrail can act, caching changes whether a provider is called at all, and the Agent Gateway changes what sits at the far end of the connection.</p>
+
+<table>
+  <thead><tr><th>Capability</th><th>Status</th><th>What it covers</th></tr></thead>
+  <tbody>
+    <tr><td>HTTP streaming</td><td>Available</td><td>Server-sent events on <code>/chat/completions</code>, <code>/completions</code>, <code>/embeddings</code>, and <code>/messages</code>, with guardrail results delivered inside the stream.</td></tr>
+    <tr><td>Semantic caching</td><td>Available</td><td>Cosine-similarity matching on <code>/chat/completions</code> and <code>/completions</code>, on top of the exact-match simple cache.</td></tr>
+    <tr><td>Agent Gateway (A2A)</td><td>Available</td><td>Agent Registry and virtual agent servers for agents speaking the A2A protocol. Shipped as a preview in backend v2.6.1 and now carries full product documentation.</td></tr>
+    <tr><td>Semantic search</td><td>Not a gateway feature</td><td>The gateway proxies embedding calls and can front retrieval-oriented MCP servers, but it does not provide a search index of its own.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Semantic caching and semantic search are different things</div>
+  <p>Semantic caching reuses a previous answer when a new prompt means roughly the same thing. Semantic search retrieves documents by meaning. The gateway does the first and not the second. If what you need is retrieval, the gateway's role is to proxy and govern the embedding calls your retrieval stack makes, and to front an MCP server such as Vectara or Snowflake Cortex that does the searching. Treating the cache as a retrieval layer produces stale answers rather than relevant ones.</p>
+</div>
+
+<h3>Roadmap</h3>
+
+<p>One published roadmap statement bears on these three capabilities, and it is on the Agent Registry. Access control today works per agent and per skill. Three finer grains are listed as coming soon and are not available yet:</p>
+
+<ul>
+  <li>Access control for specific users</li>
+  <li>Access control for skills inside specific workspaces</li>
+  <li>Access control for skills for specific users</li>
+</ul>
+
+<p>Nothing comparable is published for streaming or for caching, so treat both as feature-complete in their current shape rather than as works in progress.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">How current this is</div>
+  <p>The statements in this guide come from the product documentation and the enterprise changelog as mirrored on 21 September 2026, with the changelog topping out at v2.22.0 dated 11 September 2026. That is reliable for what exists today and thin for anything further out. Re-check the Agent Registry page before quoting the coming-soon list to a customer, because it is the one list here that is designed to change.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<p>This guide assumes a working gateway. If you do not have one, complete the <a href="ai-gateway-deployment.html">Core Deployment Guide</a> first, through at least Phase 3, so that one LLM integration is live and you can make a successful call.</p>
+
+<p>Across the three phases you will need:</p>
+
+<ul>
+  <li>A gateway API key that can reach at least one provisioned model</li>
+  <li>The ability to create and attach a config, since caching and guardrails are both config-driven</li>
+  <li>A terminal with <code>curl</code>, or a Python or Node environment, for the verification steps</li>
+</ul>
+
+<p>Two phases add requirements of their own:</p>
+
+<table>
+  <thead><tr><th>Phase</th><th>Extra requirement</th><th>Applies to</th></tr></thead>
+  <tbody>
+    <tr><td>2. Semantic caching</td><td>An embedding provider credential, and a Milvus or Pinecone instance the gateway can reach</td><td>Self-hosted and hybrid data planes, where you set the environment variables yourself</td></tr>
+    <tr><td>3. Agent Gateway</td><td>An A2A agent server published on a public <code>http</code> or <code>https</code> endpoint</td><td>Every deployment model</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guardrail behaviour carries over from the core guide</div>
+  <p>Phase 1 depends on how a guardrail is configured, not just on whether it exists. If the terms async and deny are unfamiliar, read <a href="ai-gateway-deployment.html#guardrails-logging">Phase 5 of the core deployment guide</a> before starting, because the streaming behaviour below only makes sense once those two settings do.</p>
+</div>
+
+<!-- ── Phase 1: streaming ─────────────────────────────────────── -->
+<h2 id="streaming">Phase 1 &mdash; HTTP Streaming</h2>
+
+<p>Streaming returns the response as server-sent events, one chunk at a time, instead of one complete body at the end. Users see the first token in a fraction of the time, which is why most chat-style applications turn it on. The cost is that the gateway gives up the ability to withhold the answer, because by the time it has the whole response the client has it too.</p>
+
+<p>The diagram below is the one thing to take away from this phase. The gateway can stop a streaming request, but only before the first chunk.</p>
+
+<img src="diagrams/aigw-streaming-guardrails.svg" alt="A six-step left-to-right timeline of one streaming request: the client opens the stream, input guardrails run and can block with a 446, the gateway forwards to the provider, chunks relay through to the client past a marked point of no return, the stream ends with a DONE chunk, and output guardrails run on the assembled response and only report. Two lanes underneath mark where a request can be blocked and where a verdict can only be recorded, with panels listing the headers to set and the pitfalls to expect." loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1 &mdash; Make a streaming call and confirm chunks arrive</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Add <code>stream: true</code> to the request body. Nothing else about the call changes, and the gateway key, the model slug, and any config you already use all stay the same.</p>
+    <div class="code-block">
+      <pre><code>curl https://aigw.portkey.ai/v1/chat/completions \
+  -H "Authorization: Bearer $PORTKEY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -N \
+  -d '{
+    "model": "@openai-prod/gpt-4o",
+    "stream": true,
+    "messages": [{"role": "user", "content": "Name three UK cities."}]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The <code>-N</code> flag disables curl's output buffering. Without it the response still streams, but curl holds it and prints everything at once, which makes a working stream look like a non-streaming call.</p>
+    <p><strong>Verify:</strong> you see a run of <code>data:</code> lines appear progressively rather than all together, each carrying a small <code>delta</code>, and the sequence ends with <code>data: [DONE]</code>. If the whole body lands at once, either <code>-N</code> is missing or <code>stream: true</code> did not reach the provider.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Which routes accept it</div>
+      <p>Streaming with guardrail results is supported on <code>/chat/completions</code>, <code>/completions</code>, <code>/embeddings</code>, and <code>/messages</code>. The Anthropic-style <code>/messages</code> route behaves the same way, so an application that moved from Anthropic direct to the gateway keeps its streaming code.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2 &mdash; Put the enforcing guardrail on the input side</span>
+  </div>
+  <div class="collapsible-body">
+    <p>On a streaming route, an input guardrail is the only guardrail that can stop anything. It runs before the stream opens, while the gateway still owns the entire response. Two settings decide whether it blocks:</p>
+    <ul>
+      <li><strong>async = false</strong> &mdash; the check runs before the request goes to the provider rather than alongside it. Left at the default of true, the check only logs.</li>
+      <li><strong>deny = true</strong> &mdash; a failed check kills the request with <code>446</code>. Left at the default of false, a failed check returns <code>246</code> and the request proceeds anyway.</li>
+    </ul>
+    <p>Attach the guardrail through the config's <code>input_guardrails</code> list, by ID:</p>
+    <div class="code-block">
+      <pre><code>{
+  "input_guardrails": ["pii-and-prompt-injection-guardrail"],
+  "output_guardrails": ["response-policy-guardrail"]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Send a prompt that the guardrail should reject, with <code>stream: true</code> set.</p>
+    <p><strong>Verify:</strong> the call returns HTTP <code>446</code> and no <code>data:</code> chunks at all. A <code>246</code> means the guardrail ran and failed but deny is off. A <code>200</code> with a full stream means the guardrail either is not attached to this config or is still asynchronous.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">An output guardrail on a streaming route is a detection, not a control</div>
+      <p>Output guardrails on streaming requests are evaluated on the assembled response after the stream has finished, and no action is taken on the result. Fallback does not fire and retry does not fire. The verdict is recorded and returned, which is useful for alerting and for tuning the policy, but the user has already read the text. Any policy whose job is to prevent a user seeing something has to be enforced on the input, or the route has to stay non-streaming.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3 &mdash; Expose the guardrail verdicts inside the stream</span>
+  </div>
+  <div class="collapsible-body">
+    <p>By default the gateway holds itself to strict OpenAI response compliance, and a <code>hook_results</code> chunk is not part of the OpenAI schema. The verdicts are therefore suppressed. Set the header to false to receive them.</p>
+    <div class="code-block">
+      <pre><code>curl https://aigw.portkey.ai/v1/chat/completions \
+  -H "Authorization: Bearer $PORTKEY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "x-portkey-strict-open-ai-compliance: false" \
+  -N \
+  -d '{
+    "model": "@openai-prod/gpt-4o",
+    "stream": true,
+    "messages": [{"role": "user", "content": "Summarise the onboarding policy."}]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Input guardrail verdicts arrive under <code>before_request_hooks</code> before the content starts. Output guardrail verdicts arrive under <code>after_request_hooks</code> in an extra chunk after <code>[DONE]</code>.</p>
+    <p>In the OpenAI Python client the results sit on the chunk's extra fields, because the SDK model does not know about them:</p>
+    <div class="code-block">
+      <pre><code>async for chunk in response:
+    extra = chunk.model_extra or {}
+    hooks = extra.get("hook_results")
+    if hooks:
+        if hooks.get("before_request_hooks"):
+            print("input guardrails:", hooks["before_request_hooks"])
+        if hooks.get("after_request_hooks"):
+            print("output guardrails (informational):", hooks["after_request_hooks"])
+    print(chunk.choices, end="", flush=True)</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>Verify:</strong> at least one chunk carries a <code>hook_results</code> object. If every chunk is a plain content delta, the header did not reach the gateway, since the default of <code>true</code> silently drops these chunks rather than erroring.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Clients that validate responses strictly</div>
+      <p>Setting this header to false means the gateway emits a chunk shape the OpenAI SDKs do not model. The Python and Node clients tolerate it and park the field in an extras bag, which is what the code above reads. A client that rejects unknown fields outright will need the header left at its default, and in that case the guardrail verdicts have to be read from the logs instead of from the stream.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4 &mdash; Restore cost accounting on streamed calls</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Providers omit usage data from streaming responses unless asked for it. No token counts means no cost calculation, so every streamed request records as zero spend. Budgets built on that figure never trip, and chargeback reports under-count whichever teams stream the most.</p>
+    <p>Ask for usage explicitly:</p>
+    <div class="code-block">
+      <pre><code>{
+  "model": "@openai-prod/gpt-4o",
+  "stream": true,
+  "stream_options": { "include_usage": true },
+  "messages": [{"role": "user", "content": "Name three UK cities."}]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>This applies to every OpenAI-compatible provider, Azure OpenAI included. Non-streaming requests return usage automatically and need no change.</p>
+    <p><strong>Verify:</strong> open the log entry for the call and confirm the token counts and cost are non-zero. Then compare against a streamed call made without <code>stream_options</code>, which should show zero, to confirm you are looking at the right lever.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Audit existing applications before trusting a spend report</div>
+      <p>This is a client-side setting, so turning it on centrally is not possible. Any application already streaming without <code>stream_options</code> has been recording zero cost for as long as it has been running, and its historical figures cannot be recovered. Before presenting AI spend to a customer, check which of their applications stream and whether each one sends this option.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.5 &mdash; Re-check timeout behaviour</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A request timeout on a streaming route does not mean what it means elsewhere. The timeout will not be triggered if the gateway receives at least one chunk within the configured duration. A provider that returns the first token quickly and then stalls for several minutes will not produce a <code>408</code>, and the client will sit waiting.</p>
+    <p>Two things follow for an application that streams:</p>
+    <ul>
+      <li><strong>Client-side idle timeout</strong> &mdash; the application needs its own timer measuring the gap between chunks, because the gateway's timeout only guards the gap before the first one.</li>
+      <li><strong>Timeout value</strong> &mdash; the configured duration is effectively a time-to-first-chunk budget on these routes, so set it against that figure rather than against a full-response target.</li>
+    </ul>
+    <p><strong>Verify:</strong> this one is best confirmed by reading the config rather than by inducing a provider stall. Check that any route carrying <code>stream: true</code> has a client-side idle timeout, and that the gateway timeout on that route is sized for first-chunk latency.</p>
+  </div>
+</div>
+
+<!-- ── Phase 2: semantic caching ──────────────────────────────── -->
+<h2 id="semantic-cache">Phase 2 &mdash; Semantic Caching</h2>
+
+<p>A cache hit returns a stored answer without calling the provider, which removes both the latency and the cost of that call. Simple caching requires the new request to be byte-identical to a stored one. Semantic caching relaxes that to requests that mean the same thing, which is what makes it useful for anything a human types.</p>
+
+<p>The two modes are not alternatives. Semantic cache is a superset: the gateway always tries the exact match first and only embeds the prompt when that misses. Every gate on the path below is a reason a hit you expected did not happen.</p>
+
+<img src="diagrams/aigw-semantic-cache.svg" alt="A top-to-bottom decision flow for a cached lookup: is a cache block set in the config, then an exact-match simple cache lookup, then whether the mode is semantic, then an eligibility check on route, token count, message count and the presence of a user message, then an embedding and vector search against a similarity threshold. Outcomes branch to the right as Cache Disabled, Cache Hit, Cache Semantic Hit and Cache Miss. A side panel lists the embedding provider, vector store and Redis a self-hosted gateway needs, with the environment variables for each, and a strip at the bottom covers TTL, partitioning and log status values." loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.1 &mdash; Decide whether semantic mode is worth it</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Semantic mode adds an embedding call and a vector search to every request that misses the exact-match check, and on a self-hosted gateway it adds two components to run. Work out whether the traffic will repay that before building it.</p>
+    <table>
+      <thead><tr><th>Traffic shape</th><th>Mode</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Machine-generated prompts from a template</td><td>Simple</td><td>Identical inputs recur naturally, so the exact match already catches them and the embedding call would be pure overhead.</td></tr>
+        <tr><td>Human-typed questions on a narrow topic</td><td>Semantic</td><td>The same question arrives worded ten ways. This is the case semantic mode exists for.</td></tr>
+        <tr><td>Long documents or multi-turn conversations</td><td>Neither</td><td>Requests over 8,191 tokens or carrying more than four messages are not eligible for semantic matching, and long bodies rarely repeat exactly.</td></tr>
+        <tr><td>Anything where a stale answer is a problem</td><td>Neither</td><td>A cache returns a previous answer. If freshness matters more than cost, keep the provider in the path.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Verify:</strong> before enabling anything, turn on simple mode and read the hit rate on the Analytics cache tab after a day of real traffic. If simple caching is already hitting well, semantic mode has little left to add. If it hits almost never and the prompts are human-written, that is the signal to continue.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.2 &mdash; Configure the embedding provider (self-hosted)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Skip this step and the next on a SaaS data plane, where the components are managed for you. On a self-hosted or hybrid gateway, set these in the gateway's environment:</p>
+    <div class="code-block">
+      <pre><code>SEMANTIC_CACHE_EMBEDDING_PROVIDER=openai
+SEMANTIC_CACHE_EMBEDDINGS_URL=https://api.openai.com/v1/embeddings
+SEMANTIC_CACHE_EMBEDDING_MODEL=text-embedding-3-small
+SEMANTIC_CACHE_EMBEDDING_API_KEY=&lt;openai-api-key&gt;
+SEMANTIC_CACHE_SIMILARITY_THRESHOLD=0.95
+SEMANTIC_CACHE_EMBEDDING_DIMENSIONS=1536</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The provider accepts <code>openai</code>, <code>azure-openai</code>, <code>google</code> for Gemini embeddings, or <code>vertex-ai</code>. Set the URL, model, and dimensions to match whichever you pick. For Azure OpenAI:</p>
+    <div class="code-block">
+      <pre><code>SEMANTIC_CACHE_EMBEDDING_PROVIDER=azure-openai
+SEMANTIC_CACHE_EMBEDDINGS_URL=https://YOUR-RESOURCE.openai.azure.com/openai/v1/embeddings
+SEMANTIC_CACHE_EMBEDDING_MODEL=text-embedding-3-small
+SEMANTIC_CACHE_EMBEDDING_API_KEY=&lt;azure-openai-api-key&gt;
+SEMANTIC_CACHE_SIMILARITY_THRESHOLD=0.95
+SEMANTIC_CACHE_EMBEDDING_DIMENSIONS=1536</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>Verify:</strong> restart the gateway and confirm it starts without an embedding configuration error in the logs. The variables are not exercised until a semantic lookup runs, so a clean start is only a partial check. The real confirmation comes in Step 2.5.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Azure OpenAI needs a plain API key for this call</div>
+      <p>Managed identity and Entra ID token authentication are not supported for the semantic cache embedding call, even where the same gateway uses them for inference against the same resource. <code>SEMANTIC_CACHE_EMBEDDING_MODEL</code> must also match the Azure deployment name rather than the underlying model name. Both of these differ from how the rest of the gateway talks to Azure OpenAI, and see <a href="llm-api-key-management.html">LLM API Key Management</a> for where that key should live.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.3 &mdash; Connect the vector store (self-hosted)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The gateway supports Milvus and Pinecone. Four variables point it at whichever you run:</p>
+    <div class="code-block">
+      <pre><code>VECTOR_STORE=milvus
+VECTOR_STORE_ADDRESS=&lt;your-vector-store-address&gt;
+VECTOR_STORE_COLLECTION_NAME=&lt;your-collection-name&gt;
+VECTOR_STORE_API_KEY=&lt;your-vector-db-api-key&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Each store has its own setup conditions, and they are not interchangeable.</p>
+    <table>
+      <thead><tr><th>Store</th><th>What it needs</th></tr></thead>
+      <tbody>
+        <tr><td>Milvus</td><td>A collection whose name matches <code>SEMANTIC_CACHE_EMBEDDING_MODEL</code> exactly, with fields <code>id</code> (Varchar), <code>values</code> (FloatVector at the configured dimension), and <code>metadata</code> (JSON).</td></tr>
+        <tr><td>Pinecone</td><td>Omit <code>VECTOR_STORE_COLLECTION_NAME</code> entirely. Set <code>VECTOR_STORE_ADDRESS</code> to the index name rather than a host string, and create the index with cosine as its similarity metric.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Verify:</strong> confirm the vector dimension configured on the store matches <code>SEMANTIC_CACHE_EMBEDDING_DIMENSIONS</code>. A mismatch here produces no lookups and no obvious error, just a cache that never hits.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Changing the embedding model is a schema change</div>
+      <p>The collection is named after the embedding model and sized to its dimension. Switching models means creating a new collection and updating both the model name and the dimension variable together. Changing one without the other leaves the gateway writing vectors the store will not accept.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.4 &mdash; Turn caching on in the config</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Caching is a config property, not a header. Add a <code>cache</code> block:</p>
+    <div class="code-block">
+      <pre><code>{ "cache": { "mode": "semantic", "max_age": 3600 } }</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>In a config with routing targets, the block can sit at the top level so it applies to all of them, or on an individual target. A target-level block takes precedence over a top-level one, which lets an expensive model cache aggressively while a cheap one does not:</p>
+    <div class="code-block">
+      <pre><code>{
+  "strategy": { "mode": "fallback" },
+  "targets": [
+    {
+      "override_params": { "model": "@openai-prod/gpt-4o" },
+      "cache": { "mode": "semantic", "max_age": 3600 }
+    },
+    {
+      "override_params": { "model": "@anthropic-prod/claude-3-5-sonnet-20241022" },
+      "cache": { "mode": "simple", "max_age": 200 }
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>Verify:</strong> send any request through the config and check the log line. The status column should read <code>Cache Miss</code> rather than <code>Cache Disabled</code>. A first request can never hit, so a miss here is the correct result and confirms the cache is active.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">A debug header switches caching off</div>
+      <p>Caching does not work on any request carrying <code>x-portkey-debug: "false"</code>. If a test client sets that header and the status column reads <code>Cache Disabled</code> while the config clearly has a cache block, this is the reason.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.5 &mdash; Prove a semantic hit</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Send one request, then send a reworded version of the same question. Everything other than the user text has to stay identical, including the model and every body parameter.</p>
+    <div class="code-block">
+      <pre><code># First call — populates the cache
+curl https://aigw.portkey.ai/v1/chat/completions \
+  -H "Authorization: Bearer $PORTKEY_API_KEY" \
+  -H "x-portkey-config: pc-cache-xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "@openai-prod/gpt-4o",
+       "messages": [{"role": "user", "content": "Who is the US president?"}]}'
+
+# Second call — different wording, same meaning
+curl https://aigw.portkey.ai/v1/chat/completions \
+  -H "Authorization: Bearer $PORTKEY_API_KEY" \
+  -H "x-portkey-config: pc-cache-xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "@openai-prod/gpt-4o",
+       "messages": [{"role": "user", "content": "Tell me who the president of the US is."}]}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>Verify:</strong> the second call returns noticeably faster, returns the same text as the first, and its log line reads <code>Cache Semantic Hit</code>. A status of <code>Cache Hit</code> on the second call means the two requests were byte-identical and you tested the simple cache by accident, so change more of the wording and try again.</p>
+    <p>If the second call reads <code>Cache Miss</code>, work down the gates in the order the diagram shows them:</p>
+    <ul>
+      <li><strong>Mode</strong> &mdash; is the config's cache block set to <code>semantic</code> rather than <code>simple</code>?</li>
+      <li><strong>Route</strong> &mdash; semantic matching only runs on <code>/chat/completions</code> and <code>/completions</code>.</li>
+      <li><strong>Size</strong> &mdash; under 8,191 tokens and four messages or fewer.</li>
+      <li><strong>User message</strong> &mdash; at least one is required. A request carrying only system messages is dropped rather than matched.</li>
+      <li><strong>Exact-match fields</strong> &mdash; the model and every other body parameter, and the metadata header if you use one, still have to match exactly. Only the user text is matched by meaning.</li>
+      <li><strong>Threshold</strong> &mdash; two phrasings may simply not be similar enough for 0.95. Lower <code>SEMANTIC_CACHE_SIMILARITY_THRESHOLD</code> deliberately and in small steps, because a loose threshold returns confidently wrong answers.</li>
+    </ul>
+    <div class="callout callout-note">
+      <div class="callout-title">The system prompt is ignored</div>
+      <p>Semantic matching looks at the user text and disregards the system prompt entirely. Changing the system prompt neither causes nor prevents a hit. Where several applications share a config and distinguish themselves only by their system prompt, they will serve each other's cached answers. Separate them with a cache namespace, covered in the next step.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.6 &mdash; Set lifetime and partitioning</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two controls decide how long an entry survives and who can be served it.</p>
+    <p><strong>Lifetime</strong> comes from <code>max_age</code> in seconds on the cache block. The minimum is 60 seconds, the maximum is 90 days, and leaving it out gives 7 days. An organisation-level default set under Admin Settings, Organisation Properties, Cache Settings changes the arithmetic:</p>
+    <table>
+      <thead><tr><th>Request</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>No <code>max_age</code> sent</td><td>The organisation default applies.</td></tr>
+        <tr><td><code>max_age</code> longer than the organisation default</td><td>The organisation default wins.</td></tr>
+        <tr><td><code>max_age</code> shorter than the organisation default</td><td>The request value is honoured.</td></tr>
+      </tbody>
+    </table>
+    <p>A per-request value can therefore only ever shorten the lifetime, which is what makes the organisation default a usable data-retention control rather than a suggestion.</p>
+    <p><strong>Partitioning</strong> defaults to every request header, so two callers differing in any header never share an entry. That is safe and it is usually why a hit rate looks lower than expected. Narrow it to one string of your choosing:</p>
+    <div class="code-block">
+      <pre><code>curl https://aigw.portkey.ai/v1/chat/completions \
+  -H "Authorization: Bearer $PORTKEY_API_KEY" \
+  -H "x-portkey-config: pc-cache-xxx" \
+  -H "x-portkey-cache-namespace: tenant-42" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "@openai-prod/gpt-4o",
+       "messages": [{"role": "user", "content": "Hello!"}]}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>Verify:</strong> send the same prompt under two different namespace values and confirm the second one misses. Then repeat it within one namespace and confirm it hits. That pair of results proves the partition is real rather than assumed.</p>
+    <div class="callout callout-danger">
+      <div class="callout-title">A namespace is a tenancy boundary</div>
+      <p>Everything sharing a namespace can be served everything else's cached answers. Where a gateway serves several customers, or several classification levels, the namespace has to carry the tenant identifier, and the value has to come from the authenticated identity rather than from a field the caller can set freely. A namespace chosen to raise the hit rate, without that constraint, is how one customer's answer reaches another.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.7 &mdash; Force a refresh when the answer is wrong</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A cached answer that has gone stale needs replacing before its TTL expires. Send the force-refresh header, which is a per-request header rather than a config property:</p>
+    <div class="code-block">
+      <pre><code>curl https://aigw.portkey.ai/v1/chat/completions \
+  -H "Authorization: Bearer $PORTKEY_API_KEY" \
+  -H "x-portkey-config: pc-cache-xxx" \
+  -H "x-portkey-cache-force-refresh: true" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "@openai-prod/gpt-4o",
+       "messages": [{"role": "user", "content": "Who is the US president?"}]}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The request still needs its cache config attached. Without one the header does nothing, because there is no cache to refresh.</p>
+    <p><strong>Verify:</strong> the log line reads <code>Cache Refreshed</code>, and a subsequent ordinary request returns the new text rather than the old.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">One refresh clears every semantic match</div>
+      <p>Where the request matches semantically, the refresh replaces all matching entries rather than the single closest one. That is the behaviour you want when a stored answer is wrong, since the wrong answer was reachable from many phrasings. It also means a force refresh is a heavier operation than it looks, so it belongs in a corrective workflow rather than on a retry path.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Phase 3: agent gateway ─────────────────────────────────── -->
+<h2 id="agent-gateway">Phase 3 &mdash; Agent Gateway for A2A Traffic</h2>
+
+<p>The first two phases govern calls to a model. This one governs calls to an agent. An agent speaking the A2A protocol is reached over HTTP like any other service, publishes a card describing its skills, and until now has authenticated its callers itself. The Agent Gateway puts the gateway in the middle of that conversation.</p>
+
+<p>Two components do the work. The <strong>Agent Registry</strong> holds the organisation's agents and decides who may reach which agent and which of its skills. <strong>Agent Servers</strong> are virtual servers: to your client each one looks like the agent, and to the real agent it looks like the client.</p>
+
+<img src="diagrams/aigw-agent-gateway-a2a.svg" alt="Two stacked lanes comparing the same A2A call. The top lane shows an agent client calling an upstream A2A agent server directly, with a note that each client authenticates to the agent itself, reaches every skill, and leaves no auditable record. The bottom lane routes the client through the Prisma AIRS AI Gateway, where a virtual agent server, the Agent Registry access decision, and a log entry sit between the client and the upstream agent. Four numbered boxes below give the configuration order, and two panels cover the public-endpoint requirement and the access-control grains listed as coming soon." loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.1 &mdash; Enable the Agent Gateway on an API key</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Agent access is off by default on every key. Two separate things have to be set, and missing either one produces an authorization failure rather than a useful message.</p>
+    <ol>
+      <li>Open the <strong>API Keys</strong> page in Strata Cloud Manager and create or edit a key.</li>
+      <li>Turn on the <strong>Agent Gateway</strong> toggle in the key's permissions.</li>
+      <li>Enable the <code>agents.invoke</code> scope on any key that will actually call an agent, as opposed to one used only for administration.</li>
+    </ol>
+    <p><strong>Verify:</strong> reopen the key and confirm both the toggle and the scope are set. Record which key you used, because the registry's access decisions in Step 3.3 are made against it.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.2 &mdash; Register the agent and fetch its card</span>
+  </div>
+  <div class="collapsible-body">
+    <p>In the Agent Registry, add the upstream agent server URL. This is the address of the real agent, and it is also where the gateway will fetch the agent card and authenticate.</p>
+    <p>If you are testing before a production agent exists, two public A2A agents are published for the purpose:</p>
+    <table>
+      <thead><tr><th>Test agent</th><th>URL</th><th>Authentication</th></tr></thead>
+      <tbody>
+        <tr><td>Hello world</td><td><code>https://hello.a2aregistry.org</code></td><td>None</td></tr>
+        <tr><td>Tools with header auth</td><td><code>https://a2a-header-auth.ayush-0a3.workers.dev</code></td><td><code>Authorization: Bearer secret-key-1</code></td></tr>
+      </tbody>
+    </table>
+    <p>Press <strong>Fetch Agent Card</strong>. The gateway reads <code>/.well-known/agent.json</code> from the URL you gave it and validates the transport and authentication schemes the agent declares.</p>
+    <p><strong>Verify:</strong> the card comes back and lists the skills you expect. This is the step that proves the gateway can reach and authenticate to the agent, so do not move on from a failure here. Everything downstream assumes this call works.</p>
+    <div class="callout callout-danger">
+      <div class="callout-title">The upstream URL has to be publicly reachable</div>
+      <p>Backend v1.16.1 and later apply SSRF protections to the registered URL. The gateway rejects private IP addresses, cloud metadata hosts, and any URL carrying a <code>#</code> fragment. An agent running inside your own network cannot be registered by its internal address: it has to be published on a reachable public <code>http</code> or <code>https</code> endpoint first. Raise this during design, because it is a networking change rather than a gateway setting, and it has blocked more than one proof of concept at this exact step.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.3 &mdash; Provision workspaces and scope the skills</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Choose which workspaces the agent is available in, then narrow what those workspaces can call. Access control operates at two grains today:</p>
+    <ul>
+      <li><strong>The agent</strong> &mdash; whether a caller may reach it at all.</li>
+      <li><strong>The skill</strong> &mdash; which of the capabilities the agent publishes a caller may invoke.</li>
+    </ul>
+    <p>Scope to the skills a client was built for rather than to the agent's whole surface. An agent that can both read a record and delete one should not expose deletion to a client that only ever reads, and the skill grain is what makes that distinction enforceable at the gateway instead of inside the agent.</p>
+    <p><strong>Verify:</strong> from a client holding a key scoped to one skill, attempt a skill you did not grant. The call should be refused. A refusal here is the control working, and it is worth capturing as evidence rather than treating as a failed test.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Plan workspace boundaries around agent access</div>
+      <p>Per-user access control, skill control inside specific workspaces, and skill control for specific users are all published as coming soon and are not available. Until they arrive the workspace is the smallest unit an agent can be scoped to. Where two groups of users need different agent access, that difference has to be expressed as two workspaces today.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.4 &mdash; Point the client at the virtual server</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Open the <strong>Agents</strong> tab and copy the virtual server URL for the agent. It follows the agent's slug:</p>
+    <div class="code-block">
+      <pre><code>https://aigw.portkey.ai/agent/{agent-slug}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Replace the agent server URL in your client with that one, and send the gateway API key as the bearer token. No other client change is needed, because the virtual server speaks A2A to your client exactly as the real agent did.</p>
+    <p>Confirm the swap worked by fetching the card through the gateway:</p>
+    <div class="code-block">
+      <pre><code>curl --location --request POST \
+  'https://aigw.portkey.ai/agent/{agent-slug}/.well-known/agent.json' \
+  --header 'Content-Type: application/json' \
+  --header 'Authorization: Bearer {PORTKEY_API_KEY}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>In Python, the A2A SDK's card resolver needs nothing beyond the new base URL and the gateway key:</p>
+    <div class="code-block">
+      <pre><code>import asyncio, json
+import httpx
+from a2a.client import A2ACardResolver
+
+BASE_URL = "https://aigw.portkey.ai/agent/{agent-slug}"
+API_KEY = "{PORTKEY_API_KEY}"
+
+async def main():
+    async with httpx.AsyncClient(
+        base_url=BASE_URL,
+        headers={"Authorization": f"Bearer {API_KEY}"},
+    ) as client:
+        resolver = A2ACardResolver(httpx_client=client, base_url=BASE_URL)
+        card = await resolver.get_agent_card()
+        print(json.dumps(card.model_dump(mode="json", exclude_none=True), indent=2))
+
+asyncio.run(main())</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p><strong>Verify:</strong> the card returned through the gateway matches the one the registry fetched in Step 3.2, and the skills listed are the ones this key is scoped to. Then run a real task against the agent and confirm it completes as it did before the swap.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Self-hosted deployments substitute their own host</div>
+      <p>On a self-hosted or hybrid data plane, replace <code>aigw.portkey.ai/agent</code> with your own gateway address. The slug and the path after it are unchanged.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3.5 &mdash; Confirm agent traffic is being logged</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Logging is the reason most organisations put a gateway in front of their agents in the first place. Every request to a virtual server is recorded, and those records are what the observability and governance features are built on.</p>
+    <p><strong>Verify:</strong> open the Logs view and find the calls you made in Step 3.4. Confirm the agent and the invoking key are both identifiable on the log line. Then make a call that the registry should refuse, from Step 3.3, and confirm it appears too. A refused call that leaves no record is worse than no control at all, so check both.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Direct calls to the agent bypass all of this</div>
+      <p>The gateway only sees traffic sent to the virtual server. Any client still holding the real agent's address and credential continues to reach it directly, unlogged and unscoped. Completing this phase means also withdrawing that direct access at the agent, otherwise the registry describes a policy the network does not enforce.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Troubleshooting ────────────────────────────────────────── -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Symptoms and causes</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td>The whole streamed response arrives at once</td><td>Client-side buffering, not a gateway problem</td><td>Add <code>-N</code> to curl, or disable buffering in the client.</td></tr>
+        <tr><td>No <code>hook_results</code> in any chunk</td><td><code>x-portkey-strict-open-ai-compliance</code> left at its default of <code>true</code></td><td>Set it to <code>false</code> on the request.</td></tr>
+        <tr><td>A guardrail that should block returns <code>246</code></td><td>Deny is off, so the verdict is advisory</td><td>Set deny to true on the guardrail.</td></tr>
+        <tr><td>A guardrail that should block returns <code>200</code></td><td>The guardrail is asynchronous, or is not attached to this config</td><td>Set async to false, and confirm the ID is in <code>input_guardrails</code>.</td></tr>
+        <tr><td>Streaming requests record zero cost</td><td>The provider omits usage data unless asked</td><td>Send <code>stream_options: {"include_usage": true}</code>.</td></tr>
+        <tr><td>A stalled stream never times out</td><td>The timeout does not fire once one chunk has arrived</td><td>Add a client-side idle timeout between chunks.</td></tr>
+        <tr><td>Log status reads <code>Cache Disabled</code></td><td>No cache block on the config, or <code>x-portkey-debug: "false"</code> on the request</td><td>Add the cache block, and remove the debug header.</td></tr>
+        <tr><td>Semantic cache never hits</td><td>Ineligible request, a non-matching body parameter, or a vector dimension mismatch</td><td>Work down the gates in Step 2.5 in order.</td></tr>
+        <tr><td>Two applications serve each other's answers</td><td>The system prompt is ignored by semantic matching</td><td>Separate them with <code>x-portkey-cache-namespace</code>.</td></tr>
+        <tr><td>Fetch Agent Card fails on a valid agent</td><td>SSRF protections reject private addresses, metadata hosts, and <code>#</code> fragments</td><td>Publish the agent on a public endpoint and re-register it.</td></tr>
+        <tr><td>Agent call returns an authorization error</td><td>The Agent Gateway toggle or the <code>agents.invoke</code> scope is missing from the key</td><td>Set both on the key, as in Step 3.1.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Reference ──────────────────────────────────────────────── -->
+<h2 id="reference">Reference</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Request headers</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Header</th><th>Default</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>x-portkey-strict-open-ai-compliance</code></td><td><code>true</code></td><td>At <code>false</code>, guardrail <code>hook_results</code> chunks are emitted inside the stream.</td></tr>
+        <tr><td><code>x-portkey-cache-namespace</code></td><td>Unset</td><td>Partitions the cache by this string instead of by every request header.</td></tr>
+        <tr><td><code>x-portkey-cache-force-refresh</code></td><td><code>false</code></td><td>Bypasses the cache and replaces the stored entry. Requires a cache config on the request.</td></tr>
+        <tr><td><code>x-portkey-debug</code></td><td><code>true</code></td><td>At <code>false</code>, caching is switched off for the request.</td></tr>
+        <tr><td><code>x-portkey-metadata</code></td><td>Unset</td><td>Must match exactly for a cache hit, in both simple and semantic mode.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Semantic cache environment variables</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Variable</th><th>Accepted values</th></tr></thead>
+      <tbody>
+        <tr><td><code>SEMANTIC_CACHE_EMBEDDING_PROVIDER</code></td><td><code>openai</code>, <code>azure-openai</code>, <code>google</code>, <code>vertex-ai</code></td></tr>
+        <tr><td><code>SEMANTIC_CACHE_EMBEDDINGS_URL</code></td><td>The provider's embeddings endpoint</td></tr>
+        <tr><td><code>SEMANTIC_CACHE_EMBEDDING_MODEL</code></td><td>Model name, or the deployment name on Azure OpenAI</td></tr>
+        <tr><td><code>SEMANTIC_CACHE_EMBEDDING_API_KEY</code></td><td>A plain API key. Token-based auth is not supported here.</td></tr>
+        <tr><td><code>SEMANTIC_CACHE_EMBEDDING_DIMENSIONS</code></td><td>Must match the vector store's configured dimension</td></tr>
+        <tr><td><code>SEMANTIC_CACHE_SIMILARITY_THRESHOLD</code></td><td>Cosine similarity floor for a hit. Defaults to <code>0.95</code>.</td></tr>
+        <tr><td><code>VECTOR_STORE</code></td><td><code>milvus</code> or <code>pinecone</code></td></tr>
+        <tr><td><code>VECTOR_STORE_ADDRESS</code></td><td>Store address, or the index name on Pinecone</td></tr>
+        <tr><td><code>VECTOR_STORE_COLLECTION_NAME</code></td><td>Milvus only. Must match the embedding model name.</td></tr>
+        <tr><td><code>VECTOR_STORE_API_KEY</code></td><td>Vector store credential</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Limits and status values</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead><tr><th>Limit</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Semantic cache request size</td><td>Under 8,191 tokens</td></tr>
+        <tr><td>Semantic cache message count</td><td>Four or fewer, with at least one user message</td></tr>
+        <tr><td>Semantic cache routes</td><td><code>/chat/completions</code> and <code>/completions</code></td></tr>
+        <tr><td>Cache TTL</td><td>60 seconds minimum, 90 days maximum, 7 days by default</td></tr>
+        <tr><td>Organisation cache TTL ceiling</td><td>25,923,000 seconds</td></tr>
+        <tr><td>Streaming routes with guardrail results</td><td><code>/chat/completions</code>, <code>/completions</code>, <code>/embeddings</code>, <code>/messages</code></td></tr>
+      </tbody>
+    </table>
+    <table>
+      <thead><tr><th>Status value</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>Cache Hit</code></td><td>Exact match served from the cache.</td></tr>
+        <tr><td><code>Cache Semantic Hit</code></td><td>A differently worded prompt matched by meaning.</td></tr>
+        <tr><td><code>Cache Miss</code></td><td>No match. The provider was called and the response stored.</td></tr>
+        <tr><td><code>Cache Refreshed</code></td><td>The force-refresh header replaced the stored entry.</td></tr>
+        <tr><td><code>Cache Disabled</code></td><td>No cache block on the config, or caching suppressed by a header.</td></tr>
+        <tr><td><code>246</code></td><td>A guardrail failed, and the request was processed anyway.</td></tr>
+        <tr><td><code>446</code></td><td>A guardrail failed with deny set, and the request was stopped.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Sources ────────────────────────────────────────────────── -->
+<h2 id="sources">Sources</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Where each claim comes from</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Everything in this guide is drawn from the Prisma AIRS AI Gateway product documentation as mirrored on 21 September 2026. Nothing here is inferred from behaviour observed in a tenant, so each claim can be checked against the page it came from.</p>
+    <table>
+      <thead><tr><th>Phase</th><th>Source page</th><th>Last modified</th></tr></thead>
+      <tbody>
+        <tr><td>1. Streaming</td><td>Guardrails, under Streaming Responses</td><td>Carries the input and output asymmetry, the compliance header, and the four supported routes.</td></tr>
+        <tr><td>1. Streaming</td><td>Request timeouts, under Caveats and Considerations</td><td>Carries the first-chunk timeout behaviour.</td></tr>
+        <tr><td>1. Streaming</td><td>Cost management, troubleshooting section</td><td>Carries the zero-cost behaviour and <code>stream_options</code>.</td></tr>
+        <tr><td>2. Caching</td><td>Cache (Simple and Semantic)</td><td>18 September 2026. Carries the mode table, hit and miss rules, environment variables, TTL, namespace, and force refresh.</td></tr>
+        <tr><td>3. Agent Gateway</td><td>Agent Gateway, Registry, Servers, and Quickstart</td><td>15 September 2026. Carries the two components, the scopes, the SSRF constraints, the virtual URL, and the coming-soon list.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Two things to re-check before a customer conversation</div>
+      <p>The coming-soon list on the Agent Registry is designed to change, so confirm it is still accurate before quoting it. The similarity threshold default of 0.95 is a documented default rather than a measured one, so treat any hit-rate projection built on it as an estimate until it is tested against the customer's own traffic.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<script src="../../shared/js/pan-guides.js"></script>
+</body>
+</html>

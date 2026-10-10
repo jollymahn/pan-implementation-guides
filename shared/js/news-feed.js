@@ -37,6 +37,13 @@ var NEWS_VISIBLE_COUNT = 6;
 
 var NEWS_ITEMS = [
   {
+    badge: "New",
+    date: "2026-10-10",
+    title: "Streaming, semantic caching, and A2A on the AI Gateway",
+    href: "guides/ai-gateway/streaming-caching-a2a.html",
+    tags: "An output guardrail cannot stop a stream, Streamed calls record zero cost, Semantic cache gate by gate, Embedding provider and vector store, Agent Registry and virtual servers, Three new diagrams"
+  },
+  {
     badge: "Updated",
     date: "2026-10-07",
     title: "Red teaming a Bedrock Agent or a Foundry agent now ships with working code",

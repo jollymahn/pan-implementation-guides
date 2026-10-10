@@ -127,6 +127,7 @@ var CATALOG = [
       { t: 'ECS and Container Apps', h: 'guides/ai-gateway/serverless-deployment.html', note: 'Hybrid without Kubernetes' },
       { t: 'LLM API key management', h: 'guides/ai-gateway/llm-api-key-management.html', note: 'Vault, rotation, expiry alerting' },
       { t: 'Flow diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html', note: 'Request paths end to end' },
+      { t: 'Streaming, caching, and A2A', h: 'guides/ai-gateway/streaming-caching-a2a.html', note: 'SSE guardrails, semantic cache, agents' },
       { t: 'All AI Gateway guides', h: 'guides/ai-gateway/index.html', hub: true }
     ]
   },
@@ -504,6 +505,11 @@ var HUBS = [
         desc: 'Secure key storage for customers who need a key management process in place before configuring the gateway: creating the key vault, storing provider API keys, giving the gateway an identity, granting access, retrieving secrets at runtime, and rotation with expiry alerting.',
         tags: ['Key Vault', 'Rotation', 'RBAC', 'Managed Identity'],
         h: 'guides/ai-gateway/llm-api-key-management.html' },
+      { accent: 'card-ai', badge: 'Companion',
+        title: 'Streaming, Semantic Caching, and A2A',
+        desc: 'Three capabilities that change what the gateway can enforce and what it can see: server-sent event streaming and why an output guardrail can only report on it, semantic caching with its embedding provider and vector store, and the Agent Gateway for agent-to-agent traffic. Includes the support and roadmap position for each.',
+        tags: ['Streaming', 'Guardrails', 'Semantic Cache', 'A2A', 'Agent Registry'],
+        h: 'guides/ai-gateway/streaming-caching-a2a.html' },
     ]
   },
 

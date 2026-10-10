@@ -585,6 +585,7 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'Core Deployment', h: 'guides/ai-gateway/ai-gateway-deployment.html' },
     { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html' },
     { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html' },
+    { t: 'Streaming, Caching, and A2A', h: 'guides/ai-gateway/streaming-caching-a2a.html' },
     { label: 'Hybrid Data Plane' },
     // Hybrid Infrastructure carries the sizing and prerequisites both container
     // paths depend on, so it is their parent here rather than a third sibling.
