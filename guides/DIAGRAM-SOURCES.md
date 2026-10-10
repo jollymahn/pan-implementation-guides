@@ -49,7 +49,8 @@ python3 clean-svg.py NAME.svg
 | `ai-gateway/diagrams/aigw-claude-code.svg` | Routing Claude Code through the gateway with three environment variables | `aigw-claude-code.drawio` |
 | `ai-gateway/diagrams/aigw-attribution-billing.svg` | Where cost figures and group breakdowns come from | `aigw-attribution-billing.drawio` |
 | `ai-gateway/diagrams/aigw-request-lifecycle.svg` | The six per-request checks and the errors each one returns | `aigw-request-lifecycle.drawio` |
+| `ai-gateway/diagrams/aigw-agent-identity.svg` | Agent authentication through CIE Directory Sync and Azure Entra ID, and what the gateway attributes the call to | `aigw-agent-identity.drawio` |
 | `ai-gateway/diagrams/aigw-architecture-overview.svg` | *(pre-existing, hand-authored SVG)* | none |
 | `ai-gateway/diagrams/aigw-deployment-models.svg` | *(pre-existing, hand-authored SVG)* | none |
 
-All eight draw.io diagrams are presented together, with commentary and open questions, on the review page at `ai-gateway/diagrams/flow-diagrams-review.html`.
+All nine draw.io diagrams are presented together, with commentary and open questions, on the review page at `ai-gateway/diagrams/flow-diagrams-review.html`.

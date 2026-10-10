@@ -80,16 +80,16 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
 </div>
 
 <h1>AI Gateway flow diagrams</h1>
-<div class="subtitle">Eight diagrams covering the traffic path, the two-key model, three provider cases, one client case, attribution and billing, and the per-request pipeline. Review here, then we wire the approved ones into the deployment guide.</div>
+<div class="subtitle">Nine diagrams covering the traffic path, the two-key model, three provider cases, one client case, attribution and billing, the per-request pipeline, and how an agent's identity reaches the gateway. Review here, then we wire the approved ones into the deployment guide.</div>
 
 <div class="callout note">
   <div class="callout-title">How to read this set</div>
   <p>Each diagram is layered on purpose. The boxes and arrows carry the conceptual story that an architect or an exec can follow in one pass. The monospace insets carry the actual headers, environment variables, and field names, so the same page also works as a build reference on a deployment call. Nothing is duplicated between the two layers.</p>
-  <p>Sources are <code>.drawio</code>, exports are <code>.svg</code> (25 to 45 KB each, light mode pinned, no raster fallback). Both sit next to this page in <code>docs/guides/ai-gateway/diagrams/</code>, so every diagram below is editable. Open a <code>.drawio</code> file in diagrams.net, edit, then re-export with <code>clean-svg.py</code> in the same folder.</p>
+  <p>Sources are <code>.drawio</code>, exports are <code>.svg</code> (25 to 50 KB each, light mode pinned, no raster fallback). Both sit next to this page in <code>docs/guides/ai-gateway/diagrams/</code>, so every diagram below is editable. Open a <code>.drawio</code> file in diagrams.net, edit, then re-export with <code>clean-svg.py</code> in the same folder.</p>
 </div>
 
 <nav class="toc">
-  <strong>The eight diagrams</strong>
+  <strong>The nine diagrams</strong>
   <div class="grp">Core</div>
   <ol>
     <li><a href="#d1">How the API key gets into the app call</a></li>
@@ -109,6 +109,10 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
   <ol start="7">
     <li><a href="#d7">Attribution and billing</a></li>
     <li><a href="#d8">What the gateway does to a single request</a></li>
+  </ol>
+  <div class="grp">Identity</div>
+  <ol start="9">
+    <li><a href="#d9">How an agent's identity reaches the gateway</a></li>
   </ol>
   <p style="margin-top:10px"><a href="#gaps">Gaps worth raising with the customer</a> &middot; <a href="#open">Verification against the documentation mirror</a> &middot; <a href="#next">Suggested next step</a></p>
 </nav>
@@ -219,6 +223,10 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
   <p>Groups are JSON metadata tags you attach to each gateway API key. Those tags flow into the logs, a budget or rate policy in Policies &amp; Profiles matches on a Condition Key with includes and excludes lists, and Group by Key then applies the cap per value of that key rather than to the matched set as a whole.</p>
   <p>The consequence: the metadata schema is the chargeback model. It has to be agreed before the first key is issued, because budget limits never apply retroactively and keys already in production carry their old tags until they are reissued.</p>
 </div>
+<div class="callout note">
+  <div class="callout-title">Narrowed by diagram 9</div>
+  <p>The statement above holds for <em>groups</em>, and it is still the right answer to the chargeback question. Two things it understates are covered in <a href="#d9">diagram 9</a>. Cloud Identity Engine does more than gate console login: through Directory Sync it decides which directory users exist as AI Gateway users in which workspace, and a User API key can only be issued against someone that sync has already provisioned. And a request authenticated with a JWT does carry a user identity, read from the token's own claims. What never arrives is a directory <em>group</em> the gateway could policy on, which is why metadata remains the grouping mechanism either way.</p>
+</div>
 
 <h2 id="d8"><span class="num">8</span>What the gateway does to a single request</h2>
 <p class="lede">The per-request pipeline, including every place a call can stop and where the record lands.</p>
@@ -233,8 +241,39 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
   <p>A guardrail that exists in the catalogue does nothing until it is attached. Every check in step 4 runs only when its guardrail ID is listed in a config's <code>before_request_hooks</code> or <code>after_request_hooks</code>, and a guardrail set to <code>async=true</code> observes and logs without blocking, returning <code>246</code> rather than <code>446</code>. Enabling a guardrail is not the same as enforcing it on a route.</p>
 </div>
 
+<h2 id="d9"><span class="num">9</span>How an agent's identity reaches the gateway</h2>
+<p class="lede">Answers: how an agent running against the gateway is authenticated, what identity the gateway ends up attributing the call to, and which part of that Cloud Identity Engine and Azure Entra ID each supply.</p>
+<div class="meta">Source <code>aigw-agent-identity.drawio</code> &middot; Export <code>aigw-agent-identity.svg</code></div>
+<figure>
+  <img src="aigw-agent-identity.svg" alt="Three horizontal bands. The control plane band runs Entra ID into Cloud Identity Engine, Directory Sync, a one-to-one group to workspace mapping, and the resulting workspace member list, labelled as running on a schedule. The data plane band runs an agent to Entra ID for a token, then into the AI Gateway, which validates the signature against the JWKS, resolves the organization and workspace, checks the route scope, and attributes the request. The egress band shows the gateway swapping in its own Azure credential to reach Azure AI Foundry. A callout between the first two bands explains that the email claim on the token has to string match an AI Gateway user in the target workspace. Side panels cover why there is no User-ID here, the three separate jobs Entra ID performs, what each credential type attributes to, and which credential an agent should use." loading="lazy">
+  <figcaption>Entra ID appears three times in this picture and means something different each time: the directory behind Cloud Identity Engine, the issuer of the agent's token, and the credential the gateway uses to reach Azure.</figcaption>
+</figure>
+<div class="callout danger">
+  <div class="callout-title">The headline finding &mdash; there is no User-ID in the AI Gateway</div>
+  <p>The question as usually asked assumes a PAN-OS mechanism that does not exist here. User-ID is a firewall construct: the firewall learns an IP-to-user mapping out of band, from a domain controller or a User-ID agent, and security policy then matches on the user it found. The AI Gateway has none of that. There is no IP-to-user mapping, no User-ID agent, and no directory group travelling with the request.</p>
+  <p>Identity arrives inside the request, as the credential itself. So the question that does have an answer is which credential the agent presents, and what identity that credential carries. The diagram is built around that reframing, which is why the red panel sits first.</p>
+</div>
+<p>The three jobs Entra ID does are on three different clocks, and conflating them is most of the confusion. They are also configured in three different places, so a customer can have one working and assume the others follow.</p>
+<ul>
+  <li><strong>Source directory, behind Cloud Identity Engine</strong> &mdash; supplies the users and groups that become workspace membership. Runs on a sync schedule, never on the request path.</li>
+  <li><strong>Token issuer for the agent</strong> &mdash; signs the JWT the agent presents, which the gateway validates against Entra's JWKS. This one runs per request.</li>
+  <li><strong>Egress credential to Azure</strong> &mdash; a service principal or managed identity the gateway holds to reach Azure AI Foundry. It has nothing to do with the caller, and the caller never sees it.</li>
+</ul>
+<p>All three can point at the same Entra tenant. They are still three separate configurations, and the third one works perfectly well when the first two are absent.</p>
+<div class="callout warning">
+  <div class="callout-title">The one string that has to match</div>
+  <p>Per-user attribution turns on a plain string comparison. When the email on the agent's token matches an AI Gateway user in the target workspace, the request is attributed to that person and inherits their workspace role. When it does not match, the request falls back to a generic workspace service key and the per-user attribution is silently lost, with no error on the call.</p>
+  <p>That makes the <strong>User Identity Attribute</strong> chosen in Directory Sync, UPN or Mail, a decision with teeth. It has to produce the same value as the email claim Entra puts in the token. Choose Mail wherever the UPN is a <code>user@tenant.onmicrosoft.com</code> form and the real address is not.</p>
+</div>
+<p>On the data plane, the gateway reads user identity from the claims in a fixed precedence order: <code>email_id</code>, then <code>sub</code>, then <code>uid</code>. Tokens must be RS256 with a <code>kid</code> that resolves in the configured JWKS and an <code>exp</code> that is present and in the future. An HS256 token is rejected with an error that reads as a bad API key rather than a bad algorithm, which sends people looking at the wrong thing.</p>
+<div class="callout note">
+  <div class="callout-title">Mode A and Mode B, and why Entra is the Mode B case</div>
+  <p>Mode A is for when you control the token issuer and can add the gateway's own <code>portkey_*</code> claims to it. Mode B takes a stock IdP token and resolves the organization, the workspace, and the scopes on the gateway instead. Entra is explicitly the Mode B case, because an organization generally cannot add gateway-specific claims to a corporate token for one application. Where scopes cannot be issued in Entra, <code>JWT_LOCAL_AUTH_DEFAULT_SCOPES</code> supplies them.</p>
+  <p>Validation location also varies. On AI Gateway Cloud the management plane validates the token. A hybrid or air-gapped gateway on 2.5.0 or later can validate locally with <code>JWT_ENABLED=ON</code>, which keeps authentication working when the management plane is unreachable.</p>
+</div>
+
 <h2 id="gaps">Gaps worth raising with the customer</h2>
-<p class="lede">Eleven points that a customer conversation tends to skip past. All eleven changed the diagrams and are baked into the artwork rather than left as speaker notes.</p>
+<p class="lede">Twelve points that a customer conversation tends to skip past. All twelve changed the diagrams and are baked into the artwork rather than left as speaker notes.</p>
 <table>
   <thead><tr><th style="width:26%">Gap</th><th style="width:44%">Why it matters</th><th style="width:30%">Where it appears</th></tr></thead>
   <tbody>
@@ -248,6 +287,7 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
     <tr><td><strong>Data residency under SaaS</strong></td><td>Prompts leave the customer environment before reaching the provider, even when the model sits in the customer's own AWS account or Azure subscription. This is the argument for Hybrid, and it should surface in design rather than at cutover.</td><td>Diagram 3, "Where the prompt physically goes"</td></tr>
     <tr><td><strong>An unattached guardrail enforces nothing</strong></td><td>PII detection and content moderation are Pro guardrails on the gateway, so the capability is there. It only takes effect once the guardrail ID is attached to a config's request hooks, and an <code>async=true</code> guardrail logs without blocking. A customer who enables one in the catalogue and assumes it is live will find nothing was ever stopped.</td><td>Diagram 8, step 4 and bottom left</td></tr>
     <tr><td><strong>Per-user attribution needs an application change</strong></td><td>A shared application key attributes to the application. Splitting it per end user means sending <code>x-portkey-metadata</code> with its reserved <code>_user</code> key on every request, which the application has to do. For developer tooling this becomes a one-key-per-developer decision with real revocation consequences.</td><td>Diagram 7, bottom centre; diagram 6, red callout</td></tr>
+    <tr><td><strong>Agent identity hangs on one string comparison</strong></td><td>The email claim on an agent's JWT has to match an AI Gateway user in the target workspace, or the call quietly attributes to a generic workspace service key instead of a person. The UPN or Mail choice in Directory Sync is what decides whether those two strings agree, and a user whose chosen attribute is empty is skipped during sync with no error anywhere.</td><td>Diagram 9, the amber join callout and pitfalls 4 and 5</td></tr>
     <tr><td><strong>Streaming calls log zero cost by default</strong></td><td>With <code>stream: true</code> the provider returns no usage data, so tokens and cost record as zero and budget enforcement never sees the spend. The application has to send <code>stream_options: {include_usage: true}</code>. This affects every OpenAI-compatible provider, Azure OpenAI included.</td><td>Diagram 4, confirmed-detail box</td></tr>
   </tbody>
 </table>
@@ -290,6 +330,16 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
   <li><strong>Guardrails</strong> &mdash; diagram 8 said PII detection and content moderation are deliberately not gateway guardrails and belong to AI Runtime. That is wrong. <code>product/guardrails/pii-redaction.md</code> documents a Pro PII guardrail redacting phone, email, location, IP, SSN, names, and credit card, and <code>list-of-guardrail-checks.md:253</code> lists Moderate Content, Check Language, Detect PII, and Detect Gibberish as Pro checks. Palo Alto Networks Prisma AIRS also appears at <code>:88</code> as a guardrail provider configured inside the gateway. Step 4 named Check Language and Detect Gibberish as basic checks, when both are Pro. The real limitation, which replaced the wrong one, is that a guardrail does nothing until its ID is attached to a config's <code>before_request_hooks</code> or <code>after_request_hooks</code>, and an <code>async=true</code> guardrail observes without blocking (<code>capabilities.md:74-81</code>).</li>
 </ul>
 
+<h3>Agent identity, on diagram 9 &mdash; drawn entirely from the mirror</h3>
+<p>This diagram was drafted after the mirror landed, so every box on it has a source rather than an assumption behind it.</p>
+<ul>
+  <li><strong>The control plane band</strong> &mdash; <code>product/enterprise-offering/org-management/directory-sync/cie-directory-sync.md</code> gives the Connected Directory and User Identity Attribute fields, the one-to-one group to workspace mapping, the requirement that the workspace already exist, the delta sync every 15 minutes against a roughly weekly full cache rebuild, and the fact that deleting a mapping removes those users immediately. The same page scopes the feature to Strata Cloud Manager tenants, with SCIM as the non-SCM path.</li>
+  <li><strong>The data plane band</strong> &mdash; <code>product/enterprise-offering/org-management/jwt.md</code> gives the RS256 requirement, the <code>kid</code> and <code>exp</code> rules, the <code>email_id</code> then <code>sub</code> then <code>uid</code> precedence, the organization and workspace resolution order, the per-route scopes, Mode A against Mode B with Entra named as the Mode B example, the Entra JWKS and issuer and audience values, <code>JWT_ENABLED</code>, and <code>JWT_LOCAL_AUTH_DEFAULT_SCOPES</code>.</li>
+  <li><strong>The two-layer split</strong> &mdash; the MCP gateway authentication pages state it most plainly: gateway auth covers the caller reaching the gateway, server auth covers the gateway reaching what is behind it, and the caller never holds the second credential. The egress band is the same split applied to a model provider.</li>
+  <li><strong>The egress band</strong> &mdash; the three Azure auth types and the <code>Cognitive Services OpenAI User</code> role are the same sources already cited for diagram 5.</li>
+  <li><strong>The no-User-ID framing</strong> &mdash; asserted from absence, which is worth naming as a weaker form of evidence. Grepping <code>user-id</code> and <code>userid</code> across the AI Gateway guides returns nothing, and in the mirror the only hits are an unrelated ElastiCache ARN and an <code>x-user-id</code> header-forwarding example in the MCP gateway docs, which is a header an application sets rather than anything the gateway learns.</li>
+</ul>
+
 <h3>Still unverified</h3>
 <ul>
   <li>Whether streaming response <em>content</em> is logged in full or summarized. The usage-data behaviour above is documented; the log body is not.</li>
@@ -310,6 +360,7 @@ code{font-family:'Source Code Pro',monospace;font-size:13px}
     <tr><td>6. Routing Claude Code through the gateway</td><td>The Claude Code section, above the three exports. The four-column table could replace prose the guide currently carries.</td></tr>
     <tr><td>7. Attribution and billing</td><td>Phase 5, above the Policies &amp; Profiles walkthrough</td></tr>
     <tr><td>8. Single request lifecycle</td><td>The troubleshooting or reference section at the end</td></tr>
+    <tr><td>9. How an agent's identity reaches the gateway</td><td>Phase 5, immediately before diagram 7, since it answers where the identity on a request came from and diagram 7 then answers what is done with it. The red no-User-ID panel is also the right thing to put in front of a PAN-OS audience in the opening concepts section.</td></tr>
   </tbody>
 </table>
 <p>Wiring them in is deliberately not part of this change. The guide itself is untouched, so this page can be reviewed, argued with, or rejected without anything to unpick. If the set is approved, the follow-up is lazy-loaded <code>img</code> tags with italic captions inside the relevant collapsible bodies of <code>ai-gateway-deployment.html</code>.</p>
