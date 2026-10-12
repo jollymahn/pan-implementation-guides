@@ -879,6 +879,15 @@
       <button class="export-btn secondary" id="btn-csv" type="button">Prerequisites CSV</button>
       <button class="export-btn secondary" id="btn-print" type="button">Print / PDF</button>
     </div>
+
+    <!-- One delivery playbook per selected pillar that has one. The engagement
+         pack above plans the engagement; a playbook tracks the build, so the
+         two are separate downloads rather than more sheets in one workbook. -->
+    <div class="export-bar" id="playbook-bar" style="display:none;">
+      <span class="export-bar-text" id="playbook-bar-text"></span>
+      <span class="export-status" id="playbook-status"></span>
+      <span id="playbook-buttons"></span>
+    </div>
     <div class="planner-tab-bar">
       <button class="planner-tab-btn active" data-tab="project-plan">Project Plan</button>
       <button class="planner-tab-btn" data-tab="prerequisites">Prerequisites Checklist</button>
@@ -899,6 +908,7 @@
 <script src="../../shared/js/pan-guides.js"></script>
 <script src="../../shared/js/ooxml.js"></script>
 <script src="../../shared/js/airs-engagement-model.js"></script>
+<script src="../../shared/js/airs-playbooks.js"></script>
 <script>
 // ── Pillar data ──────────────────────────────────────────────────────────────
 
@@ -1165,7 +1175,54 @@ function updateAll() {
     renderProjectPlan();
     renderPrerequisites();
     renderPersonas();
+    renderPlaybookBar();
   }
+}
+
+/* Delivery playbooks for the selected pillars. Only some pillars have one so
+ * far, so the bar hides rather than showing an empty row, and the text names
+ * which selections are not covered yet instead of leaving the gap unexplained. */
+function renderPlaybookBar() {
+  const bar = document.getElementById('playbook-bar');
+  const PB = window.AIRSPlaybooks;
+  if (!PB) { bar.style.display = 'none'; return; }
+
+  const ids = [...selectedPillars];
+  const have = ids.filter(id => PB.PLAYBOOKS[id]);
+  const missing = ids.filter(id => !PB.PLAYBOOKS[id]);
+
+  if (!have.length) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+
+  const pct = Math.round((PB.MARGIN - 1) * 100);
+  let text = `Delivery playbook: every guide step as a tracked task with an owner, a milestone per phase, and the meeting and attendee list for each gate. Effort carries a ${pct}% contingency.`;
+  if (missing.length) {
+    text += ` No playbook yet for ${missing.map(id => PILLARS[id].name).join(', ')}.`;
+  }
+  document.getElementById('playbook-bar-text').textContent = text;
+
+  const host = document.getElementById('playbook-buttons');
+  host.innerHTML = '';
+  have.forEach(id => {
+    const plan = PB.buildPlaybook(id);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'export-btn secondary';
+    btn.textContent = `${PB.PLAYBOOKS[id].name} playbook (${plan.plannedDays}d)`;
+    btn.addEventListener('click', () => {
+      triggerDownload(buildXlsx(PB.buildSheets(id)), PB.fileName(id), OOXML.MIME.xlsx);
+      flashPlaybookStatus('Playbook downloaded');
+    });
+    host.appendChild(btn);
+  });
+}
+
+let playbookStatusTimer = null;
+function flashPlaybookStatus(msg) {
+  const el = document.getElementById('playbook-status');
+  el.textContent = msg;
+  clearTimeout(playbookStatusTimer);
+  playbookStatusTimer = setTimeout(() => { el.textContent = ''; }, 2600);
 }
 
 // ── Project Plan ─────────────────────────────────────────────────────────────
