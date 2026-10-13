@@ -208,7 +208,7 @@ const NETWORK_INTERCEPT = {
         { heading: 'Step 3.3 — Review Cloud Asset Map', owner: 'PANW / CUSTOMER', hours: 3, who: [P.cloud, P.network],
           task: 'Review the discovered VPCs, subnets, and workloads against the customer inventory and resolve gaps' },
         { heading: 'Step 3.4 — Analyze AI Traffic & Network Risk', owner: 'PANW / CUSTOMER', hours: 10, who: [P.app, P.security, P.network],
-          task: 'Analyse discovered AI traffic, identify the models and endpoints in use, and agree which flows are in scope for inspection' },
+          task: 'Analyze discovered AI traffic, identify the models and endpoints in use, and agree which flows are in scope for inspection' },
         { heading: 'Step 3.5 — Configure Agent Discovery (Optional)', owner: 'PANW', hours: 4, who: [P.network],
           task: 'Deploy agent discovery where host-level visibility is needed, or record the decision to skip it' }
       ],
@@ -355,7 +355,7 @@ const NETWORK_INTERCEPT = {
         agenda: [
           'Confirm the change window and the approved change record',
           'Walk the routing change and the exact rollback steps',
-          'Agree the rollback trigger and who is authorised to call it',
+          'Agree the rollback trigger and who is authorized to call it',
           'Confirm who is on the bridge and how they are reached',
           'Confirm whether a preemptive TAC case is needed for the window'
         ]
@@ -453,7 +453,7 @@ const NETWORK_INTERCEPT = {
       objective: 'Prove the inspection works on real traffic, tune it, and hand it over.',
       steps: [
         { heading: 'Step 7.1 — Verify Firewall Health', owner: 'PANW', hours: 2, who: [P.network],
-          task: 'Confirm firewall health, resource utilisation, and management connectivity under load' },
+          task: 'Confirm firewall health, resource utilization, and management connectivity under load' },
         { heading: 'Step 7.2 — Generate Test Traffic', owner: 'PANW / CUSTOMER', hours: 4, who: [P.app, P.security],
           task: 'Generate representative AI traffic, including prompts that should trigger each enabled detection category' },
         { heading: 'Step 7.3 — Review AI Security Logs', owner: 'PANW / CUSTOMER', hours: 6, who: [P.security],
@@ -554,9 +554,9 @@ const AIGW_KUBERNETES = {
         { heading: 'Tooling', owner: 'CUSTOMER', hours: 1, who: [G.k8s],
           task: 'Confirm kubectl, Helm, and the cloud CLI are installed at supported versions on the build host' },
         { heading: 'What you request from Palo Alto Networks', owner: 'PANW / CUSTOMER', hours: 1, who: [G.sponsor],
-          task: 'Raise the requests Palo Alto Networks has to fulfil: chart access, registry credentials, and tenant provisioning' },
+          task: 'Raise the requests Palo Alto Networks has to fulfill: chart access, registry credentials, and tenant provisioning' },
         { anchor: 'licensing', heading: 'Licensing step 1: Size your license by monthly token consumption', owner: 'PANW / CUSTOMER', hours: 3, who: [G.aiml, G.sponsor],
-          task: 'Estimate monthly token consumption per application and size the licence against it' },
+          task: 'Estimate monthly token consumption per application and size the license against it' },
         { anchor: 'licensing', heading: 'Licensing step 2: Create the deployment profile and allocate flex credits', owner: 'CUSTOMER / PANW', hours: 2, who: [G.sponsor],
           task: 'Create the deployment profile in the Customer Support Portal and allocate flex credits to it' },
         { anchor: 'licensing', heading: 'Licensing step 3: Map the deployment profile to a Tenant Service Group', owner: 'CUSTOMER / PANW', hours: 1, who: [G.cloud],
@@ -567,7 +567,7 @@ const AIGW_KUBERNETES = {
       milestone: {
         name: 'Licensing and Sizing Milestone',
         criteria: [
-          'Token consumption estimate agreed and the licence sized against it',
+          'Token consumption estimate agreed and the license sized against it',
           'Deployment profile created with flex credits allocated',
           'Deployment profile mapped to the Tenant Service Group in the agreed region',
           'AI Gateway reachable in Strata Cloud Manager',
@@ -1112,7 +1112,7 @@ const MICROPERIMETER = {
     { num: 3, title: 'Steering Rules and Validation', anchor: 'steering-rules',
       objective: 'Tune what gets redirected, then prove inspection and exceptions both work.',
       steps: [
-        { heading: 'Step 4.1: Understand Default Behavior and Rule Structure', owner: 'PANW / CUSTOMER', hours: 0.5, who: [P.app, P.network], task: 'Walk the default redirect behaviour and the rule structure' },
+        { heading: 'Step 4.1: Understand Default Behavior and Rule Structure', owner: 'PANW / CUSTOMER', hours: 0.5, who: [P.app, P.network], task: 'Walk the default redirect behavior and the rule structure' },
         { heading: 'Step 4.2: Add Exception Rules for Management Traffic', owner: 'PANW / CUSTOMER', hours: 1.5, who: [P.network, P.security], task: 'Except management and monitoring traffic so the workload stays reachable' },
         { heading: 'Step 4.3: Add Targeted Redirect Rules', owner: 'PANW / CUSTOMER', hours: 1.5, who: [P.security], task: 'Add the targeted redirect rules for the traffic in scope' },
         { heading: 'Step 4.4: Delete Rules', owner: 'PANW', hours: 0.5, who: [P.app], task: 'Confirm how a rule is removed, so the team can undo a change safely' },
@@ -1177,14 +1177,14 @@ const API_INTERCEPT = {
         ] } },
 
     { num: 2, title: 'License Activation', anchor: 'license-activation',
-      objective: 'Activate the licence and logging tenant.',
+      objective: 'Activate the license and logging tenant.',
       steps: [
         { heading: 'Step 2.1 — Activate Your AIRS License', owner: 'CUSTOMER / PANW', hours: 2, who: [I.sponsor, I.cloud], task: 'Activate the AIRS license against the TSG and confirm it shows active' },
         { heading: 'Step 2.2 — Activate Strata Logging Service', owner: 'CUSTOMER / PANW', hours: 2, who: [I.cloud, I.security], task: 'Activate Strata Logging Service in the correct region' },
         { heading: 'Step 2.3 — Generate a Device Certificate', owner: 'PANW', hours: 1, who: [I.cloud], task: 'Generate the device certificate and record its expiry' },
         { heading: 'Step 2.4 — Create a Deployment Profile', owner: 'PANW', hours: 1, who: [I.cloud], task: 'Create the deployment profile and associate it with the TSG' }
       ],
-      milestone: { name: 'Activation Milestone', criteria: ['Licence active against the correct TSG', 'Strata Logging Service running in the agreed region', 'Device certificate valid', 'Deployment profile created and associated'] } },
+      milestone: { name: 'Activation Milestone', criteria: ['License active against the correct TSG', 'Strata Logging Service running in the agreed region', 'Device certificate valid', 'Deployment profile created and associated'] } },
 
     { num: 3, title: 'Security Profile and API Key', anchor: 'security-profile',
       objective: 'Onboard API Intercept and issue the credential applications will use.',
@@ -1210,7 +1210,7 @@ const API_INTERCEPT = {
       steps: [
         { heading: 'Step 6.1 — Scan API Request Format', owner: 'PANW / CUSTOMER', hours: 3, who: [I.dev, I.api], task: 'Walk the request format with the developers who will build the call' },
         { heading: 'Step 6.2 — Scan API Response Format', owner: 'PANW / CUSTOMER', hours: 3, who: [I.dev, I.api], task: 'Walk the response format and agree how each verdict is handled in the application' },
-        { heading: 'Step 6.3 — Integration Pattern: Python', owner: 'PANW / CUSTOMER', hours: 24, who: [I.dev], task: 'Implement the scan call in the application, including error handling and the behaviour on an AIRS timeout' },
+        { heading: 'Step 6.3 — Integration Pattern: Python', owner: 'PANW / CUSTOMER', hours: 24, who: [I.dev], task: 'Implement the scan call in the application, including error handling and the behavior on an AIRS timeout' },
         { heading: 'Step 6.4 — Integration Pattern: cURL', owner: 'PANW', hours: 4, who: [I.dev], task: 'Provide the cURL equivalent for testing and for non-Python callers' },
         { heading: 'Step 6.5 — Integration Pattern: MCP Tool Events', owner: 'PANW / CUSTOMER', hours: 8, who: [I.dev, I.security], task: 'Implement MCP tool event scanning, or record that it is out of scope' },
         { heading: 'Step 6.6 — Handling DLP Data Masking', owner: 'PANW / CUSTOMER', hours: 6, who: [I.dev, I.security], task: 'Handle masked responses in the application and agree what the user sees' }
@@ -1223,8 +1223,8 @@ const API_INTERCEPT = {
         optional: [I.sponsor],
         agenda: [
           'Walk the request and response formats with the implementing developers',
-          'Agree the behaviour for each verdict, including block, mask, and allow',
-          'Agree the behaviour when AIRS is slow or unreachable: fail open or fail closed',
+          'Agree the behavior for each verdict, including block, mask, and allow',
+          'Agree the behavior when AIRS is slow or unreachable: fail open or fail closed',
           'Agree the latency budget and how it is measured',
           'Confirm where the API key is read from at runtime'
         ] } },
@@ -1235,7 +1235,7 @@ const API_INTERCEPT = {
         { heading: 'Step 7.1 — Validate API Intercept Scanning', owner: 'PANW / CUSTOMER', hours: 8, who: [I.dev, I.security], task: 'Run benign and malicious traffic through every integrated application and confirm each verdict' },
         { heading: 'Step 7.2 — Review Cloud Asset Discovery', owner: 'PANW / CUSTOMER', hours: 4, who: [I.cloud, I.security], task: 'Review what discovery found and reconcile it against the application inventory' },
         { heading: 'Step 7.3 — Cloud Asset Map', owner: 'PANW / CUSTOMER', hours: 3, who: [I.cloud], task: 'Walk the Cloud Asset Map and resolve anything unexpected' },
-        { heading: 'Step 7.4 — Analyze Network Traffic Risks', owner: 'PANW / CUSTOMER', hours: 8, who: [I.security], task: 'Analyse the network traffic risks discovery surfaced and agree which are in scope for remediation' }
+        { heading: 'Step 7.4 — Analyze Network Traffic Risks', owner: 'PANW / CUSTOMER', hours: 8, who: [I.security], task: 'Analyze the network traffic risks discovery surfaced and agree which are in scope for remediation' }
       ],
       milestone: { name: 'Validation and Handover Milestone', criteria: ['Benign and malicious traffic verified on every integrated application', 'Latency measured and accepted by each application owner', 'Discovery reconciled against the application inventory, with gaps explained', 'Network traffic risks triaged into in-scope and phase two', 'Runbooks delivered: key rotation, policy tuning, incident response', 'Operations team signed off on knowledge transfer'] },
       meeting: {
@@ -1296,10 +1296,10 @@ const MODEL_SECURITY = {
       objective: 'Create the profile, permissions, and service account scanning depends on.',
       steps: [
         { heading: 'Step 3.1: Create a Deployment Profile', owner: 'PANW / CUSTOMER', hours: 2, who: [MS.owner], task: 'Create the deployment profile and associate it with the tenant' },
-        { heading: 'Step 3.2: Verify IAM Role Permissions', owner: 'CUSTOMER / PANW', hours: 3, who: [MS.security], task: 'Verify the IAM roles let the scanner read the model artefacts it has to scan' },
+        { heading: 'Step 3.2: Verify IAM Role Permissions', owner: 'CUSTOMER / PANW', hours: 3, who: [MS.security], task: 'Verify the IAM roles let the scanner read the model artifacts it has to scan' },
         { heading: 'Step 3.3: Create a Service Account for API & SDK Access', owner: 'CUSTOMER / PANW', hours: 2.5, who: [MS.security], task: 'Create the service account the scanner authenticates with, scoped least-privilege' }
       ],
-      milestone: { name: 'Foundation Milestone', criteria: ['Deployment profile created and associated with the tenant', 'IAM permissions verified by reading a real model artefact', 'Service account created least-privilege and its secret stored safely', 'Credential rotation owner identified'] } },
+      milestone: { name: 'Foundation Milestone', criteria: ['Deployment profile created and associated with the tenant', 'IAM permissions verified by reading a real model artifact', 'Service account created least-privilege and its secret stored safely', 'Credential rotation owner identified'] } },
 
     { num: 3, title: 'Policy Configuration', anchor: 'configuration',
       objective: 'Decide what counts as a finding and what a finding does.',
@@ -1333,7 +1333,7 @@ const MODEL_SECURITY = {
         { heading: 'Step 5.6: View Scan Results', owner: 'PANW / CUSTOMER', hours: 2.5, who: [MS.owner, MS.security], task: 'Walk the scan results view with the people who will triage findings' },
         { heading: 'Scan Configuration Options', owner: 'PANW / CUSTOMER', hours: 2.5, who: [MS.cicd], task: 'Set the scan configuration options for routine use and record the chosen defaults' }
       ],
-      milestone: { name: 'Scanning Milestone', criteria: ['Client installed and authenticating from the scanner host', 'No credential written into a shell profile or a script', 'A model scanned successfully from every source in scope', 'Scan duration measured against the largest model', 'Triage team can read a result and find the offending artefact'] } },
+      milestone: { name: 'Scanning Milestone', criteria: ['Client installed and authenticating from the scanner host', 'No credential written into a shell profile or a script', 'A model scanned successfully from every source in scope', 'Scan duration measured against the largest model', 'Triage team can read a result and find the offending artifact'] } },
 
     { num: 5, title: 'Validation and Handover', anchor: 'validation',
       objective: 'Prove the scanner catches what it should and misses nothing it should not.',
@@ -1368,7 +1368,7 @@ const AIGW_SERVERLESS = {
   guide: AIGW_DIR + 'serverless-deployment.html',
   summary: 'Deploy the AI Gateway hybrid data plane to ECS Fargate or Azure Container Apps with Terraform.',
   effortRange: [4, 6],
-  effortNote: 'The component estimate of 2–4 days covers the data plane install alone. This guide also sizes and activates the licence, and carries the optional moves to a managed cache and log store, which the component figure assumes are already decided.',
+  effortNote: 'The component estimate of 2–4 days covers the data plane install alone. This guide also sizes and activates the license, and carries the optional moves to a managed cache and log store, which the component figure assumes are already decided.',
   variants: {
     key: 'platform', label: 'Platform',
     note: 'Secrets, Terraform, ingress and private connectivity all differ between ECS and Container Apps.',
@@ -1390,15 +1390,15 @@ const AIGW_SERVERLESS = {
       objective: 'Size the deployment, confirm platform limits, and license it.',
       steps: [
         { heading: 'What Palo Alto Networks provides', owner: 'PANW', hours: 1, who: [G.aiml], task: 'Confirm what Palo Alto Networks supplies: chart, image, and tenant' },
-        { heading: 'Requests to Palo Alto Networks', owner: 'PANW / CUSTOMER', hours: 1, who: [G.sponsor], task: 'Raise the requests Palo Alto Networks has to fulfil before the build can start' },
+        { heading: 'Requests to Palo Alto Networks', owner: 'PANW / CUSTOMER', hours: 1, who: [G.sponsor], task: 'Raise the requests Palo Alto Networks has to fulfill before the build can start' },
         { heading: 'Tooling, permissions, and sizing', owner: 'CUSTOMER', hours: 2, who: [G.k8s, G.cloud], task: 'Confirm tooling, cloud permissions, and the sizing for the expected token throughput' },
         { heading: 'ECS Fargate — what is and is not supported', owner: 'PANW / CUSTOMER', hours: 1.5, who: [G.k8s], task: 'Walk the platform limits and confirm nothing in scope depends on an unsupported feature' },
-        { anchor: 'licensing', heading: 'Licensing step 1: Size your license by monthly token consumption', owner: 'PANW / CUSTOMER', hours: 3, who: [G.aiml, G.sponsor], task: 'Estimate monthly token consumption and size the licence against it' },
+        { anchor: 'licensing', heading: 'Licensing step 1: Size your license by monthly token consumption', owner: 'PANW / CUSTOMER', hours: 3, who: [G.aiml, G.sponsor], task: 'Estimate monthly token consumption and size the license against it' },
         { anchor: 'licensing', heading: 'Licensing step 2: Create the deployment profile and allocate flex credits', owner: 'CUSTOMER / PANW', hours: 2, who: [G.sponsor], task: 'Create the deployment profile and allocate flex credits' },
         { anchor: 'licensing', heading: 'Licensing step 3: Map the deployment profile to a Tenant Service Group', owner: 'CUSTOMER / PANW', hours: 1, who: [G.cloud], task: 'Map the deployment profile to the Tenant Service Group' },
         { anchor: 'licensing', heading: 'Licensing step 4: Open the AI Gateway in Strata Cloud Manager', owner: 'PANW', hours: 0.5, who: [G.cloud], task: 'Open the AI Gateway in Strata Cloud Manager and confirm the tenant is provisioned' }
       ],
-      milestone: { name: 'Licensing and Sizing Milestone', criteria: ['Token consumption estimated and the licence sized against it', 'Platform limits understood and nothing in scope blocked by them', 'Deployment profile created with credits allocated and mapped to the TSG', 'AI Gateway reachable in Strata Cloud Manager', 'Platform chosen: ECS Fargate or Container Apps'] },
+      milestone: { name: 'Licensing and Sizing Milestone', criteria: ['Token consumption estimated and the license sized against it', 'Platform limits understood and nothing in scope blocked by them', 'Deployment profile created with credits allocated and mapped to the TSG', 'AI Gateway reachable in Strata Cloud Manager', 'Platform chosen: ECS Fargate or Container Apps'] },
       meeting: {
         name: 'Kickoff and Sizing Session', when: 'Before Phase 1 work begins', position: 'before', minutes: 90,
         required: [G.sponsor, G.aiml, G.k8s, 'Professional Services Engineer', 'Project Manager'],
@@ -1475,7 +1475,7 @@ const AIGW_KEY_MANAGEMENT = {
   guide: AIGW_DIR + 'llm-api-key-management.html',
   summary: 'Hold LLM provider credentials in Azure Key Vault and let the AI Gateway read them through a managed identity.',
   effortRange: [3, 5],
-  effortNote: 'The component estimate of 1–2 days assumes one or two providers. This guide covers five provider paths and both identity models, and proves a real rotation. Drop the rows for providers not in scope and the figure falls back towards the component estimate.',
+  effortNote: 'The component estimate of 1–2 days assumes one or two providers. This guide covers five provider paths and both identity models, and proves a real rotation. Drop the rows for providers not in scope and the figure falls back toward the component estimate.',
 
   phases: [
     { num: 1, title: 'Vault and Secrets', anchor: 'create-key-vault',
@@ -1549,7 +1549,7 @@ const AIGW_AGENT_IDENTITY = {
       objective: 'Decide what attribution is actually needed, then build the directory behind it.',
       steps: [
         { heading: 'P.1 — Tenancy and version floors', owner: 'PANW / CUSTOMER', hours: 1.5, who: [G.cloud], task: 'Confirm the tenancy and the version floors for the gateway and Cloud Identity Engine' },
-        { heading: 'P.2 — Decide what attribution you actually need', owner: 'PANW / CUSTOMER', hours: 3, who: [G.security, G.aiml], task: 'Decide what attribution the organisation actually needs, and write down what will not be attributable' },
+        { heading: 'P.2 — Decide what attribution you actually need', owner: 'PANW / CUSTOMER', hours: 3, who: [G.security, G.aiml], task: 'Decide what attribution the organization actually needs, and write down what will not be attributable' },
         { anchor: 'phase-1', heading: '1.1 — Create a cloud directory in Cloud Identity Engine', owner: 'PANW / CUSTOMER', hours: 2.5, who: [G.cloud], task: 'Create the cloud directory in Cloud Identity Engine' },
         { anchor: 'phase-1', heading: '1.2 — Map each group to one workspace', owner: 'PANW / CUSTOMER', hours: 3, who: [G.security, G.aiml], task: 'Map each directory group to exactly one workspace and record the mapping' }
       ],
@@ -1574,7 +1574,7 @@ const AIGW_AGENT_IDENTITY = {
         { anchor: 'phase-3', heading: '3.1 — AI Gateway Cloud: nothing to do', owner: 'PANW', hours: 0.5, who: [G.cloud], task: 'Confirm no gateway-local validation is needed on AI Gateway Cloud, or move to the hybrid step' },
         { anchor: 'phase-3', heading: '3.2 — Hybrid and air-gapped: enable gateway-local validation', owner: 'PANW / CUSTOMER', hours: 3, who: [G.cloud, G.security], task: 'Enable gateway-local token validation for a hybrid or air-gapped deployment, or record that it is not needed' }
       ],
-      milestone: { name: 'Token Validation Milestone', criteria: ['Agent registered in Entra with its identifiers recorded', 'JWKS configured and the gateway validating a real token', 'Gateway-local validation enabled where the deployment needs it', 'Token expiry and refresh behaviour understood'] } },
+      milestone: { name: 'Token Validation Milestone', criteria: ['Agent registered in Entra with its identifiers recorded', 'JWKS configured and the gateway validating a real token', 'Gateway-local validation enabled where the deployment needs it', 'Token expiry and refresh behavior understood'] } },
 
     { num: 3, title: 'Attribution and Verification', anchor: 'phase-4',
       objective: 'Send the token correctly and prove the attribution lands.',
@@ -1616,9 +1616,9 @@ const AIGW_STREAMING = {
         { heading: 'Step 1.2 — Put the enforcing guardrail on the input side', owner: 'PANW / CUSTOMER', hours: 3, who: [G.security, G.aiml], task: 'Move the enforcing guardrail to the input side, where it can still block' },
         { heading: 'Step 1.3 — Expose the guardrail verdicts inside the stream', owner: 'PANW / CUSTOMER', hours: 3, who: [G.aiml], task: 'Surface the guardrail verdicts inside the stream so the client can act on them' },
         { heading: 'Step 1.4 — Restore cost accounting on streamed calls', owner: 'PANW / CUSTOMER', hours: 2.5, who: [G.aiml, G.sponsor], task: 'Restore token and cost accounting for streamed calls' },
-        { heading: 'Step 1.5 — Re-check timeout behaviour', owner: 'PANW / CUSTOMER', hours: 2, who: [G.aiml], task: 'Re-check timeout behaviour, which differs once responses stream' }
+        { heading: 'Step 1.5 — Re-check timeout behaviour', owner: 'PANW / CUSTOMER', hours: 2, who: [G.aiml], task: 'Re-check timeout behavior, which differs once responses stream' }
       ],
-      milestone: { name: 'Streaming Milestone', criteria: ['Streaming calls working end to end', 'Enforcing guardrail on the input side and still able to block', 'Guardrail verdicts visible to the client inside the stream', 'Token and cost accounting correct for streamed calls', 'Timeout behaviour understood and accepted for streaming'] },
+      milestone: { name: 'Streaming Milestone', criteria: ['Streaming calls working end to end', 'Enforcing guardrail on the input side and still able to block', 'Guardrail verdicts visible to the client inside the stream', 'Token and cost accounting correct for streamed calls', 'Timeout behavior understood and accepted for streaming'] },
       meeting: {
         name: 'Feature Scoping Session', when: 'Before Phase 1 work begins', position: 'before', minutes: 60,
         required: [G.aiml, G.security, 'Professional Services Engineer'],
@@ -1726,15 +1726,15 @@ const AIGW_DEPLOYMENT = {
 
   phases: [
     { num: 1, title: 'License and Activate', anchor: 'license-activate',
-      objective: 'Size the licence, allocate credits, and open the gateway.',
+      objective: 'Size the license, allocate credits, and open the gateway.',
       steps: [
         { heading: 'Step 1.1: Confirm prerequisites', owner: 'CUSTOMER / PANW', hours: 3, who: [G.cloud, G.aiml], task: 'Confirm the tenancy, access, and network prerequisites' },
-        { heading: 'Step 1.2: Size your license by monthly token consumption', owner: 'PANW / CUSTOMER', hours: 4, who: [G.aiml, G.sponsor], task: 'Estimate monthly token consumption per application and size the licence against it' },
+        { heading: 'Step 1.2: Size your license by monthly token consumption', owner: 'PANW / CUSTOMER', hours: 4, who: [G.aiml, G.sponsor], task: 'Estimate monthly token consumption per application and size the license against it' },
         { heading: 'Step 1.3: Create the deployment profile and allocate flex credits', owner: 'CUSTOMER / PANW', hours: 2, who: [G.sponsor], task: 'Create the deployment profile and allocate flex credits' },
         { heading: 'Step 1.4: Map the deployment profile to a Tenant Service Group', owner: 'CUSTOMER / PANW', hours: 1, who: [G.cloud], task: 'Map the deployment profile to the Tenant Service Group and confirm the region' },
         { heading: 'Step 1.5: Open the AI Gateway in Strata Cloud Manager', owner: 'PANW', hours: 0.5, who: [G.cloud], task: 'Open the AI Gateway in Strata Cloud Manager and confirm the tenant is provisioned' }
       ],
-      milestone: { name: 'Licensing Milestone', criteria: ['Prerequisites confirmed, including tenancy and network access', 'Token consumption estimated per application and the licence sized against it', 'Deployment profile created with flex credits allocated', 'Profile mapped to the TSG in the agreed region', 'AI Gateway reachable in Strata Cloud Manager'] },
+      milestone: { name: 'Licensing Milestone', criteria: ['Prerequisites confirmed, including tenancy and network access', 'Token consumption estimated per application and the license sized against it', 'Deployment profile created with flex credits allocated', 'Profile mapped to the TSG in the agreed region', 'AI Gateway reachable in Strata Cloud Manager'] },
       meeting: {
         name: 'Kickoff and Sizing Session', when: 'Before Phase 1 work begins', position: 'before', minutes: 90,
         required: [G.sponsor, G.aiml, G.security, 'Professional Services Engineer', 'Project Manager'],
@@ -1783,7 +1783,7 @@ const AIGW_DEPLOYMENT = {
         { variant: 'hybrid', heading: 'Step 3.9 (Hybrid): Disable the SaaS gateway', owner: 'PANW / CUSTOMER', hours: 1, who: [G.cloud], task: 'Disable the SaaS gateway so traffic cannot silently fall back to it' },
         { heading: 'Step 3.10: Tell users and agents apart', owner: 'PANW / CUSTOMER', hours: 3, who: [G.security, G.aiml], task: 'Configure the gateway to distinguish users from agents, and confirm it in the logs' }
       ],
-      milestone: { name: 'LLM Integration Milestone', criteria: ['Provider integration created and a real call succeeding through it', 'Provider key read from a secret store, never typed into a config file', 'Workspaces provisioned with budgets and rate limits, and the behaviour at the limit agreed', 'Gateway exposed behind TLS to its intended callers only, where hybrid', 'SaaS gateway disabled on a hybrid deployment so traffic cannot fall back', 'Users and agents distinguishable in the logs', 'Key replacement procedure proven'] },
+      milestone: { name: 'LLM Integration Milestone', criteria: ['Provider integration created and a real call succeeding through it', 'Provider key read from a secret store, never typed into a config file', 'Workspaces provisioned with budgets and rate limits, and the behavior at the limit agreed', 'Gateway exposed behind TLS to its intended callers only, where hybrid', 'SaaS gateway disabled on a hybrid deployment so traffic cannot fall back', 'Users and agents distinguishable in the logs', 'Key replacement procedure proven'] },
       meeting: {
         name: 'Workspace and Budget Review', when: 'Before workspaces are provisioned', position: 'step',
         beforeStep: 'Step 3.5: Set up workspace provisioning, budgets, and rate limits', minutes: 90,
@@ -1817,7 +1817,7 @@ const AIGW_DEPLOYMENT = {
         { heading: 'Step 5.4: Manage prompt logs and compliance export', owner: 'PANW / CUSTOMER', hours: 4, who: [G.security, G.sponsor], task: 'Agree prompt log retention and the compliance export, and confirm it against the data policy' },
         { heading: 'Step 5.5: Final end-to-end verification', owner: 'PANW / CUSTOMER', hours: 4, who: [G.aiml, G.security], task: 'Run the end-to-end verification covering a benign call, a blocked call, and a tool call' }
       ],
-      milestone: { name: 'Guardrails and Handover Milestone', criteria: ['Guardrail configured with detection categories signed off by the security lead', 'Event logs reaching the security team', 'Prompt log retention and compliance export agreed against the data policy', 'End-to-end verification passing: benign, blocked, and tool call', 'Budget and rate limit behaviour demonstrated at the limit', 'Runbooks delivered: key rotation, workspace provisioning, guardrail tuning'] },
+      milestone: { name: 'Guardrails and Handover Milestone', criteria: ['Guardrail configured with detection categories signed off by the security lead', 'Event logs reaching the security team', 'Prompt log retention and compliance export agreed against the data policy', 'End-to-end verification passing: benign, blocked, and tool call', 'Budget and rate limit behavior demonstrated at the limit', 'Runbooks delivered: key rotation, workspace provisioning, guardrail tuning'] },
       meeting: {
         name: 'Guardrail Review and Handover', when: 'End of Phase 5', position: 'after', minutes: 90,
         required: [G.sponsor, G.security, G.aiml, 'Professional Services Engineer', 'Project Manager'],
@@ -1890,14 +1890,14 @@ const CLOUD_DEPLOYMENT = {
         ] } },
 
     { num: 2, title: 'License Activation and Foundation', anchor: 'license-foundation',
-      objective: 'Activate the licence and logging tenant, and create the credentials the firewall needs.',
+      objective: 'Activate the license and logging tenant, and create the credentials the firewall needs.',
       steps: [
         { heading: 'Step B.1 — Activate Your AIRS License', owner: 'CUSTOMER / PANW', hours: 2, who: [P.sponsor, P.cloud], task: 'Activate the AIRS license against the TSG and confirm it shows active' },
         { heading: 'Step B.2 — Activate Strata Logging Service', owner: 'CUSTOMER / PANW', hours: 2, who: [P.cloud, P.security], task: 'Activate Strata Logging Service in the correct region' },
         { heading: 'Step B.3 — Generate a Device Certificate', owner: 'PANW', hours: 1, who: [P.cloud], task: 'Generate the device certificate registration PIN and record its expiry' },
         { heading: 'Step B.4 — Create a Deployment Profile', owner: 'PANW', hours: 1, who: [P.cloud], task: 'Create the deployment profile, associate it with the TSG, and apply the authcode' }
       ],
-      milestone: { name: 'Foundation Milestone', criteria: ['Licence active against the correct TSG', 'Strata Logging Service running in the agreed region', 'Device certificate PIN generated and within its validity window', 'Deployment profile created and associated with the TSG'] } },
+      milestone: { name: 'Foundation Milestone', criteria: ['License active against the correct TSG', 'Strata Logging Service running in the agreed region', 'Device certificate PIN generated and within its validity window', 'Deployment profile created and associated with the TSG'] } },
 
     { num: 3, title: 'Cloud Account Onboarding and Discovery', anchor: 'cloud-onboarding',
       objective: 'Onboard the cloud accounts and establish what AI traffic exists.',
@@ -1905,7 +1905,7 @@ const CLOUD_DEPLOYMENT = {
         { heading: 'Step C.1 — Navigate to Cloud Account Manager', owner: 'PANW', hours: 0.5, who: [P.cloud], task: 'Open Cloud Account Manager and confirm the tenant is ready to onboard accounts' },
         { heading: 'Step C.2 — Onboard Cloud Account', owner: 'PANW / CUSTOMER', hours: 4, who: [P.cloud], task: 'Onboard each AWS account or Azure subscription and confirm it reaches Active state' },
         { heading: 'Step C.3 — Review Cloud Asset Map', owner: 'PANW / CUSTOMER', hours: 3, who: [P.cloud, P.network], task: 'Review the discovered assets against the customer inventory and resolve gaps' },
-        { heading: 'Step C.4 — Analyze AI Traffic & Network Risk', owner: 'PANW / CUSTOMER', hours: 8, who: [P.app, P.security, P.network], task: 'Analyse discovered AI traffic and agree which flows are in scope for inspection' },
+        { heading: 'Step C.4 — Analyze AI Traffic & Network Risk', owner: 'PANW / CUSTOMER', hours: 8, who: [P.app, P.security, P.network], task: 'Analyze discovered AI traffic and agree which flows are in scope for inspection' },
         { heading: 'Step C.5 — Configure Agent Discovery (Optional)', owner: 'PANW', hours: 4, who: [P.network], task: 'Deploy agent discovery where host-level visibility is needed, or record the decision to skip it' }
       ],
       milestone: { name: 'Discovery Milestone', criteria: ['Every in-scope cloud account Active in Cloud Account Manager', 'Cloud Asset Map reconciled against the customer inventory', 'AI traffic inventory agreed with the applications and models in scope', 'Sizing confirmed against the discovered traffic volume', 'Agent discovery deployed or explicitly descoped'] } },
@@ -1961,7 +1961,7 @@ const CLOUD_DEPLOYMENT = {
         { variant: 'manual-bootstrap', anchor: 'manual-bootstrap', owner: 'PANW / CUSTOMER', hours: 3, who: [P.network, P.cloud], heading: 'Step 6.1: Choose a Bootstrap Method', task: 'Choose the bootstrap method that fits the existing brownfield infrastructure' },
         { variant: 'manual-bootstrap', anchor: 'manual-bootstrap', owner: 'PANW', hours: 4, who: [P.network], heading: 'Step 6.2: Configure init-cfg.txt Parameters', task: 'Write init-cfg.txt with the tenant, certificate, and management parameters' },
         { variant: 'manual-bootstrap', anchor: 'manual-bootstrap', owner: 'PANW / CUSTOMER', hours: 5, who: [P.network], heading: 'Step 6.3: Configure Routing', task: 'Configure the routing that steers the in-scope traffic through the firewall' },
-        { variant: 'manual-bootstrap', anchor: 'manual-bootstrap', owner: 'PANW', hours: 2, who: [P.cloud], heading: 'Step 6.4: Apply Required Labels for Manual Terraform', task: 'Apply the labels the platform requires to recognise the firewall' },
+        { variant: 'manual-bootstrap', anchor: 'manual-bootstrap', owner: 'PANW', hours: 2, who: [P.cloud], heading: 'Step 6.4: Apply Required Labels for Manual Terraform', task: 'Apply the labels the platform requires to recognize the firewall' },
         { variant: 'manual-bootstrap', anchor: 'manual-bootstrap', owner: 'PANW / CUSTOMER', hours: 6, who: [P.network, P.cloud], heading: 'Step 6.5: Deploy and Verify', task: 'Deploy the firewall and confirm it registers and passes traffic' }
       ],
       milestone: { name: 'Deployment Milestone', criteria: ['Firewalls deployed in every in-scope region and reporting healthy', 'Every firewall connected and in sync with the management platform', 'Routing changed so the in-scope AI traffic traverses the inspection point', 'Traffic confirmed arriving at the firewall in the session log', 'Rollback path for the routing change documented and agreed', 'Teardown procedure understood before go-live'] },
@@ -1981,7 +1981,7 @@ const CLOUD_DEPLOYMENT = {
         agenda: [
           'Confirm the change window and the approved change record',
           'Walk the deployment and the exact rollback steps',
-          'Agree the rollback trigger and who is authorised to call it',
+          'Agree the rollback trigger and who is authorized to call it',
           'Confirm who is on the bridge and how they are reached',
           'Confirm whether a preemptive TAC case is needed for the window'
         ] } },
@@ -1991,7 +1991,7 @@ const CLOUD_DEPLOYMENT = {
       steps: [
         { heading: 'Next Steps', owner: 'PANW / CUSTOMER', hours: 3, who: [P.security, P.network], task: 'Walk the next steps with the customer: security profile configuration, validation, and which guide carries each' }
       ],
-      milestone: { name: 'Handover Milestone', criteria: ['Firewalls deployed, healthy, and passing traffic', 'Next phase agreed: security profile configuration and validation', 'Troubleshooting runbook handed over', 'Teardown and licence release procedure understood'] },
+      milestone: { name: 'Handover Milestone', criteria: ['Firewalls deployed, healthy, and passing traffic', 'Next phase agreed: security profile configuration and validation', 'Troubleshooting runbook handed over', 'Teardown and license release procedure understood'] },
       meeting: {
         name: 'Deployment Review and Handover', when: 'End of Phase 5', position: 'after', minutes: 60,
         required: [P.network, P.cloud, P.security, 'Professional Services Engineer', 'Project Manager'],
@@ -2052,13 +2052,13 @@ const RED_TEAMING = {
         { heading: 'Network Channel Requirements (Private Endpoints Only)', owner: 'CUSTOMER / PANW', hours: 3, who: [RT.proxy], task: 'Confirm the network channel requirements for private endpoints, or record that every target is public' },
         { heading: 'Supported Regions', owner: 'PANW', hours: 1, who: [RT.lead], task: 'Confirm the tenant region is supported for the scans in scope' }
       ],
-      milestone: { name: 'Prerequisites Milestone', criteria: ['Subscription confirmed against the target count and scan volume', 'TSG and region confirmed and supported', 'Delivery team holds the roles Red Teaming needs', 'Every target endpoint reachable, with its authentication understood', 'Written authorisation to attack each target, from someone who can give it', 'Network channel scoped in for private endpoints, or every target confirmed public'] },
+      milestone: { name: 'Prerequisites Milestone', criteria: ['Subscription confirmed against the target count and scan volume', 'TSG and region confirmed and supported', 'Delivery team holds the roles Red Teaming needs', 'Every target endpoint reachable, with its authentication understood', 'Written authorization to attack each target, from someone who can give it', 'Network channel scoped in for private endpoints, or every target confirmed public'] },
       meeting: {
         name: 'Kickoff and Rules of Engagement', when: 'Before Phase 1 work begins', position: 'before', minutes: 90,
         required: [RT.sponsor, RT.lead, RT.security, RT.app, 'Professional Services Engineer', 'Project Manager'],
         optional: [RT.proxy, RT.soc, 'Solutions Architect'],
         agenda: [
-          'Confirm which applications and agents are in scope, and get that authorisation in writing',
+          'Confirm which applications and agents are in scope, and get that authorization in writing',
           'Agree the scan window, so the SOC does not treat it as a live incident',
           'Agree rate limits and what happens if a target falls over under scan',
           'Confirm whether targets are production or a representative copy',
@@ -2158,7 +2158,7 @@ const RED_TEAMING = {
       objective: 'Turn results into findings someone owns.',
       steps: [
         { heading: 'Step 8.1: Review Scan Reports', owner: 'PANW / CUSTOMER', hours: 6, who: [RT.security, RT.lead], task: 'Review the scan reports and separate real findings from noise' },
-        { heading: 'Step 8.2: Analyze Attack Results', owner: 'PANW / CUSTOMER', hours: 8, who: [RT.security, RT.app], task: 'Analyse the successful attacks and establish what each one actually proves' },
+        { heading: 'Step 8.2: Analyze Attack Results', owner: 'PANW / CUSTOMER', hours: 8, who: [RT.security, RT.app], task: 'Analyze the successful attacks and establish what each one actually proves' },
         { heading: 'Step 8.3: Review Remediation Guidance', owner: 'PANW / CUSTOMER', hours: 6, who: [RT.security, RT.app, RT.lead], task: 'Walk the remediation guidance and agree an owner and a date for each finding' },
         { heading: 'Step 8.4: Download Reports', owner: 'PANW', hours: 2, who: [RT.security], task: 'Download the reports and store them where the customer keeps security findings' }
       ],
@@ -2360,16 +2360,16 @@ const INTEGRATIONS = [
         ],
         milestone: { name: 'Plugin Setup Milestone', criteria: ['Plugin files present on every Kong node, or the key stored in Kong Vault for the callout method', 'Plugin registered in the Kong configuration', 'Configuration change made through the normal Kong release process', 'No AIRS key written into a configuration file in plain text'] } },
       { num: 3, title: 'Gateway Configuration', anchor: 'gateway-config',
-        objective: 'Enable AIRS on the service and set its behaviour.',
+        objective: 'Enable AIRS on the service and set its behavior.',
         steps: [
           { variant: 'v2', heading: 'Step 3.1: Enable Plugin on Service (v2)', owner: 'PANW / CUSTOMER', hours: 1.5, who: [A.api], task: 'Enable the v2 plugin on the target service' },
-          { variant: 'v2', heading: 'Step 3.2: Understand MCP Detection Behavior (v2)', owner: 'PANW / CUSTOMER', hours: 1.5, who: [A.api, A.security], task: 'Walk how the plugin distinguishes MCP control messages from tool calls, and confirm the behaviour is wanted' },
+          { variant: 'v2', heading: 'Step 3.2: Understand MCP Detection Behavior (v2)', owner: 'PANW / CUSTOMER', hours: 1.5, who: [A.api, A.security], task: 'Walk how the plugin distinguishes MCP control messages from tool calls, and confirm the behavior is wanted' },
           { variant: 'v2', heading: 'Step 3.3: Dynamic Profile Selection (v2, Optional)', owner: 'PANW / CUSTOMER', hours: 1.5, who: [A.security], task: 'Configure dynamic profile selection, or record the decision to use a single profile' },
           { variant: 'v1', heading: 'Step 3.1: Enable Plugin on Service (v1)', owner: 'PANW / CUSTOMER', hours: 1.5, who: [A.api], task: 'Enable the v1 plugin on the target service' },
           { variant: 'v1', heading: 'Step 3.2: Configure Multi-Provider Support with AI Gateway (v1)', owner: 'PANW / CUSTOMER', hours: 2, who: [A.api], task: 'Configure multi-provider support, or record that a single provider is in scope' },
           { variant: 'callout', heading: 'Step 3.1: Apply Request-Callout Plugin Configuration', owner: 'PANW / CUSTOMER', hours: 2.5, who: [A.api], task: 'Apply the request-callout configuration that calls the AIRS scan API' }
         ],
-        milestone: { name: 'Gateway Configuration Milestone', criteria: ['AIRS enabled on the target service', 'Scanning behaviour agreed and configured, including MCP handling where the method supports it', 'Profile selection strategy recorded', 'Configuration committed to source control'] } },
+        milestone: { name: 'Gateway Configuration Milestone', criteria: ['AIRS enabled on the target service', 'Scanning behavior agreed and configured, including MCP handling where the method supports it', 'Profile selection strategy recorded', 'Configuration committed to source control'] } },
       { num: 4, title: 'Deployment', anchor: 'deployment',
         objective: 'Apply the configuration to the running gateway.',
         steps: [
@@ -2408,10 +2408,10 @@ const INTEGRATIONS = [
         objective: 'Confirm the proxy, the AIRS credentials, and the provider key.',
         steps: [
           { heading: 'Step 1.1: Confirm LiteLLM Proxy is running', owner: 'CUSTOMER', hours: 1, who: [A.api], task: 'Confirm the LiteLLM Proxy is running at a supported version and who operates it' },
-          { heading: 'Step 1.2: Confirm Prisma AIRS license and credentials', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Confirm the AIRS licence and obtain the API key' },
+          { heading: 'Step 1.2: Confirm Prisma AIRS license and credentials', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Confirm the AIRS license and obtain the API key' },
           { heading: 'Step 1.3: Confirm LLM provider API key', owner: 'CUSTOMER', hours: 1, who: [A.dev], task: 'Confirm the provider API key the proxy already uses' }
         ],
-        milestone: { name: 'Prerequisites Milestone', criteria: ['LiteLLM Proxy running at a supported version', 'AIRS licence active and API key issued', 'Provider key confirmed and its storage location known', 'Owner of config.yaml identified'] },
+        milestone: { name: 'Prerequisites Milestone', criteria: ['LiteLLM Proxy running at a supported version', 'AIRS license active and API key issued', 'Provider key confirmed and its storage location known', 'Owner of config.yaml identified'] },
         meeting: intKickoff('LiteLLM', [A.api, A.dev]) },
       { num: 2, title: 'Gateway and Guardrail Configuration', anchor: 'gateway-config',
         objective: 'Declare the models and attach the AIRS guardrail.',
@@ -2445,9 +2445,9 @@ const INTEGRATIONS = [
         objective: 'Confirm platform access and AIRS credentials.',
         steps: [
           { heading: 'Step 1.1: Confirm TrueFoundry platform access', owner: 'CUSTOMER', hours: 1, who: [A.api], task: 'Confirm TrueFoundry access and who can edit guardrails configuration' },
-          { heading: 'Step 1.2: Confirm Prisma AIRS license and credentials', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Confirm the AIRS licence and obtain the API key' }
+          { heading: 'Step 1.2: Confirm Prisma AIRS license and credentials', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Confirm the AIRS license and obtain the API key' }
         ],
-        milestone: { name: 'Prerequisites Milestone', criteria: ['TrueFoundry access confirmed with guardrails edit rights', 'AIRS licence active and API key issued', 'Applications in scope agreed'] },
+        milestone: { name: 'Prerequisites Milestone', criteria: ['TrueFoundry access confirmed with guardrails edit rights', 'AIRS license active and API key issued', 'Applications in scope agreed'] },
         meeting: intKickoff('TrueFoundry', [A.api]) },
       { num: 2, title: 'Guardrails Configuration', anchor: 'gateway-config',
         objective: 'Create the guardrails group and wire AIRS into it.',
@@ -2458,7 +2458,7 @@ const INTEGRATIONS = [
           { heading: 'Step 2.4: Save the Guardrails Group', owner: 'PANW', hours: 0.5, who: [A.api], task: 'Save the guardrails group and confirm it is attached to the in-scope applications' },
           { anchor: 'airs-integration', heading: 'Step 3.1: Confirm enforcement behavior', owner: 'PANW / CUSTOMER', hours: 1.5, who: [A.security], task: 'Confirm what happens on a block and on an AIRS timeout, and agree it is what the security lead wants' }
         ],
-        milestone: { name: 'Configuration Milestone', criteria: ['Guardrails group created and attached to the in-scope applications', 'AIRS provider configured with the agreed profile and region', 'API key held in the platform secret store, not typed into a field', 'Enforcement and timeout behaviour agreed with the security lead'] } },
+        milestone: { name: 'Configuration Milestone', criteria: ['Guardrails group created and attached to the in-scope applications', 'AIRS provider configured with the agreed profile and region', 'API key held in the platform secret store, not typed into a field', 'Enforcement and timeout behavior agreed with the security lead'] } },
       { num: 3, title: 'Verification', anchor: 'verification',
         objective: 'Prove scanning works and reaches the logs.',
         steps: [
@@ -2479,10 +2479,10 @@ const INTEGRATIONS = [
         objective: 'Confirm the n8n instance, AIRS credentials, and the community node.',
         steps: [
           { heading: 'Step 1.1: Confirm n8n Instance Access', owner: 'CUSTOMER', hours: 1, who: [A.api], task: 'Confirm the n8n instance, version, and who can install community nodes' },
-          { heading: 'Step 1.2: Confirm Prisma AIRS License and API Key', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Confirm the AIRS licence and obtain the API key' },
+          { heading: 'Step 1.2: Confirm Prisma AIRS License and API Key', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Confirm the AIRS license and obtain the API key' },
           { heading: 'Step 1.3: Install the Prisma AIRS Community Node', owner: 'PANW / CUSTOMER', hours: 1.5, who: [A.api], task: 'Install the Prisma AIRS community node, or record the decision to use HTTP request nodes instead' }
         ],
-        milestone: { name: 'Prerequisites Milestone', criteria: ['n8n instance confirmed and community node installation permitted', 'AIRS licence active and API key issued', 'Community node installed, or the HTTP request approach chosen', 'Workflows in scope agreed'] },
+        milestone: { name: 'Prerequisites Milestone', criteria: ['n8n instance confirmed and community node installation permitted', 'AIRS license active and API key issued', 'Community node installed, or the HTTP request approach chosen', 'Workflows in scope agreed'] },
         meeting: intKickoff('n8n', [A.api], ['Decide between the community node and HTTP request nodes']) },
       { num: 2, title: 'Credentials and Workflow', anchor: 'credentials',
         objective: 'Store the key and build scanning into the workflow.',
@@ -2510,14 +2510,14 @@ const INTEGRATIONS = [
     summary: 'Scan models in a Jenkins pipeline with Prisma AIRS Model Security.',
     phases: [
       { num: 1, title: 'Prerequisites', anchor: 'prerequisites',
-        objective: 'Confirm the Jenkins server, the Model Security licence, and the scanning profile.',
+        objective: 'Confirm the Jenkins server, the Model Security license, and the scanning profile.',
         steps: [
           { heading: 'Step 1.1: Confirm Jenkins Server Requirements', owner: 'CUSTOMER', hours: 1, who: [A.devops], task: 'Confirm the Jenkins version, agent platform, and Python availability on the agents' },
-          { heading: 'Step 1.2: Confirm Prisma AIRS Model Security License', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Confirm the Model Security licence covers the models in scope' },
+          { heading: 'Step 1.2: Confirm Prisma AIRS Model Security License', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Confirm the Model Security license covers the models in scope' },
           { heading: 'Step 1.3: Create a Prisma Cloud Service Account', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Create the service account the pipeline authenticates with' },
           { heading: 'Step 1.4: Configure a Model Security Profile', owner: 'PANW / CUSTOMER', hours: 2, who: [A.security], task: 'Configure the Model Security profile and agree which findings fail a build' }
         ],
-        milestone: { name: 'Prerequisites Milestone', criteria: ['Jenkins agents confirmed with a working Python runtime', 'Model Security licence confirmed against the models in scope', 'Service account created and its credentials held securely', 'Scanning profile agreed, including which findings fail a build'] },
+        milestone: { name: 'Prerequisites Milestone', criteria: ['Jenkins agents confirmed with a working Python runtime', 'Model Security license confirmed against the models in scope', 'Service account created and its credentials held securely', 'Scanning profile agreed, including which findings fail a build'] },
         meeting: intKickoff('Jenkins', [A.devops], ['Agree which scan findings fail a build and which only warn']) },
       { num: 2, title: 'Credentials and Pipeline', anchor: 'credentials',
         objective: 'Store the credentials and build the pipeline.',
@@ -2553,14 +2553,14 @@ const INTEGRATIONS = [
     summary: 'Scan models in a GitHub Actions workflow with Prisma AIRS Model Security.',
     phases: [
       { num: 1, title: 'Prerequisites', anchor: 'prerequisites',
-        objective: 'Confirm repository access, the Model Security licence, and the scanning profile.',
+        objective: 'Confirm repository access, the Model Security license, and the scanning profile.',
         steps: [
           { heading: 'Step 1.1: Confirm GitHub Repository Access', owner: 'CUSTOMER', hours: 0.5, who: [A.devops], task: 'Confirm the repository, runner type, and who can add workflows and secrets' },
-          { heading: 'Step 1.2: Confirm Prisma AIRS Model Security License', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Confirm the Model Security licence covers the models in scope' },
+          { heading: 'Step 1.2: Confirm Prisma AIRS Model Security License', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Confirm the Model Security license covers the models in scope' },
           { heading: 'Step 1.3: Create a Prisma Cloud Service Account', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Create the service account the workflow authenticates with' },
           { heading: 'Step 1.4: Configure a Model Security Profile', owner: 'PANW / CUSTOMER', hours: 2, who: [A.security], task: 'Configure the Model Security profile and agree which findings fail a run' }
         ],
-        milestone: { name: 'Prerequisites Milestone', criteria: ['Repository and runner type confirmed with permission to add workflows and secrets', 'Model Security licence confirmed against the models in scope', 'Service account created and its credentials held securely', 'Scanning profile agreed, including which findings fail a run'] },
+        milestone: { name: 'Prerequisites Milestone', criteria: ['Repository and runner type confirmed with permission to add workflows and secrets', 'Model Security license confirmed against the models in scope', 'Service account created and its credentials held securely', 'Scanning profile agreed, including which findings fail a run'] },
         meeting: intKickoff('GitHub Actions', [A.devops], ['Agree which scan findings fail a run and which only warn']) },
       { num: 2, title: 'Secrets and Workflow', anchor: 'credentials',
         objective: 'Store the secrets and build the workflow.',
@@ -2621,14 +2621,14 @@ const INTEGRATIONS = [
         ],
         milestone: { name: 'Installation Milestone', criteria: ['Integration files present on every target machine', 'Existing Claude Code configuration preserved', 'Install method repeatable, by script or by managed configuration', 'Uninstall path confirmed'] } },
       { num: 3, title: 'Configuration', anchor: 'configuration',
-        objective: 'Point the integration at AIRS and set its behaviour.',
+        objective: 'Point the integration at AIRS and set its behavior.',
         steps: [
           { heading: 'Step 3.1: Set Environment Variables (All Methods)', owner: 'PANW / CUSTOMER', hours: 1.5, who: [A.dev, A.security], task: 'Set the AIRS environment variables from the secret store rather than a shell profile' },
           { variant: 'hooks', heading: 'Step 3.2: Configure Hook Behavior (Hooks Method)', owner: 'PANW / CUSTOMER', hours: 1, who: [A.security], task: 'Configure which hooks fire and what happens on a block' },
           { variant: 'mcp', heading: 'Step 3.2: Review Available MCP Tools (MCP Method)', owner: 'PANW / CUSTOMER', hours: 1, who: [A.dev], task: 'Walk the available MCP tools so developers know what to call' },
           { variant: 'skill', heading: 'Step 3.2: Review Scan Types (Skill Method)', owner: 'PANW / CUSTOMER', hours: 1, who: [A.dev], task: 'Walk the scan types the skill offers so developers know what to invoke' }
         ],
-        milestone: { name: 'Configuration Milestone', criteria: ['AIRS key supplied from a secret store, not committed to a dotfile', 'Scanning behaviour configured and agreed with the security lead', 'Developers know what the integration does and when it fires', 'Behaviour on an AIRS timeout agreed'] } },
+        milestone: { name: 'Configuration Milestone', criteria: ['AIRS key supplied from a secret store, not committed to a dotfile', 'Scanning behavior configured and agreed with the security lead', 'Developers know what the integration does and when it fires', 'Behavior on an AIRS timeout agreed'] } },
       { num: 4, title: 'Verification', anchor: 'verification',
         objective: 'Prove scanning fires and behaves as agreed.',
         steps: [
@@ -2649,7 +2649,7 @@ const INTEGRATIONS = [
           { heading: 'Step 5.3: Configure Log Monitoring', owner: 'PANW / CUSTOMER', hours: 1, who: [A.security], task: 'Route the integration logs somewhere monitored' },
           { heading: 'Step 5.4: Rotate API Keys', owner: 'PANW / CUSTOMER', hours: 1, who: [A.security], task: 'Document and test the key rotation procedure' }
         ],
-        milestone: { name: 'Hardening Milestone', criteria: ['Session tracking in place so a finding traces to a session', 'Fail-open or fail-closed behaviour decided, configured, and recorded', 'Logs routed somewhere a person actually watches', 'Key rotation documented and tested once'] },
+        milestone: { name: 'Hardening Milestone', criteria: ['Session tracking in place so a finding traces to a session', 'Fail-open or fail-closed behavior decided, configured, and recorded', 'Logs routed somewhere a person actually watches', 'Key rotation documented and tested once'] },
         meeting: intHandover('Claude Code', [A.dev], ['Confirm the fail-open or fail-closed decision and who owns it']) }
     ]
   },
@@ -2675,7 +2675,7 @@ const INTEGRATIONS = [
           { anchor: 'configuration', heading: 'Step 3.1: Set Environment Variables', owner: 'PANW / CUSTOMER', hours: 1.5, who: [A.dev, A.security], task: 'Set the AIRS environment variables from the secret store rather than a shell profile' },
           { anchor: 'configuration', heading: 'Step 3.2: Review Fail-Closed Behavior', owner: 'PANW / CUSTOMER', hours: 1, who: [A.security], task: 'Confirm what happens when AIRS is unreachable and agree it is what the security lead wants' }
         ],
-        milestone: { name: 'Installation Milestone', criteria: ['Hook scripts present on every target machine', 'Intercepted events understood by the team', 'AIRS key supplied from a secret store, not committed to a dotfile', 'Behaviour on an AIRS outage agreed and recorded'] } },
+        milestone: { name: 'Installation Milestone', criteria: ['Hook scripts present on every target machine', 'Intercepted events understood by the team', 'AIRS key supplied from a secret store, not committed to a dotfile', 'Behavior on an AIRS outage agreed and recorded'] } },
       { num: 3, title: 'Verification', anchor: 'verification',
         objective: 'Prove each hook fires on the traffic it covers.',
         steps: [
@@ -2729,12 +2729,12 @@ const INTEGRATIONS = [
         ],
         milestone: { name: 'Installation Milestone', criteria: ['Hook scripts present on every target machine', 'AIRS key supplied from a secret store, not committed to a dotfile', 'Install method repeatable across the developer fleet', 'Uninstall path confirmed'] } },
       { num: 3, title: 'Configuration', anchor: 'configuration',
-        objective: 'Agree the behaviour the hooks enforce.',
+        objective: 'Agree the behavior the hooks enforce.',
         steps: [
           { heading: 'Step 3.1: Review Environment Variables (All IDEs)', owner: 'PANW / CUSTOMER', hours: 1.5, who: [A.dev], task: 'Walk the environment variables and confirm each is set correctly on a target machine' },
           { heading: 'Step 3.2: Review Fail-Closed and Truncation Behavior', owner: 'PANW / CUSTOMER', hours: 1.5, who: [A.security], task: 'Confirm what happens on an AIRS outage and what truncation means for detection coverage' }
         ],
-        milestone: { name: 'Configuration Milestone', criteria: ['Environment variables verified on a real target machine', 'Behaviour on an AIRS outage agreed and recorded', 'Truncation limits understood, with their detection impact accepted', 'Developers told what the hooks do and when they fire'] } },
+        milestone: { name: 'Configuration Milestone', criteria: ['Environment variables verified on a real target machine', 'Behavior on an AIRS outage agreed and recorded', 'Truncation limits understood, with their detection impact accepted', 'Developers told what the hooks do and when they fire'] } },
       { num: 4, title: 'Verification', anchor: 'verification',
         objective: 'Prove the hooks fire within the limits of the chosen IDE.',
         steps: [
@@ -2984,7 +2984,7 @@ function summarySheet(plan) {
   rows.push(['How to read this', 'Base effort is the task on a day where nothing goes wrong. Planned effort is what to put in the schedule. The gap is the contingency, shown rather than hidden inside the estimate.']);
   rows.push(['Working day', `${HOURS_PER_DAY} hours`]);
   rows.push(['Effort, not elapsed time', 'These are person-hours of work, not calendar duration. Customer-owned tasks often wait on an approval or a change window, which the schedule has to carry separately.']);
-  rows.push(['The Day column', `Elapsed working day if the tasks run one after another, counting meeting time. It is a starting schedule, not a claim that nothing overlaps: parallelise the customer-owned tasks and the finish moves left. The Playbook and Meetings sheets derive their Day from the same running total, so a meeting lands at the same point on both.`]);
+  rows.push(['The Day column', `Elapsed working day if the tasks run one after another, counting meeting time. It is a starting schedule, not a claim that nothing overlaps: parallelize the customer-owned tasks and the finish moves left. The Playbook and Meetings sheets derive their Day from the same running total, so a meeting lands at the same point on both.`]);
   return { name: 'Summary', cols: [28, 110], rows };
 }
 
