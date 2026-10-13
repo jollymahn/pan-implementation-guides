@@ -881,7 +881,7 @@ const K8S_PROTECTION = {
   guide: AIRS_DIR + 'airs-k8s-protection.html',
   summary: 'Extend AIRS inspection into Kubernetes with PAN-CNI, IP-tag harvesting, and dynamic address groups.',
   effortRange: [4, 7],
-  effortNote: 'The model estimates 2–3 days for the bolt-on. This guide also configures the firewall interfaces, zones, routers and NAT the CNI depends on, plus the tag collector and the IP-tag pipeline, which the bolt-on figure assumes are already in place.',
+  effortNote: 'The component now estimates 3–5 days, which is the incremental work on top of Network Intercept, because the POV generator counts the parent pillar separately. This playbook is end to end: it also carries the prerequisites and the firewall interface, zone, router and NAT configuration the CNI depends on, which the incremental figure assumes are already done.',
 
   variants: {
     key: 'platform', label: 'Cloud and management plane',
@@ -1368,7 +1368,7 @@ const AIGW_SERVERLESS = {
   guide: AIGW_DIR + 'serverless-deployment.html',
   summary: 'Deploy the AI Gateway hybrid data plane to ECS Fargate or Azure Container Apps with Terraform.',
   effortRange: [4, 6],
-  effortNote: 'The component estimate of 2–4 days covers the data plane install alone. This guide also sizes and activates the license, and carries the optional moves to a managed cache and log store, which the component figure assumes are already decided.',
+  effortNote: 'The component now estimates 3–4 days, which is the incremental data plane work on top of AI Gateway. This playbook is end to end: it also sizes and activates the license and carries the optional moves to a managed cache and log store, which the incremental figure assumes are already decided.',
   variants: {
     key: 'platform', label: 'Platform',
     note: 'Secrets, Terraform, ingress and private connectivity all differ between ECS and Container Apps.',
@@ -1474,8 +1474,6 @@ const AIGW_KEY_MANAGEMENT = {
   pillar: 'ai-gateway', component: 'aigw-key-management',
   guide: AIGW_DIR + 'llm-api-key-management.html',
   summary: 'Hold LLM provider credentials in Azure Key Vault and let the AI Gateway read them through a managed identity.',
-  effortRange: [3, 5],
-  effortNote: 'The component estimate of 1–2 days assumes one or two providers. This guide covers five provider paths and both identity models, and proves a real rotation. Drop the rows for providers not in scope and the figure falls back toward the component estimate.',
 
   phases: [
     { num: 1, title: 'Vault and Secrets', anchor: 'create-key-vault',
@@ -1538,11 +1536,9 @@ const AIGW_KEY_MANAGEMENT = {
 
 const AIGW_AGENT_IDENTITY = {
   id: 'aigw-agent-identity', name: 'Agent Identity with Entra ID',
-  pillar: 'ai-gateway',
+  pillar: 'ai-gateway', component: 'aigw-agent-identity',
   guide: AIGW_DIR + 'agent-identity-entra.html',
   summary: 'Attribute AI Gateway traffic to the agent and the person behind it, using Entra ID tokens and Cloud Identity Engine groups.',
-  effortRange: [3, 5],
-  effortNote: 'No component in the engagement model covers agent identity attribution. The range is derived from the guide: a directory and workspace mapping, an Entra app registration, JWKS configuration, and the attribution testing that proves it.',
 
   phases: [
     { num: 1, title: 'Prerequisites and Directory', anchor: 'prerequisites',
@@ -1602,11 +1598,9 @@ const AIGW_AGENT_IDENTITY = {
 
 const AIGW_STREAMING = {
   id: 'aigw-streaming', name: 'Streaming, Semantic Caching, and A2A',
-  pillar: 'ai-gateway',
+  pillar: 'ai-gateway', component: 'aigw-streaming',
   guide: AIGW_DIR + 'streaming-caching-a2a.html',
   summary: 'Turn on streaming with guardrails intact, semantic caching, and the Agent Gateway for agent-to-agent traffic.',
-  effortRange: [4, 7],
-  effortNote: 'Three features the model prices separately and partially: guardrails, observability and agent-gateway. The range covers all three as one piece of work, because the guide configures and proves them together on a gateway that already exists.',
 
   phases: [
     { num: 1, title: 'Streaming', anchor: 'streaming',
@@ -2192,6 +2186,18 @@ const A = {
 
 const INT = 'docs/guides/airs-integrations/';
 
+/* Jenkins and GitHub Actions scan models in CI rather than intercepting an
+ * API call, so they hang off Model Security and use its personas. The two
+ * roles that matter are the pipeline owner, who holds the credentials and the
+ * build, and the model owner, whose release a finding blocks. */
+const C = {
+  sponsor: 'Project Sponsor',
+  owner: 'AI / ML Model Owner',
+  security: 'Security Lead',
+  cicd: 'CI/CD Pipeline Owner',
+  privacy: 'Data / Privacy Lead'
+};
+
 /* Every integration runs the same two conversations: agree the scope and the
  * security profile before touching the gateway, then prove it works and hand
  * it over. A one-to-three day job does not support more ceremony than that,
@@ -2512,39 +2518,39 @@ const INTEGRATIONS = [
       { num: 1, title: 'Prerequisites', anchor: 'prerequisites',
         objective: 'Confirm the Jenkins server, the Model Security license, and the scanning profile.',
         steps: [
-          { heading: 'Step 1.1: Confirm Jenkins Server Requirements', owner: 'CUSTOMER', hours: 1, who: [A.devops], task: 'Confirm the Jenkins version, agent platform, and Python availability on the agents' },
-          { heading: 'Step 1.2: Confirm Prisma AIRS Model Security License', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Confirm the Model Security license covers the models in scope' },
-          { heading: 'Step 1.3: Create a Prisma Cloud Service Account', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Create the service account the pipeline authenticates with' },
-          { heading: 'Step 1.4: Configure a Model Security Profile', owner: 'PANW / CUSTOMER', hours: 2, who: [A.security], task: 'Configure the Model Security profile and agree which findings fail a build' }
+          { heading: 'Step 1.1: Confirm Jenkins Server Requirements', owner: 'CUSTOMER', hours: 1, who: [C.cicd], task: 'Confirm the Jenkins version, agent platform, and Python availability on the agents' },
+          { heading: 'Step 1.2: Confirm Prisma AIRS Model Security License', owner: 'CUSTOMER / PANW', hours: 1, who: [C.security], task: 'Confirm the Model Security license covers the models in scope' },
+          { heading: 'Step 1.3: Create a Prisma Cloud Service Account', owner: 'CUSTOMER / PANW', hours: 1, who: [C.security], task: 'Create the service account the pipeline authenticates with' },
+          { heading: 'Step 1.4: Configure a Model Security Profile', owner: 'PANW / CUSTOMER', hours: 2, who: [C.security], task: 'Configure the Model Security profile and agree which findings fail a build' }
         ],
         milestone: { name: 'Prerequisites Milestone', criteria: ['Jenkins agents confirmed with a working Python runtime', 'Model Security license confirmed against the models in scope', 'Service account created and its credentials held securely', 'Scanning profile agreed, including which findings fail a build'] },
-        meeting: intKickoff('Jenkins', [A.devops], ['Agree which scan findings fail a build and which only warn']) },
+        meeting: intKickoff('Jenkins', [C.cicd], ['Agree which scan findings fail a build and which only warn']) },
       { num: 2, title: 'Credentials and Pipeline', anchor: 'credentials',
         objective: 'Store the credentials and build the pipeline.',
         steps: [
-          { heading: 'Step 2.1: Create Jenkins Credentials for Model Security', owner: 'PANW / CUSTOMER', hours: 1, who: [A.devops, A.security], task: 'Create the Jenkins credential holding the service account secret' },
-          { anchor: 'pipeline-setup', heading: 'Step 3.1: Understand the Repository Structure', owner: 'PANW / CUSTOMER', hours: 0.5, who: [A.devops], task: 'Agree where the scan scripts and configuration live in the repository' },
-          { anchor: 'pipeline-setup', heading: 'Step 3.2: Create the Supporting Scripts', owner: 'PANW', hours: 2, who: [A.devops], task: 'Add the supporting scripts the pipeline calls' },
-          { anchor: 'pipeline-setup', heading: 'Step 3.3: Create the Jenkinsfile', owner: 'PANW / CUSTOMER', hours: 2, who: [A.devops], task: 'Add the scan stage to the Jenkinsfile' }
+          { heading: 'Step 2.1: Create Jenkins Credentials for Model Security', owner: 'PANW / CUSTOMER', hours: 1, who: [C.cicd, C.security], task: 'Create the Jenkins credential holding the service account secret' },
+          { anchor: 'pipeline-setup', heading: 'Step 3.1: Understand the Repository Structure', owner: 'PANW / CUSTOMER', hours: 0.5, who: [C.cicd], task: 'Agree where the scan scripts and configuration live in the repository' },
+          { anchor: 'pipeline-setup', heading: 'Step 3.2: Create the Supporting Scripts', owner: 'PANW', hours: 2, who: [C.cicd], task: 'Add the supporting scripts the pipeline calls' },
+          { anchor: 'pipeline-setup', heading: 'Step 3.3: Create the Jenkinsfile', owner: 'PANW / CUSTOMER', hours: 2, who: [C.cicd], task: 'Add the scan stage to the Jenkinsfile' }
         ],
         milestone: { name: 'Pipeline Milestone', criteria: ['Credential created and never echoed in build output', 'Scripts and configuration committed in the agreed repository layout', 'Scan stage present in the Jenkinsfile', 'Pipeline changes reviewed through the normal process'] } },
       { num: 3, title: 'Scan Configuration', anchor: 'scan-config',
         objective: 'Tell the scanner what to scan and when to run.',
         steps: [
-          { heading: 'Step 4.1: Create the Model Configuration File', owner: 'PANW / CUSTOMER', hours: 1, who: [A.devops], task: 'Create the model configuration file listing the models and registries to scan' },
-          { heading: 'Step 4.2: Create the Python Dependencies File', owner: 'PANW', hours: 1, who: [A.devops], task: 'Pin the Python dependencies the scan needs' },
-          { heading: 'Step 4.3: Configure SCM Polling', owner: 'PANW / CUSTOMER', hours: 0.5, who: [A.devops], task: 'Configure the trigger so scans run when models change' }
+          { heading: 'Step 4.1: Create the Model Configuration File', owner: 'PANW / CUSTOMER', hours: 1, who: [C.cicd], task: 'Create the model configuration file listing the models and registries to scan' },
+          { heading: 'Step 4.2: Create the Python Dependencies File', owner: 'PANW', hours: 1, who: [C.cicd], task: 'Pin the Python dependencies the scan needs' },
+          { heading: 'Step 4.3: Configure SCM Polling', owner: 'PANW / CUSTOMER', hours: 0.5, who: [C.cicd], task: 'Configure the trigger so scans run when models change' }
         ],
         milestone: { name: 'Scan Configuration Milestone', criteria: ['Every model in scope listed in the configuration file', 'Python dependencies pinned to specific versions', 'Trigger configured so a model change causes a scan', 'Expected scan duration understood against the build budget'] } },
       { num: 4, title: 'Verification', anchor: 'verification',
         objective: 'Run the pipeline and confirm the results land where people look.',
         steps: [
-          { heading: 'Step 5.1: Trigger the Pipeline', owner: 'PANW / CUSTOMER', hours: 1, who: [A.devops], task: 'Trigger the pipeline and confirm the scan stage runs to completion' },
-          { heading: 'Step 5.2: Verify Scan Results in Jenkins Console', owner: 'PANW / CUSTOMER', hours: 1, who: [A.devops], task: 'Confirm the scan results are readable in the Jenkins console output' },
-          { heading: 'Step 5.3: Verify Results in Strata Cloud Manager', owner: 'PANW / CUSTOMER', hours: 1, who: [A.security], task: 'Confirm the scan results appear in Strata Cloud Manager' }
+          { heading: 'Step 5.1: Trigger the Pipeline', owner: 'PANW / CUSTOMER', hours: 1, who: [C.cicd], task: 'Trigger the pipeline and confirm the scan stage runs to completion' },
+          { heading: 'Step 5.2: Verify Scan Results in Jenkins Console', owner: 'PANW / CUSTOMER', hours: 1, who: [C.cicd], task: 'Confirm the scan results are readable in the Jenkins console output' },
+          { heading: 'Step 5.3: Verify Results in Strata Cloud Manager', owner: 'PANW / CUSTOMER', hours: 1, who: [C.security], task: 'Confirm the scan results appear in Strata Cloud Manager' }
         ],
         milestone: { name: 'Verification Milestone', criteria: ['Pipeline runs the scan stage to completion', 'Results readable in the Jenkins console', 'Results visible in Strata Cloud Manager', 'A failing model confirmed to fail the build as agreed', 'Pipeline owner knows how to triage a finding'] },
-        meeting: intHandover('Jenkins', [A.devops]) }
+        meeting: intHandover('Jenkins', [C.cicd]) }
     ]
   },
 
@@ -2555,40 +2561,40 @@ const INTEGRATIONS = [
       { num: 1, title: 'Prerequisites', anchor: 'prerequisites',
         objective: 'Confirm repository access, the Model Security license, and the scanning profile.',
         steps: [
-          { heading: 'Step 1.1: Confirm GitHub Repository Access', owner: 'CUSTOMER', hours: 0.5, who: [A.devops], task: 'Confirm the repository, runner type, and who can add workflows and secrets' },
-          { heading: 'Step 1.2: Confirm Prisma AIRS Model Security License', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Confirm the Model Security license covers the models in scope' },
-          { heading: 'Step 1.3: Create a Prisma Cloud Service Account', owner: 'CUSTOMER / PANW', hours: 1, who: [A.security], task: 'Create the service account the workflow authenticates with' },
-          { heading: 'Step 1.4: Configure a Model Security Profile', owner: 'PANW / CUSTOMER', hours: 2, who: [A.security], task: 'Configure the Model Security profile and agree which findings fail a run' }
+          { heading: 'Step 1.1: Confirm GitHub Repository Access', owner: 'CUSTOMER', hours: 0.5, who: [C.cicd], task: 'Confirm the repository, runner type, and who can add workflows and secrets' },
+          { heading: 'Step 1.2: Confirm Prisma AIRS Model Security License', owner: 'CUSTOMER / PANW', hours: 1, who: [C.security], task: 'Confirm the Model Security license covers the models in scope' },
+          { heading: 'Step 1.3: Create a Prisma Cloud Service Account', owner: 'CUSTOMER / PANW', hours: 1, who: [C.security], task: 'Create the service account the workflow authenticates with' },
+          { heading: 'Step 1.4: Configure a Model Security Profile', owner: 'PANW / CUSTOMER', hours: 2, who: [C.security], task: 'Configure the Model Security profile and agree which findings fail a run' }
         ],
         milestone: { name: 'Prerequisites Milestone', criteria: ['Repository and runner type confirmed with permission to add workflows and secrets', 'Model Security license confirmed against the models in scope', 'Service account created and its credentials held securely', 'Scanning profile agreed, including which findings fail a run'] },
-        meeting: intKickoff('GitHub Actions', [A.devops], ['Agree which scan findings fail a run and which only warn']) },
+        meeting: intKickoff('GitHub Actions', [C.cicd], ['Agree which scan findings fail a run and which only warn']) },
       { num: 2, title: 'Secrets and Workflow', anchor: 'credentials',
         objective: 'Store the secrets and build the workflow.',
         steps: [
-          { heading: 'Step 2.1: Create GitHub Actions Secrets for Model Security', owner: 'PANW / CUSTOMER', hours: 1, who: [A.devops, A.security], task: 'Create the repository or organization secrets holding the service account credentials' },
-          { anchor: 'workflow-setup', heading: 'Step 3.1: Understand the Repository Structure', owner: 'PANW / CUSTOMER', hours: 0.5, who: [A.devops], task: 'Agree where the scan scripts and configuration live in the repository' },
-          { anchor: 'workflow-setup', heading: 'Step 3.2: Create the PyPI Authentication Script', owner: 'PANW', hours: 1, who: [A.devops], task: 'Add the PyPI authentication script the scan tooling needs' },
-          { anchor: 'workflow-setup', heading: 'Step 3.3: Create the Model Scan Script', owner: 'PANW', hours: 2, who: [A.devops], task: 'Add the model scan script the workflow calls' },
-          { anchor: 'workflow-setup', heading: 'Step 3.4: Create the GitHub Actions Workflow', owner: 'PANW / CUSTOMER', hours: 1.5, who: [A.devops], task: 'Add the workflow file with the scan job' }
+          { heading: 'Step 2.1: Create GitHub Actions Secrets for Model Security', owner: 'PANW / CUSTOMER', hours: 1, who: [C.cicd, C.security], task: 'Create the repository or organization secrets holding the service account credentials' },
+          { anchor: 'workflow-setup', heading: 'Step 3.1: Understand the Repository Structure', owner: 'PANW / CUSTOMER', hours: 0.5, who: [C.cicd], task: 'Agree where the scan scripts and configuration live in the repository' },
+          { anchor: 'workflow-setup', heading: 'Step 3.2: Create the PyPI Authentication Script', owner: 'PANW', hours: 1, who: [C.cicd], task: 'Add the PyPI authentication script the scan tooling needs' },
+          { anchor: 'workflow-setup', heading: 'Step 3.3: Create the Model Scan Script', owner: 'PANW', hours: 2, who: [C.cicd], task: 'Add the model scan script the workflow calls' },
+          { anchor: 'workflow-setup', heading: 'Step 3.4: Create the GitHub Actions Workflow', owner: 'PANW / CUSTOMER', hours: 1.5, who: [C.cicd], task: 'Add the workflow file with the scan job' }
         ],
         milestone: { name: 'Workflow Milestone', criteria: ['Secrets created at the right scope and never echoed in logs', 'Scripts and configuration committed in the agreed repository layout', 'Workflow file present with the scan job', 'Workflow changes reviewed through the normal pull request process'] } },
       { num: 3, title: 'Scan Configuration', anchor: 'scan-config',
         objective: 'Tell the scanner what to scan and how to label results.',
         steps: [
-          { heading: 'Step 4.1: Create the Model Configuration File', owner: 'PANW / CUSTOMER', hours: 1, who: [A.devops], task: 'Create the model configuration file listing the models and registries to scan' },
-          { heading: 'Step 4.2: Create the Python Dependencies File', owner: 'PANW', hours: 1, who: [A.devops], task: 'Pin the Python dependencies the scan needs' },
-          { heading: 'Step 4.3: Configure Scan Labels for Tracking', owner: 'PANW / CUSTOMER', hours: 0.5, who: [A.devops, A.security], task: 'Configure scan labels so results can be traced back to a repository and a run' }
+          { heading: 'Step 4.1: Create the Model Configuration File', owner: 'PANW / CUSTOMER', hours: 1, who: [C.cicd], task: 'Create the model configuration file listing the models and registries to scan' },
+          { heading: 'Step 4.2: Create the Python Dependencies File', owner: 'PANW', hours: 1, who: [C.cicd], task: 'Pin the Python dependencies the scan needs' },
+          { heading: 'Step 4.3: Configure Scan Labels for Tracking', owner: 'PANW / CUSTOMER', hours: 0.5, who: [C.cicd, C.security], task: 'Configure scan labels so results can be traced back to a repository and a run' }
         ],
         milestone: { name: 'Scan Configuration Milestone', criteria: ['Every model in scope listed in the configuration file', 'Python dependencies pinned to specific versions', 'Scan labels agreed so a finding can be traced to a run', 'Expected scan duration understood against the runner budget'] } },
       { num: 4, title: 'Verification', anchor: 'verification',
         objective: 'Run the workflow and confirm the results land where people look.',
         steps: [
-          { heading: 'Step 5.1: Trigger the Pipeline', owner: 'PANW / CUSTOMER', hours: 1, who: [A.devops], task: 'Trigger the workflow and confirm the scan job runs to completion' },
-          { heading: 'Step 5.2: Verify Scan Results in GitHub Actions', owner: 'PANW / CUSTOMER', hours: 1, who: [A.devops], task: 'Confirm the scan results are readable in the run output' },
-          { heading: 'Step 5.3: Verify Results in Strata Cloud Manager', owner: 'PANW / CUSTOMER', hours: 1, who: [A.security], task: 'Confirm the scan results appear in Strata Cloud Manager' }
+          { heading: 'Step 5.1: Trigger the Pipeline', owner: 'PANW / CUSTOMER', hours: 1, who: [C.cicd], task: 'Trigger the workflow and confirm the scan job runs to completion' },
+          { heading: 'Step 5.2: Verify Scan Results in GitHub Actions', owner: 'PANW / CUSTOMER', hours: 1, who: [C.cicd], task: 'Confirm the scan results are readable in the run output' },
+          { heading: 'Step 5.3: Verify Results in Strata Cloud Manager', owner: 'PANW / CUSTOMER', hours: 1, who: [C.security], task: 'Confirm the scan results appear in Strata Cloud Manager' }
         ],
         milestone: { name: 'Verification Milestone', criteria: ['Workflow runs the scan job to completion', 'Results readable in the GitHub Actions run output', 'Results visible in Strata Cloud Manager', 'A failing model confirmed to fail the run as agreed', 'Repository owner knows how to triage a finding'] },
-        meeting: intHandover('GitHub Actions', [A.devops]) }
+        meeting: intHandover('GitHub Actions', [C.cicd]) }
     ]
   },
 
@@ -2757,8 +2763,13 @@ const INTEGRATIONS = [
  * share its personas and each reconciles against its own component estimate
  * rather than the pillar's. */
 const INTEGRATION_PLAYBOOKS = {};
+const CI_SCANNERS = new Set(['jenkins', 'github-actions']);
 INTEGRATIONS.forEach(spec => {
-  INTEGRATION_PLAYBOOKS[spec.id] = Object.assign({ pillar: 'api-intercept' }, spec);
+  /* Most integrations intercept an API call and belong to API Intercept. The
+   * CI scanners do not: they scan models in a build, which is Model Security
+   * work, and the engagement model files them there. */
+  const pillar = CI_SCANNERS.has(spec.id) ? 'model-security' : 'api-intercept';
+  INTEGRATION_PLAYBOOKS[spec.id] = Object.assign({ pillar }, spec);
 });
 
 const PLAYBOOKS = Object.assign({

@@ -76,7 +76,8 @@ const PILLARS = {
       { role: 'Security Lead', req: true, knowledge: 'Threat categories to inspect, AI risk tolerance, security policy standards, SIEM/alerting requirements', authority: 'Approve AI security profile policy and detection thresholds', risk: 'Cannot configure inspection policy or sign off on detection sensitivity' },
       { role: 'Cloud Account Admin', req: true, knowledge: 'AWS/Azure account structure, IAM roles, cloud networking, trust relationships', authority: 'Grant permissions for cloud account onboarding and IAM role creation', risk: 'Cannot onboard cloud accounts or deploy firewall resources' },
       { role: 'Application / Service Owner', req: false, knowledge: 'Which AI services each app calls, traffic sensitivity, acceptable latency', authority: 'Approve traffic routing changes that affect their application', risk: 'Risk of policy misalignment with application requirements' },
-      { role: 'K8s / Platform Engineer', req: false, knowledge: 'Kubernetes networking, CNI plugin, pod/namespace topology', authority: 'Approve K8s network plugin deployment', risk: 'Blocks K8s protection add-on (optional bolt-on only)' }
+      { role: 'K8s / Platform Engineer', req: false, knowledge: 'Kubernetes networking, CNI plugin, pod/namespace topology', authority: 'Approve K8s network plugin deployment', risk: 'Blocks K8s protection add-on (optional bolt-on only)' },
+      { role: 'Security Operations Team', req: false, knowledge: 'Alert triage workflow, SIEM pipeline and correlation rules, incident response runbooks, on-call rotation', authority: 'Accept operational ownership of AI security alerts at handover', risk: 'Alerts fire into a queue nobody watches; the deployment is inspected but not operated' }
     ],
     scopeConfig: [
       { key: 'firewallSets', label: 'Firewall Sets', min: 1, step: 1, base: 1,
@@ -727,7 +728,7 @@ const COMPONENTS = {
   // ── Network Intercept electives ──
   'k8s-protection': {
     name: 'Kubernetes and Container Protection', group: 'elective',
-    requires: ['network-intercept'], days: [2, 3],
+    requires: ['network-intercept'], days: [3, 5],
     guide: 'guides/airs/airs-k8s-protection.html', anchor: 'validation',
     summary: 'Extend network inspection to pod-to-pod and pod-to-model traffic inside a Kubernetes cluster.',
     driver: 'AI workloads run in Kubernetes, where traffic never leaves the cluster and is invisible to the perimeter.',
@@ -793,7 +794,7 @@ const COMPONENTS = {
   // ── AI Gateway infrastructure (Hybrid only) ──
   'aigw-kubernetes': {
     name: 'Kubernetes data plane', group: 'gateway-infra',
-    requires: ['ai-gateway'], days: [3, 5],
+    requires: ['ai-gateway'], days: [6, 7],
     guide: 'guides/ai-gateway/kubernetes-deployment.html', anchor: 'verify',
     summary: 'Run the gateway data plane in the customer Kubernetes cluster so prompts never leave their network.',
     driver: 'Prompt content cannot leave the customer network for data residency or contractual reasons.',
@@ -816,7 +817,7 @@ const COMPONENTS = {
 
   'aigw-serverless': {
     name: 'Serverless data plane', group: 'gateway-infra',
-    requires: ['ai-gateway'], days: [2, 4],
+    requires: ['ai-gateway'], days: [3, 4],
     guide: 'guides/ai-gateway/serverless-deployment.html', anchor: 'verify',
     summary: 'Run the gateway data plane on serverless container infrastructure instead of a managed cluster.',
     driver: 'The customer wants a self-hosted data plane without operating Kubernetes.',
@@ -833,9 +834,83 @@ const COMPONENTS = {
     ]
   },
 
+  'aigw-agent-identity': {
+    name: 'Agent identity attribution', group: 'gateway-infra',
+    requires: ['ai-gateway'], days: [3, 5],
+    guide: 'guides/ai-gateway/agent-identity-entra.html', anchor: 'phase-5',
+    summary: 'Attribute gateway traffic to the agent that made the call and the person behind it, using Entra ID tokens against Cloud Identity Engine groups.',
+    driver: 'Agent traffic arrives under a shared service credential, so no one can say which team or which person a given call belongs to.',
+    criteria: [
+      {
+        text: 'A call from a registered agent is attributed to the workspace its directory group maps to.',
+        tests: [
+          { step: '4.1', title: 'Send an attributed agent call',
+            action: 'Call the gateway with an Entra token in the header the gateway reads, from an agent whose group maps to a known workspace.',
+            expect: 'The call succeeds and the gateway resolves it to that workspace.',
+            evidence: 'The request, and the gateway log entry naming the resolved workspace.' }
+        ]
+      },
+      {
+        text: 'The group to workspace mapping is one to one, and an unmapped group cannot reach the gateway.',
+        tests: [
+          { step: '1.2', title: 'Confirm the mapping is exclusive',
+            action: 'Review the directory groups against the workspaces, then call the gateway with a token from a group that maps to nothing.',
+            expect: 'Every mapped group resolves to exactly one workspace, and the unmapped call is refused.',
+            evidence: 'The mapping table, and the refusal for the unmapped group.' }
+        ]
+      },
+      {
+        text: 'The limits of attribution are written down and accepted, including that an unattended agent has no person behind it.',
+        tests: [
+          { step: '5.2', title: 'Walk the attribution comparison',
+            action: 'Walk the claim the gateway reads and the comparison it makes, then record how an unattended agent is attributed.',
+            expect: 'The security lead accepts what is attributable and what is not.',
+            evidence: 'Signed operating notes listing the documented limits.' }
+        ]
+      }
+    ]
+  },
+
+  'aigw-streaming': {
+    name: 'Streaming, semantic caching, and A2A', group: 'gateway-infra',
+    requires: ['ai-gateway'], days: [4, 7],
+    guide: 'guides/ai-gateway/streaming-caching-a2a.html', anchor: 'streaming',
+    summary: 'Stream responses with guardrails and cost accounting intact, cache semantically, and route agent-to-agent traffic through the gateway.',
+    driver: 'Streaming moves enforcement off the output side, caching risks serving one tenant another tenant answer, and agent traffic bypasses the gateway entirely.',
+    criteria: [
+      {
+        text: 'A streamed call is still inspected, and a blocked prompt never reaches the model.',
+        tests: [
+          { step: 'Step 1.2', title: 'Block on the input side of a stream',
+            action: 'Put the enforcing guardrail on the input side, then send a prompt that should be blocked as a streaming call.',
+            expect: 'The call is refused before any chunk is emitted.',
+            evidence: 'The refused response, and the guardrail verdict in the event log.' }
+        ]
+      },
+      {
+        text: 'Semantic caching returns a hit for a differently worded prompt, and cannot cross a tenant boundary.',
+        tests: [
+          { step: 'Step 2.5', title: 'Prove a semantic hit and its partition',
+            action: 'Send two differently worded prompts that should match, then repeat from a second workspace.',
+            expect: 'The second call in the same workspace is a cache hit; the call from the other workspace is not.',
+            evidence: 'Both responses with their cache status, showing the hit and the partition boundary.' }
+        ]
+      },
+      {
+        text: 'Agent-to-agent traffic is logged with enough detail to investigate.',
+        tests: [
+          { step: 'Step 3.5', title: 'Confirm agent traffic is logged',
+            action: 'Route an agent call through the virtual server and inspect the event log.',
+            expect: 'The call appears with the agent, the workspace, and the skill invoked.',
+            evidence: 'The log entry for the agent call.' }
+        ]
+      }
+    ]
+  },
+
   'aigw-key-management': {
     name: 'LLM API key management', group: 'gateway-infra',
-    requires: ['ai-gateway'], days: [1, 2],
+    requires: ['ai-gateway'], days: [3, 4],
     guide: 'guides/ai-gateway/llm-api-key-management.html', anchor: 'rotation',
     summary: 'Hold provider API keys in a managed key vault rather than in gateway configuration.',
     driver: 'Provider API keys are long lived, widely shared, and have no rotation story.',
@@ -977,10 +1052,12 @@ COMPONENTS['guardrails'].requires = ['ai-gateway', 'api-intercept'];
    'The TrueFoundry gateway calls the scan service in line with model requests.'],
   ['n8n', 'n8n', 'api-intercept', [1, 2], 'Step 4.2', 'Step 4.3',
    'An n8n workflow node scans prompts before an AI step runs.'],
-  ['jenkins', 'Jenkins', 'api-intercept', [1, 2], 'Step 5.2', 'Step 5.3',
-   'A pipeline stage scans AI artefacts and content as part of the build.'],
-  ['github-actions', 'GitHub Actions', 'api-intercept', [1, 2], 'Step 5.2', 'Step 5.3',
-   'A workflow step scans AI artefacts and content as part of CI.'],
+  // Jenkins and GitHub Actions scan models in CI. Neither intercepts an API
+  // call, so both hang off Model Security rather than API Intercept.
+  ['jenkins', 'Jenkins', 'model-security', [1, 2], 'Step 5.2', 'Step 5.3',
+   'A pipeline stage scans models as part of the build.'],
+  ['github-actions', 'GitHub Actions', 'model-security', [1, 2], 'Step 5.2', 'Step 5.3',
+   'A workflow step scans models as part of CI.'],
   ['claude-code', 'Claude Code', 'api-intercept', [1, 2], 'Step 4.1', 'Step 4.3',
    'Hooks scan prompts and tool calls on the developer workstation.'],
   ['codex-cli', 'Codex CLI', 'api-intercept', [1, 2], 'Step 4.1', 'Step 4.4',
