@@ -1602,9 +1602,26 @@ aws ec2 authorize-security-group-ingress \
   --source-group &lt;EKS_NODE_SG_ID&gt;</code></pre>
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
+
+        <p>Attach a parameter group that sets <code>maxmemory-policy</code> to <code>noeviction</code>. The default policy evicts keys under memory pressure, and the gateway treats the cache as authoritative for the entries it writes, so an eviction surfaces as an intermittent failure rather than a cache miss.</p>
+
+        <div class="code-block">
+          <pre><code class="language-bash">aws elasticache create-cache-parameter-group \
+  --cache-parameter-group-name portkey-noeviction \
+  --cache-parameter-group-family redis7 \
+  --description "noeviction for the AI Gateway cache"
+
+aws elasticache modify-cache-parameter-group \
+  --cache-parameter-group-name portkey-noeviction \
+  --parameter-name-values "ParameterName=maxmemory-policy,ParameterValue=noeviction"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>Apply the group to the cache at creation, or modify the cache afterwards and let it apply at the next maintenance window. Match the family to the engine version you chose.</p>
+
         <div class="callout callout-success">
           <div class="callout-title">Verify</div>
-          <p>from a pod in the cluster, <code>nc -vz &lt;ElastiCache_Endpoint&gt; 6379</code> connects. Record the endpoint: use the <strong>Configuration Endpoint</strong> if cluster mode is enabled, and the <strong>Primary Endpoint</strong> if it is not. Using the wrong one produces a connection that appears to work and then fails on the first keyspace operation.</p>
+          <p>from a pod in the cluster, <code>nc -vz &lt;ElastiCache_Endpoint&gt; 6379</code> connects. Record the endpoint: use the <strong>Configuration Endpoint</strong> if cluster mode is enabled, and the <strong>Primary Endpoint</strong> if it is not. Using the wrong one produces a connection that appears to work and then fails on the first keyspace operation. Confirm the parameter group is attached and <code>maxmemory-policy</code> reads <code>noeviction</code>, because a pending modification does not take effect until the cache restarts.</p>
         </div>
       </div>
     </div>
@@ -2396,6 +2413,81 @@ readinessProbe:
   </div>
 </div>
 
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.6 &mdash; Availability settings the chart leaves off (all platforms)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The chart defaults are sized to start, not to run in production. Left alone they give you one replica, no resource requests or limits, no autoscaling, no disruption budget, and a rolling upgrade that drops in-flight requests. None of this is called out on the platform deployment pages, and all of it is cheaper to set now than to diagnose later.</p>
+
+    <table>
+      <thead>
+        <tr><th>Setting</th><th>Chart default</th><th>Why it matters</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>replicaCount</code></td><td><code>1</code></td><td>A single pod means every node drain, upgrade, or eviction is a full outage</td></tr>
+        <tr><td><code>resources</code></td><td>unset</td><td>No requests means the scheduler cannot place the pod sensibly and it is first to be evicted under pressure</td></tr>
+        <tr><td>Autoscaling</td><td>off</td><td>Load is bursty; a fixed replica count is sized for either the peak or the failure</td></tr>
+        <tr><td>PodDisruptionBudget</td><td>none</td><td>A node drain can take every replica at once</td></tr>
+        <tr><td><code>preStop</code> hook</td><td>none</td><td>Pods leave the endpoints list and stop accepting work at the same moment, so in-flight requests fail</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Rolling upgrades drop requests without a preStop delay</div>
+      <p>Lab testing under continuous load measured <strong>3 failed requests out of 74</strong> across a rolling upgrade with the chart defaults, and <strong>0 out of 74</strong> with a <code>preStop</code> sleep of 15 seconds and a termination grace period of 45 seconds. The delay gives the load balancer time to take the pod out of rotation before the process stops accepting connections. Without it the pod is removed from service and killed in the same instant.</p>
+    </div>
+
+    <div class="code-block">
+      <pre><code class="language-yaml">replicaCount: 3
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    memory: 2Gi
+
+# Let the load balancer drain the pod before the process stops.
+terminationGracePeriodSeconds: 45
+lifecycle:
+  preStop:
+    exec:
+      command: ["/bin/sh", "-c", "sleep 15"]
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Treat the figures as a starting point rather than a sizing model. No requests-per-second guidance is published for any platform, so the CPU request and the autoscaling target both need revisiting once you have measured the customer's own traffic. Keep a CPU limit off unless you have a reason for it, because throttling a gateway under burst turns a latency problem into a timeout.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Confirm the key names against your chart version</div>
+      <p>Chart versions differ in whether these sit at the top level or under a component key, and in whether autoscaling and the disruption budget are exposed at all. Run <code>helm show values</code> for the version you pinned in step 5 and match the names before applying the block above.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verify</div>
+      <p>After the install in step 5:</p>
+      <div class="code-block">
+        <pre><code class="language-bash">kubectl get deploy,hpa,pdb -n $namespace
+kubectl get pod -n $namespace -o jsonpath='{.items[0].spec.terminationGracePeriodSeconds}{"\n"}'</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>The deployment reports the replica count you set, the HPA and the disruption budget exist, and the grace period reads <code>45</code>. An upgrade under load is verified separately in step 8.4, which is the check that actually proves the <code>preStop</code> hook works.</p>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════════════════════════
      5. Install the Chart
      ══════════════════════════════════════════════════════════════ -->
@@ -2774,6 +2866,30 @@ spec:
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
     <p>Narrow that CIDR to the destinations the gateway actually needs, which are the management plane endpoints, your cache, your log store, and every model provider you route to. A broad rule is the published example, not a recommendation.</p>
+
+    <p>The management plane endpoints are these. Allow all four before the first install, because a gateway that cannot reach them starts and then never registers, which looks like a chart problem rather than a network one.</p>
+
+    <table>
+      <thead>
+        <tr><th>Endpoint</th><th>Port</th><th>What breaks without it</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>api.portkey.ai</code></td><td>443</td><td>Registration and configuration sync. Named by the ECS platform page but absent from the Kubernetes prerequisites, so it is the one most often missed.</td></tr>
+        <tr><td><code>aigw.portkey.ai</code></td><td>443</td><td>Gateway control traffic</td></tr>
+        <tr><td><code>albus.portkey.ai</code></td><td>443</td><td>Analytics and log delivery to the management plane</td></tr>
+        <tr><td><code>registry.portkey.ai</code></td><td>443</td><td>Image pulls, so the pods never start at all</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Exempt portkey.ai from TLS inspection</div>
+      <p>Where outbound traffic passes through a TLS-inspecting proxy, add an exemption for <code>*.portkey.ai</code>. The gateway validates the certificate chain it expects, so a re-signed certificate fails the handshake. The symptom is a registration that never completes while plain connectivity tests to the same host succeed, because <code>curl</code> from a shell trusts the proxy CA that the gateway does not.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Published endpoint lists disagree</div>
+      <p>Portkey's platform pages do not list the same endpoints. The ECS page names <code>api.portkey.ai</code> and <code>albus.portkey.ai</code>; the PrivateLink material names <code>aigw.portkey.ai</code> and <code>albus.portkey.ai</code>. The table above is the union, which is what lab testing on an SCM-managed gateway required.</p>
+    </div>
     <div class="callout callout-success">
       <div class="callout-title">Verify</div>
       <p><code>kubectl exec -n $namespace &lt;POD_NAME&gt; -- curl -sS -o /dev/null -w '%{http_code}\n' https://albus.portkey.ai</code> returns an HTTP status rather than hanging.</p>
@@ -2810,6 +2926,12 @@ spec:
         <span>7.3 &mdash; Private outbound over AWS PrivateLink</span>
       </div>
       <div class="collapsible-body">
+        <div class="callout callout-danger">
+          <div class="callout-title">Confirm this path exists before you budget for it</div>
+          <p>Everything in this step comes from Portkey's own platform documentation, and it points at Portkey's control plane at <code>aws-cp.portkey.ai</code>. Palo Alto Networks has not published an equivalent for the Strata Cloud Manager AI Gateway, and the related inbound path in step 7.4 was confirmed on 2026-09-27 as not supported with Strata Cloud Manager at all.</p>
+          <p>Treat outbound PrivateLink as unconfirmed for an SCM-managed gateway. Ask the product team whether the endpoint service accepts an SCM-managed tenant before committing it to a design or costing it into a plan. It is roughly a day of work if it exists and a day wasted if it does not, and the allow-listing request in the first line is the natural point to ask.</p>
+        </div>
+
         <ol>
           <li>Send your AWS account ARN to the Palo Alto Networks team and wait for confirmation that it is allow-listed.</li>
           <li>In the VPC console, in the region where the gateway runs, create an endpoint under <strong>PrivateLink Ready partner services</strong>.</li>
@@ -2845,6 +2967,12 @@ spec:
         <span>7.3 &mdash; Private outbound over Azure Private Link</span>
       </div>
       <div class="collapsible-body">
+        <div class="callout callout-danger">
+          <div class="callout-title">Confirm this path exists before you budget for it</div>
+          <p>Everything in this step comes from Portkey's own platform documentation, and it points at Portkey's control plane at <code>private.azure-cp.portkey.ai</code>. Palo Alto Networks has not published an equivalent for the Strata Cloud Manager AI Gateway, and the related inbound path in step 7.4 was confirmed on 2026-09-27 as not supported with Strata Cloud Manager at all.</p>
+          <p>Treat outbound Private Link as unconfirmed for an SCM-managed gateway. Ask the product team whether the endpoint service accepts an SCM-managed tenant before committing it to a design or costing it into a plan. It is roughly a day of work if it exists and a day wasted if it does not, and the allow-listing request in the first line is the natural point to ask.</p>
+        </div>
+
         <ol>
           <li>Send your Azure subscription ID to the Palo Alto Networks team and wait for confirmation.</li>
           <li>Create the private endpoint in the subnet where the gateway runs. <code>&lt;SUBNET_ID&gt;</code> is the full resource ID, not the name.</li>
@@ -2917,6 +3045,12 @@ az network private-dns record-set a add-record \
         <span>7.3 &mdash; Private outbound over GCP Private Service Connect</span>
       </div>
       <div class="collapsible-body">
+        <div class="callout callout-danger">
+          <div class="callout-title">Confirm this path exists before you budget for it</div>
+          <p>Everything in this step comes from Portkey's own platform documentation, and it points at Portkey's control plane at <code>privatelink-gcp.portkey.ai</code>. Palo Alto Networks has not published an equivalent for the Strata Cloud Manager AI Gateway, and the related inbound path in step 7.4 was confirmed on 2026-09-27 as not supported with Strata Cloud Manager at all.</p>
+          <p>Treat outbound Private Service Connect as unconfirmed for an SCM-managed gateway. Ask the product team whether the endpoint service accepts an SCM-managed tenant before committing it to a design or costing it into a plan. It is roughly a day of work if it exists and a day wasted if it does not, and the allow-listing request in the first line is the natural point to ask.</p>
+        </div>
+
         <ol>
           <li>Create a subnet in <code>us-east4</code> if you do not already have one, and an address for the endpoint.</li>
         </ol>
@@ -3107,10 +3241,64 @@ curl 'http://localhost:9000/v1/chat/completions' \
     <span>8.3 &mdash; Confirm the request reached the management plane</span>
   </div>
   <div class="collapsible-body">
-    <p>Open Strata Cloud Manager and go to <strong>Logs</strong>. Your test request appears there, and selecting the entry shows the full prompt and completion.</p>
+    <p>Open Strata Cloud Manager and go to <strong>Logs</strong>. Your test request appears there, and what you see when you select the entry depends on the log store decision taken at kickoff.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">What the log store choice costs you</div>
+      <p>The two options are a trade, not a preference, and only one of them can be true at a time:</p>
+      <ul>
+        <li><strong>Default, no customer log store</strong> &mdash; prompt and completion bodies are sent to the Strata Cloud Manager backend, which today is US-hosted. The SCM log view is complete: the entry expands and shows the full prompt and completion. This is a data residency question before it is a logging one.</li>
+        <li><strong>Customer log store</strong> (<code>LOG_STORE</code> set to your own bucket or container) &mdash; bodies stay in your account and your region. The SCM log view then lists the entry but <strong>cannot render the body</strong>, so the central view is metadata only and body retrieval means going to your own store.</li>
+      </ul>
+      <p>Confirm which of these the customer agreed to before reading the result below as a pass or a failure.</p>
+    </div>
+
     <div class="callout callout-success">
       <div class="callout-title">Verify</div>
-      <p>the entry is present and expands. If the gateway serves traffic but nothing appears in SCM, the outbound path in step 7.2 or 7.3 is the place to look. If entries appear but their bodies do not load, and you configured a log store of your own, read the note in step 7.4.</p>
+      <p>The entry is present. On the default path it also expands to show the prompt and completion; with a customer log store it will not, and the body is in your bucket instead. Confirm the object landed there at the expected path before calling this done.</p>
+      <p>If the gateway serves traffic but nothing appears in SCM at all, the outbound path in step 7.1 or 7.2 is the place to look, starting with <code>albus.portkey.ai</code>, which is the endpoint that carries log delivery.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>8.4 &mdash; Upgrade under traffic</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Run this before handover, not after. It is the only check that proves the availability settings in step 4.6 actually hold, and it is the failure a customer notices first because it shows up as intermittent errors during a routine maintenance window.</p>
+
+    <ol>
+      <li>Start a continuous load against the gateway from outside the cluster, through the same ingress real traffic uses. A request every second for a few minutes is enough.</li>
+      <li>While it runs, trigger a rolling upgrade: <code>helm upgrade</code> with the same chart version is sufficient, since the point is the pod replacement rather than the version change.</li>
+      <li>Count the failures.</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code class="language-bash"># Terminal 1: continuous load, counting non-200 responses
+while true; do
+  code=$(curl -sS -o /dev/null -w '%{http_code}' \
+    -H "Authorization: Bearer $GATEWAY_KEY" \
+    https://&lt;GATEWAY_HOST&gt;/v1/health)
+  [ "$code" = "200" ] || echo "$(date +%T) FAIL $code"
+  sleep 1
+done
+
+# Terminal 2: force a pod replacement
+kubectl rollout restart deploy/&lt;gateway-deployment&gt; -n $namespace
+kubectl rollout status  deploy/&lt;gateway-deployment&gt; -n $namespace</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verify</div>
+      <p>Zero failures across the rollout. Any failure at all means the <code>preStop</code> hook or the termination grace period is not doing its job: check that both are set on the running pod rather than only in <code>values.yaml</code>, and that the replica count is above one. Lab testing measured 3 failures in 74 requests with the chart defaults and 0 in 74 with a 15-second <code>preStop</code> and a 45-second grace period.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">This is not a supported upgrade procedure</div>
+      <p>No supported upgrade path or tested rollback is published for the gateway, which is recorded under Undocumented areas. This check proves the pod replacement is graceful; it does not make a version-to-version upgrade a supported operation.</p>
     </div>
   </div>
 </div>
@@ -3231,6 +3419,7 @@ helm upgrade --install portkey-ai portkey-ai/gateway \
   <div class="collapsible-body">
     <p>These questions come up in the field and the published material does not currently answer them. Raise them with the product team rather than inferring an answer, and treat anything below as unresolved when writing a customer commitment.</p>
     <ul>
+      <li><strong>Outbound private connectivity</strong> &mdash; whether the Portkey PrivateLink, Private Link and Private Service Connect endpoint services in step 7.3 accept a gateway managed by Strata Cloud Manager. The procedures are published by Portkey and target Portkey's own control plane; Palo Alto Networks has published no equivalent, and confirmed on 2026-09-27 that the inbound direction is not supported with Strata Cloud Manager. Confirm before designing around it or costing it.</li>
       <li><strong>Throughput sizing</strong> &mdash; no requests-per-second figures for any of the three platforms. The published CPU and memory numbers are minimums to run, not a capacity model.</li>
       <li><strong>Image and chart compatibility</strong> &mdash; versioned tags are published and the chart pins its own defaults, so pinning is straightforward (see <a href="#values">step 4</a>). What remains unpublished is whether the chart's pinned pairing is the <em>supported</em> pairing, and whether any matrix covers running a newer gateway image against an older chart.</li>
       <li><strong>Upgrade and rollback</strong> &mdash; no supported upgrade path and no tested rollback procedure.</li>

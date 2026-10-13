@@ -582,6 +582,7 @@ const AIGW_KUBERNETES = {
           'Confirm which applications route through the gateway and their token volumes',
           'Agree the platform: EKS, AKS, or GKE, and whether the cluster already exists',
           'Agree node sizing and the cache and log store products to be used',
+          'Decide the log store, which is a data residency decision: the default sends prompt and completion bodies to the US-hosted management plane and keeps the SCM log view complete, while a customer log store keeps bodies in region and leaves the SCM view metadata only',
           'Walk the licensing path and confirm who holds Customer Support Portal access',
           'Agree whether the outbound link is over the internet or a private endpoint'
         ]
@@ -679,7 +680,7 @@ const AIGW_KUBERNETES = {
         { variant: 'eks', heading: '2.1 — Create the S3 log bucket', owner: 'PANW / CUSTOMER', hours: 1, who: [G.cloud],
           task: 'Create the S3 bucket for gateway logs and confirm encryption and retention match policy' },
         { variant: 'eks', heading: '2.2 — Provision ElastiCache', owner: 'PANW / CUSTOMER', hours: 4, who: [G.cloud],
-          task: 'Provision ElastiCache for Redis in the cluster VPC and confirm the gateway subnets can reach it' },
+          task: 'Provision ElastiCache for Redis in the cluster VPC, attach a parameter group setting maxmemory-policy to noeviction, and confirm the gateway subnets can reach it' },
         { variant: 'eks', anchor: 'identity', heading: '3.1 — Create the IAM role', owner: 'PANW / CUSTOMER', hours: 1.5, who: [G.cloud],
           task: 'Create the IAM role with the trust policy for the gateway service account' },
         { variant: 'eks', anchor: 'identity', heading: '3.2 — Attach the S3 policy', owner: 'PANW / CUSTOMER', hours: 1, who: [G.cloud],
@@ -715,7 +716,7 @@ const AIGW_KUBERNETES = {
         name: 'Dependencies Milestone',
         criteria: [
           'Log store created with encryption and retention matching customer policy',
-          'Cache provisioned and reachable from the cluster subnets',
+          'Cache provisioned and reachable from the cluster subnets, with maxmemory-policy set to noeviction',
           'Gateway identity created and federated to the Kubernetes service account',
           'Identity granted least-privilege access to the log store and the cache',
           'No long-lived static credential used anywhere in the deployment'
@@ -745,6 +746,8 @@ const AIGW_KUBERNETES = {
           task: 'Decide which optional components to enable and record why each is on or off' },
         { heading: '4.5 — Service type and health probes (all platforms)', owner: 'PANW', hours: 1, who: [G.k8s],
           task: 'Set the service type and health probe configuration' },
+        { heading: '4.6 — Availability settings the chart leaves off (all platforms)', owner: 'PANW / CUSTOMER', hours: 3, who: [G.k8s],
+          task: 'Set replicas, resource requests, autoscaling, a disruption budget, and the preStop hook and grace period that stop a rolling upgrade dropping requests' },
         { anchor: 'install', heading: '5.1 — Add the repository and install', owner: 'PANW', hours: 2, who: [G.k8s],
           task: 'Add the Helm repository and install the chart with the completed values file' },
         { anchor: 'install', heading: '5.2 — Confirm the pods are running', owner: 'PANW', hours: 1, who: [G.k8s],
@@ -756,6 +759,8 @@ const AIGW_KUBERNETES = {
           'values.yaml complete and stored in version control',
           'Optional component choices recorded with a reason for each',
           'Chart installed at a pinned version',
+          'Replicas above one, resource requests set, and a disruption budget in place',
+          'preStop hook and termination grace period present on the running pod, not only in values.yaml',
           'All gateway pods Running with no restart loop',
           'Pod logs clean of cache and log store connection errors'
         ]
@@ -793,15 +798,15 @@ const AIGW_KUBERNETES = {
           task: 'Restrict the load balancer source range to the networks allowed to call the gateway' },
 
         { anchor: 'connectivity', heading: '7.1 — Allow outbound egress (all platforms)', owner: 'PANW / CUSTOMER', hours: 2, who: [G.security, G.k8s],
-          task: 'Allow the outbound egress the gateway needs and confirm it passes any egress proxy in the path' },
+          task: 'Allow outbound 443 to api.portkey.ai, aigw.portkey.ai, albus.portkey.ai and registry.portkey.ai, and exempt *.portkey.ai from TLS inspection' },
         { anchor: 'connectivity', heading: '7.2 — Reach the management plane over the internet (all platforms)', owner: 'PANW / CUSTOMER', hours: 1, who: [G.security],
           task: 'Confirm the gateway reaches the management plane endpoints over the internet path' },
         { variant: 'eks', anchor: 'connectivity', heading: '7.3 — Private outbound over AWS PrivateLink', owner: 'PANW / CUSTOMER', hours: 6, who: [G.cloud, G.security],
-          task: 'Establish the private outbound path over AWS PrivateLink, or record the decision to stay on the internet path' },
+          task: 'Confirm with the product team that the endpoint service accepts an SCM-managed gateway, then build the private outbound path, or record the decision to stay on the internet path. Do not start the build before the confirmation: the procedure is Portkey-sourced and unverified for Strata Cloud Manager' },
         { variant: 'aks', anchor: 'connectivity', heading: '7.3 — Private outbound over Azure Private Link', owner: 'PANW / CUSTOMER', hours: 6, who: [G.cloud, G.security],
-          task: 'Establish the private outbound path over Azure Private Link, or record the decision to stay on the internet path' },
+          task: 'Confirm with the product team that the endpoint service accepts an SCM-managed gateway, then build the private outbound path, or record the decision to stay on the internet path. Do not start the build before the confirmation: the procedure is Portkey-sourced and unverified for Strata Cloud Manager' },
         { variant: 'gke', anchor: 'connectivity', heading: '7.3 — Private outbound over GCP Private Service Connect', owner: 'PANW / CUSTOMER', hours: 6, who: [G.cloud, G.security],
-          task: 'Establish the private outbound path over Private Service Connect, or record the decision to stay on the internet path' },
+          task: 'Confirm with the product team that the endpoint service accepts an SCM-managed gateway, then build the private outbound path, or record the decision to stay on the internet path. Do not start the build before the confirmation: the procedure is Portkey-sourced and unverified for Strata Cloud Manager' },
         { anchor: 'connectivity', heading: '7.4 — Inbound is not supported with Strata Cloud Manager (all platforms)', owner: 'PANW / CUSTOMER', hours: 0.5, who: [G.security],
           task: 'Confirm with the security lead that inbound from the management plane is not required, since it is not supported' }
       ],
@@ -838,7 +843,9 @@ const AIGW_KUBERNETES = {
         { heading: '8.2 — Test through the load balancer', owner: 'PANW / CUSTOMER', hours: 1.5, who: [G.k8s, G.aiml],
           task: 'Send a request through the load balancer from an allowed network and confirm the response' },
         { heading: '8.3 — Confirm the request reached the management plane', owner: 'PANW / CUSTOMER', hours: 2, who: [G.aiml, G.security],
-          task: 'Confirm the request appears in Strata Cloud Manager and the log object lands in the log store' }
+          task: 'Confirm the request appears in Strata Cloud Manager, and that body visibility matches the log store decision taken at kickoff' },
+        { heading: '8.4 — Upgrade under traffic', owner: 'PANW / CUSTOMER', hours: 3, who: [G.k8s],
+          task: 'Run a rolling upgrade under continuous load and confirm zero failed requests, which is what proves the preStop hook and grace period work' }
       ],
       milestone: {
         name: 'Verification and Handover Milestone',
@@ -846,7 +853,8 @@ const AIGW_KUBERNETES = {
           'Pod answers a request directly',
           'Request through the load balancer succeeds from an allowed network and fails from a denied one',
           'Traffic visible in Strata Cloud Manager',
-          'Log objects landing in the log store at the expected path',
+          'Log bodies land where the kickoff decision said they would: expanding in the SCM view on the default path, or in the customer bucket with the SCM view metadata only',
+          'Rolling upgrade under continuous load completes with zero failed requests',
           'Scaling, upgrade, and teardown runbooks handed over',
           'Operations team signed off on knowledge transfer'
         ]
@@ -1407,7 +1415,7 @@ const AIGW_SERVERLESS = {
           'Confirm which applications route through the gateway and their token volumes',
           'Agree the platform: ECS Fargate or Azure Container Apps',
           'Walk the platform limits and confirm nothing in scope needs an unsupported feature',
-          'Agree whether the outbound link is over the internet or a private endpoint',
+          'Agree whether the outbound link is over the internet or a private endpoint, and if private, raise the availability question with the product team now rather than mid-build',
           'Confirm who holds Customer Support Portal access for licensing'
         ] } },
 
