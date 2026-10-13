@@ -1770,10 +1770,10 @@ const AIGW_DEPLOYMENT = {
       objective: 'Connect a provider, expose the gateway, and route a real client through it.',
       steps: [
         { heading: 'Step 3.1: Select the LLM provider', owner: 'PANW / CUSTOMER', hours: 2, who: [G.aiml], task: 'Select the LLM provider for this integration' },
-        { heading: 'Step 3.2: Enter basic information — name, slug, and API key', owner: 'PANW / CUSTOMER', hours: 2, who: [G.aiml, G.security], task: 'Enter the integration name and slug, and supply the provider key from the secret store' },
+        { heading: 'Step 3.2: Enter basic information — name, slug, and API key', owner: 'PANW / CUSTOMER', hours: 2, who: [G.aiml, G.security], task: 'Enter the integration name and slug, and supply the provider key from the secret store. The slug goes into every client config as @slug/model, so agree it before any caller is pointed at it' },
         { heading: 'Step 3.3: Optional fields and advanced options — custom hosts and headers', owner: 'PANW / CUSTOMER', hours: 3, who: [G.aiml], task: 'Set custom hosts and headers where the provider needs them, or record that defaults apply' },
         { heading: 'Step 3.4: Configure Pricing Adjustments (cost multipliers)', owner: 'PANW / CUSTOMER', hours: 2, who: [G.sponsor, G.aiml], task: 'Configure cost multipliers so reported spend matches the real contract' },
-        { heading: 'Step 3.5: Set up workspace provisioning, budgets, and rate limits', owner: 'PANW / CUSTOMER', hours: 5, who: [G.aiml, G.sponsor], task: 'Provision workspaces and set budgets and rate limits per workspace' },
+        { heading: 'Step 3.5: Set up workspace provisioning, budgets, and rate limits', owner: 'PANW / CUSTOMER', hours: 5, who: [G.aiml, G.sponsor], task: 'Provision workspaces and set budgets and rate limits per workspace, confirming the shared slug, provider key and model allowlist suit every workspace on this integration' },
         { heading: 'Set a budget or rate limit for a workspace', owner: 'PANW / CUSTOMER', hours: 2, who: [G.sponsor], task: 'Set the budget and rate limit for each workspace and agree what happens when one is hit' },
         { heading: 'Step 3.6: Configure model provisioning and create the integration', owner: 'PANW / CUSTOMER', hours: 3, who: [G.aiml], task: 'Provision the models and create the integration' },
         { variant: 'hybrid', heading: 'Step 3.7 (Hybrid): Expose the gateway service', owner: 'PANW / CUSTOMER', hours: 4, who: [G.k8s, G.security], task: 'Expose the gateway service to its callers and restrict who can reach it' },
@@ -1785,7 +1785,7 @@ const AIGW_DEPLOYMENT = {
         { variant: 'hybrid', heading: 'Step 3.9 (Hybrid): Disable the SaaS gateway', owner: 'PANW / CUSTOMER', hours: 1, who: [G.cloud], task: 'Disable the SaaS gateway so traffic cannot silently fall back to it' },
         { heading: 'Step 3.10: Tell users and agents apart', owner: 'PANW / CUSTOMER', hours: 3, who: [G.security, G.aiml], task: 'Configure the gateway to distinguish users from agents, and confirm it in the logs' }
       ],
-      milestone: { name: 'LLM Integration Milestone', criteria: ['Provider integration created and a real call succeeding through it', 'Provider key read from a secret store, never typed into a config file', 'Workspaces provisioned with budgets and rate limits, and the behavior at the limit agreed', 'Gateway exposed behind TLS to its intended callers only, where hybrid', 'SaaS gateway disabled on a hybrid deployment so traffic cannot fall back', 'Users and agents distinguishable in the logs', 'Key replacement procedure proven'] },
+      milestone: { name: 'LLM Integration Milestone', criteria: ['Provider integration created and a real call succeeding through it', 'Provider key read from a secret store, never typed into a config file', 'Workspaces provisioned with budgets and rate limits, and the behavior at the limit agreed', 'Share-or-split decision recorded: one integration for every workspace, or several where model allowlists, key isolation or provider-side billing differ', 'Slug agreed and published to the application teams before any client is reconfigured', 'Gateway exposed behind TLS to its intended callers only, where hybrid', 'SaaS gateway disabled on a hybrid deployment so traffic cannot fall back', 'Users and agents distinguishable in the logs', 'Key replacement procedure proven'] },
       meeting: {
         name: 'Workspace and Budget Review', when: 'Before workspaces are provisioned', position: 'step',
         beforeStep: 'Step 3.5: Set up workspace provisioning, budgets, and rate limits', minutes: 90,
@@ -1793,6 +1793,7 @@ const AIGW_DEPLOYMENT = {
         optional: [G.k8s, G.cloud],
         agenda: [
           'Agree how workspaces map to teams and applications',
+          'Decide one shared integration or several: every workspace on one integration shares its slug, its provider key and its model allowlist, and splitting later means reconfiguring every client',
           'Set a budget and a rate limit for each workspace',
           'Agree what happens when a workspace hits its budget: throttle or stop',
           'Agree the cost multipliers so reported spend matches the real contract',

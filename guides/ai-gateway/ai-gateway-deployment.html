@@ -1124,11 +1124,48 @@ spec:
     <ol>
       <li>Provide a <strong>Name</strong> for the integration (required), for example <code>default-anthropic</code>.</li>
       <li>Optionally provide a <strong>Short Description</strong>.</li>
-      <li>Enter the <strong>Slug</strong>, for example <code>default-anthropic</code>: lowercase letters, digits, and hyphens only, unique in your organization. It becomes part of the model reference (<code>@&lt;slug&gt;/&lt;model&gt;</code>, Step 3.7). If the field auto-filled from the Name, check it against that rule.</li>
+      <li>Enter the <strong>Slug</strong>, for example <code>default-anthropic</code>: lowercase letters, digits, and hyphens only, unique in your organization. It becomes part of the model reference (<code>@&lt;slug&gt;/&lt;model&gt;</code>, Step 3.7). If the field auto-filled from the Name, check it against that rule. The slug is explained in full below, and it is worth getting right before any client is pointed at it.</li>
       <li>Paste the provider <strong>API Key</strong>. If you do not know where to get one, click the <strong>Grab API Key</strong> link next to the field for provider-specific instructions.</li>
     </ol>
     <p><em>Your screen should look like this:</em></p>
     <img src="aigw-screenshots/aigw-integration-details.png" alt="Basic Integration Details page for Anthropic with the Name field and masked API Key field highlighted, showing the Grab API Key link, Advanced Options with Custom Host and Custom headers, the Pricing Adjustments toggle, and the Next Choose Workspace button" loading="lazy">
+    <h3>What the slug is, and what depends on it</h3>
+
+    <p>The slug is a value you invent here. Nothing in the customer environment supplies it, and it is not derived from anything the provider issues. Once a client is pointed at it, the dependency runs the other way: the slug is the address applications use, so changing it means changing every caller.</p>
+
+    <p>It is the second half of the model reference. An application that used to name a model directly now names the integration and the model together:</p>
+
+    <div class="code-block">
+      <pre><code class="language-text">Before, calling the provider directly
+  base URL:  https://api.anthropic.com
+  model:     claude-sonnet-4-20250514
+
+After, calling through the gateway
+  base URL:  https://&lt;your gateway host&gt;
+  model:     @default-anthropic/claude-sonnet-4-20250514
+             └──── slug ────┘ └──── model ────┘</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Property</th><th>Detail</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Who sets it</td><td>You, on this page. It may auto-fill from the Name, which does not apply the character rule for you.</td></tr>
+        <tr><td>Scope of uniqueness</td><td>The organization. Two integrations cannot share a slug, so a per-team integration needs a distinguishing name such as <code>anthropic-research</code>.</td></tr>
+        <tr><td>Where it appears</td><td>The model reference in every request path, SDK call, and config file that routes through this integration. It also identifies the provider in a workspace Model Catalog.</td></tr>
+        <tr><td>What it does not do</td><td>Grant access. Access is workspace provisioning (Step 3.5), the model allowlist (Step 3.6), and the gateway API key (Step 3.8). The slug is an address, not a permission.</td></tr>
+        <tr><td>Relationship to workspaces</td><td>One slug serves every workspace provisioned to the integration. It is not per team.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Choose a slug that survives a rebuild</div>
+      <p>Because the slug is embedded in client configuration, it is expensive to change later. That is also why the recovery procedure for a read-only API key field is to delete the integration and recreate it <em>with the same slug</em>, so existing callers keep working.</p>
+      <p>Name it for the provider and its purpose, such as <code>default-anthropic</code> or <code>prod-bedrock</code>. Avoid dates, ticket numbers, and environment names you may outgrow. Whether a slug can be edited after creation is not documented; assume it cannot until you have confirmed otherwise.</p>
+    </div>
+
     <div class="callout callout-danger">
       <div class="callout-title">Handle provider keys carefully</div>
       <p>The API key you enter here becomes shared infrastructure: every workspace you later provision consumes the provider through this credential without ever seeing it. Use a dedicated key from the provider (not a personal one), and rotate it at the provider if you suspect exposure. To put a rotated key on this integration later, open its row on the <strong>LLM Integrations</strong> tab (Step 3.7, item 3), use the edit action, and replace the <strong>API Key</strong> value on the <strong>Integration Details</strong> tab. If the field is read-only there, delete the integration and recreate it with the same slug (Step 3.5 danger callout). The key is stored in the Strata Cloud Manager control plane. On a Hybrid deployment the data plane also holds a copy: the chart documentation states that API keys and secrets synced from the management plane are cached in encrypted form in the data plane's Redis and decrypted locally by the gateway. The Redis and Secret controls from Phase 2 therefore protect this provider key too.</p>
@@ -1272,6 +1309,32 @@ spec:
     <ol start="3">
       <li>With every intended workspace checked (and any limits applied), click <strong>Next: Select Models</strong> at the bottom of the stage.</li>
     </ol>
+    <h3>One integration, many workspaces</h3>
+
+    <p>Everything you provision here hangs off a single integration, which means a single slug and a single provider key. Every workspace you check addresses the integration by the same <code>@&lt;slug&gt;/&lt;model&gt;</code> reference. The slug is not per team, and there is no per-workspace variant of it.</p>
+
+    <p>Plenty does stay separate, though. On one shared integration each workspace still gets:</p>
+
+    <ul>
+      <li><strong>Its own budget and rate limit</strong> &mdash; set individually on this page</li>
+      <li><strong>Its own gateway API key</strong> &mdash; created in Step 3.8 and scoped to that workspace</li>
+      <li><strong>Its own attribution</strong> &mdash; usage and logs separate out by workspace</li>
+      <li><strong>Independent revocation</strong> &mdash; unchecking a workspace removes its access without touching the others</li>
+    </ul>
+
+    <p>What is not separate is the provider key, which every provisioned workspace consumes without seeing, and the model allowlist, which Step 3.6 sets for the integration as a whole.</p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">When to create a second integration instead</div>
+      <p>Decide this before you roll the slug out to clients, because splitting afterwards means reconfiguring applications. Create separate integrations, each with its own slug, when you need any of the following:</p>
+      <ul>
+        <li><strong>Different model allowlists</strong> &mdash; the usual reason. If research may call your most expensive model and production must be capped at a cheaper one, no budget setting achieves that, because the allowlist is a property of the integration rather than the workspace.</li>
+        <li><strong>Isolated provider keys</strong> &mdash; so one team's key can be rotated or revoked without interrupting anyone else.</li>
+        <li><strong>Spend attribution at the provider</strong> &mdash; a shared key bills as one line on the provider invoice. Strata Cloud Manager still attributes usage per workspace; the provider does not.</li>
+      </ul>
+      <p>Otherwise share one integration. One slug means one client configuration to distribute and one credential to rotate.</p>
+    </div>
+
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
       <p>The intended workspaces are selected, and every provisioned workspace has an intentional budget and rate limit decision recorded (even if that decision is "no limit"). Budget amounts sit at or above the $1 or 100-token minimums and nothing is unintentionally set to 0. The wizard has advanced to the <strong>Select Models to Provision</strong> stage.</p>
@@ -2661,7 +2724,7 @@ client = Anthropic(
         <tr><td>Workspace</td><td>SCM Workspace</td><td>Access governed by SBAC roles; one default workspace per tenant</td></tr>
         <tr><td>Integration</td><td>AI Gateway (SCM AI Security)</td><td>Provider connection plus credentials, limits, and model list</td></tr>
         <tr><td>AI Provider</td><td>Workspace Model Catalog</td><td>What a provisioned workspace sees and consumes</td></tr>
-        <tr><td>Slug</td><td>Model Catalog and API calls</td><td>Identifier that selects a provider or integration in requests</td></tr>
+        <tr><td>Slug</td><td>Model Catalog and API calls</td><td>Identifier that selects a provider or integration in requests. You choose it (Step 3.2), it is unique per organization, and every workspace provisioned to the integration shares it</td></tr>
       </tbody>
     </table>
   </div>
