@@ -696,7 +696,55 @@
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 1.4: Deployment Environment &amp; Tooling</span>
+    <span>Step 1.4: Strata Logging Service and the Identifier Chain</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Traffic logs from Cloud NGFW for AWS reach the Panorama <strong>Monitor</strong> and <strong>ACC</strong> tabs through Strata Logging Service and through nothing else. Settle this before you deploy, because two of the constraints below cannot be changed afterwards.</p>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">There is no Log Collector path on AWS</div>
+      <p>Cloud NGFW for AWS does not forward logs to a Panorama Log Collector. If Panorama is not linked to Strata Logging Service, logs never appear on the Monitor or ACC tabs no matter how the log forwarding profile is written, and they are viewable only in the AWS-native destinations: CloudWatch, S3, or Kinesis Data Firehose. This differs from Cloud NGFW for Azure, and assuming the Azure behavior here is the most common cause of a deployment that passes every check and still shows no logs.</p>
+    </div>
+
+    <p><strong>The identifier chain.</strong> Four identifiers connect the pieces, and each one is derived from the one before it:</p>
+
+    <table>
+      <thead>
+        <tr><th>Identifier</th><th>What it is</th><th>Where to read it</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>CSP account</td><td>The support account both products are licensed under</td><td>Customer Support Portal, <code>Assets</code></td></tr>
+        <tr><td>TSG ID</td><td>The Tenant Service Group the Strata products belong to</td><td>Common Services, <code>Tenant Management</code></td></tr>
+        <tr><td>Strata Logging Service instance</td><td>The log store the TSG owns</td><td>Common Services, <code>Subscriptions</code></td></tr>
+        <tr><td>Link ID</td><td>The join between the Cloud NGFW tenant and Panorama</td><td>Cloud NGFW console, <code>Integrations</code></td></tr>
+      </tbody>
+    </table>
+
+    <ol>
+      <li>Confirm the Cloud NGFW subscription and the Panorama support license sit under <strong>one CSP account</strong>. Two accounts cannot be joined later without a support case.</li>
+      <li>Confirm the TSG exists and carries a Strata Logging Service subscription. A TSG without Strata Logging Service produces a link error at Phase 2, not at Phase 1.</li>
+      <li>Record the Strata Logging Service <strong>region</strong>. The region is set by whichever product is enabled first in the tenant and cannot be edited afterwards, so a tenant that activated the wrong region has to be rebuilt.</li>
+      <li>Confirm the tenant has <strong>one</strong> Strata Logging Service instance. One instance per tenant is the limit; a second product needing a different log store needs a second tenant.</li>
+      <li>Decide the log destination now: Strata Logging Service for the management console, or an AWS-native destination for a pipeline you already run. Both can be configured, and Step 2A.6 covers each.</li>
+    </ol>
+
+    <div class="callout callout-note">
+      <div class="callout-title">SCM-managed deployments</div>
+      <p>A deployment managed by Strata Cloud Manager inherits the Strata Logging Service instance from its own tenant, so there is no separate onboarding to do. The region and single-instance constraints still apply.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Customer Support Portal lists both the Cloud NGFW subscription and the Panorama support license under the same account. Common Services shows the TSG with an active Strata Logging Service subscription, and its region matches what the data residency requirement allows.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 1.5 -->
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.5: Deployment Environment &amp; Tooling</span>
   </div>
   <div class="collapsible-body">
     <p>This guide deploys all AWS infrastructure with <strong>Terraform</strong> using the official Palo Alto Networks SWFW modules. Set up your deployment environment using one of the options below.</p>
@@ -927,11 +975,11 @@ terraform -v</code></pre>
   </div>
 </div>
 
-<!-- Step 1.5 -->
+<!-- Step 1.6 -->
 <div class="collapsible">
   <div class="collapsible-header">
     <span class="chevron">&#9654;</span>
-    <span>Step 1.5: Install Required Terraform Providers</span>
+    <span>Step 1.6: Install Required Terraform Providers</span>
   </div>
   <div class="collapsible-body">
     <p>The Terraform deployment in Phases 4-5 requires specific provider versions. Install them now to surface any version conflicts before infrastructure work begins.</p>
@@ -1083,19 +1131,42 @@ terraform -v</code></pre>
         <span>Step 2A.2: Install Cloud Connector Plugin</span>
       </div>
       <div class="collapsible-body">
-        <p>The Cloud Connector plugin enables Panorama to integrate with Cloud NGFW tenants for centralized policy management.</p>
+        <p>The Cloud Connector plugin enables Panorama to integrate with Cloud NGFW tenants for centralized policy management. The supported version is pinned rather than open-ended: later is not safer here, and a newer plugin is one of the ways a link silently fails.</p>
+
+        <table>
+          <thead>
+            <tr><th>Component</th><th>Supported</th><th>Not supported</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Panorama</td><td><code>11.2.x</code>, or <code>12.1.5</code> and later</td><td><code>12.2</code> and later</td></tr>
+            <tr><td>Cloud Connector plugin, Panorama 11.2.x and 12.1.5+</td><td><code>3.0.1</code></td><td><code>3.0.2</code> and later</td></tr>
+            <tr><td>Cloud Connector plugin, Panorama 11.1.x</td><td><code>2.0.1</code></td><td><code>2.1.0-c98</code></td></tr>
+            <tr><td>AWS plugin</td><td><code>5.4.2</code> and later</td><td><code>5.4.0</code></td></tr>
+          </tbody>
+        </table>
 
         <ol>
           <li>In Panorama, click the <code>Panorama</code> tab.</li>
           <li>In the left menu, click <code>Plugins</code>.</li>
           <li>Click <code>Check Now</code> in the bottom-left corner.</li>
           <li>Search for <code>cloudconnector</code>.</li>
-          <li>Download and install <code>cloudconnector-2.0.1</code> (or later).</li>
+          <li>Download and install the version the table gives for your Panorama release.</li>
+          <li>Search for <code>aws</code> and confirm the AWS plugin is <code>5.4.2</code> or later.</li>
         </ol>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Panorama 11.1.x ships a plugin you have to roll back</div>
+          <p>PAN-OS <code>11.1.x</code> ships Cloud Connector <code>2.1.0-c98</code>, which is not supported for Cloud NGFW. Downgrade it to <code>2.0.1</code> before linking the tenant. A link attempted on <code>2.1.0-c98</code> can appear to succeed and then fail to push policy.</p>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Pinned versions, verified 2026-10-12</div>
+          <p>These pins move with each fleet release. Re-check them against the Cloud NGFW compatibility matrix before a deployment, and treat the table above as correct only as of the date given.</p>
+        </div>
 
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>The Plugins page shows <code>cloudconnector</code> with status <code>Installed</code>. The plugin version is <code>2.0.1</code> or later.</p>
+          <p>The Plugins page shows <code>cloudconnector</code> with status <code>Installed</code> at the version the table gives for your Panorama release, and the AWS plugin at <code>5.4.2</code> or later.</p>
         </div>
       </div>
     </div>
@@ -1219,10 +1290,50 @@ terraform -v</code></pre>
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>Step 2A.6: Configure Log Forwarding</span>
+        <span>Step 2A.6: Onboard Panorama to Strata Logging Service</span>
       </div>
       <div class="collapsible-body">
-        <p>When managed by Panorama, Cloud NGFW sends traffic logs to Cortex Data Lake. Configure log forwarding profiles in each device group to ensure all traffic is logged.</p>
+        <p>Activating Strata Logging Service does not onboard Panorama to it. The association is a separate, manual step, and until it is done the log forwarding profile in Step 2A.7 has nowhere to deliver to. This is the step most often missed, because every other part of the deployment succeeds without it.</p>
+
+        <ol>
+          <li>Confirm the Panorama device certificate is installed. In Panorama, go to <code>Panorama</code> &rarr; <code>Setup</code> &rarr; <code>Management</code> and check <strong>Device Certificate</strong> shows <code>Valid</code>. Without it the association fails at the last step.</li>
+          <li>In the Customer Support Portal, go to <code>Assets</code> &rarr; <code>Device Associations</code>.</li>
+          <li>Click <code>Add Device</code> and select the Panorama serial number.</li>
+          <li>Click <code>Associate Products</code> and select <strong>Strata Logging Service</strong>.</li>
+          <li>Save the association and confirm it lists against the Panorama serial.</li>
+          <li>In Common Services, go to <code>Strata Logging Service</code> &rarr; <code>Inventory</code> &rarr; <code>Panorama Appliances</code>.</li>
+          <li>Click <code>Manage Panorama Inventory</code>, then <code>Generate OTP</code> for the Panorama serial.</li>
+          <li>In Panorama, go to <code>Panorama</code> &rarr; <code>Licenses</code> and apply the one-time password.</li>
+          <li>Confirm Panorama reports the Strata Logging Service connection as up.</li>
+        </ol>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Panorama with IoT Security enabled</div>
+          <p>A Panorama that already has IoT Security enabled must be onboarded through <code>Device Associations</code> only. Do not use the Strata Logging Service inventory path for it, because the second association conflicts with the first and leaves the appliance in a state that needs a support case to clear.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The Customer Support Portal shows Strata Logging Service associated with the Panorama serial. The Strata Logging Service inventory lists the Panorama appliance as connected, and Panorama itself reports the logging connection up rather than pending.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 2A.7: Configure Log Forwarding</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Configure log forwarding profiles in each device group so that traffic is logged. Where the logs land depends on what you set up in Step 1.4, and the two destinations are independent of each other.</p>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Which destination applies</div>
+          <ul>
+            <li><strong>Strata Logging Service</strong> &mdash; the only path that reaches the Panorama Monitor and ACC tabs. Requires Step 2A.6 to be complete.</li>
+            <li><strong>AWS-native</strong> &mdash; S3, CloudWatch, or Kinesis Data Firehose, configured on the Cloud NGFW tenant rather than in Panorama. Useful when a log pipeline already exists, but these logs never appear in the Panorama console.</li>
+          </ul>
+        </div>
 
         <ol>
           <li>In Panorama, navigate to <code>Objects</code> &rarr; <code>Log Forwarding</code>.</li>
@@ -1230,7 +1341,7 @@ terraform -v</code></pre>
           <li>Click <code>Add</code> to create a new log forwarding profile.</li>
           <li>Set <strong>Name</strong> to <code>default</code>.</li>
           <li>Add log type match entries for <code>traffic</code>, <code>threat</code>, <code>url</code>, and <code>data</code>.</li>
-          <li>For each match entry, select <code>Cortex Data Lake</code> as the forwarding destination.</li>
+          <li>For each match entry, select <code>Cortex Data Lake</code> as the forwarding destination. Older PAN-OS builds still use the former product name in this field; it is the same destination as Strata Logging Service.</li>
           <li>Click <code>OK</code>.</li>
           <li>Repeat for the inbound device group.</li>
           <li>Attach the log forwarding profile to each security rule: edit the rule, go to the <code>Actions</code> tab, and select the <code>default</code> log forwarding profile.</li>
@@ -1242,9 +1353,27 @@ terraform -v</code></pre>
           <p>Naming the log forwarding profile exactly <code>default</code> (lowercase) causes PAN-OS to auto-attach it to <strong>new</strong> security rules created in this device group. This is case-sensitive and not retroactive; existing rules without a log forwarding profile must be updated manually.</p>
         </div>
 
+        <p><strong>Forwarding to AWS instead.</strong> The AWS-native destinations are set on the Cloud NGFW tenant, not in Panorama. Configure them in the Cloud NGFW console under <code>Tenant</code> &rarr; <code>Log Settings</code>, choosing S3, CloudWatch, or Kinesis Data Firehose.</p>
+
+        <table>
+          <thead>
+            <tr><th>Destination</th><th>Default name in the onboarding CFT</th><th>Who creates it</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>CloudWatch Log Group</td><td><code>PaloAltoCloudNGFW</code></td><td>You, before enabling</td></tr>
+            <tr><td>Kinesis Data Firehose</td><td><code>PaloAltoCloudNGFW</code></td><td>You, before enabling</td></tr>
+            <tr><td>S3 bucket</td><td>No default, you supply the name</td><td>You, before enabling</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout callout-danger">
+          <div class="callout-title">A name mismatch loses logs silently</div>
+          <p>The onboarding CloudFormation template grants write permission to these destinations. It does not create them. The service writes nothing if the destination does not exist or the name does not match, there is no local buffer to catch the gap, and no error is raised anywhere in the console. Create each destination first and confirm the name character for character against what the tenant is configured with.</p>
+        </div>
+
         <div class="callout callout-success">
           <div class="callout-title">Verification</div>
-          <p>A log forwarding profile named <code>default</code> exists in each device group. Every security rule shows the log forwarding profile attached in the Actions column. Commit-and-push completes without errors.</p>
+          <p>A log forwarding profile named <code>default</code> exists in each device group, and every security rule shows it attached in the Actions column. Commit-and-push completes without errors. If an AWS-native destination is in use, the CloudWatch log group, Firehose stream, or S3 bucket exists with the exact configured name and is receiving objects.</p>
         </div>
       </div>
     </div>
@@ -2395,8 +2524,24 @@ global_tags = {
     <p>Confirm that the Cloud NGFW resource is enrolled in Strata Logging Service (SLS) and that logs are flowing to the centralized logging platform. This step applies to both Panorama-managed and SCM-managed deployments; SLS is automatically enabled when the Cloud NGFW resource is linked to either management platform.</p>
 
     <div class="callout callout-note">
-      <div class="callout-title">Automatic Enrollment</div>
-      <p>Strata Logging Service is automatically enabled when the Cloud NGFW resource is linked to Panorama (via the Cloud Services plugin) or to SCM. No separate SLS activation or license purchase is required for Cloud NGFW; enrollment happens as part of the management platform integration completed in <a href="#management-config">Phase 2</a>. Cloud NGFW is a managed service, so there are no firewall-side configuration steps for SLS connectivity (no ports, FQDNs, or device certificates to configure).</p>
+      <div class="callout-title">Two separate enrollments, only one of them automatic</div>
+      <p>The <strong>Cloud NGFW resource</strong> enrolls into Strata Logging Service automatically when it is linked to a management platform in <a href="#management-config">Phase 2</a>. Cloud NGFW is a managed service, so there is nothing to configure on the firewall side: no ports, no FQDNs, no device certificate.</p>
+      <p><strong>Panorama is a different matter.</strong> Panorama is not onboarded to Strata Logging Service automatically, and it does need a device certificate. That is the manual association in Step 2A.6. A deployment where the resource is enrolled but Panorama is not will show the resource in the inventory below and still show nothing on the Monitor tab.</p>
+    </div>
+
+    <h3>Verify the Link ID and the Strata Logging Service it inherited</h3>
+    <p>This is the authoritative check for a Panorama-managed deployment, because it reads the association rather than inferring it.</p>
+    <ol>
+      <li>Log in to the Cloud NGFW console.</li>
+      <li>Navigate to <code>Integrations</code>.</li>
+      <li>Click the <strong>Link ID</strong> for the Panorama association.</li>
+      <li>In the <strong>Link Panorama</strong> window, read the <strong>Strata Logging Service ID</strong> the tenant inherited.</li>
+      <li>Confirm it matches the instance recorded in Step 1.4.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">The tenant reads this once</div>
+      <p>The Cloud NGFW tenant pulls the Strata Logging Service details from Panorama at link time and does not re-read them. There is no Strata Logging Service picker on the Cloud NGFW side, so a tenant linked before Strata Logging Service was added to the TSG shows no instance here. The fix is to unlink and relink, which is covered in Troubleshooting.</p>
     </div>
 
     <h3>Verify SLS Inventory</h3>
@@ -3179,6 +3324,152 @@ terraform init -upgrade</code></pre>
     <div class="callout callout-success">
       <div class="callout-title">Verification</div>
       <p>The management platform link shows <code>Connected</code>. Policy push completes without errors. Log entries appear in Cortex Data Lake (Panorama) or the SCM log viewer within 5 minutes of test traffic generation.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Link fails with a TSG ID error</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Symptom:</strong> Linking the tenant fails with <code>Failed to get TSG ID for Panorama &lt;id&gt;</code>.</p>
+
+    <p>The same message covers two different causes, and they need different fixes.</p>
+
+    <table>
+      <thead>
+        <tr><th>Cause</th><th>How to tell</th><th>Fix</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Panorama is not associated with any Tenant Service Group</td><td>Common Services shows no TSG for the Panorama serial</td><td>Associate the serial with a TSG, then retry the link</td></tr>
+        <tr><td>Panorama has a TSG, but it carries neither Strata Cloud Manager nor Strata Logging Service</td><td>The TSG exists but lists no Strata subscription</td><td>Add Strata Logging Service to the TSG, then retry the link</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The link completes and the Cloud NGFW console shows a Link ID under <code>Integrations</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Link succeeds and policy pushes, but no logs ever reach Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Symptom:</strong> The integration shows <code>Connected</code>, security policy pushes cleanly, traffic is being inspected, and the Monitor and ACC tabs stay empty indefinitely.</p>
+
+    <p>This is the most common logging failure on AWS, and it is almost always the missing Panorama association rather than anything wrong with the forwarding profile.</p>
+
+    <h3>Checks</h3>
+    <ol>
+      <li>Confirm Panorama is onboarded to Strata Logging Service, not just licensed for it. See <a href="#management-config">Step 2A.6</a>. Activation alone does not onboard the appliance.</li>
+      <li>Confirm the Panorama device certificate shows <code>Valid</code> under <code>Panorama</code> &rarr; <code>Setup</code> &rarr; <code>Management</code>.</li>
+      <li>Read the Link ID in the Cloud NGFW console and confirm it reports a Strata Logging Service ID. An empty value means the tenant linked before the TSG had a log store.</li>
+      <li>Confirm the log forwarding profile is attached to the security rules, not only created.</li>
+      <li>Remember that there is no Log Collector path on AWS. If the logs are going to CloudWatch, S3, or Kinesis, they will not appear in Panorama regardless of the above.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Test traffic appears on the Panorama Monitor tab within about five minutes.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Strata Logging Service added after linking, still no logs</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Symptom:</strong> An existing subscriber adds Strata Logging Service to the TSG after the Cloud NGFW tenant was already linked, and logs never start flowing.</p>
+
+    <p>The Cloud NGFW tenant reads the Strata Logging Service details from Panorama once, at link time, and never re-reads them. Adding the log store afterwards does not reach a tenant that has already linked.</p>
+
+    <h3>Fix</h3>
+    <ol>
+      <li>Confirm Strata Logging Service is now on the TSG.</li>
+      <li>Unlink the Cloud NGFW tenant from Panorama.</li>
+      <li>Relink it. The tenant reads the Strata Logging Service ID on the new link.</li>
+      <li>Open the Link ID and confirm the Strata Logging Service ID is now populated.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Plan the unlink</div>
+      <p>Unlinking removes the policy association. Have the device groups and template stacks ready to re-push, and do this in a change window rather than during an incident.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>No logs in CloudWatch, S3, or Kinesis</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Symptom:</strong> An AWS-native destination is configured and nothing arrives. No error appears in the Cloud NGFW console.</p>
+
+    <p>The onboarding CloudFormation template grants write permission but creates nothing. If the destination does not exist, or its name does not match what the tenant is configured with, the service writes nothing and raises no error. There is no local buffer, so logs produced during the gap are lost rather than delivered late.</p>
+
+    <h3>Checks</h3>
+    <ol>
+      <li>Confirm the destination exists in the same account and region as the tenant.</li>
+      <li>Compare the name character for character against the tenant configuration. The CFT defaults <code>PaloAltoCloudNGFW</code> for CloudWatch and Firehose; S3 has no default, so the bucket name is whatever was typed.</li>
+      <li>Confirm the role the CFT created still carries the write permission and has not been narrowed by a later policy change.</li>
+      <li>Generate fresh test traffic after fixing the name. Logs from the gap do not backfill.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>New objects or log events appear in the destination within a few minutes of test traffic.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Cannot unlink the Cloud NGFW tenant from Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Symptom:</strong> The unlink action is unavailable or fails.</p>
+
+    <p>A tenant created through AWS Firewall Manager cannot be unlinked from the console. This needs a support case; there is no self-service path, and repeated attempts will not change the outcome.</p>
+
+    <h3>What to supply with the case</h3>
+    <ul>
+      <li>The Cloud NGFW tenant ID and the Link ID.</li>
+      <li>The Panorama serial number.</li>
+      <li>Whether the tenant was created by AWS Firewall Manager.</li>
+      <li>What the unlink is for, because a relink to add Strata Logging Service is handled differently from a decommission.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Panorama HA pair hangs on a configuration push</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Symptom:</strong> A push to the Cloud NGFW device group hangs rather than failing, on a Panorama HA pair.</p>
+
+    <h3>Checks</h3>
+    <ol>
+      <li>Confirm which peer is active. The Cloud NGFW link belongs to the active peer, and a push from the passive peer has nowhere to go.</li>
+      <li>Confirm the Cloud Connector plugin is installed at the same version on both peers. A version mismatch across an HA pair produces a hang rather than a clear error.</li>
+      <li>Confirm both peers have outbound HTTPS access to Palo Alto Networks cloud services. A push can hang when only one peer is reachable.</li>
+      <li>Check <code>System Logs</code> on both peers for Cloud Connector entries around the push.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A push from the active peer completes. Both peers report the same Cloud Connector plugin version.</p>
     </div>
   </div>
 </div>
