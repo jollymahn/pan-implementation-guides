@@ -39,9 +39,9 @@ var NEWS_ITEMS = [
   {
     badge: "New",
     date: "2026-10-12",
-    title: "Cloud NGFW on AWS when the licence lives in another account",
+    title: "Cloud NGFW on AWS when the license lives in another account",
     href: "guides/cngfw/cloud-ngfw-aws-multi-account.html",
-    tags: "There is no licence to move, License Manager does not apply to SaaS, The tenant belongs to whoever activates it, Programmatic access roles most walkthroughs omit, The module hardcodes the caller account ID, No Panorama-managed support in the module today, Logs do not reach an on-prem Log Collector, Nine questions for your SE"
+    tags: "There is no license to move, License Manager does not apply to SaaS, The tenant belongs to whoever activates it, Programmatic access roles most walkthroughs omit, The module hardcodes the caller account ID, No Panorama-managed support in the module today, Logs do not reach an on-prem Log Collector, Nine questions for your SE"
   },
   {
     badge: "New",
@@ -232,7 +232,7 @@ function renderNewsFeed(el, items, limit) {
 /**
  * Fill the panel's header bar with the date of the newest entry. The bar used
  * to repeat the "News & Updates" heading sitting directly above it, which
- * labelled one list twice and told the reader nothing.
+ * labeled one list twice and told the reader nothing.
  */
 function renderNewsLatest(el, items) {
   if (!el || !items || !items.length) return;
