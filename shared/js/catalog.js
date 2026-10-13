@@ -175,6 +175,7 @@ var CATALOG = [
     links: [
       { t: 'Overview and deployment models', h: 'guides/cngfw/cloud-ngfw-deployment.html', note: 'Which model fits, and why' },
       { t: 'Cloud NGFW on AWS', h: 'guides/cngfw/cloud-ngfw-aws.html', note: 'Combined Design, GWLB, spokes' },
+      { t: 'AWS multi-account licensing', h: 'guides/cngfw/cloud-ngfw-aws-multi-account.html', note: 'Parent tenant, child deploys, Panorama' },
       { t: 'Cloud NGFW on Azure', h: 'guides/cngfw/cloud-ngfw-azure.html', note: 'Centralized VNet, Panorama policy' },
       { t: 'Azure with native rulestack', h: 'guides/cngfw/cloud-ngfw-azure-native.html', note: 'Portal deploy, SCM policy' }
     ]

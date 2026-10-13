@@ -38,6 +38,13 @@ var NEWS_VISIBLE_COUNT = 6;
 var NEWS_ITEMS = [
   {
     badge: "New",
+    date: "2026-10-12",
+    title: "Cloud NGFW on AWS when the licence lives in another account",
+    href: "guides/cngfw/cloud-ngfw-aws-multi-account.html",
+    tags: "There is no licence to move, License Manager does not apply to SaaS, The tenant belongs to whoever activates it, Programmatic access roles most walkthroughs omit, The module hardcodes the caller account ID, No Panorama-managed support in the module today, Logs do not reach an on-prem Log Collector, Nine questions for your SE"
+  },
+  {
+    badge: "New",
     date: "2026-10-10",
     title: "Agent identity with Azure Entra ID, end to end",
     href: "guides/ai-gateway/agent-identity-entra.html",

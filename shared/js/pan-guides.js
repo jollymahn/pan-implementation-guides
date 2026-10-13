@@ -633,6 +633,7 @@ const GLOBAL_NAV_GROUPS = [
   { id: 'cngfw', label: 'Cloud NGFW', links: [
     { t: 'Overview & Deploy', h: 'guides/cngfw/cloud-ngfw-deployment.html' },
     { t: 'AWS', h: 'guides/cngfw/cloud-ngfw-aws.html', sub: true },
+    { t: 'AWS Multi-Account', h: 'guides/cngfw/cloud-ngfw-aws-multi-account.html', sub: true },
     { t: 'Azure', h: 'guides/cngfw/cloud-ngfw-azure.html', sub: true },
     { t: 'Azure Native', h: 'guides/cngfw/cloud-ngfw-azure-native.html', sub: true },
   ]},

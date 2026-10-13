@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Cloud NGFW on AWS: Multi-Account Licensing with Panorama | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+<style>
+.svg-figure {
+  margin: 1.5rem 0;
+  padding: 1.25rem;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.svg-figure svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+.figure-caption {
+  font-size: 0.85rem;
+  color: var(--fg-light);
+  text-align: center;
+  margin-top: 0.75rem;
+  font-style: italic;
+}
+.confidence {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.45rem;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-left: 0.4rem;
+}
+.confidence.verified { background: var(--success-bg); color: #15803d; border: 1px solid var(--success-border); }
+.confidence.unverified { background: var(--warn-bg); color: var(--warn-icon); border: 1px solid var(--warn-border); }
+.confidence.confirm { background: var(--danger-bg); color: var(--danger-icon); border: 1px solid var(--danger-border); }
+.path-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+.path-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem 1.15rem;
+  background: #fff;
+}
+.path-card.recommended { border-color: var(--success-border); border-width: 2px; background: var(--success-bg); }
+.path-card.caution { border-color: var(--warn-border); background: var(--warn-bg); }
+.path-card h4 { margin: 0 0 0.5rem; font-size: 1rem; }
+.path-card p { font-size: 0.9rem; margin: 0.4rem 0; }
+.path-card .verdict { font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">Cloud NGFW Multi-Account</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../.."></nav>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Start Here</div>
+    <a href="#scope" data-section="scope">Scope &amp; Verification Status</a>
+    <a href="#concepts" data-section="concepts">How Licensing Works</a>
+    <a href="#paths" data-section="paths">The Three Paths</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Build</div>
+    <a href="#prereqs" data-section="prereqs">Prerequisites: Tenant Setup</a>
+    <a href="#path-a" data-section="path-a">Path A: Associate Child</a>
+    <a href="#panorama" data-section="panorama">Panorama Management</a>
+    <a href="#terraform" data-section="terraform">Terraform Changes</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Alternatives</div>
+    <a href="#path-b" data-section="path-b">Path B: Move Billing</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#open-questions" data-section="open-questions">Questions for PAN</a>
+    <a href="#checklist" data-section="checklist">Pre-Deployment Checklist</a>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#summary" data-section="summary">Summary</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="cloud-ngfw-deployment.html">Cloud NGFW</a>
+  <span class="sep">|</span>
+  Multi-Account Licensing with Panorama
+</div>
+
+<div class="article">
+
+<h1>Cloud NGFW on AWS: Multi-Account Licensing with Panorama</h1>
+<p class="subtitle">Deploying Cloud NGFW into child AWS accounts when the Marketplace subscription and private-offer credits live in a parent account, and managing the result from an on-premises Panorama.</p>
+
+<div class="cloud-links">
+  <a href="cloud-ngfw-aws.html">Cloud NGFW on AWS</a>
+  <a href="cloud-ngfw-deployment.html">Cloud NGFW Overview &amp; Deploy</a>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2 id="scope">Scope &amp; Verification Status</h2>
+
+<p>This guide covers a specific situation: an AWS Organization where the Cloud NGFW Marketplace subscription and any private-offer credits sit in the parent (management) account, while the VPCs that need inspection live in child (member) accounts. It assumes policy is managed from an <strong>on-premises Panorama</strong> rather than Strata Cloud Manager, and that deployment is automated with the <code>terraform-aws-swfw-modules</code> Terraform modules.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Confidence tagging</div>
+  <p>Product behaviour changes between releases. Claims in this guide carry a tag so you know how much weight to put on each one:</p>
+  <ul>
+    <li><span class="confidence verified">Verified</span> Confirmed by reading the Terraform module source directly. Safe to rely on, subject to the module version noted.</li>
+    <li><span class="confidence unverified">Unverified</span> Consistent with how the product works, but not validated against current vendor documentation at the time of writing.</li>
+    <li><span class="confidence confirm">Confirm with PAN</span> Materially affects the design, or is potentially destructive. Raise with your SE or TAC before acting. Do not treat these as instructions.</li>
+  </ul>
+  <p>The Panorama integration details and the billing-transfer workflow in Path B are the least certain parts of this document. The Terraform findings are the most certain.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2 id="concepts">How Cloud NGFW Licensing Actually Works</h2>
+
+<p>Teams often arrive at this problem looking for a way to &ldquo;present the licence&rdquo; to the child account. That mechanism does not exist for this product, and looking for it wastes time. Cloud NGFW for AWS is a <strong>SaaS</strong> Marketplace offering, not an AMI offering, and that distinction drives everything else.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Why the AMI mental model misleads here</div>
+  <p>With VM-Series (an AMI product) you think in terms of licences and auth codes that attach to instances, and AWS License Manager grants that can be shared across an Organization. None of that applies to Cloud NGFW. There is no licence artifact to move, no auth code to present, and no License Manager grant to share. What exists instead is a <em>tenant</em> and a set of <em>cross-account IAM roles</em>.</p>
+</div>
+
+<h3>Four things that get conflated</h3>
+<table>
+  <thead>
+    <tr><th>Thing</th><th>What it is</th><th>Where it lives</th><th>Can it move?</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Marketplace subscription</strong></td>
+      <td>The AWS billing agreement that meters usage</td>
+      <td>Parent account</td>
+      <td>Only via Path B, with significant caveats</td>
+    </tr>
+    <tr>
+      <td><strong>Private-offer credits</strong></td>
+      <td>Prepaid drawdown against that agreement</td>
+      <td>Parent account, tied to the agreement</td>
+      <td><span class="confidence confirm">Confirm with PAN</span></td>
+    </tr>
+    <tr>
+      <td><strong>Cloud NGFW tenant</strong></td>
+      <td>The SaaS control plane, created when the subscription is activated. Owns firewall resources, rulestacks, and account associations.</td>
+      <td>Logically owned by the subscribing account</td>
+      <td>No, and it does not need to</td>
+    </tr>
+    <tr>
+      <td><strong>Cross-account IAM roles</strong></td>
+      <td>What actually lets the tenant build endpoints inside another account's VPC</td>
+      <td>Each child account</td>
+      <td>Created per child via CloudFormation</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>The resolution:</strong> the subscription and credits stay in the parent permanently. You associate each child account with the parent's tenant, then deploy a vendor-generated CloudFormation template into each child to establish IAM trust. The tenant provisions firewall endpoints inside the child's VPCs while metering centrally against the parent's credits.</p>
+
+<div class="svg-figure">
+<svg viewBox="0 0 880 560" xmlns="http://www.w3.org/2000/svg" font-family="Lato, Arial, sans-serif" role="img" aria-label="Architecture diagram showing the Marketplace subscription and Cloud NGFW tenant in the parent AWS account, IAM roles and an inspection VPC in the child AWS account, and an on-premises Panorama connecting outbound to the tenant">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#006DCC"/>
+    </marker>
+    <marker id="arrowGold" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#E5A300"/>
+    </marker>
+  </defs>
+
+  <rect x="20" y="200" width="170" height="130" rx="6" fill="#fff" stroke="#00294D" stroke-width="2"/>
+  <text x="105" y="228" text-anchor="middle" font-size="13" font-weight="700" fill="#00294D">On-Prem Panorama</text>
+  <text x="105" y="250" text-anchor="middle" font-size="11" fill="#666">Cloud NGFW plugin</text>
+  <text x="105" y="268" text-anchor="middle" font-size="11" fill="#666">Device Group</text>
+  <text x="105" y="286" text-anchor="middle" font-size="11" fill="#666">Template Stack</text>
+  <text x="105" y="312" text-anchor="middle" font-size="10" fill="#d97706" font-weight="600">Outbound HTTPS 443 required</text>
+
+  <rect x="300" y="30" width="520" height="175" rx="6" fill="#f7f8fa" stroke="#00294D" stroke-width="2"/>
+  <text x="318" y="54" font-size="13" font-weight="700" fill="#00294D">Parent / Management AWS Account</text>
+
+  <rect x="320" y="70" width="225" height="55" rx="4" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="432" y="92" text-anchor="middle" font-size="11.5" font-weight="700" fill="#92400e">Marketplace Subscription</text>
+  <text x="432" y="110" text-anchor="middle" font-size="11" fill="#92400e">Private-offer credits</text>
+
+  <rect x="570" y="70" width="230" height="55" rx="4" fill="#e7f3ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="685" y="92" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1e40af">Cloud NGFW Tenant</text>
+  <text x="685" y="110" text-anchor="middle" font-size="11" fill="#1e40af">SaaS control plane</text>
+
+  <text x="320" y="152" font-size="11" fill="#333">Associated accounts:</text>
+  <rect x="320" y="162" width="130" height="26" rx="3" fill="#fff" stroke="#dee2e6"/>
+  <text x="385" y="179" text-anchor="middle" font-size="10.5" fill="#333">Child 1111 Active</text>
+  <rect x="462" y="162" width="130" height="26" rx="3" fill="#fff" stroke="#dee2e6"/>
+  <text x="527" y="179" text-anchor="middle" font-size="10.5" fill="#333">Child 2222 Active</text>
+
+  <text x="432" y="137" text-anchor="middle" font-size="10" fill="#92400e" font-style="italic">metering drawn down centrally</text>
+
+  <rect x="300" y="340" width="520" height="200" rx="6" fill="#f7f8fa" stroke="#00294D" stroke-width="2"/>
+  <text x="318" y="364" font-size="13" font-weight="700" fill="#00294D">Child / Member AWS Account</text>
+
+  <rect x="320" y="380" width="235" height="88" rx="4" fill="#fff" stroke="#dee2e6" stroke-width="1.5"/>
+  <text x="437" y="400" text-anchor="middle" font-size="11.5" font-weight="700" fill="#333">IAM Roles (from CFT)</text>
+  <text x="437" y="419" text-anchor="middle" font-size="10.5" fill="#666">Cross-account service role</text>
+  <text x="437" y="436" text-anchor="middle" font-size="10.5" fill="#666">LFA / LRA programmatic roles</text>
+  <text x="437" y="453" text-anchor="middle" font-size="10.5" fill="#666">Logging role</text>
+
+  <rect x="572" y="380" width="228" height="88" rx="4" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="686" y="400" text-anchor="middle" font-size="11.5" font-weight="700" fill="#15803d">Inspection VPC</text>
+  <text x="686" y="419" text-anchor="middle" font-size="10.5" fill="#15803d">NGFW resource</text>
+  <text x="686" y="436" text-anchor="middle" font-size="10.5" fill="#15803d">GWLB endpoints per AZ</text>
+  <text x="686" y="453" text-anchor="middle" font-size="10.5" fill="#15803d">Workload VPCs / TGW</text>
+
+  <rect x="320" y="482" width="480" height="40" rx="4" fill="#fff" stroke="#dee2e6"/>
+  <text x="560" y="500" text-anchor="middle" font-size="11" font-weight="600" fill="#333">Logs to CloudWatch / S3 / Kinesis (AWS-native, in-account)</text>
+  <text x="560" y="515" text-anchor="middle" font-size="10" fill="#dc2626">On-prem Log Collector as a destination: confirm with PAN</text>
+
+  <line x1="190" y1="245" x2="565" y2="105" stroke="#006DCC" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="330" y="180" font-size="10.5" fill="#006DCC" font-weight="600" transform="rotate(-20 330 180)">policy push (outbound only)</text>
+
+  <line x1="685" y1="128" x2="685" y2="375" stroke="#E5A300" stroke-width="2.5" marker-end="url(#arrowGold)"/>
+  <text x="697" y="260" font-size="10.5" fill="#92400e" font-weight="600">tenant assumes role,</text>
+  <text x="697" y="275" font-size="10.5" fill="#92400e" font-weight="600">provisions endpoints</text>
+
+  <line x1="437" y1="378" x2="437" y2="195" stroke="#006DCC" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+  <text x="300" y="300" font-size="10.5" fill="#006DCC" text-anchor="start">trust established</text>
+  <text x="300" y="314" font-size="10.5" fill="#006DCC" text-anchor="start">by CFT</text>
+</svg>
+<div class="figure-caption">Subscription and credits never leave the parent. Only IAM trust is established in the child. On-prem Panorama reaches the tenant outbound over HTTPS.</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2 id="paths">The Three Paths</h2>
+
+<p>Three approaches circulate for this problem. They are not equivalent, and two carry real risk.</p>
+
+<div class="path-grid">
+  <div class="path-card recommended">
+    <div class="verdict" style="color:#15803d;">&#10003; Recommended</div>
+    <h4>Path A: Associate child accounts with the parent's tenant</h4>
+    <p>Subscription and credits stay in the parent. Child accounts are added to the tenant and a CFT establishes IAM trust.</p>
+    <p><strong>Risk:</strong> Low. Additive and reversible.</p>
+  </div>
+  <div class="path-card caution">
+    <div class="verdict" style="color:#d97706;">&#9888; Caution</div>
+    <h4>Path B: Move the billing link to the child</h4>
+    <p>Generate a billing code in the management console, subscribe from the child, then cancel the parent subscription.</p>
+    <p><strong>Risk:</strong> High. The final step is destructive and may forfeit credits.</p>
+  </div>
+  <div class="path-card">
+    <div class="verdict" style="color:#dc2626;">&#10007; Not applicable</div>
+    <h4>Path C: Share via Organizations / License Manager</h4>
+    <p>The mechanism used for AMI and container products.</p>
+    <p><strong>Risk:</strong> Not applicable. Does not work for SaaS products such as Cloud NGFW. Rule it out early.</p>
+  </div>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">A further reason to prefer Path A under Panorama management</div>
+  <p>The Path B workflow is documented in Strata Cloud Manager terms: generating a billing code from SCM, then supplying a tenant email address during an SCM-flavoured activation wizard. Whether that flow exists, or behaves identically, for a Panorama-managed tenant is unknown. <span class="confidence confirm">Confirm with PAN</span></p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2 id="prereqs">Prerequisites: Tenant Setup in the Parent Account</h2>
+
+<p>Everything in Path A starts with &ldquo;log in to the Cloud NGFW Admin Console&rdquo;, which assumes something that may not be true yet. This section covers what has to exist first.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Yes, the tenant must be set up in the parent account</div>
+  <p>The Cloud NGFW tenant is created when someone activates the Marketplace subscription, and <strong>whichever AWS account performs that activation becomes the tenant owner</strong>. Since the subscription and the private-offer credits are in the parent, the tenant has to be created from the parent. There is no way to subscribe in the parent and have the tenant belong to a child.</p>
+  <p>This is also why the account-association model exists: the tenant is pinned to the parent, so child accounts are brought to it rather than the other way round.</p>
+</div>
+
+<h3>A common starting state: subscription but no tenant</h3>
+
+<p>Accepting a private offer and activating the product are two different actions. Teams frequently accept the offer, see the credits land on the Marketplace agreement, and assume they are done. If nobody has clicked <strong>Set up your account</strong>, there is a billing agreement but no control plane, no console to log in to, and nothing to associate child accounts with.</p>
+
+<p>Check which state you are in before anything else:</p>
+
+<table>
+  <thead><tr><th>Symptom</th><th>State</th><th>Next action</th></tr></thead>
+  <tbody>
+    <tr><td>Marketplace shows an active subscription, but nobody has a Cloud NGFW console login</td><td>Subscribed, not activated</td><td>Run Prerequisite 2 below</td></tr>
+    <tr><td>Someone can log in to the Cloud NGFW console and sees a tenant</td><td>Tenant exists</td><td>Confirm it is owned by the parent, then go to <a href="#path-a">Path A</a></td></tr>
+    <tr><td>A tenant exists but was created from a child or a sandbox account</td><td>Tenant in the wrong account</td><td>Stop. This is the one scenario where <a href="#path-b">Path B</a> or a tenant rebuild becomes relevant. Raise with PAN.</td></tr>
+  </tbody>
+</table>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Prerequisite 1: Permissions and roles for the person doing the activation</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Activation touches Marketplace, IAM, and CloudFormation in the parent account. The operator needs, in the <strong>parent</strong>:</p>
+    <ul>
+      <li><code>aws-marketplace:Subscribe</code> and <code>aws-marketplace:ViewSubscriptions</code>, to see and activate the agreement.</li>
+      <li>CloudFormation stack creation rights, plus <code>iam:CreateRole</code> and <code>iam:AttachRolePolicy</code>, for the onboarding template. <code>CAPABILITY_NAMED_IAM</code> is required.</li>
+      <li>Authority to accept vendor terms on behalf of the organisation. This is a commercial sign-off, not just a technical one.</li>
+    </ul>
+    <div class="callout callout-note">
+      <div class="callout-title">Two different people, usually</div>
+      <p>The person with Marketplace and billing authority is rarely the person who will administer firewall policy. Plan for the activation to be done jointly, or for the activator to create a tenant admin account for the security team immediately afterwards. The email address used at activation becomes the initial tenant administrator, so do not use a personal address. Use a monitored distribution list.</p>
+    </div>
+    <p>Check for Service Control Policies at the OU level that block Marketplace subscriptions or IAM role creation. In tightly governed Organizations these are a frequent and quiet cause of failure.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Prerequisite 2: Activate the subscription and create the tenant</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This is the step that produces the console you later log in to.</p>
+    <ol>
+      <li>Sign in to the <strong>parent</strong> AWS account. Verify the account ID in the top-right before going further, because doing this in the wrong account creates a tenant in the wrong place.</li>
+      <li>Go to <strong>AWS Marketplace &gt; Manage subscriptions</strong> and open the Cloud NGFW for AWS subscription. If the private offer has not been accepted yet, accept it first.</li>
+      <li>Click <strong>Set up your account</strong>, or <strong>Launch product</strong> on the purchase page. This hands off to the Palo Alto Networks Cloud NGFW Admin Console.</li>
+      <li>Complete the registration form. This creates the tenant and the first tenant administrator.</li>
+      <li>Record the <strong>tenant ID</strong>, the <strong>admin email</strong>, and the <strong>region</strong> you selected.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Decide the management mode here</div>
+      <p>If policy will be managed from an on-premises Panorama, that choice may need to be made at tenant creation rather than retrofitted. Read <a href="#panorama">On-Premises Panorama Management</a> before completing this step, not after. <span class="confidence confirm">Confirm with PAN</span></p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You land in the Cloud NGFW Admin Console, a tenant is listed, and the parent account ID appears under <strong>Settings &gt; AWS Accounts</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Prerequisite 3: Onboard the parent account itself</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Creating the tenant is not the same as onboarding an account to it. The parent also needs the cross-account CloudFormation template deployed, exactly as the child accounts will in Step A.2.</p>
+    <ol>
+      <li>In the Cloud NGFW console, download the CloudFormation template or copy the launch-stack URL generated for the parent account.</li>
+      <li>Deploy it in the parent via CloudFormation, acknowledging the IAM capability prompt.</li>
+      <li>Wait for the stack to reach <code>CREATE_COMPLETE</code>.</li>
+    </ol>
+    <p>Deploy this even if no firewalls will ever run in the parent. It establishes the IAM trust the tenant needs for its own home account.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The parent account shows as <strong>Connected</strong> or <strong>Active</strong> under <strong>Settings &gt; AWS Accounts</strong>. Only once you can see this working for the parent should you start adding child accounts, because you then know what success looks like.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>How to reach the console on subsequent visits</span>
+  </div>
+  <div class="collapsible-body">
+    <p>After the first activation you do not have to go through Marketplace every time, though that route always works.</p>
+    <table>
+      <thead><tr><th>Route</th><th>When to use it</th></tr></thead>
+      <tbody>
+        <tr><td><strong>AWS Marketplace &gt; Manage subscriptions &gt; Cloud NGFW &gt; Launch product</strong>, from the parent account</td><td>Always available, and the most reliable route. Use this if anyone is unsure which tenant they are landing in.</td></tr>
+        <tr><td><strong>Direct Cloud NGFW Admin Console URL</strong>, signing in with the tenant admin identity created at activation</td><td>Day-to-day administration, and for people who have no AWS console access at all. <span class="confidence unverified">Unverified</span></td></tr>
+        <tr><td><strong>Strata Cloud Manager</strong></td><td>Only where the tenant is managed through SCM. Not the route for a Panorama-managed estate. <span class="confidence unverified">Unverified</span></td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Console access is not AWS IAM</div>
+      <p>Cloud NGFW console logins are tenant identities, managed in the Cloud NGFW tenant, not AWS IAM users. Granting someone AWS access to the parent account does not give them firewall administration rights, and revoking their AWS access does not remove their tenant login. Track tenant administrators separately in your joiner and leaver process. <span class="confidence unverified">Unverified</span></p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2 id="path-a">Path A: Associate the Child Account</h2>
+
+<p>This section assumes the tenant exists and the parent is onboarded. If either is not yet true, start at <a href="#prereqs">Prerequisites</a>.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step A.1: Add the child account to the tenant</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Log in to the Cloud NGFW Admin Console as a tenant administrator, using one of the routes in <a href="#prereqs">Prerequisites</a>. The tenant is the parent's, so there is nothing to log in to from the child account at this stage.</p>
+    <ol>
+      <li>Navigate to <strong>Settings &gt; AWS Accounts</strong>, which may be labelled <strong>Account Linkage</strong>.</li>
+      <li>Click <strong>Add Account</strong>.</li>
+      <li>Enter the <strong>12-digit AWS account ID</strong> of the child account.</li>
+    </ol>
+    <p>Repeat per child account. There is no need to re-subscribe or re-purchase anything.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The child account appears in the accounts list with status <strong>Pending Setup</strong> or <strong>Awaiting CFT</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step A.2: Deploy the CloudFormation template in the child</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The console generates a CloudFormation template, or a pre-signed launch-stack URL, scoped to the specific child account ID you entered. It is not generic. Do not reuse one child's template for another.</p>
+    <ol>
+      <li>Download the template, or copy the launch-stack URL.</li>
+      <li>Log in to the <strong>child account's</strong> AWS Management Console. Confirm the account ID in the top-right before proceeding.</li>
+      <li>Open <strong>CloudFormation</strong> and deploy the stack.</li>
+      <li>Acknowledge the IAM capability prompt (<code>CAPABILITY_NAMED_IAM</code>).</li>
+    </ol>
+    <p>This creates the cross-account role permitting the parent's tenant to create and manage Gateway Load Balancer endpoints inside the child's VPCs, plus the role used for log delivery.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>In the Cloud NGFW Admin Console under <strong>AWS Accounts</strong>, the child account status changes to <strong>Connected</strong> or <strong>Active</strong>. If it stays pending for more than a few minutes, see <a href="#troubleshooting">Troubleshooting</a>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step A.3: Create the programmatic-access roles in the child (required for Terraform)</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="callout callout-warning">
+      <div class="callout-title">Commonly missed</div>
+      <p>Most console walkthroughs stop at the cross-account CFT. That is sufficient for <em>console-driven</em> deployment but not for Terraform. The <code>cloudngfwaws</code> Terraform provider does not use the cross-account role from Step A.2. It authenticates by assuming a separate set of programmatic-access roles. Skip this and <code>terraform plan</code> fails at provider initialisation.</p>
+    </div>
+    <p>Three role types exist: <span class="confidence unverified">Unverified</span></p>
+    <table>
+      <thead><tr><th>Role</th><th>Purpose</th><th>Provider argument</th></tr></thead>
+      <tbody>
+        <tr><td><strong>LFA</strong></td><td>Local Firewall Admin, creates and manages NGFW resources</td><td><code>lfa_arn</code></td></tr>
+        <tr><td><strong>LRA</strong></td><td>Local Rulestack Admin, manages account-scoped rulestacks</td><td><code>lra_arn</code></td></tr>
+        <tr><td><strong>GRA</strong></td><td>Global Rulestack Admin, manages tenant-wide rulestacks</td><td><code>gra_arn</code></td></tr>
+      </tbody>
+    </table>
+    <p>Create these in the <strong>child</strong> account via <strong>Settings &gt; Manage Programmatic Access</strong> in the Cloud NGFW console. The <code>terraform-aws-swfw-modules</code> examples assume a single role carrying both LFA and LRA permissions, named <code>cloudngfw</code> by default.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Confirm the trust policy requirements</div>
+      <p>These roles require a specific trust relationship and, in some versions, specific resource tags for the Cloud NGFW service to assume them. Use the exact policy document the console generates rather than hand-writing one. <span class="confidence confirm">Confirm with PAN</span></p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>From a shell holding child-account credentials, <code>aws sts assume-role --role-arn arn:aws:iam::&lt;CHILD_ID&gt;:role/cloudngfw --role-session-name test</code> succeeds, and <code>terraform plan</code> initialises the <code>cloudngfwaws</code> provider without an authentication error.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2 id="panorama">On-Premises Panorama Management</h2>
+
+<p>For an on-prem Panorama shop this is the constraint with the largest blast radius, and it needs settling <em>before</em> any Terraform is written, because it changes what Terraform is allowed to create.</p>
+
+<h3>Choose the management mode first</h3>
+
+<p>Cloud NGFW for AWS offers more than one policy management plane. The choice determines where rules live and what the Terraform module may own.</p>
+
+<div class="mgmt-tabs">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="Panorama">Panorama</button>
+    <button class="mgmt-tab" data-plane="Local Rulestack">Local Rulestack</button>
+    <button class="mgmt-tab" data-plane="SCM">Strata Cloud Manager</button>
+  </div>
+  <div class="mgmt-panel active" data-plane="Panorama">
+    <p>Policy is authored in Panorama as <strong>Device Groups</strong> and <strong>Template Stacks</strong>, then pushed to the Cloud NGFW tenant. The NGFW resource associates with Panorama via a link identifier rather than a rulestack.</p>
+    <p><strong>Terraform implication:</strong> Terraform must <em>not</em> create rulestacks or security rules. It creates the NGFW resource, the endpoints, and the routing only. Policy belongs to Panorama. The <code>cloudngfw</code> module does the opposite today. See <a href="#terraform">Terraform Changes</a>.</p>
+  </div>
+  <div class="mgmt-panel" data-plane="Local Rulestack">
+    <p>Rules are authored per-account in the Cloud NGFW console or by Terraform. This is what the <code>terraform-aws-swfw-modules</code> <code>cloudngfw</code> module is built for today.</p>
+    <p>If the Panorama path stalls on version compatibility, this is the fallback that works with the module unmodified.</p>
+  </div>
+  <div class="mgmt-panel" data-plane="SCM">
+    <p>Cloud-delivered management. Relevant here mainly because the Path B billing-code workflow is documented in SCM terms, so organisations standardised on on-prem Panorama may find that workflow does not apply to them.</p>
+  </div>
+</div>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Settle this before provisioning anything</div>
+  <p>The management mode may be fixed at tenant or firewall-resource creation time, and converting a tenant from local-rulestack mode to Panorama-managed mode afterwards may require rebuilding firewall resources. Establish whether an existing tenant is already in the correct mode <em>before</em> associating child accounts. <span class="confidence confirm">Confirm with PAN</span></p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step P.1: Install and license the Cloud NGFW plugin on Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Panorama manages Cloud NGFW through a dedicated plugin, installed under <strong>Panorama &gt; Plugins</strong>.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Version compatibility is a hard gate</div>
+      <p>There is a minimum Panorama PAN-OS version for the Cloud NGFW plugin, and a compatibility matrix between plugin version and the Cloud NGFW tenant. An on-prem Panorama that has not been upgraded recently is the single most likely blocker in a project like this. Check the current Panorama version against the matrix as the very first action item. <span class="confidence confirm">Confirm with PAN</span></p>
+    </div>
+    <p>If Panorama is an HA pair, plan the plugin installation for both members.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step P.2: Open outbound connectivity from on-prem Panorama</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This step is what distinguishes an on-prem Panorama from a cloud-hosted one, and it is where on-prem deployments typically stall.</p>
+    <p>Panorama initiates an <strong>outbound HTTPS (TCP/443)</strong> connection to the Cloud NGFW regional API endpoint:</p>
+    <div class="code-block">
+      <pre><code>api.&lt;region&gt;.aws.cloudngfw.paloaltonetworks.com</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Work through the following with the network team:</p>
+    <ul>
+      <li><strong>Egress firewall rules</strong> permitting Panorama's management interface outbound to that FQDN on 443.</li>
+      <li><strong>Proxy configuration</strong> if corporate egress is proxied. Panorama supports a proxy for plugin traffic, but it must be configured explicitly.</li>
+      <li><strong>DNS resolution</strong> of the public endpoint from the management network.</li>
+      <li><strong>TLS inspection exemption.</strong> If the egress path decrypts TLS, the API endpoint will likely need an exemption, since certificate pinning or strict validation may reject a re-signed certificate.</li>
+      <li><strong>One endpoint per region.</strong> Multi-region deployments have a separate API hostname to permit for each region.</li>
+    </ul>
+    <div class="callout callout-note">
+      <div class="callout-title">Good news for the firewall team</div>
+      <p>The connection is Panorama-initiated and outbound. No inbound rules to on-prem, and no requirement to expose Panorama to the internet. <span class="confidence unverified">Unverified</span> Confirm the direction before promising it to the network team.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The plugin shows a connected tenant, and the Cloud NGFW tenant appears with a reachable status. For a pre-check before touching Panorama, run <code>curl -sv https://api.&lt;region&gt;.aws.cloudngfw.paloaltonetworks.com</code> from a host on the same egress path.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step P.3: Link the tenant to Panorama and build the Device Group</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the Cloud NGFW console, generate the credentials or service account the plugin will use to authenticate to the tenant.</li>
+      <li>In Panorama, add the tenant to the Cloud NGFW plugin configuration.</li>
+      <li>Create a <strong>Device Group</strong> for the Cloud NGFW estate, and a <strong>Template</strong> or <strong>Template Stack</strong> as required by the plugin.</li>
+      <li>Author security policy in that Device Group as you would for any managed firewall.</li>
+      <li>The plugin produces a <strong>link identifier</strong> associating a Cloud NGFW firewall resource with the Device Group. Terraform needs this value. See <a href="#terraform">Terraform Changes</a>.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Cross-account scope</div>
+      <p>Whether a single Panorama Device Group can span firewall resources living in <em>multiple child accounts</em> under one tenant, and how that interacts with the tenant's account associations, is a design question worth settling early if you are onboarding more than one child account. <span class="confidence confirm">Confirm with PAN</span></p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step P.4: Decide where logs go</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="callout callout-danger">
+      <div class="callout-title">The most common unwelcome finding</div>
+      <p>Cloud NGFW writes logs to <strong>AWS-native destinations</strong>: CloudWatch Log Groups, S3, or Kinesis Data Firehose. It does not behave like a VM-Series forwarding logs to an on-prem Log Collector over the standard log-forwarding path.</p>
+      <p>A team running on-prem Panorama usually expects unified logging and reporting in Panorama, and with Cloud NGFW that expectation may not be met directly. Whether an on-prem Log Collector is a supported destination, and whether Strata Logging Service is required as an intermediary for Panorama-side log visibility, must be established before anyone is promised a single pane of glass. <span class="confidence confirm">Confirm with PAN</span></p>
+    </div>
+    <p>Plan for one of these outcomes:</p>
+    <ul>
+      <li><strong>AWS-native only.</strong> Logs land in CloudWatch, S3, or Kinesis in the child account, the SIEM ingests from there, and Panorama manages policy without showing Cloud NGFW traffic logs.</li>
+      <li><strong>Strata Logging Service.</strong> Logs go to the cloud logging service with Panorama querying it. There are commercial implications, so raise it with the account team.</li>
+      <li><strong>On-prem Log Collector.</strong> If supported, this preserves the existing operational model. Verify before assuming.</li>
+    </ul>
+    <p>The Terraform module already provisions CloudWatch log groups and streams and attaches a log profile, so the AWS-native path is the one with working automation today.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2 id="terraform">Terraform Changes Required</h2>
+
+<p>This section was verified by reading the module source in <code>terraform-aws-swfw-modules</code>, with the <code>cloudngfwaws</code> provider pinned at <code>2.0.20</code>. <span class="confidence verified">Verified</span> Line numbers shift between releases, so treat them as pointers rather than exact addresses.</p>
+
+<h3>Finding 1: The provider already supports targeting another account</h3>
+
+<p>The Cloud NGFW examples expose the hook you need. From <code>examples/cloudngfw_centralized_design/versions.tf</code>:</p>
+
+<div class="code-block">
+<pre><code>locals {
+  provider = coalesce(var.provider_account, data.aws_caller_identity.current.account_id)
+}
+
+provider "cloudngfwaws" {
+  region    = var.region
+  host      = "api.${var.region}.aws.cloudngfw.paloaltonetworks.com"
+  lfa_arn   = "arn:aws:iam::${local.provider}:role/${var.provider_role}"
+  lra_arn   = "arn:aws:iam::${local.provider}:role/${var.provider_role}"
+  sync_mode = true
+}</code></pre>
+<button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p>Set <code>provider_account</code> to the <strong>child</strong> account ID and <code>provider_role</code> to the role created in Step A.3. The shipped <code>.tfvars</code> defaults to an empty <code>provider_account</code> and a role named <code>cloudngfw</code>.</p>
+
+<h3>Finding 2: The module hardcodes the account ID to the caller</h3>
+
+<p>In <code>modules/cloudngfw/main.tf</code> the account ID comes from the AWS caller identity in three places, with no override:</p>
+
+<table>
+  <thead><tr><th>Resource</th><th>Expression</th></tr></thead>
+  <tbody>
+    <tr><td><code>cloudngfwaws_ngfw.this</code></td><td><code>account_id = data.aws_caller_identity.current.id</code></td></tr>
+    <tr><td><code>cloudngfwaws_rulestack.this</code></td><td><code>account_id = data.aws_caller_identity.current.id</code></td></tr>
+    <tr><td><code>cloudngfwaws_ngfw_log_profile.this</code></td><td><code>account_id = data.aws_caller_identity.current.id</code></td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The failure mode</div>
+  <p>Run Terraform with <strong>parent</strong> credentials while pointing <code>provider_account</code> at the <strong>child</strong>, and the <code>cloudngfwaws</code> provider authenticates into the child while the resources are submitted with the <em>parent's</em> account ID. The resulting error does not obviously point at this mismatch.</p>
+</div>
+
+<p>Two ways to resolve it:</p>
+
+<ul>
+  <li><strong>Option 1, no code change.</strong> Run Terraform with child-account credentials, or add <code>assume_role</code> into the child on the <code>aws</code> provider. Caller identity then resolves to the child and everything lines up. Least effort, and the right choice for a first deployment.</li>
+  <li><strong>Option 2, parameterise the module.</strong> Cleaner for a multi-account pipeline run from a central automation account.</li>
+</ul>
+
+<div class="code-block">
+<pre><code># modules/cloudngfw/variables.tf
+variable "account_id" {
+  description = "AWS account ID that owns the Cloud NGFW resources. Defaults to the caller's account. Set explicitly when deploying into a child account from a central pipeline."
+  type        = string
+  default     = null
+}
+
+# modules/cloudngfw/main.tf
+locals {
+  account_id = coalesce(var.account_id, data.aws_caller_identity.current.account_id)
+}
+# then replace all three occurrences of
+#   data.aws_caller_identity.current.id
+# with
+#   local.account_id</code></pre>
+<button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Incidental inconsistency worth fixing at the same time</div>
+  <p>The module uses <code>data.aws_caller_identity.current.id</code> while the examples use <code>data.aws_caller_identity.current.account_id</code>. Both return the same value for this data source, so it is not a live bug, but <code>account_id</code> is the documented attribute and the inconsistency is confusing. Standardise on <code>account_id</code>.</p>
+</div>
+
+<h3>Finding 3: The module cannot do Panorama-managed mode</h3>
+
+<div class="callout callout-danger">
+  <div class="callout-title">This is the blocker, not the account linkage</div>
+  <p>Searching <code>modules/cloudngfw/</code> and the Cloud NGFW examples for <code>panorama</code> or <code>link_id</code> returns <strong>zero matches</strong>. The module is built exclusively for local-rulestack mode.</p>
+</div>
+
+<p><code>modules/cloudngfw/main.tf</code> creates:</p>
+<ul>
+  <li><code>cloudngfwaws_rulestack.this</code>, a rulestack</li>
+  <li><code>cloudngfwaws_security_rule.this</code>, security rules from <code>var.security_rules</code></li>
+  <li><code>cloudngfwaws_commit_rulestack.this</code>, a rulestack commit</li>
+  <li><code>cloudngfwaws_ngfw.this</code> with <code>rulestack = cloudngfwaws_commit_rulestack.this.rulestack</code></li>
+</ul>
+
+<p>Under Panorama management none of the first three should exist, since policy comes from the Device Group, and the NGFW resource associates with Panorama by link identifier instead of by rulestack. The required change has roughly this shape:</p>
+
+<div class="code-block">
+<pre><code>variable "management_mode" {
+  description = "Policy management plane: Rulestack (local) or Panorama."
+  type        = string
+  default     = "Rulestack"
+
+  validation {
+    condition     = contains(["Rulestack", "Panorama"], var.management_mode)
+    error_message = "management_mode must be either Rulestack or Panorama."
+  }
+}
+
+variable "link_id" {
+  description = "Panorama link identifier. Required when management_mode is Panorama."
+  type        = string
+  default     = null
+}
+
+locals {
+  panorama_managed = var.management_mode == "Panorama"
+}
+
+resource "cloudngfwaws_rulestack" "this" {
+  count = local.panorama_managed ? 0 : 1
+  # ... existing configuration
+}
+
+resource "cloudngfwaws_ngfw" "this" {
+  name       = var.name
+  vpc_id     = var.vpc_id
+  account_id = local.account_id
+
+  # Rulestack mode only
+  rulestack = local.panorama_managed ? null : cloudngfwaws_commit_rulestack.this[0].rulestack
+
+  # Panorama mode only. VERIFY attribute name against the provider schema.
+  link_id = local.panorama_managed ? var.link_id : null
+}</code></pre>
+<button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Verify the attribute names rather than trusting the snippet</div>
+  <p>The exact attribute name and semantics for Panorama association in <code>cloudngfwaws_ngfw</code> are not confirmed here. The snippet shows the <em>shape</em> of the change. Read the real schema straight from the pinned provider:</p>
+  <div class="code-block">
+    <pre><code>cd examples/cloudngfw_centralized_design
+terraform init
+terraform providers schema -json \
+  | jq '.provider_schemas
+        | to_entries[]
+        | select(.key | test("cloudngfwaws"))
+        | .value.resource_schemas.cloudngfwaws_ngfw.block.attributes
+        | keys'</code></pre>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+  </div>
+  <p>That gives the authoritative attribute list with no guesswork, and works offline once the provider is downloaded.</p>
+</div>
+
+<h3>Finding 4: Global rulestacks need another provider argument</h3>
+
+<p>The module exposes <code>rulestack_scope</code>, defaulting to <code>Local</code> and accepting <code>Global</code>. The example provider block sets only <code>lfa_arn</code> and <code>lra_arn</code>, with no <code>gra_arn</code>, so setting <code>rulestack_scope = "Global"</code> against the examples as shipped will fail to authenticate.</p>
+
+<p>This is usually moot under Panorama management, where policy comes from Device Groups and the rulestack question largely falls away. It matters only if the Panorama path is deferred and central rulestacks are adopted as an interim measure.</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2 id="path-b">Path B: Moving the Billing Link to the Child</h2>
+
+<p>This workflow circulates informally and is included for completeness. It is <strong>not recommended</strong>, and should not be executed on the strength of this guide alone.</p>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Three specific problems</div>
+  <ol>
+    <li><strong>It solves a problem you probably do not have.</strong> The usual requirement is to <em>deploy firewalls</em> in a child account, and Path A achieves that without touching billing. Path B relocates the billing relationship, which is a different and larger change.</li>
+    <li><strong>The final step is destructive and may forfeit credits.</strong> The workflow advises cancelling the parent's Marketplace subscription once the child is active. Private-offer credits are attached to <em>that</em> agreement. Whether a prepaid balance migrates to a newly linked child subscription or is simply forfeited is the single most important thing to establish, in writing, before anyone clicks cancel. <span class="confidence confirm">Confirm with PAN and with your AWS account team</span></li>
+    <li><strong>The source is unverified.</strong> The described console navigation and the billing-code prompt in the Marketplace wizard are not confirmed here, and the claim that the switch is non-disruptive is asserted rather than demonstrated. <span class="confidence confirm">Confirm with PAN</span></li>
+  </ol>
+</div>
+
+<h3>If you pursue it anyway</h3>
+<p>Get written confirmation on the credit question first, then rehearse in a non-production tenant if one is available. The outline:</p>
+<ol>
+  <li>In the management portal, navigate to the subscription or account-linkage page and add a new subscription for the target child account ID. Copy the generated billing code.</li>
+  <li>From the <strong>child</strong> account, subscribe to Cloud NGFW for AWS in the Marketplace, choose <strong>Set up your account</strong>, answer yes to the billing-code prompt, and supply the tenant email plus the code.</li>
+  <li>Verify the child is listed as an active subscribed account under the tenant.</li>
+  <li><strong>Stop.</strong> Do not cancel the parent subscription until the credit treatment is confirmed and you have run for a full billing cycle.</li>
+</ol>
+
+<div class="callout callout-note">
+  <div class="callout-title">A safer middle ground</div>
+  <p>If the real driver is cost allocation rather than deployment, say so explicitly. It is usually solvable with AWS cost allocation tags and chargeback reporting against the parent's consolidated bill, with no change to the subscription at all.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2 id="open-questions">Questions to Put to Palo Alto Networks</h2>
+
+<p>Send these as a single list to your SE or TAC before the build starts. Each one can change the design.</p>
+
+<table>
+  <thead><tr><th>#</th><th>Question</th><th>Why it matters</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>What is the minimum Panorama PAN-OS version and Cloud NGFW plugin version for this tenant, and what is the compatibility matrix?</td><td>Most likely hard blocker. May force a Panorama upgrade and change the timeline.</td></tr>
+    <tr><td>2</td><td>Can a Cloud NGFW tenant be converted to Panorama-managed after creation, or is the mode fixed at creation?</td><td>Determines whether an existing tenant is reusable or must be rebuilt.</td></tr>
+    <tr><td>3</td><td>Can Cloud NGFW forward traffic and threat logs to an <strong>on-premises</strong> Panorama Log Collector? If not, what is the supported route to Panorama-side log visibility?</td><td>Directly affects the operations model and possibly the commercials.</td></tr>
+    <tr><td>4</td><td>Can one Panorama Device Group span firewall resources in multiple child accounts under a single tenant?</td><td>Determines policy architecture for a multi-account rollout.</td></tr>
+    <tr><td>5</td><td>Do private-offer credits held in the parent survive a billing-link move to a child account, or are they forfeited on cancellation?</td><td>Potential direct financial loss. Get this in writing.</td></tr>
+    <tr><td>6</td><td>Is the SCM billing-code workflow applicable to a Panorama-managed tenant?</td><td>Path B may not exist for this configuration.</td></tr>
+    <tr><td>7</td><td>What is the exact trust policy and tag requirement for the LFA, LRA, and GRA programmatic-access roles?</td><td>Required for Terraform to authenticate at all.</td></tr>
+    <tr><td>8</td><td>Does the <code>cloudngfwaws</code> Terraform provider support Panorama-managed NGFW resources, and in which version?</td><td>If not, deployment is partly manual regardless of module changes.</td></tr>
+    <tr><td>9</td><td>Does on-prem Panorama require any inbound connectivity, or is the plugin connection outbound-only?</td><td>Needed before committing to a firewall change request.</td></tr>
+  </tbody>
+</table>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2 id="checklist">Pre-Deployment Checklist</h2>
+
+<p>Work top to bottom. The Panorama items gate the Terraform items, so resist starting with Terraform: question 8 above can invalidate it.</p>
+
+<table>
+  <thead><tr><th>&#9744;</th><th>Item</th><th>Owner</th></tr></thead>
+  <tbody>
+    <tr><td>&#9744;</td><td>Private offer accepted and Marketplace subscription active in the <strong>parent</strong></td><td>Procurement / Cloud team</td></tr>
+    <tr><td>&#9744;</td><td>Tenant created from the parent via <strong>Set up your account</strong>, and tenant ID, admin email, and region recorded</td><td>Cloud team</td></tr>
+    <tr><td>&#9744;</td><td>Tenant admin email is a monitored distribution list, not an individual</td><td>Security ops</td></tr>
+    <tr><td>&#9744;</td><td>Parent account itself onboarded via CFT, status <em>Connected</em> or <em>Active</em></td><td>Cloud team</td></tr>
+    <tr><td>&#9744;</td><td>Answers received for questions 1, 2, 3, and 8</td><td>PAN SE / TAC</td></tr>
+    <tr><td>&#9744;</td><td>Current on-prem Panorama version checked against the plugin compatibility matrix</td><td>Firewall team</td></tr>
+    <tr><td>&#9744;</td><td>Logging destination decided and agreed with the SOC</td><td>Security ops</td></tr>
+    <tr><td>&#9744;</td><td>Egress firewall rule and any proxy or TLS-inspection exemption raised for Panorama to Cloud NGFW API on 443</td><td>Network team</td></tr>
+    <tr><td>&#9744;</td><td>Child AWS account IDs collected</td><td>Cloud team</td></tr>
+    <tr><td>&#9744;</td><td>Child accounts added to the tenant, status <em>Pending</em></td><td>Cloud team</td></tr>
+    <tr><td>&#9744;</td><td>CFT deployed in each child, status <em>Connected</em> or <em>Active</em></td><td>Cloud team</td></tr>
+    <tr><td>&#9744;</td><td>LFA and LRA programmatic-access roles created in each child, and <code>sts assume-role</code> tested</td><td>Cloud team</td></tr>
+    <tr><td>&#9744;</td><td>Provider schema inspected via <code>terraform providers schema -json</code> to confirm Panorama attributes</td><td>Terraform owner</td></tr>
+    <tr><td>&#9744;</td><td><code>account_id</code> variable added to <code>modules/cloudngfw</code>, or child-account credentials confirmed for the pipeline</td><td>Terraform owner</td></tr>
+    <tr><td>&#9744;</td><td><code>management_mode</code> support added to <code>modules/cloudngfw</code> if Panorama mode is confirmed</td><td>Terraform owner</td></tr>
+    <tr><td>&#9744;</td><td>Panorama Device Group and Template Stack created, link identifier captured</td><td>Firewall team</td></tr>
+    <tr><td>&#9744;</td><td><code>terraform plan</code> clean against one child account</td><td>Terraform owner</td></tr>
+    <tr><td>&#9744;</td><td>Parent Marketplace subscription left untouched</td><td>Everyone</td></tr>
+  </tbody>
+</table>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Child account stuck at &ldquo;Pending Setup&rdquo; after deploying the CFT</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li>Confirm the stack was deployed in the <strong>child</strong> account, not the parent. This is the most common cause: an operator with both consoles open deploys into the wrong one.</li>
+      <li>Confirm the CFT used was the one generated <em>for that specific account ID</em>. Templates are not interchangeable between child accounts.</li>
+      <li>Check the stack actually reached <code>CREATE_COMPLETE</code> rather than rolling back on an IAM capability or name collision.</li>
+      <li>Check for a Service Control Policy at the OU level denying IAM role creation, or denying the <code>sts:AssumeRole</code> trust to an external principal. SCPs are a frequent cause in tightly governed Organizations, and the failure is silent from the console's perspective.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Terraform fails to initialise the cloudngfwaws provider</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li>The programmatic-access roles from Step A.3 are missing. The cross-account CFT role is not sufficient. This is the most common cause.</li>
+      <li><code>provider_account</code> is empty, so it has fallen back to the caller's account via the <code>coalesce()</code> in <code>versions.tf</code>. Verify it holds the child account ID.</li>
+      <li><code>provider_role</code> does not match the actual role name in the child account. The default is <code>cloudngfw</code>.</li>
+      <li>The <code>host</code> region does not match the region the tenant was onboarded in.</li>
+      <li>Test the role independently with <code>aws sts assume-role --role-arn arn:aws:iam::&lt;CHILD_ID&gt;:role/cloudngfw --role-session-name tf-test</code>.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>NGFW resource is created in the wrong account</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This is Finding 2. The <code>cloudngfwaws</code> provider points at the child, but the AWS credentials Terraform runs under belong to the parent, so <code>data.aws_caller_identity.current.id</code> resolves to the parent.</p>
+    <p>Confirm what Terraform actually sees:</p>
+    <div class="code-block">
+      <pre><code>aws sts get-caller-identity</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Fix by running with child credentials, adding <code>assume_role</code> to the <code>aws</code> provider, or applying the <code>account_id</code> variable patch from Finding 2.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Panorama cannot reach the Cloud NGFW tenant</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li>Verify DNS resolution of <code>api.&lt;region&gt;.aws.cloudngfw.paloaltonetworks.com</code> from the Panorama management network.</li>
+      <li>Verify the egress firewall rule exists and is matching. Check the traffic log on the perimeter firewall rather than assuming the rule works.</li>
+      <li>If egress is proxied, confirm the proxy is configured on Panorama for plugin traffic specifically, not just for content updates.</li>
+      <li>If the egress path decrypts TLS, add an exemption for the API endpoint and retest.</li>
+      <li>Confirm the plugin version is in the supported matrix. A version mismatch can present as a connectivity failure rather than a clear version error.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Rulestack commit fails or times out</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Relevant only in local-rulestack mode. The module already sets generous timeouts on <code>cloudngfwaws_commit_rulestack</code> (<code>create</code> and <code>update</code> at 20m). If commits still time out, check that the LRA role carries rulestack permissions rather than only firewall-admin permissions.</p>
+    <p>If you are in Panorama-managed mode and seeing this error at all, the module has not been modified per Finding 3. It is still trying to create and commit a rulestack that should not exist.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2 id="summary">Summary</h2>
+
+<ol>
+  <li><strong>Do not try to move the licence.</strong> Keep the subscription and credits in the parent, and associate child accounts with the tenant. That is Path A.</li>
+  <li><strong>Remember the programmatic-access roles.</strong> Console walkthroughs routinely omit them, and Terraform cannot authenticate without them.</li>
+  <li><strong>The Panorama requirement is the real project risk</strong>, not the account linkage. Plugin version compatibility and log destination are the two items most likely to force a design change.</li>
+  <li><strong>The Terraform module needs work before it can do Panorama-managed mode.</strong> It has no concept of it today, and will try to create rulestacks that should not exist.</li>
+  <li><strong>Treat Path B as out of scope</strong> unless someone confirms in writing that the private-offer credits survive.</li>
+</ol>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="download-md-btn" id="downloadMdBtn" onclick="downloadAsMarkdown()">&#8681; Markdown</button>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>
