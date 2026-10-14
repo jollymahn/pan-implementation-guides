@@ -798,7 +798,7 @@ const AIGW_KUBERNETES = {
           task: 'Restrict the load balancer source range to the networks allowed to call the gateway' },
 
         { anchor: 'connectivity', heading: '7.1 — Allow outbound egress (all platforms)', owner: 'PANW / CUSTOMER', hours: 2, who: [G.security, G.k8s],
-          task: 'Allow outbound 443 to api.portkey.ai, aigw.portkey.ai, albus.portkey.ai and registry.portkey.ai, and exempt *.portkey.ai from TLS inspection' },
+          task: 'Allow outbound 443 from the pods to the management plane hosts and from the nodes to registry.portkey.ai, confirming the current list against a running gateway. Exempt *.portkey.ai and every LLM provider endpoint from TLS inspection' },
         { anchor: 'connectivity', heading: '7.2 — Reach the management plane over the internet (all platforms)', owner: 'PANW / CUSTOMER', hours: 1, who: [G.security],
           task: 'Confirm the gateway reaches the management plane endpoints over the internet path' },
         { variant: 'eks', anchor: 'connectivity', heading: '7.3 — Private outbound over AWS PrivateLink', owner: 'PANW / CUSTOMER', hours: 6, who: [G.cloud, G.security],

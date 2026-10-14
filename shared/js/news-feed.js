@@ -37,6 +37,20 @@ var NEWS_VISIBLE_COUNT = 6;
 
 var NEWS_ITEMS = [
   {
+    badge: "Updated",
+    date: "2026-10-14",
+    title: "A Healthy gateway in SCM does not mean inference works",
+    href: "guides/ai-gateway/ai-gateway-deployment.html#enable-gateway",
+    tags: "Connection Status confirms the management path only, An egress control can permit sync and block providers, The gateway registers and reports Healthy while every request fails, The gateway log records nothing at all, Prove inference separately"
+  },
+  {
+    badge: "New",
+    date: "2026-10-14",
+    title: "AI Gateway connectivity, with the endpoint list corrected",
+    href: "guides/ai-gateway/connectivity.html",
+    tags: "Your Strata Cloud Manager URL is not an endpoint, Read the endpoint list off your own running gateway, The image pull bypasses pod NetworkPolicy, Filter by hostname because NetworkPolicy cannot, TLS inspection breaks three layers independently, Healthy in SCM does not mean inference works, Per-cloud identity and storage endpoints, Symptom lookup for a blocked gateway"
+  },
+  {
     badge: "New",
     date: "2026-10-12",
     title: "Cloud NGFW on AWS when the license lives in another account",

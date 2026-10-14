@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Connectivity Reference | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Start Here</div>
+    <a href="#not-scm-url" data-section="not-scm-url">Not Your SCM URL</a>
+    <a href="#direction" data-section="direction">Direction of Travel</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">What to Open</div>
+    <a href="#pod-endpoints" data-section="pod-endpoints">From the Pods</a>
+    <a href="#node-endpoints" data-section="node-endpoints">From the Nodes</a>
+    <a href="#cloud-endpoints" data-section="cloud-endpoints">Cloud Service Endpoints</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Getting It Right</div>
+    <a href="#fqdn" data-section="fqdn">Filter by Hostname</a>
+    <a href="#tls-inspection" data-section="tls-inspection">TLS Inspection</a>
+    <a href="#source-address" data-section="source-address">Your Source Address</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#verify" data-section="verify">Verification Commands</a>
+    <a href="#troubleshooting" data-section="troubleshooting">Symptom Lookup</a>
+    <a href="#confidence" data-section="confidence">Sourcing and Confidence</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  Connectivity Reference
+</div>
+
+<div class="article">
+
+<h1>AI Gateway Connectivity Reference</h1>
+<p class="subtitle">Every hostname, port, and direction a hybrid data plane needs, and the inspection and filtering decisions that break it</p>
+
+<p>This page exists to answer one question completely: what does a network team have to open so that a self-hosted AI Gateway data plane can reach Strata Cloud Manager and the models it proxies for. It applies to every hybrid platform, since the data plane makes the same calls whether it runs on EKS, AKS, GKE, ECS, Azure Container Apps, or an on-premises cluster.</p>
+
+<p>The deployment guides cover connectivity in the context of their own procedures. This page is the consolidated list, written to be handed to whoever owns the firewall.</p>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="not-scm-url">The Strata Cloud Manager URL is not what you open</h2>
+
+<div class="callout callout-danger">
+  <div class="callout-title">The most common wrong assumption</div>
+  <p>Your Strata Cloud Manager tenant URL is for administrators in a browser. The data plane never contacts it. Opening egress to your SCM console hostname achieves nothing, and a gateway allowed only that destination will never register.</p>
+</div>
+
+<p>Prisma AIRS AI Gateway is built on Portkey, which Palo Alto Networks acquired and integrated behind Strata Cloud Manager. The console you administer is SCM. The endpoints the data plane calls are still the Portkey management plane hostnames, under <code>portkey.ai</code>. Both facts are true at once, and seeing <code>portkey.ai</code> in your firewall logs is expected rather than a sign of misconfiguration.</p>
+
+<p>Two consequences follow. A network team given only "allow Strata Cloud Manager" will open the wrong thing. And a security review that sees traffic to a domain nobody recognizes may block it, which produces the failure described under <a href="#tls-inspection">TLS Inspection</a>.</p>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="direction">Direction of travel</h2>
+
+<p>All connectivity is <strong>outbound only, over TCP 443</strong>. The data plane initiates every connection. Responses return on connections it opened, which is not the same as an inbound connection and does not need a firewall rule of its own.</p>
+
+<div class="callout callout-success">
+  <div class="callout-title">What you do not need to build</div>
+  <ul>
+    <li><strong>No inbound rule</strong> from Palo Alto Networks into your network.</li>
+    <li><strong>No public listener</strong> on the gateway. Your load balancer serves your own applications and nothing else.</li>
+    <li><strong>No private link</strong> back from the management plane. Palo Alto Networks confirmed on 2026-09-27 that private link is not supported with Strata Cloud Manager and that the only connectivity between a gateway and the cloud is outbound from the gateway.</li>
+    <li><strong>No Palo Alto Networks principal</strong> authorized into your cloud account.</li>
+  </ul>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Remove an inbound path built earlier</div>
+  <p>Deployments that predate 2026-09-27 and followed the Portkey platform pages may carry an endpoint service with a Palo Alto Networks principal authorized, or management plane addresses in a load balancer security group. Nothing uses either. Remove them, and tell your account team you have done so in case a connection is still held on their side.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="pod-endpoints">What to open from the pods</h2>
+
+<p>These are the destinations the gateway process itself calls. On Kubernetes they are what a pod-level egress policy governs; on ECS or Container Apps they are what the task or replica needs.</p>
+
+<table>
+<thead><tr><th style="width:34%">Destination</th><th style="width:10%">Port</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>aigw.portkey.ai</code></td><td>TCP 443</td><td>Gateway control traffic, configured as <code>CONTROL_PLANE_BASEPATH</code>. Also the hosted SaaS gateway endpoint, which is why the name appears in two unrelated contexts.</td></tr>
+<tr><td><code>api.portkey.ai</code></td><td>TCP 443</td><td>Registration, configuration sync, and the sync API. Configured as <code>CONFIG_READER_PATH</code> and <code>SOURCE_SYNC_API_BASEPATH</code>.</td></tr>
+<tr><td><code>albus.portkey.ai</code></td><td>TCP 443</td><td>Analytics and log delivery, configured as <code>ALBUS_BASEPATH</code>. See the note below on confirming this one.</td></tr>
+<tr><td>Each LLM provider you integrate</td><td>TCP 443</td><td>One per integration: <code>api.openai.com</code>, <code>api.anthropic.com</code>, <code>&lt;resource&gt;.openai.azure.com</code>, <code>bedrock-runtime.&lt;region&gt;.amazonaws.com</code>, or your own hosted model.</td></tr>
+<tr><td><code>service.api.aisecurity.paloaltonetworks.com</code></td><td>TCP 443</td><td>Prisma AIRS Scan API, called per request once a guardrail is attached. Use the regional host your AIRS deployment profile specifies.</td></tr>
+<tr><td>Each MCP origin server you register</td><td>TCP 443</td><td>Only when the MCP gateway is in use.</td></tr>
+</tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Allow every management plane hostname, not a subset</div>
+  <p>Allowing all of them costs nothing and removes a class of intermittent failure that is unpleasant to diagnose, because an endpoint that is quiet at rest and active under load looks like a new fault rather than a missing rule.</p>
+</div>
+
+<h3 id="derive">Read the authoritative list off your own gateway</h3>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Endpoint names have changed, and published lists disagree</div>
+  <p>Hostnames have moved as the product was integrated into Strata Cloud Manager, and material from before that integration is still in circulation. Different sources name different hosts for the same function, and some record a variable name as though it were a hostname. <code>ALBUS_BASEPATH</code> is a variable, and whether its value resolves to a host called <code>albus</code> depends on the release you are running.</p>
+  <p>Rather than trusting any list, including this one, read the endpoints out of the deployment in front of you. The chart supplies them as environment values, so a running pod is the only source correct for your version and tenant:</p>
+</div>
+
+<div class="code-block"><pre><code>kubectl exec -n airs-gw &lt;GATEWAY_POD&gt; -- env \
+  | grep -E 'BASEPATH|CONFIG_READER_PATH' | sort</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>That returns the base paths the data plane actually uses, which is what belongs on the firewall request. Confirm the result with your account team before a production change, and treat the table above as a starting position rather than the final word.</p>
+
+<p>To see which of them carry traffic in practice, enable query logging on CoreDNS and read the log after the gateway has run for a few minutes. Exclude any shell testing you do yourself: a <code>wget</code> from inside the pod goes through CoreDNS and is indistinguishable from gateway traffic.</p>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="node-endpoints">What to open from the nodes</h2>
+
+<table>
+<thead><tr><th style="width:34%">Destination</th><th style="width:10%">Port</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>registry.portkey.ai</code></td><td>TCP 443</td><td>Container image pull for the gateway image.</td></tr>
+<tr><td><code>docker.io</code>, <code>quay.io</code></td><td>TCP 443</td><td>Only when the chart's optional bundled components are enabled. A mirrored or air-gapped cluster needs all three mirrored.</td></tr>
+</tbody>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">A pod NetworkPolicy cannot permit the image pull</div>
+  <p>The image is pulled by the container runtime on the node, not by the pod. It never appears in pod DNS and no Kubernetes NetworkPolicy can allow or deny it. This rule has to be applied at the node, subnet, or firewall layer.</p>
+  <p>Teams that write a careful pod egress policy and then cannot start the gateway are usually missing exactly this. The symptom is <code>ImagePullBackOff</code> on every pod, with a pod-level policy that looks complete.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="cloud-endpoints">Cloud service endpoints</h2>
+
+<p>These are specific to where the data plane runs and to the storage and identity choices you made. They are easy to forget because they are not part of the product's own endpoint list.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Amazon EKS and ECS</span></div>
+  <div class="collapsible-body">
+    <table>
+    <thead><tr><th style="width:38%">Destination</th><th>Why</th></tr></thead>
+    <tbody>
+    <tr><td><code>sts.&lt;region&gt;.amazonaws.com</code></td><td>IAM Roles for Service Accounts exchanges a projected token for credentials here. Without it the pod cannot reach S3. An interface VPC endpoint keeps it off the public path. EKS Pod Identity moves this dependency to the node agent instead.</td></tr>
+    <tr><td>Amazon S3</td><td>Only when you configure a customer-held log store. A gateway VPC endpoint keeps the traffic off the NAT gateway, which matters for cost as well as policy, since log bodies run to roughly 10 kB each.</td></tr>
+    <tr><td>ElastiCache endpoint on 6379</td><td>Stays inside the VPC. Allow the node or pod security group as the source rather than the VPC CIDR.</td></tr>
+    <tr><td>Secrets Manager, CloudWatch Logs, ECS, SSM</td><td>ECS only, through NAT or interface endpoints.</td></tr>
+    </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Azure AKS and Container Apps</span></div>
+  <div class="collapsible-body">
+    <table>
+    <thead><tr><th style="width:38%">Destination</th><th>Why</th></tr></thead>
+    <tbody>
+    <tr><td>Microsoft Entra ID token endpoints</td><td>Workload Identity exchanges a federated token for an access token.</td></tr>
+    <tr><td><code>&lt;account&gt;.blob.core.windows.net</code></td><td>Only when the log store points at your own Blob Storage container.</td></tr>
+    <tr><td>Azure Managed Redis endpoint</td><td>Inside the VNet. Scope the firewall rules to the AKS subnet.</td></tr>
+    <tr><td>Key Vault</td><td>Container Apps only, which resolves its secrets there at start.</td></tr>
+    </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>Google GKE</span></div>
+  <div class="collapsible-body">
+    <table>
+    <thead><tr><th style="width:38%">Destination</th><th>Why</th></tr></thead>
+    <tbody>
+    <tr><td><code>oauth2.googleapis.com</code>, <code>iamcredentials.googleapis.com</code></td><td>Workload Identity Federation token exchange.</td></tr>
+    <tr><td><code>storage.googleapis.com</code></td><td>Only when the log store points at your own Cloud Storage bucket.</td></tr>
+    <tr><td>Memorystore endpoint</td><td>Inside the VPC.</td></tr>
+    </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Not connectivity, but it stops the deployment</div>
+      <p>GKE needs a subnet with purpose <code>REGIONAL_MANAGED_PROXY</code> in the cluster region before a regional load balancer will provision. Nothing in the Helm output reports it as missing; the symptom is a load balancer that never appears.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="fqdn">Filter by hostname, not by address</h2>
+
+<p>None of the management plane endpoints publish stable addresses, and the published figures that do circulate relate to an inbound path that Strata Cloud Manager does not support. Build the allow-list on hostnames.</p>
+
+<p>This has a direct consequence for Kubernetes. A NetworkPolicy matches on IP ranges and cannot express a wildcard hostname, so it cannot implement <code>*.portkey.ai</code>. Hostname filtering belongs on a firewall in the egress path. Use NetworkPolicy to constrain which pods may egress at all, and the firewall to constrain where they may go.</p>
+
+<p>Kubernetes permits all egress by default. Where a cluster applies restrictive policies, the gateway needs an explicit allowance or it will never register. The published example below is deliberately permissive so a first deployment works; narrow the CIDR once the deployment is proven.</p>
+
+<div class="code-block"><pre><code>apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-egress
+  namespace: airs-gw
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="tls-inspection">TLS inspection</h2>
+
+<p>Add a decryption exemption for <code>*.portkey.ai</code> and for every LLM provider endpoint you integrate. The gateway validates the certificate chain it expects, so a re-signed certificate fails the handshake.</p>
+
+<p>This deserves more attention than a single line in a prerequisites list, because inspection breaks the deployment in three independent places, the symptoms look nothing alike, and fixing one leaves the others broken.</p>
+
+<table>
+<thead><tr><th style="width:17%">Layer</th><th style="width:24%">Who makes the call</th><th style="width:30%">Symptom</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td><strong>Image pull</strong></td><td>The container runtime on the node</td><td><code>ImagePullBackOff</code> with <code>x509: certificate signed by unknown authority</code>. Pods never start.</td><td>Add the intercepting CA to the node's trust store. On a managed node group this is a launch template or bootstrap script, not a pod change.</td></tr>
+<tr><td><strong>Management plane</strong></td><td>The gateway process in the container</td><td>Pods Running and healthy, the gateway never registers, and API keys fail with <code>Error Code: 03</code>.</td><td>Mount the CA into the container and point <code>NODE_EXTRA_CA_CERTS</code> at it.</td></tr>
+<tr><td><strong>Provider calls</strong></td><td>The gateway process in the container</td><td>Registration succeeds and the gateway reports Healthy, while every LLM request fails with <code>fetch failed</code>.</td><td>Exempt the provider endpoints as well, not only <code>*.portkey.ai</code>.</td></tr>
+</tbody>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">A Healthy gateway does not mean inference works</div>
+  <p>The third row is the one that costs the most time. Where an egress control permits management traffic and blocks inference calls to model providers, the gateway registers, syncs on schedule, and reports <strong>Healthy</strong> in Strata Cloud Manager. The console looks correct in every respect. Every LLM request fails, and the gateway log records nothing: no error, no retry, no trace of the request at all.</p>
+  <p>Connection Status in Strata Cloud Manager confirms the management path only. Treat it as evidence that registration works, never as evidence that traffic works. Prove inference separately with a test request, as in <a href="#verify">Verification</a> below.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">A passing curl test proves less than it appears to</div>
+  <p>Where an inspecting proxy is in the path, <code>curl</code> from a shell on the same host or in the same container frequently succeeds against a hostname the gateway cannot reach. The difference is that <code>curl</code> trusts the proxy CA from the system trust store and the gateway does not. Treat a passing connectivity test as inconclusive whenever inspection is involved, and confirm who issued the certificate instead:</p>
+  <div class="code-block"><pre><code>echo | openssl s_client -connect api.portkey.ai:443 \
+  -servername api.portkey.ai 2>/dev/null \
+  | openssl x509 -noout -issuer</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <p>A public issuer such as Amazon or Let's Encrypt is fine. Your own organization's CA means the session is being intercepted.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="source-address">Your source address</h2>
+
+<p>Where an intermediate firewall needs to allow traffic by source, the address presented depends on how the compute egresses, and the answer is often not what the architecture diagram implies.</p>
+
+<ul>
+<li><strong>Private subnets behind NAT</strong> &mdash; the source is the NAT gateway's Elastic IP or equivalent. With one NAT gateway per Availability Zone there is more than one, so supply all of them.</li>
+<li><strong>Public subnets with auto-assigned addresses</strong> &mdash; the source is each node's own public address, which changes whenever a node is replaced. Source-based allow-listing is impractical in this shape.</li>
+</ul>
+
+<p>Confirm which applies before committing to a source range, because the cluster creation command does not always place nodes where people assume:</p>
+
+<div class="code-block"><pre><code>kubectl exec -n airs-gw &lt;GATEWAY_POD&gt; -- wget -qO- https://checkip.amazonaws.com</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="verify">Verification</h2>
+
+<p>Work outward. Each check isolates a different layer, and running them in order stops you diagnosing a firewall problem that is really a credential problem.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>1. Can the node reach the registry?</span></div>
+  <div class="collapsible-body">
+    <p>If the pods are not Running, nothing else is worth testing.</p>
+    <div class="code-block"><pre><code>kubectl get pods -n airs-gw
+kubectl describe pod -n airs-gw &lt;POD&gt; | sed -n '/Events:/,$p'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p><em>Expect:</em> every pod Running and ready. <code>ImagePullBackOff</code> with a certificate error in the events is TLS inspection at the node layer.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>2. Can the container reach the management plane?</span></div>
+  <div class="collapsible-body">
+    <p>The gateway image ships <code>wget</code> rather than <code>curl</code>, so commands written around <code>curl</code> fail with a confusing error about the binary rather than the network.</p>
+    <div class="code-block"><pre><code>kubectl exec -n airs-gw &lt;POD&gt; -- \
+  wget -q -O /dev/null https://api.portkey.ai/ \
+  && echo reachable || echo blocked</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p>Where <code>NODE_EXTRA_CA_CERTS</code> is in use, test the way the gateway does instead, because that variable applies to the application runtime and not to <code>wget</code>:</p>
+    <div class="code-block"><pre><code>kubectl exec -n airs-gw &lt;POD&gt; -- node -e '
+require("https").get("https://api.portkey.ai/",
+  r =&gt; console.log("OK", r.statusCode))
+  .on("error", e =&gt; console.log("ERR", e.code))'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p><em>Expect:</em> any HTTP status, including 401 or 404. The status does not matter; completing the handshake does.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>3. Did registration actually happen?</span></div>
+  <div class="collapsible-body">
+    <p>In Strata Cloud Manager, open <strong>AI Security &rarr; AI Gateway &rarr; Admin Settings &rarr; Gateway Registration</strong>.</p>
+    <p><em>Expect:</em> Connection Status reads Healthy and Last Sync shows a recent timestamp that keeps advancing. Pods check in roughly every 30 seconds, so allow a minute before treating Unknown as a failure.</p>
+    <p>Last Sync is the column to trust. It only moves when the data plane reaches the management plane.</p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header"><span class="chevron">&#9654;</span><span>4. Does inference work? This is a separate question</span></div>
+  <div class="collapsible-body">
+    <p>Registration and inference use different destinations and can fail independently. A Healthy gateway proves nothing about provider connectivity, so test it explicitly.</p>
+    <div class="code-block"><pre><code>kubectl port-forward -n airs-gw &lt;GATEWAY_POD&gt; 8787:8787
+
+curl -X POST "http://localhost:8787/v1/messages" \
+  -H "Authorization: Bearer &lt;GATEWAY_API_KEY&gt;" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "content-type: application/json" \
+  -d '{"model": "@&lt;slug&gt;/&lt;model&gt;", "max_tokens": 32,
+       "messages": [{"role": "user", "content": "Say OK"}]}'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p><em>Expect:</em> a completion. An error naming the model still proves the gateway authenticated you and reached the integration. A hang, or <code>fetch failed</code>, points at provider egress rather than at the gateway.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Address the pod, not the Deployment</div>
+      <p>In some chart versions the bundled Redis pod carries the same <code>app.kubernetes.io/name</code> label as the gateway, so <code>kubectl port-forward deployment/airs-gw</code> and <code>kubectl logs deployment/airs-gw</code> can resolve to Redis instead. Resolve a gateway pod name explicitly and use that.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="troubleshooting">Symptom lookup</h2>
+
+<table>
+<thead><tr><th style="width:36%">Symptom</th><th>Most likely connectivity cause</th></tr></thead>
+<tbody>
+<tr><td><code>ImagePullBackOff</code>, pods never start</td><td><code>registry.portkey.ai</code> not reachable from the <strong>node</strong>, or TLS inspection at the node layer. A pod NetworkPolicy is never the cause.</td></tr>
+<tr><td>Pods Running, Connection Status stays Unknown</td><td>The management plane hostnames are not reachable from the container, or inspection is re-signing them. Check <code>api.portkey.ai</code> first.</td></tr>
+<tr><td>Every API key fails with <code>Error Code: 03</code></td><td>Ambiguous by design: it covers both a genuinely wrong key and a key the gateway could not validate because it could not reach the management plane. Rule out connectivity before rotating keys.</td></tr>
+<tr><td>Healthy in SCM, every LLM request fails</td><td>Provider endpoints are blocked while management traffic is permitted. Check egress to the provider, not to Palo Alto Networks.</td></tr>
+<tr><td>Requests hang, then <code>fetch failed</code> or a socket close</td><td>Something in the egress path is terminating provider calls. An AI security or DLP control that permits reads and blocks inference produces exactly this.</td></tr>
+<tr><td>Log entries appear in SCM with empty bodies</td><td>Log store configuration rather than connectivity.</td></tr>
+<tr><td>Streams truncate on long generations</td><td>Load balancer idle timeout shorter than the generation. Not a firewall rule.</td></tr>
+</tbody>
+</table>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="confidence">Sourcing and confidence</h2>
+
+<p>Connectivity guidance is worth stating with its provenance, because a firewall change request is hard to retract and the published sources disagree with each other.</p>
+
+<table>
+<thead><tr><th style="width:38%">Claim</th><th>Basis</th></tr></thead>
+<tbody>
+<tr><td>Outbound only, no inbound path</td><td>Confirmed by Palo Alto Networks on 2026-09-27.</td></tr>
+<tr><td>The management plane hostnames</td><td>Published documentation. Names have changed across releases and published lists disagree, so this page directs you to read them off a running gateway rather than trusting the table.</td></tr>
+<tr><td>The chart supplies the endpoints as environment values</td><td>Read from the environment of a running gateway container.</td></tr>
+<tr><td>The image pull bypasses pod DNS and NetworkPolicy</td><td>Property of Kubernetes, confirmed by observation.</td></tr>
+<tr><td>TLS inspection breaks three layers independently</td><td>All three observed. The provider-call case was reproduced deliberately.</td></tr>
+<tr><td>Cloud service endpoints per platform</td><td>Derived from the identity and storage mechanisms each platform uses. Not individually validated against a deployment in every cloud.</td></tr>
+</tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Confirm the list before a production change request</div>
+  <p>Endpoint names have changed across the product's integration into Strata Cloud Manager, and material from before that integration is still in circulation. Where a customer is raising a firewall change they cannot easily revise, confirm the current list with your account team and treat this page as the starting position rather than the final word.</p>
+</div>
+
+<h3>Related guides</h3>
+<ul>
+<li><a href="ai-gateway-deployment.html">AI Gateway Deployment</a> &mdash; licensing, gateway registration, integrations, and guardrails.</li>
+<li><a href="hybrid-infrastructure.html">Hybrid Infrastructure</a> &mdash; architecture, sizing, and per-platform prerequisites.</li>
+<li><a href="kubernetes-deployment.html">EKS, AKS, and GKE</a> &mdash; the Helm deployment procedure.</li>
+<li><a href="serverless-deployment.html">ECS and Container Apps</a> &mdash; the Terraform deployment procedure.</li>
+</ul>
+
+</div><!-- .article -->
+
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>
