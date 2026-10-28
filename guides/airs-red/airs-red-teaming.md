@@ -43,9 +43,13 @@ AI Red Teaming operates through three API planes, each serving a distinct purpos
 | **Data Plane** | `/ai-red-teaming/data-plane` | Scans, reports, categories, quota, error logs |
 | **Network Broker** | `/ai-red-teaming/data-plane/network-broker` | Network channels for private endpoint access |
 
-*AI Red Teaming architecture — SCM console, API planes, and target system:*
+*AI Red Teaming end to end: one console, three API planes, and a target outside the platform:*
 
-![AI Red Teaming architecture showing SCM Console connecting to Management Plane, Data Plane, and Network Broker, which target the AI System Under Test](airs-red-screenshots/red-teaming-architecture.drawio.svg)
+![Strata Cloud Manager above the management plane, data plane and network broker, all reaching one AI system under test through one of five routes](diagrams/airs-red-architecture.svg)
+
+*How the platform reaches the target. Five routes exist, and the first one that fits is the one to use:*
+
+![Five routes from AI Red Teaming to a target: a public endpoint, a private endpoint behind an IP allowlist, a private endpoint through a Network Channel, a Custom Target Adapter in the channel pod, and a customer-built wrapper or bridge](diagrams/airs-red-reaching-the-target.svg)
 
 ### Attack Categories
 
@@ -367,9 +371,17 @@ The dashboard provides an at-a-glance view of your red teaming posture:
 
 ## Configure Targets
 
+*One attack prompt against a REST target, and the two template fields that decide whether it works:*
+
+![The six stages of a single attack prompt from the attack library through the request template, the HTTPS POST, the target, the response template and the verdict, with the request and response JSON editors and a table of what each status code does to the report](diagrams/airs-red-rest-target-call.svg)
+
 ### Step 4.1: Understand Target Types
 
 Every target is classified by its type, which determines the available connection methods and profiling behavior.
+
+*The three types side by side, and every connection method in one table:*
+
+![Application, Agent and Model target types compared by connection method, whether background fields are mandatory, and whether Agentic Profiling runs, followed by a table of all nine connection methods](diagrams/airs-red-target-types.svg)
 
 | Target Type | Description | Connection Methods | Agentic Profiling |
 |---|---|---|---|
@@ -502,6 +514,10 @@ curl -X PUT "https://api.sase.paloaltonetworks.com/ai-red-teaming/mgmt-plane/v1/
 
 For conversational targets, configure multi-turn testing to simulate realistic multi-step attacks.
 
+*Stateless and stateful side by side, and the fields each one needs:*
+
+![Stateless multi-turn replaying a growing conversation history in every request compared with stateful multi-turn passing a session id back and forth, plus a table of which connection methods support multi-turn at all](diagrams/airs-red-multi-turn.svg)
+
 | Mode | Description | Key Fields |
 |---|---|---|
 | **Stateful** | Target maintains conversation state via session ID | `session_id_location` (header, body, cookie), `session_id_key` |
@@ -605,9 +621,9 @@ For targets with type `AGENT`, Agentic Profiling automatically interrogates the 
 
 Network Channels provide secure connectivity between the AI Red Teaming cloud service and AI systems on private networks. The architecture uses a client/server model where a lightweight daemon in the customer's Kubernetes cluster initiates an **outbound WebSocket connection** to the cloud service. No inbound firewall rules are needed.
 
-*Network Channel architecture — outbound WebSocket tunnel from customer cluster to cloud service:*
+*The Network Channel tunnel, with the three FQDNs and the client version floors:*
 
-![Network Channel architecture showing outbound WebSocket tunnel from Customer K8s Cluster to AI Red Teaming Cloud, with attack traffic routed to Private AI System](airs-red-screenshots/red-teaming-network-channel.drawio.svg)
+![A Network Channel client in a Kubernetes cluster dialing out to the AI Red Teaming cloud on an outbound WebSocket, with attack prompts returning down the same tunnel to a private AI system that needs no inbound firewall rule](diagrams/airs-red-network-channel.svg)
 
 ### Step 5.2: Create a Network Channel
 
@@ -712,6 +728,10 @@ Confirm `"status": "ONLINE"` in the response.
 ## Scanning
 
 ### Step 6.1: Understand Scan Types
+
+*The three scan types, the status chain, and what lands in the report:*
+
+![Attack Library, goal-driven Agent and Custom prompt set scan types, the status chain from INIT through RUNNING to COMPLETED or PARTIALLY_COMPLETE, and the report metrics of risk score, attack success rate, severity breakdown and remediation](diagrams/airs-red-scan-lifecycle.svg)
 
 | Scan Type | API Value | Description | Timing | Best For |
 |---|---|---|---|---|
@@ -1590,6 +1610,10 @@ Two managed agent runtimes in wide use have no native connection method, for dif
 | Bedrock **Agent** | Yes | No connection type reaches `InvokeAgent` |
 | Azure AI Foundry agent | Yes | No connection type exists |
 
+*What the platform reaches on its own, and what needs code written for it:*
+
+![Eight target shapes reached by a native connection method listed beside six that need an adapter or a wrapper, including an AWS Bedrock Agent, an Azure AI Foundry agent, a WebSocket agent needing multi-turn, an SDK-only agent, a gRPC or SOAP agent, and any agent that signs every request](diagrams/airs-red-coverage-map.svg)
+
 > **Note:** An agent that appears in SCM cloud discovery does not become a scannable target. Nothing in the AI Red Teaming documentation references AI Agent Discovery, and there is no action on a discovered asset that creates a target. Discovery is read-only inventory; targets are created by hand under `AI Security` -> `AI Red Teaming` -> `Targets`.
 
 ### The Shared Interface Contract
@@ -1628,6 +1652,10 @@ Before either path, you need an agent that already exists and answers correctly 
 Work in a dedicated folder for either path, and stay in the same terminal session throughout. The deploy steps set shell variables that vanish when the terminal closes.
 
 ### Bridge A: AWS Bedrock Agent
+
+*The Bedrock bridge, and the three reasons no connection method reaches this runtime:*
+
+![AI Red Teaming posting to a Lambda function URL that checks a bearer token, signs InvokeAgent with its execution role and collapses the returned event stream into one JSON body, with tables of the three blockers and the four pieces of the bridge](diagrams/airs-red-bridge-bedrock.svg)
 
 This handler validates a bearer token, calls `InvokeAgent` with SigV4 supplied by the Lambda execution role, and collapses the returned event stream into one string.
 
@@ -1833,6 +1861,10 @@ curl -s -X POST "$FUNCTION_URL" \
 When an error is hard to explain, read what the code actually hit: `aws logs tail /aws/lambda/airt-bedrock-agent-bridge --follow` in a second terminal, then send the cURL again. To change the code after deployment, re-zip and run `aws lambda update-function-code --function-name airt-bedrock-agent-bridge --zip-file fileb://handler.zip`. Environment variables survive a code update.
 
 ### Bridge B: Azure AI Foundry Agent
+
+*The Foundry bridge, the project folder it needs, and the contract both bridges share:*
+
+![AI Red Teaming posting to an Azure Function App that checks a bearer token, acquires a managed identity token and maps a session id onto a Foundry thread, with the project folder layout and the shared request and response contract](diagrams/airs-red-bridge-foundry.svg)
 
 Foundry agents are driven through threads rather than single calls, so the bridge maps the AI Red Teaming session ID to a Foundry thread. That is what makes multi-turn attacks accumulate context instead of restarting on every prompt.
 

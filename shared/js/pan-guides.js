@@ -625,6 +625,7 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'Model Security', h: 'guides/airs-model/airs-model-security.html' },
     { t: 'Network Intercept', h: 'guides/airs/airs-network-intercept.html' },
     { t: 'Red Teaming', h: 'guides/airs-red/airs-red-teaming.html' },
+    { t: 'Red Teaming Flow Diagrams', h: 'guides/airs-red/diagrams/flow-diagrams-review.html' },
   ]},
 
   { section: 'Network Security' },

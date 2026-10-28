@@ -58,3 +58,32 @@ python3 clean-svg.py NAME.svg
 | `ai-gateway/diagrams/aigw-deployment-models.svg` | *(pre-existing, hand-authored SVG)* | none |
 
 Nine of these, from the two-key model through agent identity, are presented together with commentary and open questions on the review page at `ai-gateway/diagrams/flow-diagrams-review.html`. The three streaming, caching, and A2A diagrams are embedded inline in `ai-gateway/streaming-caching-a2a.html`, one per phase, rather than on the review page. The Entra agent flow diagram is embedded inline in `ai-gateway/agent-identity-entra.html`, where it doubles as the page's structure: its three bands are the guide's six phases.
+
+## AI Red Teaming
+
+Also draw.io, with the same export pipeline as AI Gateway. The editable `.drawio` sits beside each `.svg` in `airs-red/diagrams/`, and a copy of `clean-svg.py` lives in the same folder:
+
+```bash
+cd docs/guides/airs-red/diagrams
+drawio -x -f svg --crop -o NAME.svg NAME.drawio
+python3 clean-svg.py NAME.svg
+```
+
+| File | Description | Source |
+|---|---|---|
+| `airs-red/diagrams/airs-red-architecture.svg` | Console, three API planes, five routes, one target under test | `airs-red-architecture.drawio` |
+| `airs-red/diagrams/airs-red-reaching-the-target.svg` | The five routes to a target, with what you deploy and the lead time on each | `airs-red-reaching-the-target.drawio` |
+| `airs-red/diagrams/airs-red-target-types.svg` | Application, Agent and Model, and every connection method | `airs-red-target-types.drawio` |
+| `airs-red/diagrams/airs-red-rest-target-call.svg` | One attack prompt end to end, the two JSON templates, and what each status code does to the report | `airs-red-rest-target-call.drawio` |
+| `airs-red/diagrams/airs-red-multi-turn.svg` | Stateless and stateful multi-turn, and where neither is possible | `airs-red-multi-turn.drawio` |
+| `airs-red/diagrams/airs-red-network-channel.svg` | The outbound WebSocket tunnel, the three FQDNs, and the client version floors | `airs-red-network-channel.drawio` |
+| `airs-red/diagrams/airs-red-custom-adapter.svg` | Pattern A and Pattern B, the context object, and the runtime limits | `airs-red-custom-adapter.drawio` |
+| `airs-red/diagrams/airs-red-coverage-map.svg` | What a connection method reaches, and what needs an adapter or a wrapper | `airs-red-coverage-map.drawio` |
+| `airs-red/diagrams/airs-red-wrapper-rest-shim.svg` | Type 1, a REST shim over an SDK-only or gRPC agent | `airs-red-wrapper-rest-shim.drawio` |
+| `airs-red/diagrams/airs-red-wrapper-websocket.svg` | Type 2, a REST front holding one WebSocket open across turns | `airs-red-wrapper-websocket.drawio` |
+| `airs-red/diagrams/airs-red-wrapper-signing-proxy.svg` | Type 3, the SigV4 signing proxy and the Okta token-refresh proxy | `airs-red-wrapper-signing-proxy.drawio` |
+| `airs-red/diagrams/airs-red-bridge-bedrock.svg` | Bridge A, a Lambda function URL reaching `InvokeAgent` | `airs-red-bridge-bedrock.drawio` |
+| `airs-red/diagrams/airs-red-bridge-foundry.svg` | Bridge B, an Azure Function App reaching a Foundry agent | `airs-red-bridge-foundry.drawio` |
+| `airs-red/diagrams/airs-red-scan-lifecycle.svg` | The three scan types, the status chain, and the report metrics | `airs-red-scan-lifecycle.drawio` |
+
+All fourteen are embedded inline in `airs-red/airs-red-teaming.html` at the step they belong to, and gathered with commentary on the review page at `airs-red/diagrams/flow-diagrams-review.html`. Ten also appear in `airs-red/airs-red-teaming.md`; the adapter and wrapper diagrams have no markdown home because those sections exist only in the HTML. The architecture and network channel diagrams replace earlier versions that lived in `airs-red/airs-red-screenshots/`.

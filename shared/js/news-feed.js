@@ -38,6 +38,13 @@ var NEWS_VISIBLE_COUNT = 6;
 var NEWS_ITEMS = [
   {
     badge: "Updated",
+    date: "2026-10-28",
+    title: "Fourteen diagrams for how Red Teaming reaches a target",
+    href: "guides/airs-red/diagrams/flow-diagrams-review.html",
+    tags: "Five routes to a target and the lead time on each, Private splits into IP allowlist and Network Channel, An unconfigured guardrail code files refusals as scan errors, WebSocket does neither multi-turn nor OAuth 2.0, Pattern A and Pattern B of the Custom Target Adapter, Three blockers on a Bedrock Agent, Nothing is installed in front of the application"
+  },
+  {
+    badge: "Updated",
     date: "2026-10-14",
     title: "A Healthy gateway in SCM does not mean inference works",
     href: "guides/ai-gateway/ai-gateway-deployment.html#enable-gateway",

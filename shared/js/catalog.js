@@ -111,6 +111,7 @@ var CATALOG = [
       { t: 'Microperimeter', h: 'guides/airs/airs-microperimeter.html', note: 'Per-workload enforcement' },
       { t: 'AI Model Security', h: 'guides/airs-model/airs-model-security.html', note: 'Scanning model artefacts' },
       { t: 'AI Red Teaming', h: 'guides/airs-red/airs-red-teaming.html', note: 'Adversarial testing of targets' },
+      { t: 'Red Teaming flow diagrams', h: 'guides/airs-red/diagrams/flow-diagrams-review.html', note: 'How the platform reaches a target' },
       { t: 'Engagement Planner', h: 'guides/airs-planner/index.html', note: 'Scoping a customer engagement' }
     ]
   },
