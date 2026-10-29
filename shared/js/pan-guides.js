@@ -620,6 +620,7 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'AI Overview', h: 'guides/airs/index.html' },
     { t: 'API Intercept', h: 'guides/airs/airs-api-intercept.html' },
     { t: 'Cloud Deploy', h: 'guides/airs/airs-cloud-deployment.html' },
+    { t: 'Connectivity Diagrams', h: 'guides/airs/airs-connectivity-diagrams.html' },
     { t: 'Connectivity Validator', h: 'guides/airs/airs-connectivity-validator.html' },
     { t: 'Engagement Planner', h: 'guides/airs-planner/index.html' },
     { t: 'Kubernetes', h: 'guides/airs/airs-k8s-protection.html' },

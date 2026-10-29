@@ -114,6 +114,7 @@ var CATALOG = [
       { t: 'Red Teaming flow diagrams', h: 'guides/airs-red/diagrams/flow-diagrams-review.html', note: 'How the platform reaches a target' },
       { t: 'Engagement Planner', h: 'guides/airs-planner/index.html', note: 'Scoping a customer engagement' },
       { t: 'Connectivity validator', h: 'guides/airs/airs-connectivity-validator.html', note: 'Generate a check, decode the output' },
+      { t: 'Connectivity diagrams', h: 'guides/airs/airs-connectivity-diagrams.html', note: 'What each check crosses, per pillar' },
       { t: 'Readiness: API Intercept', h: 'guides/airs/airs-api-intercept-readiness.html', note: 'What the customer brings to kickoff' },
       { t: 'Readiness: Model Scanning', h: 'guides/airs-model/airs-model-readiness.html', note: 'What the customer brings to kickoff' },
       { t: 'Readiness: Red Teaming', h: 'guides/airs-red/airs-red-readiness.html', note: 'What the customer brings to kickoff' }

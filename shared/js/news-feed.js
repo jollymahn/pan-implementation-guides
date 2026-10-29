@@ -39,6 +39,13 @@ var NEWS_ITEMS = [
   {
     badge: "New",
     date: "2026-10-29",
+    title: "Connectivity check diagrams, one per pillar",
+    href: "guides/airs/airs-connectivity-diagrams.html",
+    tags: "Where each check runs from and what it crosses, A numbered badge maps to what that rung proves, What a failure at each point actually means, Red Teaming checks do not cover the path to your target, A gateway can report Healthy while every request fails, The package index is the check to run first for Model Scanning"
+  },
+  {
+    badge: "New",
+    date: "2026-10-29",
     title: "Readiness: what an AI Red Teaming customer brings to kickoff",
     href: "guides/airs-red/airs-red-readiness.html",
     tags: "Who must be in the room and what stalls without them, Per target endpoint auth protocol and rate limit, Capture the request and response with DevTools first, Capture what a guardrail returns when it refuses, Private targets need a firewall change or a cluster, Some targets need software your team writes"
