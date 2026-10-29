@@ -102,6 +102,14 @@ const ALLOWED_CLASSES = [
 // breadcrumb rather than prose.
 ALLOWED_CLASSES.push('cmd-sep');
 
+// The masthead on a print companion page reads "IMPLEMENTATION GUIDES — Topic".
+// That is the same label construct as header-section-title above, which is
+// already allowed; it differs only in sitting on the .pdf-header masthead
+// instead of the web header, because these pages are written to be exported
+// and handed to a customer. A .logo element is a label by definition and is
+// never a sentence.
+ALLOWED_CLASSES.push('logo');
+
 // Elements an allowed class may appear on. Both are non-nesting in practice
 // for these classes, which is what makes the non-greedy close below safe.
 const CLASS_HOSTS = ['div', 'span'];

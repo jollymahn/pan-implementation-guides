@@ -112,7 +112,11 @@ var CATALOG = [
       { t: 'AI Model Security', h: 'guides/airs-model/airs-model-security.html', note: 'Scanning model artefacts' },
       { t: 'AI Red Teaming', h: 'guides/airs-red/airs-red-teaming.html', note: 'Adversarial testing of targets' },
       { t: 'Red Teaming flow diagrams', h: 'guides/airs-red/diagrams/flow-diagrams-review.html', note: 'How the platform reaches a target' },
-      { t: 'Engagement Planner', h: 'guides/airs-planner/index.html', note: 'Scoping a customer engagement' }
+      { t: 'Engagement Planner', h: 'guides/airs-planner/index.html', note: 'Scoping a customer engagement' },
+      { t: 'Connectivity validator', h: 'guides/airs/airs-connectivity-validator.html', note: 'Generate a check, decode the output' },
+      { t: 'Readiness: API Intercept', h: 'guides/airs/airs-api-intercept-readiness.html', note: 'What the customer brings to kickoff' },
+      { t: 'Readiness: Model Scanning', h: 'guides/airs-model/airs-model-readiness.html', note: 'What the customer brings to kickoff' },
+      { t: 'Readiness: Red Teaming', h: 'guides/airs-red/airs-red-readiness.html', note: 'What the customer brings to kickoff' }
     ]
   },
 
@@ -129,6 +133,7 @@ var CATALOG = [
       { t: 'Connectivity reference', h: 'guides/ai-gateway/connectivity.html', note: 'Every endpoint, port, and direction' },
       { t: 'LLM API key management', h: 'guides/ai-gateway/llm-api-key-management.html', note: 'Vault, rotation, expiry alerting' },
       { t: 'Flow diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html', note: 'Request paths end to end' },
+      { t: 'Customer readiness', h: 'guides/ai-gateway/ai-gateway-readiness.html', note: 'What the customer brings to kickoff' },
       { t: 'Streaming, caching, and A2A', h: 'guides/ai-gateway/streaming-caching-a2a.html', note: 'SSE guardrails, semantic cache, agents' },
       { t: 'Agent identity with Entra ID', h: 'guides/ai-gateway/agent-identity-entra.html', note: 'CIE sync, JWT claims, attribution' },
       { t: 'All AI Gateway guides', h: 'guides/ai-gateway/index.html', hub: true }
@@ -484,6 +489,12 @@ var HUBS = [
   {
     file: 'guides/ai-gateway/index.html',
     cards: [
+      { accent: 'card-ai', badge: 'Readiness',
+        title: 'Customer Readiness',
+        desc: 'What the customer application teams bring to the first working session: the inventory of everything that calls a model, provider credentials, the hosted or self-hosted decision, and the egress and TLS work that has a lead time.',
+        tags: ['Pre-engagement', 'Application inventory', 'Checklist'],
+        cta: 'Open Checklist',
+        h: 'guides/ai-gateway/ai-gateway-readiness.html' },
       { accent: 'card-ai', badge: 'Prisma AIRS',
         title: 'Prisma AIRS AI Gateway Deployment',
         desc: 'End-to-end deployment of the Prisma AIRS AI Gateway: flex credit licensing, SaaS or Hybrid data plane enablement, LLM integrations with workspace provisioning, budgets, rate limits, and model allowlists, plus guardrails and two-tier logging.</p> <p><strong>Start here whichever model you choose.</strong> Licensing, LLM integrations, MCP integrations, guardrails, and logging are identical for SaaS and Hybrid. Only the enablement phase differs, and it covers the SCM Gateway Registration wizard path in full.',

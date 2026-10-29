@@ -37,6 +37,41 @@ var NEWS_VISIBLE_COUNT = 6;
 
 var NEWS_ITEMS = [
   {
+    badge: "New",
+    date: "2026-10-29",
+    title: "Readiness: what an AI Red Teaming customer brings to kickoff",
+    href: "guides/airs-red/airs-red-readiness.html",
+    tags: "Who must be in the room and what stalls without them, Per target endpoint auth protocol and rate limit, Capture the request and response with DevTools first, Capture what a guardrail returns when it refuses, Private targets need a firewall change or a cluster, Some targets need software your team writes"
+  },
+  {
+    badge: "New",
+    date: "2026-10-29",
+    title: "Readiness: what an AI Gateway customer brings to kickoff",
+    href: "guides/ai-gateway/ai-gateway-readiness.html",
+    tags: "Coverage is an inventory problem not a deployment problem, Every application that calls a model including the unofficial ones, Where each provider key lives today, Three values move an application and no code changes, Self-hosted does not keep prompt bodies out of the backend, Name an owner for preventing bypass"
+  },
+  {
+    badge: "New",
+    date: "2026-10-29",
+    title: "Readiness: what an API Intercept customer brings to kickoff",
+    href: "guides/airs/airs-api-intercept-readiness.html",
+    tags: "This pillar needs your developers to write code, A position on each of the nine detection services, What a block verdict does to the user, Fail open or fail closed is a product decision, Keys are locked to the region they were made in, Topic guardrail lists come from the business"
+  },
+  {
+    badge: "New",
+    date: "2026-10-29",
+    title: "Readiness: what a Model Scanning customer brings to kickoff",
+    href: "guides/airs-model/airs-model-readiness.html",
+    tags: "A security group is bound to one source type permanently, Private Hugging Face repos are not scanned directly, Installing from the private package index is the usual blocker, Python 3.11 and disk for the largest model, Where the gate sits in the lifecycle, Start threat rules blocking and governance rules recording"
+  },
+  {
+    badge: "New",
+    date: "2026-10-29",
+    title: "Customer readiness documents, and a connectivity validator",
+    href: "guides/airs/airs-connectivity-validator.html",
+    tags: "What the customer brings to kickoff for four pillars, Who must be in the room and what stalls without them, Lead-time items that slip a date, Pick a pillar and generate a ladder of curl checks, Paste the output back for a verdict, Green pass amber reached-but-rejected red cannot-reach"
+  },
+  {
     badge: "Updated",
     date: "2026-10-28",
     title: "Fourteen diagrams for how Red Teaming reaches a target",
