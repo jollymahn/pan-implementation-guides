@@ -87,3 +87,22 @@ python3 clean-svg.py NAME.svg
 | `airs-red/diagrams/airs-red-scan-lifecycle.svg` | The three scan types, the status chain, and the report metrics | `airs-red-scan-lifecycle.drawio` |
 
 All fourteen are embedded inline in `airs-red/airs-red-teaming.html` at the step they belong to, and gathered with commentary on the review page at `airs-red/diagrams/flow-diagrams-review.html`. Ten also appear in `airs-red/airs-red-teaming.md`; the adapter and wrapper diagrams have no markdown home because those sections exist only in the HTML. The architecture and network channel diagrams replace earlier versions that lived in `airs-red/airs-red-screenshots/`.
+
+## Connectivity checks
+
+Four diagrams, one per pillar, visualising the command ladder the
+[connectivity validator](airs/airs-connectivity-validator.html) generates: where each
+check runs from, what it crosses, what it proves, and what a failure at that rung
+means. Each lives beside its own pillar's guide and is linked from the validator once
+that pillar is selected.
+
+| File | Description | Source |
+|---|---|---|
+| `airs-red/diagrams/airs-conn-red-teaming.svg` | Tenant checks from a workstation, the registry check from inside the cluster, and the path these checks deliberately do not cover | `airs-conn-red-teaming.drawio` |
+| `ai-gateway/diagrams/airs-conn-ai-gateway.svg` | The two directions to test, and why a gateway reporting Healthy can still fail every request | `airs-conn-ai-gateway.drawio` |
+| `airs/diagrams/airs-conn-api-intercept.svg` | Where the scan call originates, the region lock on API keys, and the two different credentials | `airs-conn-api-intercept.drawio` |
+| `airs-model/diagrams/airs-conn-model-scanning.svg` | The four hops from the scanning host, including the private package index that blocks most first sessions | `airs-conn-model-scanning.drawio` |
+
+A numbered badge on each arrow maps to a row in the table beneath it. A dashed grey
+path is conditional, reached only when that pillar's optional case applies, and exists
+so no destination box reads as one somebody forgot to wire up.

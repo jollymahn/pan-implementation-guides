@@ -103,6 +103,18 @@ textarea.paste {
 }
 .evidence-label { font-family: Lato, sans-serif; font-weight: 700; font-size: 12px; margin-top: 10px; }
 
+.howto-h {
+  font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--pan-navy); margin: 18px 0 4px; font-weight: 700;
+}
+.howto-h:first-child { margin-top: 0; }
+.wherebox {
+  border-left: 4px solid var(--pan-link); background: #e7f3ff;
+  border-radius: 4px; padding: 10px 14px; margin: 0 0 16px;
+  font-size: 13px;
+}
+.wherebox strong { color: var(--pan-navy); }
+
 .hidden { display: none; }
 .muted { color: var(--fg-light); }
 
@@ -153,14 +165,47 @@ textarea.paste {
 </div>
 
 <div class="stepcard">
-  <h2><span class="n">1</span>Pick a pillar</h2>
+  <h2><span class="n">1</span>How, when and where to run these</h2>
+  <div class="stepbody">
+
+    <h3 class="howto-h">When</h3>
+    <p>Three moments, and the first is the one that saves the engagement.</p>
+    <ul>
+      <li><strong>During discovery, a week or more before the session.</strong> Everything these checks can fail on has a lead time: a firewall change is one to five business days, a TLS inspection exemption is about the same, and a service account can be longer. Finding a blocker a week out is a ticket. Finding it on the day is a canceled session.</li>
+      <li><strong>Again on the morning of the session.</strong> Short, and it catches the credential that expired overnight or the policy that changed on Friday.</li>
+      <li><strong>After any network change</strong> while the engagement is running. A new egress rule, a proxy upgrade, or a move to a different cluster all invalidate an earlier pass.</li>
+    </ul>
+
+    <h3 class="howto-h">Where</h3>
+    <p>From the machine that will carry the real traffic, and nowhere else. Egress policy, proxies and TLS inspection belong to a network location rather than to an account, so a laptop proves nothing about a build runner on the same corporate network. The exact place differs per pillar, and the page tells you which once you have picked one.</p>
+
+    <h3 class="howto-h">How</h3>
+    <ol>
+      <li><strong>Check you have what the commands need:</strong> <code>curl</code> built with TLS (<code>curl --version</code> should list <code>https</code>), and a bash or zsh shell. Nothing else is installed.</li>
+      <li><strong>Run one command at a time,</strong> top to bottom. Each rung assumes the one above it passed.</li>
+      <li><strong>Stop at the first failure.</strong> A later rung cannot tell you anything useful once an earlier one is broken, and running all of them produces four confusing errors instead of one clear cause.</li>
+      <li><strong>Copy everything the command printed,</strong> including the lines beginning with <code>*</code>, <code>&gt;</code> and <code>&lt;</code>. Those carry the name resolution, the certificate issuer and the status line, which is what separates a useful verdict from a guess.</li>
+      <li><strong>Paste it into step 5</strong> and read the verdict.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Two things not to do</div>
+      <p>Do not add <code>-k</code> or <code>--insecure</code> to make a certificate error go away. It will work, and it will hide a TLS-inspecting proxy that then breaks the real integration in a way nobody connects back to this moment.</p>
+      <p>Do not paste a credential into this page. The commands read secrets into shell variables on your own machine; no field here asks for one, and none should be typed into one.</p>
+    </div>
+
+  </div>
+</div>
+
+<div class="stepcard">
+  <h2><span class="n">2</span>Pick a pillar</h2>
   <div class="stepbody">
     <div class="pillarpick" id="pillarpick"></div>
   </div>
 </div>
 
 <div class="stepcard hidden" id="card-inputs">
-  <h2><span class="n">2</span>Your values</h2>
+  <h2><span class="n">3</span>Your values</h2>
   <div class="stepbody">
     <p class="muted" style="margin-top:0">None of these are secret. Anything that is a credential appears in the commands as a shell variable for you to set.</p>
     <div class="fieldgrid" id="fieldgrid"></div>
@@ -172,15 +217,17 @@ textarea.paste {
 </div>
 
 <div class="stepcard hidden" id="card-cmds">
-  <h2><span class="n">3</span>Run these, in order</h2>
+  <h2><span class="n">4</span>Run these, in order</h2>
   <div class="stepbody">
+    <div class="wherebox" id="whererun"></div>
     <p id="cmd-intro"></p>
     <div id="cmdlist"></div>
+    <div id="nextsteps"></div>
   </div>
 </div>
 
 <div class="stepcard hidden" id="card-paste">
-  <h2><span class="n">4</span>Paste the output</h2>
+  <h2><span class="n">5</span>Paste the output</h2>
   <div class="stepbody">
     <p>Paste everything a command printed, including the lines beginning with <code>*</code>, <code>&gt;</code> and <code>&lt;</code>. Those carry the name resolution, the TLS handshake and the status line, which is what makes the difference between a useful verdict and a guess. One command at a time gives the clearest answer.</p>
     <textarea class="paste" id="paste" spellcheck="false" placeholder="Paste the full output of one command here, verbose lines included."></textarea>
@@ -219,6 +266,10 @@ var CURL = 'curl -sS -v --max-time 15';
 
 var PILLARS = {
   'red-teaming': {
+    where: "<strong>Where to run these:</strong> the first four are tenant checks and can be run from any machine on the corporate network that an administrator uses. The fifth is different: run it from inside the Kubernetes cluster that will host the Network Channel client, because that cluster's egress policy is the thing being tested. Note that attack traffic travels from the Palo Alto Networks cloud to your target, not from here, so these checks prove your tenant and your tunnel, not the path to the target itself. Confirm the target separately by calling it the way an ordinary client would.",
+    diagram: "../airs-red/diagrams/airs-conn-red-teaming.svg",
+    dcap: "Where each check runs from, and what it proves",
+    next: "<div class=\"callout callout-note\">\n  <div class=\"callout-title\">If the target cannot be reached the way the platform needs</div>\n  <p>Some AI systems cannot be scanned with configuration alone. A WebSocket agent needing multi-turn, an SDK-only agent, a gRPC or SOAP agent, an AWS Bedrock Agent and an Azure AI Foundry agent all need a piece of software written by your team first.</p>\n  <ul>\n    <li><a href=\"../airs-red/diagrams/flow-diagrams-review.html#d8\">Coverage map</a> &mdash; which target shapes are reached natively and which are not, with the reason for each.</li>\n    <li><a href=\"../airs-red/diagrams/flow-diagrams-review.html#d7\">Custom Target Adapter</a> &mdash; the preferred route where Kubernetes is available. Your Python runs in the Network Channel pod.</li>\n    <li><a href=\"../airs-red/airs-red-teaming.html#wrappers-appendix\">Wrappers and proxy services</a> &mdash; the full appendix, including the decision table, the three wrapper types and both agent bridges, with working code.</li>\n    <li><a href=\"../airs-red/airs-red-readiness.html\">Customer readiness</a> &mdash; what to have ready before the session, and the workbook to fill in.</li>\n  </ul>\n</div>",
     name: 'AI Red Teaming',
     blurb: 'Tenant auth, then the management plane',
     note: 'Set <code>CLIENT_ID</code>, <code>CLIENT_SECRET</code> and <code>TOKEN</code> in your shell as the commands below indicate.',
@@ -256,6 +307,10 @@ var PILLARS = {
   },
 
   'ai-gateway': {
+    where: "<strong>Where to run these:</strong> for a hosted gateway, from the host or container your application runs in, since that is whose egress path matters. For a self-hosted gateway, run the first three from an application host and the fourth from inside the gateway pod or task itself, because those are destinations the gateway process calls rather than your application. A gateway can report healthy in the console while that fourth set is blocked.",
+    diagram: "../ai-gateway/diagrams/airs-conn-ai-gateway.svg",
+    dcap: "The two directions to test, and why a healthy gateway can still fail",
+    next: "<div class=\"callout callout-note\">\n  <div class=\"callout-title\">If the gateway answers but the provider call fails</div>\n  <p>The gateway sits between your application and the model provider, so a failure can be on either side of it. The authentication rung proves your side; the functional rung is the first to involve the provider.</p>\n  <ul>\n    <li><a href=\"../ai-gateway/connectivity.html\">Connectivity reference</a> &mdash; every endpoint, port and direction, and how to read the authoritative list off your own running gateway rather than from any published list.</li>\n    <li><a href=\"../ai-gateway/ai-gateway-readiness.html\">Customer readiness</a> &mdash; the application inventory, the provider credentials, and the egress and TLS work that carries a lead time.</li>\n    <li><a href=\"../ai-gateway/ai-gateway-deployment.html\">Core deployment guide</a> &mdash; integrations, slugs and model provisioning, which is where a 400 naming an unknown model is resolved.</li>\n  </ul>\n</div>",
     name: 'AI Gateway',
     blurb: 'Gateway reachability, key, and a real completion',
     note: 'Set <code>GW_KEY</code> in your shell before the authentication step.',
@@ -296,6 +351,10 @@ var PILLARS = {
   },
 
   'api-intercept': {
+    where: "<strong>Where to run these:</strong> from inside the environment your application runs in, which usually means an exec into the container or a job on the build runner rather than a terminal on a laptop. This pillar is the one where location matters most, because the scan call is made by your application code and a restrictive egress policy on a namespace is invisible from anywhere else on the network.",
+    diagram: "diagrams/airs-conn-api-intercept.svg",
+    dcap: "Where the scan call originates, and the two different credentials",
+    next: "<div class=\"callout callout-note\">\n  <div class=\"callout-title\">If the endpoint answers but the scan is rejected</div>\n  <p>There is no wrapper or connector to build for this pillar. The integration is code in your own application, so a rejection is a configuration or credential question rather than a missing component.</p>\n  <ul>\n    <li><strong>Check the region first.</strong> An API key only authenticates against the region it was created in, and a mismatch looks exactly like a wrong key.</li>\n    <li><a href=\"airs-api-intercept.html\">API Intercept guide</a> &mdash; profiles, key generation, and the integration phase with working request and response handling.</li>\n    <li><a href=\"airs-api-intercept-readiness.html\">Customer readiness</a> &mdash; the detection decisions, the block behavior, and the test content to bring.</li>\n  </ul>\n</div>",
     name: 'API Intercept',
     blurb: 'Regional scan endpoint, key, and a real scan',
     note: 'Set <code>AIRS_API_KEY</code> in your shell before the authentication step. Remember the key is locked to the region it was created in.',
@@ -339,6 +398,10 @@ var PILLARS = {
   },
 
   'model-scanning': {
+    where: "<strong>Where to run these:</strong> from the machine that will run the scanning agent. That is usually a build runner or a dedicated scanning host rather than a workstation, and the distinction matters because the fourth check tests whether that machine can install from a private package index. Many organizations route every package install through an internal mirror that will not pass an extra index through, and this is where that shows up.",
+    diagram: "../airs-model/diagrams/airs-conn-model-scanning.svg",
+    dcap: "The four hops, including the package index that blocks most first sessions",
+    next: "<div class=\"callout callout-note\">\n  <div class=\"callout-title\">If a model source is not one the agent supports</div>\n  <p>Model Scanning has no wrapper or custom connector mechanism, which is worth knowing before anyone goes looking for one. The agent reads seven source types: Hugging Face, Amazon S3, Google Cloud Storage, Azure Blob Storage, JFrog Artifactory, GitLab Model Registry, and a local path.</p>\n  <ul>\n    <li><strong>Anything else goes through the local path.</strong> Download the model to the scanning host and scan it as a local source. This is also the documented route for a private Hugging Face repository, which cannot be scanned at its origin.</li>\n    <li><strong>A security group is bound to one source type permanently.</strong> Scanning the same model from two registries means two groups, so count your distinct source types before the session.</li>\n    <li><a href=\"../airs-model/airs-model-security.html\">AI Model Security guide</a> &mdash; source types, security groups, rule states and the agent install.</li>\n    <li><a href=\"../airs-model/airs-model-readiness.html\">Customer readiness</a> &mdash; the model inventory, the storage credentials, and the lifecycle gate decision.</li>\n  </ul>\n</div>",
     name: 'AI Model Scanning',
     blurb: 'Tenant auth, the scanning API, and the private package index',
     note: 'Set <code>CLIENT_ID</code>, <code>CLIENT_SECRET</code> and <code>TOKEN</code> in your shell as the commands below indicate.',
@@ -607,6 +670,23 @@ function buildCommands() {
   });
   state.checks = p.checks(state.vals);
 
+  /* The diagram link is built as DOM rather than as a markup string. A string
+   * would carry a literal href= that check-links.js reads as a real reference
+   * and then cannot resolve, because the value is only known at runtime. */
+  el('whererun').innerHTML = p.where;
+  if (p.diagram) {
+    var wrap = document.createElement('p');
+    wrap.style.margin = '10px 0 0';
+    var a = document.createElement('a');
+    a.setAttribute('href', p.diagram);
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener');
+    a.textContent = 'Open the diagram for these checks';
+    wrap.appendChild(a);
+    wrap.appendChild(document.createTextNode(' \u2014 ' + p.dcap + '.'));
+    el('whererun').appendChild(wrap);
+  }
+  el('nextsteps').innerHTML = p.next || '';
   el('cmd-intro').innerHTML = 'Each rung proves one thing and assumes the one above it passed. Stop at the first failure: a later rung cannot tell you anything useful once an earlier one is broken.';
 
   var h = '';
