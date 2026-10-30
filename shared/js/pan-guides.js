@@ -583,11 +583,13 @@ const GLOBAL_NAV_GROUPS = [
   { id: 'ai-gateway', label: 'AI Gateway', links: [
     { t: 'Overview', h: 'guides/ai-gateway/index.html' },
     { t: 'Agent Identity with Entra ID', h: 'guides/ai-gateway/agent-identity-entra.html' },
+    { t: 'Client Applications', h: 'guides/ai-gateway/ai-gateway-client-apps.html' },
     { t: 'Connectivity Reference', h: 'guides/ai-gateway/connectivity.html' },
     { t: 'Core Deployment', h: 'guides/ai-gateway/ai-gateway-deployment.html' },
     { t: 'Customer Readiness', h: 'guides/ai-gateway/ai-gateway-readiness.html' },
     { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html' },
     { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html' },
+    { t: 'Model Provider Prerequisites', h: 'guides/ai-gateway/ai-gateway-model-prerequisites.html' },
     { t: 'Streaming, Caching, and A2A', h: 'guides/ai-gateway/streaming-caching-a2a.html' },
     { label: 'Hybrid Data Plane' },
     // Hybrid Infrastructure carries the sizing and prerequisites both container

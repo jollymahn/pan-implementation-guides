@@ -135,6 +135,8 @@ var CATALOG = [
       { t: 'LLM API key management', h: 'guides/ai-gateway/llm-api-key-management.html', note: 'Vault, rotation, expiry alerting' },
       { t: 'Flow diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html', note: 'Request paths end to end' },
       { t: 'Customer readiness', h: 'guides/ai-gateway/ai-gateway-readiness.html', note: 'What the customer brings to kickoff' },
+      { t: 'Model provider prerequisites', h: 'guides/ai-gateway/ai-gateway-model-prerequisites.html', note: 'What to prepare per provider' },
+      { t: 'Client applications', h: 'guides/ai-gateway/ai-gateway-client-apps.html', note: 'Which tools can be routed, and how' },
       { t: 'Streaming, caching, and A2A', h: 'guides/ai-gateway/streaming-caching-a2a.html', note: 'SSE guardrails, semantic cache, agents' },
       { t: 'Agent identity with Entra ID', h: 'guides/ai-gateway/agent-identity-entra.html', note: 'CIE sync, JWT claims, attribution' },
       { t: 'All AI Gateway guides', h: 'guides/ai-gateway/index.html', hub: true }
@@ -490,6 +492,18 @@ var HUBS = [
   {
     file: 'guides/ai-gateway/index.html',
     cards: [
+      { accent: 'card-ai', badge: 'Prerequisites',
+        title: 'Model Provider Prerequisites',
+        desc: 'What to collect for each provider before the first work session: the credential, the identifiers, the permissions, the model reference, and the SDK version. Written in Simplified Technical English for a customer audience.',
+        tags: ['Open AI', 'Azure', 'Bedrock', 'Simplified English'],
+        cta: 'Open Prerequisites',
+        h: 'guides/ai-gateway/ai-gateway-model-prerequisites.html' },
+      { accent: 'card-ai', badge: 'Clients',
+        title: 'Client Applications',
+        desc: 'Which developer tools and assistants can be routed through the gateway, and which cannot. Three groups, the values each one needs, and the three products that have no configurable endpoint at all.',
+        tags: ['Claude Code', 'Cursor', 'Codex', 'Copilot'],
+        cta: 'Open Guide',
+        h: 'guides/ai-gateway/ai-gateway-client-apps.html' },
       { accent: 'card-ai', badge: 'Readiness',
         title: 'Customer Readiness',
         desc: 'What the customer application teams bring to the first working session: the inventory of everything that calls a model, provider credentials, the hosted or self-hosted decision, and the egress and TLS work that has a lead time.',

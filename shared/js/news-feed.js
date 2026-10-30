@@ -38,6 +38,20 @@ var NEWS_VISIBLE_COUNT = 6;
 var NEWS_ITEMS = [
   {
     badge: "New",
+    date: "2026-10-30",
+    title: "Model provider prerequisites, for eight catalog tiles",
+    href: "guides/ai-gateway/ai-gateway-model-prerequisites.html",
+    tags: "Three values move an application not five steps, Per provider credential identifiers and permissions, Azure deployment names are not model names, Bedrock assumed role is hard with a hosted gateway, SDK minimum versions and the one hard limit, Where the latency actually goes, Written in Simplified Technical English"
+  },
+  {
+    badge: "New",
+    date: "2026-10-30",
+    title: "Which client applications can be routed, and which cannot",
+    href: "guides/ai-gateway/ai-gateway-client-apps.html",
+    tags: "Three groups decided by two questions, Claude Code Cursor and Codex step by step, ChatGPT and both Copilots cannot be routed at all, Say the three No answers at the first meeting, Route by the model call not by the agent, Copilot Studio is an open question"
+  },
+  {
+    badge: "New",
     date: "2026-10-29",
     title: "Connectivity check diagrams, one per pillar",
     href: "guides/airs/airs-connectivity-diagrams.html",
