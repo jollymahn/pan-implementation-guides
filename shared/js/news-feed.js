@@ -39,6 +39,13 @@ var NEWS_ITEMS = [
   {
     badge: "New",
     date: "2026-11-02",
+    title: "Hybrid gateway fault tolerance, and the cache is the weak point",
+    href: "guides/ai-gateway/hybrid-fault-tolerance.html",
+    tags: "Five failure domains and what each one costs, Traffic survives a Management Plane outage for seven days, The Redis default noeviction makes writes fail at the limit, Losing the cache and the control plane together stops traffic, Private connectivity has gone from the current docs, Fallbacks retries circuit breaker and load balancing, Three alarms that find real problems"
+  },
+  {
+    badge: "New",
+    date: "2026-11-02",
     title: "Scaling and upgrading the hybrid gateway",
     href: "guides/ai-gateway/hybrid-scaling-and-upgrade.html",
     tags: "The chart defaults are not production defaults, replicaCount is 1 and strategy is empty, maxUnavailable zero is one uncommented block away, The chart creates no PodDisruptionBudget, Autoscaling silently does nothing without a CPU request, A bad pod serves traffic for three minutes by default, Rollback and recovery and a downgrade warning"

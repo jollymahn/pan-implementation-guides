@@ -301,6 +301,28 @@ Stripping the fallback is what makes the Chrome renderer necessary rather than o
 
 The customer edition is read by people who did not attend the workshops. Write full sentences, expand an acronym on first use, and put the constraint next to the choice it constrains. Avoid the passive construction that hides who is responsible — "the customer confirms" is useful; "it is assumed" is not.
 
+### 6.5 US Spelling
+
+`CLAUDE.md` asks for US spelling and `docs/shared/scripts/check-spelling.js` enforces it. **`workspace/` is in that checker's `SKIP_DIRS`**, so an HLD master is never checked on the way past and will drift unless the author watches for it. The first five AIRS HLDs were written in British English for exactly that reason and carried 253 violations before they were corrected.
+
+The naive fix is wrong, for the reason the checker's own header gives: some British spellings are verbatim product terms. `Organisation ID` is the name of a real Portkey field and `ORGANISATION_ID` is a real environment variable, so a blanket replace renames them. The AI Gateway HLD legitimately contains both `Organisation ID` (the Portkey field) and `organization` (ordinary prose), two lines apart.
+
+`assets/us_spelling.py` does the conversion with those terms protected:
+
+```
+python3 -I assets/us_spelling.py <slug>/hld-<slug>.html
+```
+
+It reads the word list out of the checker at run time rather than keeping a copy, so the two cannot diverge. Verify afterwards by pointing the checker at the file directly, which overrides the skip:
+
+```
+node ../../docs/shared/scripts/check-spelling.js --all <slug>/hld-<slug>.html
+```
+
+A clean master reports nothing, except that an HLD using Portkey terminology still reports its `Organisation ID` occurrences. That is expected: the checker's exemption for that phrase is scoped to `docs/guides/ai-gateway/`, which an HLD path does not match. Confirm each remaining hit is the product term and leave it. **If an HLD is ever promoted into `docs/`, extend that scope first** or the exemption will not apply and the build will demand the field be renamed.
+
+The build scripts are prose too. A single British spelling in the `[VERIFY: …]` line of the `build_hlds.py` legend reached every Word edition of every product, because that legend is generated rather than written in the HTML the checker reads.
+
 ---
 
 ## 7. File Organization
@@ -314,7 +336,8 @@ workspace/HLD/
 ├── assets/
 │   ├── Public_Cloud_NGFW_HLD_Template_v2.2.docx   ← branded source template
 │   ├── make_brand_base.py                   ← derives the base from the template
-│   └── pan-hld-base.docx                    ← generated, committed: branded python-docx base
+│   ├── pan-hld-base.docx                    ← generated, committed: branded python-docx base
+│   └── us_spelling.py                       ← US-spelling pass, product terms protected (§6.5)
 ├── css/
 │   └── hld.css                              ← HLD-specific styles (extends trd.css)
 ├── js/
@@ -408,7 +431,8 @@ Run before sending anything to a customer:
 5. No `[VERIFY]` items remain unresolved in §20.3.
 6. No guide sample CIDR, account ID or resource name appears outside the §1 consultant note that names them as forbidden.
 7. §1.1 version and §1.4 approval block are consistent.
-8. **Open the `.docx` and look at every figure.** Count is not evidence: a diagram whose text failed to render still embeds as an image of the right size in the right place. Check that labels are present and legible at print size.
+8. `node ../../docs/shared/scripts/check-spelling.js --all <slug>/hld-<slug>.html` reports nothing but recognized product terms (§6.5).
+9. **Open the `.docx` and look at every figure.** Count is not evidence: a diagram whose text failed to render still embeds as an image of the right size in the right place. Check that labels are present and legible at print size.
 
 ---
 

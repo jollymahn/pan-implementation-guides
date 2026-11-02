@@ -587,6 +587,7 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'Connectivity Reference', h: 'guides/ai-gateway/connectivity.html' },
     { t: 'Core Deployment', h: 'guides/ai-gateway/ai-gateway-deployment.html' },
     { t: 'Customer Readiness', h: 'guides/ai-gateway/ai-gateway-readiness.html' },
+    { t: 'Fault Tolerance', h: 'guides/ai-gateway/hybrid-fault-tolerance.html' },
     { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html' },
     { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html' },
     { t: 'Model Provider Prerequisites', h: 'guides/ai-gateway/ai-gateway-model-prerequisites.html' },

@@ -138,6 +138,7 @@ var CATALOG = [
       { t: 'Model provider prerequisites', h: 'guides/ai-gateway/ai-gateway-model-prerequisites.html', note: 'What to prepare per provider' },
       { t: 'Client applications', h: 'guides/ai-gateway/ai-gateway-client-apps.html', note: 'Which tools can be routed, and how' },
       { t: 'Scaling and upgrading', h: 'guides/ai-gateway/hybrid-scaling-and-upgrade.html', note: 'Safe upgrade, rollback, recovery' },
+      { t: 'Fault tolerance', h: 'guides/ai-gateway/hybrid-fault-tolerance.html', note: 'What breaks it, and what does not' },
       { t: 'Streaming, caching, and A2A', h: 'guides/ai-gateway/streaming-caching-a2a.html', note: 'SSE guardrails, semantic cache, agents' },
       { t: 'Agent identity with Entra ID', h: 'guides/ai-gateway/agent-identity-entra.html', note: 'CIE sync, JWT claims, attribution' },
       { t: 'All AI Gateway guides', h: 'guides/ai-gateway/index.html', hub: true }
@@ -493,6 +494,12 @@ var HUBS = [
   {
     file: 'guides/ai-gateway/index.html',
     cards: [
+      { accent: 'card-ai', badge: 'Operations',
+        title: 'Fault Tolerance',
+        desc: 'Five things that can fail and what each costs you. The gateway survives a Management Plane outage for seven days; the cache is the weak point, and the Redis default eviction policy makes writes fail at the memory limit.',
+        tags: ['Resilience', 'Redis', 'Fallbacks', 'Simplified English'],
+        cta: 'Open Guide',
+        h: 'guides/ai-gateway/hybrid-fault-tolerance.html' },
       { accent: 'card-ai', badge: 'Operations',
         title: 'Scaling and Upgrading',
         desc: 'The chart defaults are not production defaults. Replica counts, autoscaling, zone spread, a safe rolling upgrade with rollback and recovery, and the PodDisruptionBudget the chart does not create.',

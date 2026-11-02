@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Hybrid Gateway Fault Tolerance | AI Gateway | PAN Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+<style>
+.ste-note {
+  border-left: 4px solid var(--pan-navy); background: var(--sidebar-bg);
+  padding: 10px 16px; margin: 0 0 1.5rem; font-size: 0.85rem; color: var(--fg-light);
+}
+.ste-note strong { color: var(--pan-navy); }
+figure.diagram { margin: 1rem 0 0.5rem; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: #fff; }
+figure.diagram img { display: block; width: 100%; height: auto; }
+figure.diagram figcaption { font-size: 0.8rem; color: var(--fg-light); font-style: italic; padding: 8px 12px; border-top: 1px solid var(--border); background: var(--sidebar-bg); }
+.gap { border-left: 4px solid #8b5cf6; background: #f5f3ff; padding: 12px 16px; border-radius: 4px; margin: 14px 0; }
+.gap .gap-title { font-weight: 700; color: #6d28d9; margin-bottom: 4px; }
+td.ok   { color: #15803d; font-weight: 600; }
+td.part { color: #b45309; font-weight: 600; }
+td.no   { color: #b91c1c; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+<main class="main-content no-sidebar">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  Fault Tolerance
+</div>
+
+<div class="article">
+
+<h1>Hybrid Gateway Fault Tolerance</h1>
+<p class="subtitle">What breaks the gateway, what does not, and what to build for a production deployment</p>
+
+<div class="ste-note">
+  <strong>About the language of this document.</strong> This document uses ASD-STE100 Simplified Technical English. The sentences are short. The words are controlled. Other pages on this site use a different style.
+</div>
+
+<p>This document is for the team that operates the gateway. It examines each thing that can fail, and it tells you what the users see in each case.</p>
+
+<div class="callout callout-success">
+  <div class="callout-title">The good news first</div>
+  <p>The gateway tolerates a Management Plane outage very well. It holds its configuration in a cache for seven days. It continues to answer requests from that cache. It queues its analytics, and it sends them when the connection returns.</p>
+  <p>The weak points are in your own infrastructure, and the chart defaults do not protect you from them. Sections 4 and 5 are the ones to read.</p>
+</div>
+
+<h2 id="domains">1. What can fail</h2>
+
+<figure class="diagram">
+  <img src="diagrams/aigw-failure-domains.svg" alt="Five failure domains around the gateway: one pod, one node or zone, the cache, the Management Plane, and a model provider. For each, a panel shows what continues to work and what stops. The Management Plane column shows almost everything continuing; the cache column shows the widest loss." loading="lazy">
+  <figcaption>Five things can fail. Only two of them stop your traffic, and the chart defaults make both more likely.</figcaption>
+</figure>
+
+<table>
+  <thead><tr><th style="width:22%">What fails</th><th style="width:18%">Effect on traffic</th><th>Section</th></tr></thead>
+  <tbody>
+    <tr><td>One gateway pod</td><td class="ok">None, with 3 replicas</td><td><a href="#pod">2. A pod</a></td></tr>
+    <tr><td>One node, or one zone</td><td class="part">None, if you spread the pods</td><td><a href="#zone">3. A node or a zone</a></td></tr>
+    <tr><td>The cache</td><td class="no">Severe</td><td><a href="#cache">4. The cache</a></td></tr>
+    <tr><td>The Management Plane</td><td class="ok">None for 7 days</td><td><a href="#control">5. The Management Plane</a></td></tr>
+    <tr><td>A model provider</td><td class="part">None, if you configure a fallback</td><td><a href="#provider">6. A model provider</a></td></tr>
+  </tbody>
+</table>
+
+<h2 id="pod">2. A pod fails</h2>
+
+<p>A gateway pod holds no state of its own. All shared state is in the cache. This makes a pod easy to replace.</p>
+
+<p>Set three replicas or more. One replica is the chart default, and one replica means that each pod failure is a full outage.</p>
+
+<div class="code-block">
+  <pre><code>replicaCount: 3
+
+resources:
+  requests:
+    cpu: 1
+    memory: 2Gi
+  limits:
+    memory: 4Gi</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p>The product documentation recommends 1 to 2 CPU cores and 2 to 4 GB of memory for each gateway instance. The values above start at the lower end of that range.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">A failed pod stays in service for about three minutes</div>
+  <p>The readiness probe runs every 60 seconds, and it permits three failures. A pod that stops working correctly can therefore receive traffic for about three minutes before Kubernetes removes it.</p>
+  <p>For production, lower <code>readinessProbe.periodSeconds</code> to 10. The pod then leaves service in about 30 seconds.</p>
+</div>
+
+<h2 id="zone">3. A node or a zone fails</h2>
+
+<p>Three replicas do not help if Kubernetes puts all three on one node, or in one availability zone. Tell Kubernetes to spread them.</p>
+
+<div class="code-block">
+  <pre><code>topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: gateway</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<div class="callout callout-danger">
+  <div class="callout-title">The chart makes no PodDisruptionBudget</div>
+  <p>A PodDisruptionBudget tells Kubernetes how many pods must stay available during a voluntary disruption. A node drain is a voluntary disruption, and a cluster upgrade drains every node in turn.</p>
+  <p>Without one, a drain can stop all of your gateway pods at the same time. Three replicas do not prevent this. A correct deployment strategy does not prevent this.</p>
+  <p>Write your own. The <a href="hybrid-scaling-and-upgrade.html#before">scaling and upgrade page</a> gives one.</p>
+</div>
+
+<h2 id="cache">4. The cache fails</h2>
+
+<p>This is the weakest point in the architecture. Read this section carefully.</p>
+
+<p>The cache is a Redis instance, or a compatible service. It holds two different things:</p>
+
+<table>
+  <thead><tr><th style="width:30%">What it holds</th><th>Detail</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Configuration objects</td>
+      <td>API keys, virtual keys, configs, prompt templates, prompt partials, guardrails and integrations. Each has a 7-day TTL. Each is written on first use, and not before.</td>
+    </tr>
+    <tr>
+      <td>Usage counters</td>
+      <td>Token usage and cost usage. The gateway accumulates them here, and a worker sends them to the Management Plane each minute.</td>
+    </tr>
+    <tr>
+      <td>LLM responses</td>
+      <td>Only when you turn caching on. This is optional.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>4.1 &mdash; What happens when the cache is lost</h3>
+
+<table>
+  <thead><tr><th style="width:34%">Effect</th><th>Detail</th></tr></thead>
+  <tbody>
+    <tr><td>Configuration is re-fetched</td><td>Each object is read from the Management Plane on its next use. The gateway recovers on its own.</td></tr>
+    <tr><td>Latency increases for a time</td><td>Each first request for an object waits for the Management Plane.</td></tr>
+    <tr><td>Unsent usage counters are lost</td><td>The counters since the last flush are gone. The loss is small, because a flush runs each minute.</td></tr>
+    <tr><td>Rate limits and budgets reset</td><td>These states live in the cache. A limit can permit more traffic than you intend until the state rebuilds.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Lose the cache and the Management Plane together, and traffic stops</div>
+  <p>The two failures are survivable one at a time. Together they are not. The gateway cannot read a configuration object from an empty cache, and it cannot fetch it from a Management Plane it cannot reach.</p>
+  <p>Give the cache its own high availability. Do not put the cache on the same node as the gateway pods. Use the managed service of your cloud, with a replica.</p>
+</div>
+
+<h3>4.2 &mdash; Check the eviction policy</h3>
+
+<div class="callout callout-danger">
+  <div class="callout-title">The Redis default policy makes writes fail</div>
+  <p>A cache has a memory limit. The eviction policy decides what happens when it is full.</p>
+  <p><code>noeviction</code> makes every new write fail once the limit is reached. No new object enters the cache. This is <strong>the default policy in Redis</strong>, so you get it unless somebody changed it.</p>
+  <p>Use an LRU policy instead, such as <code>allkeys-lru</code>. The cache then removes the least recently used entries, and it continues to accept new ones. An evicted entry behaves the same as an expired one: the next request fetches it again.</p>
+  <p>Check this value on the day you build the cache. The symptom is difficult to recognize later, because the gateway continues to work and only becomes slower.</p>
+</div>
+
+<p>A random eviction policy also works, and it is worse than LRU. It can remove an object that is in constant use.</p>
+
+<h2 id="control">5. The Management Plane fails</h2>
+
+<p>This is the failure the architecture handles best. Your traffic continues.</p>
+
+<table>
+  <thead><tr><th style="width:46%">Continues to work</th><th>Stops working</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>
+        <ul>
+          <li>All LLM requests, from cached configuration</li>
+          <li>Rate limits, at their last known state</li>
+          <li>Routing and load balancing</li>
+          <li>Response caching</li>
+          <li>Guardrails, from cached configuration</li>
+          <li>Request logging to your own storage</li>
+        </ul>
+      </td>
+      <td>
+        <ul>
+          <li>New integrations and new keys</li>
+          <li>Changes to a routing configuration</li>
+          <li>Changes to a prompt template</li>
+          <li>Live dashboard analytics</li>
+          <li>All console operations</li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Analytics are queued in memory and sent when the connection returns. No analytics are lost, unless the pod restarts first.</p>
+
+<p>The configuration cache has a 7-day TTL. An outage shorter than that does not reach the users. This gives you a long time to repair the connection.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The path to the Management Plane is now the public internet</div>
+  <p>Earlier versions of the product documentation described private connectivity to the Management Plane, with AWS PrivateLink, Azure Private Link and GCP Private Service Connect.</p>
+  <p>The current documentation does not. The architecture page states one requirement: outbound HTTPS access to the Management Plane endpoints. Every private connectivity instruction was removed from the hybrid deployment pages between September and November 2026.</p>
+  <p>Treat outbound HTTPS as the supported path when you plan a new deployment. If you operate a private connection today, ask Palo Alto Networks whether it continues to be supported before you change anything.</p>
+</div>
+
+<h2 id="provider">6. A model provider fails</h2>
+
+<p>A provider outage is the failure you cannot repair. The gateway gives you four features for it, and all four are configuration rather than code.</p>
+
+<table>
+  <thead><tr><th style="width:22%">Feature</th><th style="width:34%">What it does</th><th>When to use it</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Fallbacks</strong></td>
+      <td>You give a list of providers in order. The gateway uses the next one when the first fails.</td>
+      <td>Always, for a production application. This is the single most valuable one.</td>
+    </tr>
+    <tr>
+      <td><strong>Automatic retries</strong></td>
+      <td>Up to five attempts, with exponential backoff. It can respect the provider <code>Retry-After</code> header.</td>
+      <td>For a provider that fails briefly and often.</td>
+    </tr>
+    <tr>
+      <td><strong>Circuit breaker</strong></td>
+      <td>It stops sending requests to a target that keeps failing. It tries again after a cooldown.</td>
+      <td>To stop a slow provider from making your own application slow.</td>
+    </tr>
+    <tr>
+      <td><strong>Load balancing</strong></td>
+      <td>It distributes traffic across providers, across models, or across several keys for one provider.</td>
+      <td>To stay below a per-key rate limit, and to reduce the effect of one provider.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>The circuit breaker uses these settings:</p>
+
+<table>
+  <thead><tr><th style="width:36%">Field</th><th>What it sets</th></tr></thead>
+  <tbody>
+    <tr><td><code>failure_threshold</code></td><td>The number of failures that opens the circuit.</td></tr>
+    <tr><td><code>failure_threshold_percentage</code></td><td>A failure rate that opens the circuit. Optional.</td></tr>
+    <tr><td><code>cooldown_interval</code></td><td>The time in milliseconds before a new attempt. The minimum is 30 seconds.</td></tr>
+    <tr><td><code>failure_status_codes</code></td><td>The HTTP codes that count as a failure. The default is above 500.</td></tr>
+    <tr><td><code>minimum_requests</code></td><td>The number of requests before the rate is evaluated. Optional.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">A fallback needs a second integration</div>
+  <p>A fallback to a second provider works only if that provider already has an integration, and only if the model is provisioned on it. Build the second integration before you need it.</p>
+  <p>Test the fallback. The simplest test is a deliberately wrong credential on the first provider.</p>
+</div>
+
+<h2 id="monitor">7. What to monitor</h2>
+
+<p>The gateway exposes Prometheus metrics on the gateway port at <code>/metrics</code>. Set <code>ENABLE_PROMETHEUS</code> to <code>true</code>.</p>
+
+<table>
+  <thead><tr><th style="width:44%">Metric</th><th>What it tells you</th></tr></thead>
+  <tbody>
+    <tr><td><code>portkey_request_duration_milliseconds</code></td><td>The total time for a request, through the gateway.</td></tr>
+    <tr><td><code>llm_request_duration_milliseconds</code></td><td>The time the provider took. Compare it with the metric above to see the cost of the gateway itself.</td></tr>
+    <tr><td><code>portkey_processing_time_excluding_last_byte_ms</code></td><td>The gateway processing time, without the streaming time.</td></tr>
+    <tr><td><code>llm_cache_processing_duration_milliseconds</code></td><td>The time the cache took.</td></tr>
+    <tr><td><code>llm_token_sum</code> and <code>llm_cost_sum</code></td><td>Tokens and cost. A sudden fall to zero can mean a streaming configuration problem.</td></tr>
+    <tr><td><code>http_request_duration_seconds</code></td><td>The standard HTTP distribution.</td></tr>
+  </tbody>
+</table>
+
+<p>From gateway 2.30.0 there is a second metrics port, <code>9091</code>. It reports the CPU, memory and file usage of the new front-end process. Keep it on your monitoring network only.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Three alarms that find real problems</div>
+  <ul>
+    <li><strong>Ready replica count below 2.</strong> This finds a failed rollout and a bad node before a user does.</li>
+    <li><strong>Cache memory above 80 percent.</strong> With <code>noeviction</code> this is the warning before writes fail.</li>
+    <li><strong>A rise in provider duration with no rise in gateway duration.</strong> The problem is the provider, and a fallback is the answer.</li>
+  </ul>
+</div>
+
+<h2 id="checklist">8. Production checklist</h2>
+
+<div class="checklist-box">
+  <div class="checklist-section">The gateway pods</div>
+  <ul class="checklist">
+    <li><code>replicaCount</code> is 3 or more</li>
+    <li><code>resources.requests</code> sets CPU and memory</li>
+    <li>A topology spread constraint across zones is applied</li>
+    <li>A PodDisruptionBudget is applied, and its selector matches real pods</li>
+    <li><code>readinessProbe.periodSeconds</code> is lowered to about 10</li>
+    <li>The deployment strategy sets <code>maxUnavailable: 0</code></li>
+  </ul>
+
+  <div class="checklist-section">The cache</div>
+  <ul class="checklist">
+    <li>The cache is a managed service, and not a pod in the same cluster</li>
+    <li>The cache has a replica, or a high availability mode</li>
+    <li>The eviction policy is an LRU policy, and not <code>noeviction</code></li>
+    <li>The memory limit is large enough for your configuration objects</li>
+    <li>An alarm exists for cache memory above 80 percent</li>
+  </ul>
+
+  <div class="checklist-section">Connectivity</div>
+  <ul class="checklist">
+    <li>Outbound HTTPS to the Management Plane endpoints is permitted</li>
+    <li>Outbound HTTPS to each model provider is permitted</li>
+    <li>TLS inspection does not break these paths</li>
+    <li>You know that the gateway serves traffic for 7 days without the Management Plane</li>
+  </ul>
+
+  <div class="checklist-section">Provider resilience</div>
+  <ul class="checklist">
+    <li>A fallback provider is configured for each production application</li>
+    <li>The fallback has its own integration, with the model provisioned</li>
+    <li>The fallback is tested</li>
+    <li>Automatic retries are configured</li>
+    <li>A circuit breaker is configured for a slow provider</li>
+  </ul>
+
+  <div class="checklist-section">Monitoring</div>
+  <ul class="checklist">
+    <li><code>ENABLE_PROMETHEUS</code> is <code>true</code>, and the endpoint is collected</li>
+    <li>An alarm exists for ready replicas below 2</li>
+    <li>Gateway duration and provider duration are on one dashboard</li>
+  </ul>
+</div>
+
+<div class="page-footer-links">
+  <p>Upgrade steps are in <a href="hybrid-scaling-and-upgrade.html">Scaling and Upgrading</a>. Sizing and build steps are in <a href="hybrid-infrastructure.html">Hybrid Infrastructure</a>. Endpoints are in the <a href="connectivity.html">connectivity reference</a>. Or browse <a href="index.html">all AI Gateway guides</a>.</p>
+</div>
+
+</div><!-- /article -->
+
+</main>
+</div><!-- /layout -->
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>
