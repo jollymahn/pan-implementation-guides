@@ -38,6 +38,13 @@ var NEWS_VISIBLE_COUNT = 6;
 var NEWS_ITEMS = [
   {
     badge: "New",
+    date: "2026-11-02",
+    title: "Scaling and upgrading the hybrid gateway",
+    href: "guides/ai-gateway/hybrid-scaling-and-upgrade.html",
+    tags: "The chart defaults are not production defaults, replicaCount is 1 and strategy is empty, maxUnavailable zero is one uncommented block away, The chart creates no PodDisruptionBudget, Autoscaling silently does nothing without a CPU request, A bad pod serves traffic for three minutes by default, Rollback and recovery and a downgrade warning"
+  },
+  {
+    badge: "New",
     date: "2026-10-30",
     title: "Model provider prerequisites, for eight catalog tiles",
     href: "guides/ai-gateway/ai-gateway-model-prerequisites.html",

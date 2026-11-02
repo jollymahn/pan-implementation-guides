@@ -137,6 +137,7 @@ var CATALOG = [
       { t: 'Customer readiness', h: 'guides/ai-gateway/ai-gateway-readiness.html', note: 'What the customer brings to kickoff' },
       { t: 'Model provider prerequisites', h: 'guides/ai-gateway/ai-gateway-model-prerequisites.html', note: 'What to prepare per provider' },
       { t: 'Client applications', h: 'guides/ai-gateway/ai-gateway-client-apps.html', note: 'Which tools can be routed, and how' },
+      { t: 'Scaling and upgrading', h: 'guides/ai-gateway/hybrid-scaling-and-upgrade.html', note: 'Safe upgrade, rollback, recovery' },
       { t: 'Streaming, caching, and A2A', h: 'guides/ai-gateway/streaming-caching-a2a.html', note: 'SSE guardrails, semantic cache, agents' },
       { t: 'Agent identity with Entra ID', h: 'guides/ai-gateway/agent-identity-entra.html', note: 'CIE sync, JWT claims, attribution' },
       { t: 'All AI Gateway guides', h: 'guides/ai-gateway/index.html', hub: true }
@@ -492,6 +493,12 @@ var HUBS = [
   {
     file: 'guides/ai-gateway/index.html',
     cards: [
+      { accent: 'card-ai', badge: 'Operations',
+        title: 'Scaling and Upgrading',
+        desc: 'The chart defaults are not production defaults. Replica counts, autoscaling, zone spread, a safe rolling upgrade with rollback and recovery, and the PodDisruptionBudget the chart does not create.',
+        tags: ['Helm', 'Rollback', 'Autoscaling', 'Simplified English'],
+        cta: 'Open Procedure',
+        h: 'guides/ai-gateway/hybrid-scaling-and-upgrade.html' },
       { accent: 'card-ai', badge: 'Prerequisites',
         title: 'Model Provider Prerequisites',
         desc: 'What to collect for each provider before the first work session: the credential, the identifiers, the permissions, the model reference, and the SDK version. Written in Simplified Technical English for a customer audience.',

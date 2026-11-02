@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Scaling and Upgrading the Hybrid Gateway | AI Gateway | PAN Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+<style>
+.ste-note {
+  border-left: 4px solid var(--pan-navy); background: var(--sidebar-bg);
+  padding: 10px 16px; margin: 0 0 1.5rem; font-size: 0.85rem; color: var(--fg-light);
+}
+.ste-note strong { color: var(--pan-navy); }
+figure.diagram { margin: 1rem 0 0.5rem; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: #fff; }
+figure.diagram img { display: block; width: 100%; height: auto; }
+figure.diagram figcaption { font-size: 0.8rem; color: var(--fg-light); font-style: italic; padding: 8px 12px; border-top: 1px solid var(--border); background: var(--sidebar-bg); }
+.gap { border-left: 4px solid #8b5cf6; background: #f5f3ff; padding: 12px 16px; border-radius: 4px; margin: 14px 0; }
+.gap .gap-title { font-weight: 700; color: #6d28d9; margin-bottom: 4px; }
+td.bad { color: #b91c1c; font-weight: 600; }
+td.good { color: #15803d; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../index.html">Home</a>
+    <a href="index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+<main class="main-content no-sidebar">
+
+<div class="breadcrumb">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  Scaling and Upgrading
+</div>
+
+<div class="article">
+
+<h1>Scaling and Upgrading the Hybrid Gateway</h1>
+<p class="subtitle">How to scale the gateway, how to upgrade it safely, and how to go back when an upgrade is bad</p>
+
+<div class="ste-note">
+  <strong>About the language of this document.</strong> This document uses ASD-STE100 Simplified Technical English. The sentences are short. The words are controlled. Other pages on this site use a different style.
+</div>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Read this before you use the procedure</div>
+  <p>Palo Alto Networks and Portkey do not publish an upgrade procedure, a rollback procedure, or a compatibility matrix. We looked for one. There is none.</p>
+  <p>This page is built from the Helm chart and from standard Kubernetes behavior. It is correct for the chart as we read it. It is <strong>not</strong> a vendor procedure, and nobody has run it against a production cluster yet.</p>
+  <p>Use it on a test cluster first. Tell your customer where it came from.</p>
+</div>
+
+<h2 id="defaults">1. The chart defaults are not production defaults</h2>
+
+<p>Start here. The chart installs and runs with its default values. Those values are not safe for production, and an upgrade makes the problem visible.</p>
+
+<table>
+  <thead><tr><th style="width:26%">Value</th><th style="width:14%">Default</th><th>What it does to you</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>replicaCount</code></td>
+      <td class="bad">1</td>
+      <td>One pod serves all traffic. An upgrade stops that pod. A node failure stops that pod. Each one is a full outage.</td>
+    </tr>
+    <tr>
+      <td><code>strategy</code></td>
+      <td class="bad">{} (empty)</td>
+      <td>Kubernetes uses its own default. The default permits 25 percent of pods to be unavailable. With one replica, Kubernetes can stop your only pod before the new pod is ready.</td>
+    </tr>
+    <tr>
+      <td><code>resources</code></td>
+      <td class="bad">{} (empty)</td>
+      <td>The pod has no CPU request and no memory request. Kubernetes gives it the lowest quality of service, and removes it first when a node is short of memory. Autoscaling on CPU also cannot work, because a percentage of nothing has no meaning.</td>
+    </tr>
+    <tr>
+      <td><code>autoscaling.enabled</code></td>
+      <td class="bad">false</td>
+      <td>The replica count does not change with load.</td>
+    </tr>
+    <tr>
+      <td><code>topologySpreadConstraints</code></td>
+      <td class="bad">[] (empty)</td>
+      <td>Kubernetes can put every replica in one availability zone. The loss of that zone is then a full outage, even with three replicas.</td>
+    </tr>
+    <tr>
+      <td><code>revisionHistoryLimit</code></td>
+      <td class="good">10</td>
+      <td>This one is good. Kubernetes keeps ten old ReplicaSets, so a rollback has something to return to.</td>
+    </tr>
+    <tr>
+      <td><code>images.gatewayImage.tag</code></td>
+      <td class="good">pinned</td>
+      <td>This one is good. The chart pins an exact image tag. Keep it pinned. Never use <code>latest</code>.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The chart has no PodDisruptionBudget</div>
+  <p>We looked for one. The chart does not make a PodDisruptionBudget, and the documentation does not mention one.</p>
+  <p>Without it, a node drain can stop all of your gateway pods at the same time. A cluster upgrade drains nodes. Write your own PodDisruptionBudget. Section 3 gives one.</p>
+</div>
+
+<h2 id="scale">2. Scale the gateway</h2>
+
+<p>The gateway pods hold no state. All shared state is in Redis. This makes the gateway easy to scale: add replicas.</p>
+
+<h3>2.1 &mdash; Set a replica count</h3>
+
+<p>Use three replicas or more for production. The Portkey architecture document also shows three.</p>
+
+<div class="code-block">
+  <pre><code>replicaCount: 3
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    memory: 1Gi</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p>Set a CPU request and a memory request. Set a memory limit. Do not set a CPU limit, because a CPU limit makes the gateway slower under load for no safety gain.</p>
+
+<div class="gap">
+  <div class="gap-title">These numbers are a start, not a specification</div>
+  <p>No requests-per-second figure is published for the gateway on any platform. The numbers above are a safe start for a first deployment. Measure your own load, then set the values from your measurement.</p>
+</div>
+
+<h3>2.2 &mdash; Spread the replicas across zones</h3>
+
+<p>Three replicas in one zone do not survive the loss of that zone. Add a topology spread constraint.</p>
+
+<div class="code-block">
+  <pre><code>topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: gateway</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p>Use <code>ScheduleAnyway</code> and not <code>DoNotSchedule</code>. <code>ScheduleAnyway</code> spreads the pods when it can. <code>DoNotSchedule</code> can stop a pod from starting, which is worse than an unbalanced spread.</p>
+
+<h3>2.3 &mdash; Turn on autoscaling</h3>
+
+<p>The chart has a HorizontalPodAutoscaler. It is off. The values below are the chart defaults.</p>
+
+<div class="code-block">
+  <pre><code>autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 60
+  targetMemoryUtilizationPercentage: 60</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p>The chart scales up quickly and scales down slowly. It adds two pods every two seconds with no delay. It removes one pod every sixty seconds, and only after five minutes of low load. This is the correct shape for a gateway.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Autoscaling needs a CPU request</div>
+  <p>A HorizontalPodAutoscaler measures CPU as a percentage of the request. The chart sets no request. If you turn on autoscaling and leave <code>resources</code> empty, the autoscaler cannot calculate a percentage and it does not scale.</p>
+  <p>Set <code>resources.requests.cpu</code> at the same time. These two settings only work together.</p>
+</div>
+
+<p>Set <code>minReplicas</code> to 3 or more if you use autoscaling with the zone spread in section 2.2.</p>
+
+<h2 id="before">3. Prepare for a safe upgrade</h2>
+
+<p>Do these four things one time. They make every later upgrade safe.</p>
+
+<h3>3.1 &mdash; Set the deployment strategy</h3>
+
+<p>This is the most important change on this page. The chart leaves the strategy empty, and the example in the chart is commented out. Uncomment it.</p>
+
+<div class="code-block">
+  <pre><code>strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p><code>maxUnavailable: 0</code> tells Kubernetes to start a new pod and to wait for it to be ready. Only then does Kubernetes stop an old pod. This gives an upgrade with no loss of traffic.</p>
+
+<h3>3.2 &mdash; Write a PodDisruptionBudget</h3>
+
+<p>The chart does not make one. Apply this yourself, in the same namespace.</p>
+
+<div class="code-block">
+  <pre><code>apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: portkey-gateway-pdb
+  namespace: portkeyai
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p>Set <code>minAvailable</code> to one less than your replica count. Confirm the label with <code>kubectl get pods -n &lt;namespace&gt; --show-labels</code> before you apply this, because a selector that matches nothing protects nothing.</p>
+
+<h3>3.3 &mdash; Keep the values file</h3>
+
+<p>Keep <code>values.yaml</code> in version control. Each upgrade must use the same file.</p>
+
+<div class="callout callout-danger">
+  <div class="callout-title">You cannot download the values file again</div>
+  <p>Gateway Registration makes a <code>values.yaml</code> for your deployment. The registration screen says that the file is not available after you leave the screen.</p>
+  <p>If you lose it, you must register the gateway again. Put the file in version control on the day you get it.</p>
+</div>
+
+<h3>3.4 &mdash; Know your current state</h3>
+
+<p>Record these before you change anything. You need them to go back.</p>
+
+<div class="code-block">
+  <pre><code>helm list -n $NAMESPACE
+helm history portkey-ai -n $NAMESPACE
+helm get values portkey-ai -n $NAMESPACE > values-before-upgrade.yaml
+kubectl get deploy -n $NAMESPACE -o wide</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<h2 id="upgrade">4. The upgrade procedure</h2>
+
+<figure class="diagram">
+  <img src="diagrams/aigw-rolling-upgrade.svg" alt="A rolling upgrade with maxSurge one and maxUnavailable zero. Three old pods serve traffic. A fourth new pod starts and becomes ready. One old pod then stops. The cycle repeats until all three pods are new. Below, the same upgrade with the chart defaults, where the single pod stops before the new pod is ready and traffic fails." loading="lazy">
+  <figcaption>With maxUnavailable set to zero, a new pod becomes ready before an old pod stops. Traffic never drops.</figcaption>
+</figure>
+
+<p>Do these steps in order. Stop at any step that fails.</p>
+
+<h3>Step 1 &mdash; Upgrade a test cluster first</h3>
+
+<p>Use a cluster that carries no production traffic. Run the full procedure there. Then come back.</p>
+
+<h3>Step 2 &mdash; Read what changed</h3>
+
+<div class="code-block">
+  <pre><code>helm repo update
+helm search repo portkey-ai/gateway --versions | head -10</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p>Compare the new chart values against your values file.</p>
+
+<div class="code-block">
+  <pre><code>helm show values portkey-ai/gateway --version &lt;new-version&gt; > /tmp/new-defaults.yaml
+diff <(helm show values portkey-ai/gateway --version &lt;current-version&gt;) /tmp/new-defaults.yaml</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<div class="gap">
+  <div class="gap-title">There is no compatibility matrix</div>
+  <p>No document states which chart version works with which gateway image version. Pin the image tag in your values file. Change the chart version and the image tag in separate upgrades, so that a failure has one cause.</p>
+</div>
+
+<h3>Step 3 &mdash; Choose a quiet time</h3>
+
+<p>The upgrade restarts every gateway pod. With the settings in section 3, traffic does not drop. Without them, it does.</p>
+
+<p>An upgrade also interrupts a long request. A streamed answer that is in progress when its pod stops does not finish.</p>
+
+<h3>Step 4 &mdash; See the change before you make it</h3>
+
+<div class="code-block">
+  <pre><code>helm upgrade portkey-ai portkey-ai/gateway \
+  -f ./values.yaml -n $NAMESPACE \
+  --version &lt;new-version&gt; \
+  --dry-run --debug > /tmp/upgrade-plan.yaml</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p>Read the plan. Confirm that the image tag, the replica count and the strategy are what you expect.</p>
+
+<h3>Step 5 &mdash; Do the upgrade</h3>
+
+<div class="code-block">
+  <pre><code>helm upgrade portkey-ai portkey-ai/gateway \
+  -f ./values.yaml -n $NAMESPACE \
+  --version &lt;new-version&gt; \
+  --atomic --timeout 10m</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Use --atomic</div>
+  <p><code>--atomic</code> tells Helm to undo the upgrade if the new pods do not become ready inside the timeout. This gives you an automatic rollback for the most common failure.</p>
+  <p><code>--atomic</code> does not help when the pods start correctly and then behave incorrectly. Section 6 covers that case.</p>
+</div>
+
+<h3>Step 6 &mdash; Watch the rollout</h3>
+
+<div class="code-block">
+  <pre><code>kubectl rollout status deploy/portkey-ai-gateway -n $NAMESPACE --timeout=10m
+kubectl get pods -n $NAMESPACE -w</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<h3>Step 7 &mdash; Prove that it works</h3>
+
+<p>A running pod is not a working gateway. Send a real request.</p>
+
+<div class="code-block">
+  <pre><code>kubectl port-forward -n $NAMESPACE svc/portkey-ai-gateway 8787:8787 &amp;
+
+curl -sS -X POST "http://localhost:8787/v1/chat/completions" \
+  -H "Authorization: Bearer $GW_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"@&lt;slug&gt;/&lt;model&gt;","messages":[{"role":"user","content":"Say OK"}],"max_tokens":8}'</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p>Then open the gateway log in Strata Cloud Manager. Confirm that the request is there. The <a href="../airs/airs-connectivity-validator.html">connectivity validator</a> gives the same checks for each pillar.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">A healthy pod can still fail every request</div>
+  <p>The health endpoint confirms that the process runs. It does not confirm that the gateway can reach a model provider. An egress rule that changed during the maintenance window gives you healthy pods and failed requests.</p>
+</div>
+
+<h2 id="version-2-30">5. What changes in gateway 2.30.0</h2>
+
+<p>Version 2.30.0 changes how the container starts. The change is internal, and a standard deployment does not need a new setting. Your platform team must still know about it.</p>
+
+<p>A small Rust process now accepts the incoming traffic. It listens on your configured <code>PORT</code>, and it passes each request to the TypeScript server. That server now runs on an internal port in the same container.</p>
+
+<table>
+  <thead><tr><th style="width:20%">Port</th><th style="width:34%">What it is</th><th>What to do</th></tr></thead>
+  <tbody>
+    <tr><td><code>8787</code> (<code>PORT</code>)</td><td>The gateway API. No change.</td><td>Nothing. Keep all traffic on this port.</td></tr>
+    <tr><td><code>8788</code> (<code>MCP_PORT</code>)</td><td>The MCP gateway. No change.</td><td>Nothing.</td></tr>
+    <tr><td><code>8799</code></td><td>New. The internal TypeScript server.</td><td>Do not expose it. Do not send traffic to it. Do not set <code>PORT</code> to this value.</td></tr>
+    <tr><td><code>9091</code> (<code>RUST_METRICS_PORT</code>)</td><td>New. Prometheus metrics for the Rust process, at <code>/metrics</code>.</td><td>Add it to your Prometheus configuration if you want it. Keep it on your monitoring network only.</td></tr>
+  </tbody>
+</table>
+
+<p>Your service, your ingress and your load balancer must continue to point at <code>PORT</code>. Your existing health checks continue to work. Your existing <code>/metrics</code> collection on <code>PORT</code> continues to work.</p>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Do not override the container entrypoint</div>
+  <p>The image chooses the correct start mode for your configuration. A custom <code>ENTRYPOINT</code> or <code>command</code> stops that. An example is <code>node build/start-server.js</code>.</p>
+  <p>A custom entrypoint works today. The gateway then runs only the older TypeScript code, and it does not get the improvements in each release. <strong>A future release stops support for a custom start command that calls Node directly.</strong></p>
+  <p>Set the start options with environment variables instead: <code>PORT</code>, <code>MCP_PORT</code>, <code>SERVER_MODE</code> and the TLS settings. Do not pass <code>--port</code> on the command line.</p>
+  <p>If you use a custom entrypoint today, raise it with Palo Alto Networks before you upgrade to 2.30.0.</p>
+</div>
+
+<p>In three cases the container skips the Rust process and runs the TypeScript server directly, exactly as before 2.30.0:</p>
+
+<ul>
+  <li>The gateway terminates TLS itself, because <code>TLS_KEY</code> and <code>TLS_CERT</code> are set</li>
+  <li>The gateway runs in MCP-only mode, because <code>SERVER_MODE</code> is <code>mcp</code></li>
+  <li>A <code>--port</code> argument is on the command line</li>
+</ul>
+
+<p>Check your values file for these three before you upgrade. Each one is permitted. Each one also means that you do not get the performance improvement, so know which case applies to you.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Add one step to the upgrade for 2.30.0</div>
+  <p>After step 7, confirm that nothing in your cluster reaches port 8799. Check your NetworkPolicy, your security groups and your sidecars. Confirm also that no sidecar in the gateway pod listens on 8799 or 9091.</p>
+</div>
+
+<h2 id="rollback">6. Rollback</h2>
+
+<p>Use a rollback when the upgrade finishes and the gateway then behaves incorrectly.</p>
+
+<div class="code-block">
+  <pre><code>helm history portkey-ai -n $NAMESPACE
+helm rollback portkey-ai &lt;revision&gt; -n $NAMESPACE --wait --timeout 10m
+kubectl rollout status deploy/portkey-ai-gateway -n $NAMESPACE</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p>Then repeat step 7. A rollback is only complete when a real request works.</p>
+
+<table>
+  <thead><tr><th style="width:34%">Question</th><th>Answer</th></tr></thead>
+  <tbody>
+    <tr><td>How many revisions can I go back?</td><td>Ten. The chart sets <code>revisionHistoryLimit: 10</code> on the gateway, on Redis and on MinIO.</td></tr>
+    <tr><td>Does a rollback lose my configuration?</td><td>No. Your integrations, keys and configs are in the Management Plane. The gateway holds a cache of them.</td></tr>
+    <tr><td>Does a rollback lose usage counters?</td><td>Very little. The gateway holds counters in Redis and sends them to the Management Plane every minute. A rollback does not clear Redis.</td></tr>
+    <tr><td>Can I go back to any older image?</td><td>This is not tested. Treat a move to an older image as a downgrade, and read the warning below.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">A downgrade is not the same as a rollback</div>
+  <p>A rollback returns to the previous release of the same deployment. This is safe, because the state did not change.</p>
+  <p>A downgrade puts an older image on a system that a newer image has already touched. No document says that this is supported. If a newer version changed the shape of anything in Redis, an older version can read it incorrectly.</p>
+  <p>If you must downgrade, first clear the gateway cache keys in Redis, then start the older version with an empty cache. Test this on a test cluster. The cache refills from the Management Plane.</p>
+</div>
+
+<h2 id="recovery">7. Recovery</h2>
+
+<p>Use this when both the upgrade and the rollback fail.</p>
+
+<ol>
+  <li>Confirm that the Management Plane is reachable. The <a href="connectivity.html">connectivity reference</a> lists the hosts.</li>
+  <li>Read the pod events. Run <code>kubectl describe pod &lt;pod&gt; -n $NAMESPACE</code>.</li>
+  <li>Read the pod logs of the failed pod. Run <code>kubectl logs &lt;pod&gt; -n $NAMESPACE --previous</code>.</li>
+  <li>Install the last known good version by exact chart version and exact image tag. Use the values file that you saved in step 3.4.</li>
+  <li>If the pods still fail, remove the release and install it again. Use <code>helm uninstall</code>, then <code>helm upgrade --install</code>. This loses the Helm history. It does not lose your Management Plane configuration.</li>
+</ol>
+
+<div class="callout callout-note">
+  <div class="callout-title">Your traffic can survive a long outage</div>
+  <p>The gateway caches configuration for seven days. It does not need the Management Plane to serve a request. A gateway that cannot reach the Management Plane continues to answer with its cached configuration, and it queues its analytics.</p>
+  <p>This gives you time. A failed upgrade is urgent, and it is not a seven-day emergency.</p>
+</div>
+
+<h2 id="troubleshooting">8. Troubleshooting</h2>
+
+<table>
+  <thead><tr><th style="width:30%">Symptom</th><th style="width:32%">Probable cause</th><th>What to do</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Traffic stops during the upgrade</td>
+      <td><code>strategy</code> is empty, or <code>replicaCount</code> is 1</td>
+      <td>Apply section 3.1 and section 2.1. Then upgrade again.</td>
+    </tr>
+    <tr>
+      <td>Pods are <code>Pending</code></td>
+      <td>The cluster has no room, or a topology constraint uses <code>DoNotSchedule</code></td>
+      <td>Run <code>kubectl describe pod</code> and read the events. Add nodes, or change the constraint to <code>ScheduleAnyway</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ImagePullBackOff</code></td>
+      <td>The image tag does not exist, or the registry is unreachable</td>
+      <td>Confirm the tag. Confirm the image pull secret. Confirm egress to the registry.</td>
+    </tr>
+    <tr>
+      <td><code>CrashLoopBackOff</code></td>
+      <td>A value is missing or wrong in <code>values.yaml</code></td>
+      <td>Run <code>kubectl logs &lt;pod&gt; --previous</code>. The first error is usually the real one.</td>
+    </tr>
+    <tr>
+      <td>Pods run, requests fail with 500</td>
+      <td>The gateway cannot reach a provider, or cannot reach Redis</td>
+      <td>Test egress from inside the pod. Use the <a href="../airs/airs-connectivity-validator.html">connectivity validator</a>.</td>
+    </tr>
+    <tr>
+      <td>A bad pod stays in service for minutes</td>
+      <td>The readiness probe runs every 60 seconds and permits 3 failures</td>
+      <td>This is the chart default, so a bad pod can serve traffic for about 3 minutes. Lower <code>readinessProbe.periodSeconds</code> to 10 for production.</td>
+    </tr>
+    <tr>
+      <td>The autoscaler does not scale</td>
+      <td><code>resources.requests.cpu</code> is not set</td>
+      <td>Set a CPU request. See section 2.3.</td>
+    </tr>
+    <tr>
+      <td>A cluster upgrade stops all gateway pods</td>
+      <td>There is no PodDisruptionBudget</td>
+      <td>Apply the PodDisruptionBudget in section 3.2.</td>
+    </tr>
+    <tr>
+      <td><code>helm upgrade</code> says another operation is in progress</td>
+      <td>A previous upgrade did not finish</td>
+      <td>Run <code>helm history</code>. If the last revision is <code>pending-upgrade</code>, roll back to the last deployed revision.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="checklist">9. Checklist</h2>
+
+<div class="checklist-box">
+  <div class="checklist-section">One time, before the first upgrade</div>
+  <ul class="checklist">
+    <li><code>replicaCount</code> is 3 or more</li>
+    <li><code>strategy</code> sets <code>maxSurge: 1</code> and <code>maxUnavailable: 0</code></li>
+    <li><code>resources.requests</code> sets a CPU request and a memory request</li>
+    <li>A topology spread constraint across zones is applied</li>
+    <li>A PodDisruptionBudget is applied, and its selector matches real pods</li>
+    <li><code>values.yaml</code> is in version control</li>
+    <li>The image tag is pinned, and it is not <code>latest</code></li>
+  </ul>
+
+  <div class="checklist-section">Each upgrade</div>
+  <ul class="checklist">
+    <li>The procedure ran on a test cluster first</li>
+    <li>The chart value differences were read</li>
+    <li><code>helm history</code> and <code>helm get values</code> were saved</li>
+    <li>The dry run was read, and the plan was correct</li>
+    <li>The upgrade used <code>--atomic</code> and a timeout</li>
+    <li>A real request was sent after the upgrade</li>
+    <li>The request appeared in the gateway log</li>
+  </ul>
+
+  <div class="checklist-section">For gateway 2.30.0 and later</div>
+  <ul class="checklist">
+    <li>No custom <code>ENTRYPOINT</code> or <code>command</code> is set on the container</li>
+    <li>No <code>--port</code> argument is passed on the command line</li>
+    <li>Nothing routes traffic to port 8799</li>
+    <li>No sidecar listens on 8799 or 9091</li>
+    <li>You know if your configuration falls back to the TypeScript server</li>
+  </ul>
+</div>
+
+<div class="page-footer-links">
+  <p>Cluster build steps are in the <a href="kubernetes-deployment.html">EKS, AKS and GKE guide</a>. Sizing and connectivity are in <a href="hybrid-infrastructure.html">Hybrid Infrastructure</a>. Or browse <a href="index.html">all AI Gateway guides</a>.</p>
+</div>
+
+</div><!-- /article -->
+
+</main>
+</div><!-- /layout -->
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>

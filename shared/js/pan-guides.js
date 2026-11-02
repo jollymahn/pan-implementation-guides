@@ -590,6 +590,7 @@ const GLOBAL_NAV_GROUPS = [
     { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html' },
     { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html' },
     { t: 'Model Provider Prerequisites', h: 'guides/ai-gateway/ai-gateway-model-prerequisites.html' },
+    { t: 'Scaling and Upgrading', h: 'guides/ai-gateway/hybrid-scaling-and-upgrade.html' },
     { t: 'Streaming, Caching, and A2A', h: 'guides/ai-gateway/streaming-caching-a2a.html' },
     { label: 'Hybrid Data Plane' },
     // Hybrid Infrastructure carries the sizing and prerequisites both container

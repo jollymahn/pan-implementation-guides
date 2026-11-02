@@ -280,6 +280,14 @@ function relative(absPath) {
   return path.relative(REPO_ROOT, absPath).split(path.sep).join('/');
 }
 
+/* SKIP_DIRS is honoured by walk() as it descends, but the hook passes explicit
+ * staged paths instead of a tree. Without this, staging a file inside a
+ * mirrored directory smuggles vendor prose past the skip and blocks the commit
+ * on words nobody here wrote. Check the whole relative path, not just a name. */
+function inSkippedDir(absPath) {
+  return relative(absPath).split('/').slice(0, -1).some(seg => SKIP_DIRS.has(seg));
+}
+
 function collectFiles(argPaths) {
   if (argPaths.length) {
     const files = [];
@@ -287,7 +295,8 @@ function collectFiles(argPaths) {
       const abs = path.resolve(REPO_ROOT, p);
       if (!fs.existsSync(abs)) continue;
       if (fs.statSync(abs).isDirectory()) walk(abs, files);
-      else if (EXTS.includes(path.extname(abs)) && !SKIP_FILES.has(relative(abs))) files.push(abs);
+      else if (EXTS.includes(path.extname(abs)) && !SKIP_FILES.has(relative(abs))
+               && !inSkippedDir(abs)) files.push(abs);
     }
     return files;
   }
