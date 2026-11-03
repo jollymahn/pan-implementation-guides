@@ -454,41 +454,22 @@ helm upgrade --install portkey-ai portkey-ai/gateway \
     <span>Outbound: data plane to management plane (both paths)</span>
   </div>
   <div class="collapsible-body">
-    <p>On the SCM registration path the gateway needs outbound HTTPS on 443 only: to <code>api.portkey.ai</code> for configuration and analytics and to <code>registry.portkey.ai</code> for the image. You do not need an inbound rule, a public load balancer, or a private link back to Palo Alto Networks, and no private option is documented for this path. On the platform-page path each cloud offers two options.</p>
+    <p>On the SCM registration path the gateway needs outbound HTTPS on 443 only: to <code>api.portkey.ai</code> for configuration and analytics and to <code>registry.portkey.ai</code> for the image. You do not need an inbound rule, a public load balancer, or a private link back to Palo Alto Networks. The platform-page path needs the same shape, to a different pair of hostnames.</p>
 
     <table>
       <thead>
-        <tr><th>Path and cloud</th><th>Private option</th><th>Internet option</th></tr>
+        <tr><th>Path and cloud</th><th>Outbound to the management plane</th></tr>
       </thead>
       <tbody>
-        <tr><td>SCM registration (<code>airs-gw</code>), any cloud</td><td>None documented</td><td>HTTPS 443 to <code>api.portkey.ai</code> and <code>registry.portkey.ai</code></td></tr>
-        <tr><td>Platform pages, AWS</td><td>AWS PrivateLink</td><td rowspan="3">Reach <code>https://aigw.portkey.ai</code> and <code>https://albus.portkey.ai</code></td></tr>
-        <tr><td>Platform pages, Azure</td><td>Azure Private Link</td></tr>
-        <tr><td>Platform pages, GCP</td><td>Private Service Connect</td></tr>
+        <tr><td>SCM registration (<code>airs-gw</code>), any cloud</td><td>HTTPS 443 to <code>api.portkey.ai</code> and <code>registry.portkey.ai</code></td></tr>
+        <tr><td>Platform pages, any cloud</td><td>HTTPS 443 to <code>https://aigw.portkey.ai</code> and <code>https://albus.portkey.ai</code></td></tr>
       </tbody>
     </table>
 
-    <p>Service identifiers and procedures for Azure Private Link and GCP Private Service Connect are not published in the material this guide is based on; request them from your account team.</p>
-
-    <p><strong>PrivateLink on AWS (platform-page path).</strong></p>
-
-    <ol>
-      <li>Send your AWS account ARN to the Palo Alto Networks team and wait for confirmation that it is whitelisted. Do this before you create the endpoint. An endpoint created earlier will show a rejected or failed state; delete it and create it again after the team confirms whitelisting.</li>
-      <li>In the AWS console open <strong>VPC</strong>, then <strong>Endpoints</strong>, then <strong>Create endpoint</strong>. Create an interface endpoint to service <code>com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95</code> in the gateway VPC. If the gateway runs outside <code>us-east-1</code>, create it as a cross-region endpoint targeting <code>us-east-1</code>.</li>
-      <li>When the endpoint shows <strong>Available</strong>, select it and use its <strong>Actions</strong> menu to enable <strong>Private DNS names</strong>. Verify from a pod that <code>aws-cp.portkey.ai</code> resolves to the endpoint's private addresses before you change <code>values.yaml</code>.</li>
-      <li>Add the four PrivateLink base paths below under the <code>environment.data</code> key in <code>values.yaml</code>. This is the same <code>environment:</code> map the <a href="#prereq-aws">AWS checklist</a> later adds <code>LOG_STORE</code> settings to; keep one <code>environment:</code> block.</li>
-    </ol>
-
-    <div class="code-block">
-      <pre><code>environment:
-  create: true
-  secret: true
-  data:
-      ALBUS_BASEPATH: "https://aws-cp.portkey.ai/albus"
-      CONTROL_PLANE_BASEPATH: "https://aws-cp.portkey.ai/api/v1"
-      SOURCE_SYNC_API_BASEPATH: "https://aws-cp.portkey.ai/api/v1/sync"
-      CONFIG_READER_PATH: "https://aws-cp.portkey.ai/api/model-configs"</code></pre>
-      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <div class="callout callout-note">
+      <div class="callout-title">The private options were withdrawn</div>
+      <p>Until late 2026 the platform pages offered a private alternative on each cloud: AWS PrivateLink, Azure Private Link, and GCP Private Service Connect. Between 2026-09-25 and 2026-11-02 Portkey removed that material from all five platform pages, along with every endpoint service name, Private Link Service alias, and private hostname the procedures used. Those pages now describe outbound over the internet only.</p>
+      <p>This matches what Palo Alto Networks confirmed on 2026-09-27 for a gateway managed by Strata Cloud Manager. There is no private outbound path to design around today. If you built one earlier, see <a href="#teardown">Teardown</a> for how to remove it.</p>
     </div>
 
     <p>Kubernetes allows full egress by default. If your cluster applies restrictive NetworkPolicies, the gateway needs an egress allowance covering both the management plane and your LLM providers. Save the following as <code>allow-egress.yaml</code> and apply it with <code>kubectl apply -f allow-egress.yaml</code> after the Helm install has created the <code>portkeyai</code> namespace (or create the namespace first with <code>kubectl create namespace portkeyai</code>). <code>kubectl apply</code> is safe to re-run; it updates the existing policy in place.</p>
@@ -520,7 +501,7 @@ spec:
     <span id="inbound">Inbound is not supported with Strata Cloud Manager</span>
   </div>
   <div class="collapsible-body">
-    <p>The platform deployment pages describe a second direction, running from the management plane inbound to your gateway over AWS PrivateLink, Azure Private Link, or GCP Private Service Connect, with IP whitelisting as the alternative. Do not build it.</p>
+    <p>The platform deployment pages describe a second direction, running from the management plane inbound to your gateway. Until late 2026 those pages offered a private link or an IP allow-list for it; the 2026-11-02 revision offers the IP allow-list alone. Do not build either one.</p>
 
     <p>Palo Alto Networks confirmed on 2026-09-27 that private link is not supported with Strata Cloud Manager today, and that the only network connectivity between a gateway and the cloud is outbound from the gateway. Those procedures describe the Portkey product, which shares the charts and the tooling but not this part of the architecture.</p>
 
@@ -630,7 +611,7 @@ environment:
       <li><strong>Storage account and container</strong> &mdash; for logs, with encryption at rest and a lifecycle rule for retention.</li>
       <li><strong>Cache store</strong> &mdash; Azure Cache for Redis in the same VNet, or the built-in Redis.</li>
       <li><strong>External access</strong> &mdash; an internal load balancer in front of the gateway Service or Ingress. No Private Link Service and no dedicated subnet for one is needed.</li>
-      <li><strong>Connectivity</strong> &mdash; Azure Private Link or internet, outbound only. There is no inbound path to build.</li>
+      <li><strong>Connectivity</strong> &mdash; outbound over the internet only. The private option was withdrawn in late 2026, and there is no inbound path to build.</li>
       <li><strong>Credentials from Palo Alto Networks</strong> &mdash; as for AWS.</li>
     </ul>
 
@@ -689,7 +670,7 @@ environment:
       <li><strong>Cloud Storage bucket</strong> &mdash; for logs. Bind the gateway's Kubernetes service account to a Google service account through <code>roles/iam.workloadIdentityUser</code>, then grant that Google service account <code>roles/storage.objectAdmin</code> on the log bucket. Apply it at the bucket level rather than the project level. The published alternative is a custom role carrying only <code>storage.objects.create</code> and <code>storage.objects.get</code>, which is the tighter choice and the one to prefer, since <code>objectAdmin</code> also permits deletion.</li>
       <li><strong>Cache store</strong> &mdash; Memorystore for Redis or Valkey in the same VPC, or the built-in Redis.</li>
       <li><strong>External access</strong> &mdash; an internal load balancer in front of the gateway Service or Ingress. You do not publish it as a service attachment.</li>
-      <li><strong>Connectivity</strong> &mdash; Private Service Connect or internet, outbound only. There is no inbound path to build.</li>
+      <li><strong>Connectivity</strong> &mdash; outbound over the internet only. The private option was withdrawn in late 2026, and there is no inbound path to build.</li>
       <!-- TODO: verify the PSC consumer project and the management plane source addresses for GCP with the account team (WN-15) -->
       <li><strong>Credentials from Palo Alto Networks</strong> &mdash; as for AWS.</li>
     </ul>
@@ -746,7 +727,7 @@ environment:
       <li><strong>Log store</strong> &mdash; Azure Blob Storage or any S3-compatible store, optional.</li>
       <li><strong>Cache store</strong> &mdash; built-in Redis or Azure Managed Redis.</li>
       <li><strong>Connectivity</strong> &mdash; outbound to the management plane endpoints in <a href="#connectivity">Connectivity</a>. There is no inbound path to build.</li>
-      <li><strong>Network</strong> &mdash; a VNet is optional, which is unique among the supported platforms. It becomes mandatory for zone redundancy, Application Gateway, and outbound Private Link.</li>
+      <li><strong>Network</strong> &mdash; a VNet is optional, which is unique among the supported platforms. It becomes mandatory for zone redundancy and for Application Gateway.</li>
     </ul>
 
     <p>The Key Vault entries the Terraform configuration expects are <code>docker-username</code>, <code>docker-password</code>, <code>portkey-client-auth</code>, and <code>organisations-to-sync</code>. Create the vault with RBAC authorisation enabled and grant yourself Key Vault Administrator to write the four entries. The module is given the secret <em>names</em> and the vault to resolve them against, not the values, so raw secret values do not enter Terraform state. Keep state in an encrypted backend regardless, because it still carries resource identifiers and configuration.</p>
@@ -928,7 +909,7 @@ helm upgrade --install portkey-ai portkey-ai/gateway \
     <ol>
       <li>Uninstall the release and delete the namespace: <code>helm uninstall &lt;release&gt; -n &lt;namespace&gt;</code>, then <code>kubectl delete namespace &lt;namespace&gt;</code>.</li>
       <li>Delete the NetworkPolicy if you created it outside the release: <code>kubectl delete -f allow-egress.yaml</code> (skip if the namespace deletion already removed it).</li>
-      <li>On the platform-page path, delete the outbound PrivateLink endpoint. If the deployment predates 2026-09-27 and built an inbound path, also delete the endpoint service, remove the allowed principal, and delete the management plane security group rule.</li>
+      <li>If the deployment predates 2026-11-02 and built a private outbound path, delete the interface endpoint or private endpoint, its private DNS zone, and the records that pointed at it. It still bills hourly and the service behind it is no longer offered. If it also built an inbound path, delete the endpoint service, remove the allowed principal, and delete the management plane security group rule.</li>
       <li>On ECS or Container Apps, run <code>terraform destroy</code>; on Container Apps, then recover or purge the Key Vault if you intend to reuse its name.</li>
       <li>In SCM, remove the gateway entry under <strong>AI Security &rarr; AI Gateway &rarr; Admin Settings &rarr; Gateway Registration</strong>, and re-enable the SaaS row if you switched it off.</li>
       <li>Empty and delete the log bucket if it is not needed for retention.</li>
@@ -960,8 +941,7 @@ helm upgrade --install portkey-ai portkey-ai/gateway \
         <tr><td>LLM providers</td><td>Per provider, HTTPS on 443</td><td>Both paths</td></tr>
         <tr><td>Cluster DNS</td><td>UDP and TCP 53</td><td>Both paths, if you restrict egress with NetworkPolicy</td></tr>
         <tr><td>Outbound over the internet</td><td><code>https://aigw.portkey.ai</code>, <code>https://albus.portkey.ai</code></td><td>Platform pages</td></tr>
-        <tr><td>Outbound over AWS PrivateLink</td><td><code>https://aws-cp.portkey.ai</code></td><td>Platform pages</td></tr>
-        <tr><td>AWS PrivateLink service name</td><td><code>com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95</code></td><td>Platform pages</td></tr>
+        <tr><td>Management plane basepaths on the EKS page</td><td><code>https://aws-cp.portkey.ai</code></td><td>Platform pages, reached over the internet</td></tr>
         <tr><td>Management plane AWS principal</td><td><code>arn:aws:iam::299329113195:root</code></td><td>Platform pages, for an inbound path AIRS does not support; do not authorise it</td></tr>
         <tr><td>Management plane source addresses</td><td><code>54.81.226.149</code>, <code>34.200.113.35</code>, <code>44.221.117.129</code></td><td>Platform pages, for an inbound path AIRS does not support; do not allow them</td></tr>
         <tr><td>Helm repository</td><td><code>https://portkey-ai.github.io/helm</code></td><td>Platform pages</td></tr>

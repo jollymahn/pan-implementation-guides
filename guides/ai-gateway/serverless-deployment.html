@@ -202,7 +202,7 @@
 
 <div class="callout callout-warning">
   <div class="callout-title">The platform deployment pages describe a connection you should not build</div>
-  <p>Those pages require the management plane to reach your gateway inbound, over a private link or an IP allow-list. Palo Alto Networks confirmed on 2026-09-27 that private link is not supported with Strata Cloud Manager today and that connectivity is outbound from the gateway only.</p>
+  <p>Those pages require the management plane to reach your gateway inbound. Until late 2026 they offered a private link or an IP allow-list for it; the 2026-11-02 revision offers the IP allow-list alone. Palo Alto Networks confirmed on 2026-09-27 that private link is not supported with Strata Cloud Manager and that connectivity is outbound from the gateway only.</p>
   <p>Build the outbound direction in <a href="#connectivity">step 4</a> and stop there. If you follow the platform pages literally you will authorise a Palo Alto Networks account into your VPC, or put three management plane addresses into a load balancer allow-list, for a path that nothing uses.</p>
 </div>
 
@@ -246,16 +246,14 @@
     <span>Requests to Palo Alto Networks</span>
   </div>
   <div class="collapsible-body">
-    <p>Six steps in this guide require you to send something to Palo Alto Networks and wait for someone on their side to act. Each one blocks the step it sits in, and the first two can be raised before you build anything, so raise them now rather than at the step that needs them. Use the channel named in the <strong>Before you start</strong> callout for all of them.</p>
+    <p>Two things in this guide require you to send something to Palo Alto Networks and wait for someone on their side to act. Raise the first now, before you build anything; it blocks step 1 and everything after it. The second applies only to a deployment that built a private link before 2026-11-02. Use the channel named in the <strong>Before you start</strong> callout for both.</p>
     <table>
       <thead>
         <tr><th>Request</th><th>What you send</th><th>Raise it</th><th>It blocks</th></tr>
       </thead>
       <tbody>
         <tr><td>Initial credentials</td><td>Organisation ID and the signup email address</td><td>Now</td><td>Step 1, and everything after it</td></tr>
-        <tr><td>Account allow-listing for outbound PrivateLink (ECS)</td><td>Your AWS account root ARN</td><td>Now, it depends on nothing Terraform builds</td><td>Step 4.2, ECS</td></tr>
-        <tr><td>Subscription allow-listing for outbound Private Link (ACA)</td><td>Your Azure subscription ID</td><td>Now, it depends on nothing Terraform builds</td><td>Step 4.2, ACA</td></tr>
-        <tr><td>Teardown</td><td>A request to remove their side of any private link</td><td>Before <code>terraform destroy</code></td><td>Clean removal, see Scaling and Upgrades</td></tr>
+        <tr><td>Teardown, only if a private link was built before 2026-11-02</td><td>A request to remove their side of it</td><td>Before <code>terraform destroy</code></td><td>Clean removal, see Scaling and Upgrades</td></tr>
       </tbody>
     </table>
     <p>No turnaround is published for any of these requests, so treat each one as an unknown wait when you schedule the work. The two allow-listing requests are the ones worth raising on day one: without them, step 4 stops while infrastructure built in step 2 sits idle.</p>
@@ -1737,79 +1735,16 @@ curl -sS -o /dev/null -w "%{http_code}\n" https://albus.portkey.ai</code></pre>
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>4.2 &mdash; Outbound: over AWS PrivateLink</span>
+        <span>4.2 &mdash; Private outbound is no longer offered</span>
       </div>
       <div class="collapsible-body">
-        <p>This option keeps the traffic off the internet entirely. It needs an allow-listing step at Palo Alto Networks first, so start it early.</p>
-
-        <p>Check whether the endpoint already exists before you create one:</p>
-        <div class="code-block">
-          <pre><code>aws ec2 describe-vpc-endpoints \
-  --filters Name=service-name,Values=com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95 \
-  --query "VpcEndpoints[].{Id:VpcEndpointId,State:State}" --output table</code></pre>
-          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <p>There is no private outbound path to build. Step 4.1 is the whole of the outbound work.</p>
+        <p>Earlier revisions of this guide carried a procedure here for reaching the management plane over an AWS PrivateLink interface endpoint to <code>com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95</code>, with the gateway repointed at <code>aws-cp.portkey.ai</code>. That procedure came from Portkey's ECS platform page. Between 2026-09-25 and 2026-11-02 Portkey removed the private connectivity material from that page, and the endpoint service name went with it. The page now describes outbound to the management plane over the internet and nothing else.</p>
+        <p>That agrees with what Palo Alto Networks confirmed on 2026-09-27 for a gateway managed by Strata Cloud Manager. The procedure has been removed rather than kept as history, because the endpoint service it named is no longer published and an attempt to follow it now fails at the first step.</p>
+        <div class="callout callout-warning">
+          <div class="callout-title">If you already built one</div>
+          <p>An interface endpoint built before 2026-11-02 still bills by the hour and now points at a service that is no longer offered. Confirm the task is reaching the management plane over the internet per step 4.1, restore <code>aigw.portkey.ai</code> and <code>albus.portkey.ai</code> to the egress allow-list if you removed them, then delete the endpoint and its private DNS records. Tell your account team you have removed it, in case a connection is still held on their side.</p>
         </div>
-        <p>If one comes back in state <code>available</code>, skip to the private DNS check below rather than creating a second one. These endpoints are billed per hour, and creating a duplicate does not replace the first.</p>
-
-        <ol>
-          <li>Send your AWS account root ARN, in the form <code>arn:aws:iam::&lt;account-id&gt;:root</code>, to the Palo Alto Networks team and wait for confirmation that it is allow-listed. Get your account ID with:
-            <div class="code-block">
-              <pre><code>aws sts get-caller-identity --query Account --output text</code></pre>
-              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-            </div>
-          </li>
-          <li>In the <a href="https://console.aws.amazon.com/vpc/" target="_blank" rel="noopener">VPC console</a>, in the region where the gateway runs, go to <strong>Endpoints</strong> and select <strong>Create endpoint</strong>.</li>
-          <li>Choose the <strong>PrivateLink Ready partner services</strong> category and enter the service name:
-            <div class="code-block">
-              <pre><code>com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95</code></pre>
-              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-            </div>
-          </li>
-          <li>If the gateway is outside <code>us-east-1</code>, tick <strong>Enable Cross Region endpoint</strong>, pick <code>us-east-1</code>, and select <strong>Verify service</strong>.</li>
-          <li>Under <strong>Network settings</strong>, select the gateway's VPC and at least two subnets in different Availability Zones. Attach a security group that allows inbound 443 from the gateway tasks.</li>
-          <li>Select <strong>Create endpoint</strong> and wait for the status to reach <code>Available</code>.</li>
-          <li>Select <strong>Actions</strong>, then <strong>Modify private DNS name</strong>, and enable it for the endpoint.</li>
-        </ol>
-
-        <p>Then repoint the gateway at the private endpoint and re-apply:</p>
-        <div class="code-block">
-          <pre><code>environment_variables = {
-  gateway = {
-    SERVICE_NAME             = "gateway"
-    ANALYTICS_STORE          = "control_plane"
-    LOG_STORE                = "s3_assume"
-    ALBUS_BASEPATH           = "https://aws-cp.portkey.ai/albus"
-    CONTROL_PLANE_BASEPATH   = "https://aws-cp.portkey.ai/api/v1"
-    SOURCE_SYNC_API_BASEPATH = "https://aws-cp.portkey.ai/api/v1/sync"
-    CONFIG_READER_PATH       = "https://aws-cp.portkey.ai/api/model-configs"
-  }
-}</code></pre>
-          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-        </div>
-
-        <div class="code-block">
-          <pre><code>terraform apply</code></pre>
-          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-        </div>
-
-        <div class="callout callout-success">
-          <div class="callout-title">Verify</div>
-          <p>Confirm the private DNS name resolves to a private address rather than a public one. Run this from inside the VPC, not from your laptop: a laptop always returns the public address and tells you nothing. If you have no host in the VPC, open a shell on a running gateway task with ECS Exec and run the lookup there:</p>
-          <div class="code-block">
-            <pre><code>aws ecs execute-command \
-  --cluster $(terraform output -raw cluster_name) \
-  --task &lt;task-id&gt; \
-  --container gateway \
-  --interactive \
-  --command "/bin/sh"
-
-dig +short aws-cp.portkey.ai</code></pre>
-            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-          </div>
-          <p>An RFC 1918 address means private DNS is working. A public address means the endpoint's private DNS name is not enabled, and the gateway will still be egressing over the internet.</p>
-        </div>
-
-        <p>Close the path you replaced. Remove <code>aigw.portkey.ai</code> and <code>albus.portkey.ai</code> from the egress allow-list you built in 4.1, so that a private DNS failure produces a visible connection error rather than a silent fallback to the internet. Keep the registry and model provider entries, because PrivateLink covers the management plane only.</p>
       </div>
     </div>
 
@@ -1854,65 +1789,15 @@ curl -sS -o /dev/null -w "%{http_code}\n" https://albus.portkey.ai</code></pre>
     <div class="collapsible">
       <div class="collapsible-header">
         <span class="chevron">&#9654;</span>
-        <span>4.2 &mdash; Outbound: over Azure Private Link</span>
+        <span>4.2 &mdash; Private outbound is no longer offered</span>
       </div>
       <div class="collapsible-body">
-        <p>This option requires a VNet deployment, so <code>network_mode</code> must be <code>new</code> or <code>existing</code>. This is the main reason to leave <code>none</code> behind.</p>
-        <ol>
-          <li>Send your Azure subscription ID to the Palo Alto Networks team and wait for confirmation that it is allow-listed.</li>
-          <li>Add the outbound private link to the <code>module "portkey_gateway"</code> block in <code>main.tf</code>, alongside <code>network_mode</code>:
-            <div class="code-block">
-              <pre><code>control_plane_private_link = {
-  outbound = true
-}</code></pre>
-              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-            </div>
-          </li>
-          <li>Apply. This creates a private endpoint in your VNet, the <code>privatelink-az.portkey.ai</code> private DNS zone, an <code>azure-cp</code> A record, and the VNet link.
-            <div class="code-block">
-              <pre><code>terraform apply</code></pre>
-              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-            </div>
-          </li>
-          <li>Send them the private endpoint resource ID and wait for approval:
-            <div class="code-block">
-              <pre><code>terraform output control_plane_private_endpoint_id</code></pre>
-              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-            </div>
-          </li>
-        </ol>
-
-        <div class="callout callout-success">
-          <div class="callout-title">Verify approval before continuing</div>
-          <div class="code-block">
-            <pre><code>az network private-endpoint show \
-  --ids $(terraform output -raw control_plane_private_endpoint_id) \
-  --query 'privateLinkServiceConnections[0].privateLinkServiceConnectionState.status' -o tsv</code></pre>
-            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-          </div>
-          <p>This must return <code>Approved</code>. Repointing the gateway at the private hostnames before approval lands will break outbound sync.</p>
-        </div>
-
-        <p>Once approved, repoint the gateway and re-apply. Replace the whole <code>environment_variables</code> block in <code>main.tf</code>: Terraform assigns the map wholesale, so anything you leave out is removed from the replicas.</p>
-        <div class="code-block">
-          <pre><code>environment_variables = {
-  gateway = {
-    LOG_LEVEL                = "info"
-    NODE_ENV                 = "development"   # change to "production" before real traffic
-    ANALYTICS_STORE          = "control_plane"
-    AZURE_MANAGED_VERSION    = "2019-08-01"
-    ALBUS_BASEPATH           = "https://private.azure-cp.portkey.ai/albus"
-    CONTROL_PLANE_BASEPATH   = "https://private.azure-cp.portkey.ai/api/v1"
-    SOURCE_SYNC_API_BASEPATH = "https://private.azure-cp.portkey.ai/api/v1/sync"
-    CONFIG_READER_PATH       = "https://private.azure-cp.portkey.ai/api/model-configs"
-  }
-}</code></pre>
-          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-        </div>
-        <div class="code-block">
-          <pre><code>terraform plan
-terraform apply</code></pre>
-          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        <p>There is no private outbound path to build. Step 4.1 is the whole of the outbound work.</p>
+        <p>Earlier revisions of this guide carried a procedure here for adding an outbound private link to the <code>module "portkey_gateway"</code> block, which created a private endpoint, the <code>privatelink-az.portkey.ai</code> private DNS zone, an <code>azure-cp</code> record, and a VNet link, followed by a connection approval. That procedure came from Portkey's Container Apps platform page. Between 2026-09-25 and 2026-11-02 Portkey removed the private connectivity material from that page, along with the Private Link Service alias and the private hostnames it used. The page now describes outbound to the management plane over the internet and nothing else.</p>
+        <p>That agrees with what Palo Alto Networks confirmed on 2026-09-27 for a gateway managed by Strata Cloud Manager. Because the private link required a VNet, <code>network_mode: none</code> is now a supportable choice rather than something to leave behind for connectivity reasons.</p>
+        <div class="callout callout-warning">
+          <div class="callout-title">If you already built one</div>
+          <p>A private endpoint built before 2026-11-02 still bills by the hour and now resolves to a service that is no longer offered. Confirm the app is reaching the management plane over the internet per step 4.1, then remove the private link from <code>main.tf</code> and apply, which deletes the endpoint, the DNS zone, and the VNet link together. Tell your account team you have removed it, in case a connection is still held on their side.</p>
         </div>
       </div>
     </div>
@@ -1926,7 +1811,7 @@ terraform apply</code></pre>
     <span>4.3 &mdash; Inbound is not supported with Strata Cloud Manager today (both platforms)</span>
   </div>
   <div class="collapsible-body">
-    <p>Both platform deployment pages describe a second connection, running from the management plane inbound to your gateway over a VPC endpoint service on AWS or a private endpoint on Azure, with an IP allow-list as the alternative. Do not build it for an AIRS gateway.</p>
+    <p>Both platform deployment pages describe a second connection, running from the management plane inbound to your gateway. Until late 2026 they offered a VPC endpoint service on AWS or a private endpoint on Azure, with an IP allow-list as the alternative; the 2026-11-02 revision offers the IP allow-list alone. Do not build it for an AIRS gateway.</p>
 
     <p>Palo Alto Networks confirmed on 2026-09-27 that private link is not supported with Strata Cloud Manager today, and that the only network connectivity between a gateway and the cloud is outbound from the gateway. The inbound procedures on those pages belong to the Portkey product, which shares the deployment tooling but not this part of the architecture.</p>
 
@@ -1935,13 +1820,13 @@ terraform apply</code></pre>
     <ul>
       <li>Do not create a VPC endpoint service, and do not authorise <code>arn:aws:iam::299329113195:root</code> in your account.</li>
       <li>Do not add <code>54.81.226.149</code>, <code>34.200.113.35</code>, or <code>44.221.117.129</code> to <code>allowed_lb_cidrs</code> or to any network security group rule. Your load balancer admits your own applications and nothing else.</li>
-      <li>Your gateway registers and appears in Strata Cloud Manager on outbound connectivity alone. If it does not appear, the cause is in 4.1 or 4.2 rather than a missing inbound path.</li>
+      <li>Your gateway registers and appears in Strata Cloud Manager on outbound connectivity alone. If it does not appear, the cause is in 4.1 rather than a missing inbound path.</li>
       <li>The <code>lb_type</code> choice in step 2.2 is now yours to make on its merits. It no longer has to be a Network Load Balancer to back an endpoint service.</li>
     </ul>
 
     <div class="callout callout-note">
       <div class="callout-title">If a platform deployment page tells you otherwise</div>
-      <p>The published platform pages have not caught up with this position. Treat outbound-only as current, and ask the product team to confirm before building an inbound path for a specific customer. <!-- TODO: verify whether inbound private link returns to AIRS, and whether restoring it is what unblocks the SCM log views on a local log store. Tracked as question 5 in workspace/airs/aigw-product-questions.md. --></p>
+      <p>The platform pages have moved part of the way to this position: the 2026-11-02 revision dropped private link in both directions, but still documents an inbound IP allow-list. Treat outbound-only as current, and ask the product team to confirm before building an inbound path for a specific customer. <!-- TODO: verify whether inbound private link returns to AIRS, and whether restoring it is what unblocks the SCM log views on a local log store. Tracked as question 5 in workspace/airs/aigw-product-questions.md. --></p>
     </div>
   </div>
 </div>
@@ -2177,7 +2062,7 @@ terraform apply</code></pre>
     <p>Work through the following after the destroy. Revocation comes first, because it is the only part that matters if the teardown is happening because something went wrong.</p>
     <ol>
       <li>Schedule deletion of the step 1 secrets, and ask Palo Alto Networks to invalidate the Client Auth Key unless the organisation is being redeployed.</li>
-      <li>Delete the interface VPC endpoint created in step 4.2.</li>
+      <li>Delete the interface VPC endpoint, if the deployment predates 2026-11-02 and built the private outbound path that step 4.2 used to describe.</li>
       <li>Remove the three management plane addresses from any allow-list you added outside the module.</li>
       <li>Remove the Key Vault role assignment created in step 1.1, and purge the vault if the name is to be reused inside 90 days.</li>
       <li>Delete or lock down the Terraform state bucket or storage account, which holds every prior state version.</li>
@@ -2203,9 +2088,7 @@ terraform apply</code></pre>
       <tbody>
         <tr><td><code>aigw.portkey.ai</code></td><td>Management plane, outbound over the internet</td><td>Egress allow-list</td></tr>
         <tr><td><code>albus.portkey.ai</code></td><td>Configuration sync, outbound over the internet</td><td>Egress allow-list</td></tr>
-        <tr><td><code>aws-cp.portkey.ai</code></td><td>Management plane over AWS PrivateLink</td><td>ECS outbound private path</td></tr>
-        <tr><td><code>private.azure-cp.portkey.ai</code></td><td>Management plane over Azure Private Link</td><td>ACA outbound private path</td></tr>
-        <tr><td><code>com.amazonaws.vpce.us-east-1.vpce-svc-0c2c1c323d9f56d95</code></td><td>Endpoint service name for outbound PrivateLink</td><td>ECS step 4.2</td></tr>
+        <tr><td><code>aws-cp.portkey.ai</code></td><td>Management plane basepaths on the EKS page, reached over the internet</td><td>Not used by this guide; see 4.2</td></tr>
         <tr><td><code>arn:aws:iam::299329113195:root</code></td><td>Management plane AWS principal, published for an inbound path AIRS does not support</td><td>Do not authorise; see 4.3</td></tr>
         <tr><td><code>54.81.226.149</code>, <code>34.200.113.35</code>, <code>44.221.117.129</code></td><td>Management plane source addresses, published for an inbound path AIRS does not support</td><td>Do not allow-list these; see 4.3</td></tr>
         <tr><td><code>8787</code></td><td>Gateway container port</td><td>Both platforms</td></tr>

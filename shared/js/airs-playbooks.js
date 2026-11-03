@@ -538,6 +538,9 @@ const AIGW_KUBERNETES = {
       { heading: 'See screenshots — the FORM stage field by field', reason: 'Screenshot group for the licensing steps, not a task' },
       { heading: 'See screenshots', reason: 'Screenshot group for the licensing steps, not a task' }
     ],
+    'docs/guides/ai-gateway/kubernetes-deployment.html#connectivity': [
+      { heading: '7.3 — Private outbound is no longer offered (all platforms)', reason: 'Records that the private outbound path was withdrawn in late 2026 and how to remove one built earlier. Not a delivery task: there is nothing to build.' }
+    ],
     'docs/guides/ai-gateway/kubernetes-deployment.html#start-here': [
       { heading: '0.1 — The vocabulary you need', reason: 'Orientation for first-time readers, not a delivery task' },
       { heading: '0.2 — What this costs, and how to stop paying', reason: 'Cost orientation, covered commercially before the engagement starts' }
@@ -801,12 +804,6 @@ const AIGW_KUBERNETES = {
           task: 'Allow outbound 443 from the pods to the management plane hosts and from the nodes to registry.portkey.ai, confirming the current list against a running gateway. Exempt *.portkey.ai and every LLM provider endpoint from TLS inspection' },
         { anchor: 'connectivity', heading: '7.2 — Reach the management plane over the internet (all platforms)', owner: 'PANW / CUSTOMER', hours: 1, who: [G.security],
           task: 'Confirm the gateway reaches the management plane endpoints over the internet path' },
-        { variant: 'eks', anchor: 'connectivity', heading: '7.3 — Private outbound over AWS PrivateLink', owner: 'PANW / CUSTOMER', hours: 6, who: [G.cloud, G.security],
-          task: 'Confirm with the product team that the endpoint service accepts an SCM-managed gateway, then build the private outbound path, or record the decision to stay on the internet path. Do not start the build before the confirmation: the procedure is Portkey-sourced and unverified for Strata Cloud Manager' },
-        { variant: 'aks', anchor: 'connectivity', heading: '7.3 — Private outbound over Azure Private Link', owner: 'PANW / CUSTOMER', hours: 6, who: [G.cloud, G.security],
-          task: 'Confirm with the product team that the endpoint service accepts an SCM-managed gateway, then build the private outbound path, or record the decision to stay on the internet path. Do not start the build before the confirmation: the procedure is Portkey-sourced and unverified for Strata Cloud Manager' },
-        { variant: 'gke', anchor: 'connectivity', heading: '7.3 — Private outbound over GCP Private Service Connect', owner: 'PANW / CUSTOMER', hours: 6, who: [G.cloud, G.security],
-          task: 'Confirm with the product team that the endpoint service accepts an SCM-managed gateway, then build the private outbound path, or record the decision to stay on the internet path. Do not start the build before the confirmation: the procedure is Portkey-sourced and unverified for Strata Cloud Manager' },
         { anchor: 'connectivity', heading: '7.4 — Inbound is not supported with Strata Cloud Manager (all platforms)', owner: 'PANW / CUSTOMER', hours: 0.5, who: [G.security],
           task: 'Confirm with the security lead that inbound from the management plane is not required, since it is not supported' }
       ],
@@ -1390,6 +1387,9 @@ const AIGW_SERVERLESS = {
     'docs/guides/ai-gateway/serverless-deployment.html#licensing': [
       { heading: 'See screenshots — the FORM stage field by field', reason: 'Screenshot group for the licensing steps, not a task' },
       { heading: 'See screenshots', reason: 'Screenshot group for the licensing steps, not a task' }
+    ],
+    'docs/guides/ai-gateway/serverless-deployment.html#connectivity': [
+      { heading: '4.2 — Private outbound is no longer offered', reason: 'Records that the private outbound path was withdrawn in late 2026 and how to remove one built earlier. Not a delivery task: there is nothing to build.' }
     ]
   },
 
@@ -1457,9 +1457,7 @@ const AIGW_SERVERLESS = {
         { variant: 'aca', heading: '3.2 — Optional: Azure Managed Redis and your own storage', owner: 'PANW / CUSTOMER', hours: 4, who: [G.cloud], task: 'Move the cache and log store to managed services, or record the decision to keep the defaults' },
 
         { variant: 'ecs', anchor: 'connectivity', heading: '4.1 — Outbound: over the internet', owner: 'PANW / CUSTOMER', hours: 2, who: [G.security], task: 'Confirm the gateway reaches the management plane over the internet path' },
-        { variant: 'ecs', anchor: 'connectivity', heading: '4.2 — Outbound: over AWS PrivateLink', owner: 'PANW / CUSTOMER', hours: 6, who: [G.cloud, G.security], task: 'Establish the private outbound path over PrivateLink, or record the decision to stay on the internet path' },
         { variant: 'aca', anchor: 'connectivity', heading: '4.1 — Outbound: over the internet', owner: 'PANW / CUSTOMER', hours: 2, who: [G.security], task: 'Confirm the gateway reaches the management plane over the internet path' },
-        { variant: 'aca', anchor: 'connectivity', heading: '4.2 — Outbound: over Azure Private Link', owner: 'PANW / CUSTOMER', hours: 6, who: [G.cloud, G.security], task: 'Establish the private outbound path over Private Link, or record the decision to stay on the internet path' },
         { anchor: 'connectivity', heading: '4.3 — Inbound is not supported with Strata Cloud Manager today (both platforms)', owner: 'PANW / CUSTOMER', hours: 0.5, who: [G.security], task: 'Confirm with the security lead that inbound from the management plane is not required, since it is not supported' }
       ],
       milestone: { name: 'Connectivity Milestone', criteria: ['Gateway reachable from its intended callers and from nowhere else', 'Cache and log store decisions recorded, managed service or default', 'Outbound path to the management plane confirmed working', 'Private endpoint built, or the internet path decision recorded and accepted', 'Rollback for the network change documented and agreed'] },

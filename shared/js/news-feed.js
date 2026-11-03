@@ -37,6 +37,13 @@ var NEWS_VISIBLE_COUNT = 6;
 
 var NEWS_ITEMS = [
   {
+    badge: "Updated",
+    date: "2026-11-02",
+    title: "Private connectivity to the management plane was withdrawn",
+    href: "guides/ai-gateway/connectivity.html#direction",
+    tags: "Outbound HTTPS over the internet is the only path, PrivateLink Private Link and Private Service Connect procedures removed, Every endpoint service name and private hostname is gone, aws-cp.portkey.ai is now an ordinary internet endpoint, An endpoint built before 2026-11-02 still bills and points at nothing, How to remove one safely"
+  },
+  {
     badge: "New",
     date: "2026-11-02",
     title: "Hybrid gateway fault tolerance, and the cache is the weak point",
@@ -55,7 +62,7 @@ var NEWS_ITEMS = [
     date: "2026-10-30",
     title: "Model provider prerequisites, for eight catalog tiles",
     href: "guides/ai-gateway/ai-gateway-model-prerequisites.html",
-    tags: "Three values move an application not five steps, Per provider credential identifiers and permissions, Azure deployment names are not model names, Bedrock assumed role is hard with a hosted gateway, SDK minimum versions and the one hard limit, Where the latency actually goes, Written in Simplified Technical English"
+    tags: "Three values move an application not five steps, Per provider credential identifiers and permissions, Azure deployment names are not model names, Bedrock assumed role is hard with a hosted gateway, SDK minimum versions and the one hard limit, Where the latency actually goes"
   },
   {
     badge: "New",
