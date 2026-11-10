@@ -1,7 +1,7 @@
 # Terraform: AIGW hybrid lab on Azure
 
 Builds the Azure infrastructure, the AI Gateway data plane, and the Keycloak
-identity provider described in [`../aigw-hybrid-lab.html`](../aigw-hybrid-lab.html).
+identity provider described in [the lab guide](../index.html).
 Everything that can be automated is here. What remains is the Strata Cloud
 Manager work, which has no public API on this integration path.
 
