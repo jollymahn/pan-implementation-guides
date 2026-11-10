@@ -336,6 +336,16 @@ var CATALOG = [
   /* ── Labs ──────────────────────────────────────────────────────────── */
 
   {
+    id: 'labs-aigw-azure', section: 'Labs', accent: 'card-lab',
+    badge: 'Internal',
+    title: 'AIGW Hybrid Lab on Azure',
+    blurb: 'Build a self-hosted AI Gateway data plane on AKS, managed from Strata Cloud Manager, on free Azure credit.',
+    links: [
+      { t: 'Lab guide', h: 'labs/aigw-hybrid-azure/index.html', note: 'Seven phases, Terraform or PowerShell' }
+    ]
+  },
+
+  {
     id: 'labs', section: 'Labs', accent: 'card-lab',
     badge: 'Internal',
     title: 'AIRS MLOps Lab',

@@ -37,6 +37,13 @@ var NEWS_VISIBLE_COUNT = 6;
 
 var NEWS_ITEMS = [
   {
+    badge: "New",
+    date: "2026-11-10",
+    title: "AIGW Hybrid Lab on Azure, buildable on free Azure credit",
+    href: "labs/aigw-hybrid-azure/index.html",
+    tags: "Self-hosted AI Gateway data plane on AKS managed from Strata Cloud Manager, Terraform and native Az PowerShell both build the whole lab, Keycloak identity and an optional JWT demo application, Sized for a 200 dollar free-credit subscription at about 120 dollars a month, Four traffic flow diagrams, Why the 4 vCPU and 3 public IP ceilings shape the footprint, Why LOG_STORE stays unset on an outbound-only integration"
+  },
+  {
     badge: "Updated",
     date: "2026-11-02",
     title: "Private connectivity to the management plane was withdrawn",

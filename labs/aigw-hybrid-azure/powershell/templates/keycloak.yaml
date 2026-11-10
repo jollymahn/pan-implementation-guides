@@ -1,0 +1,123 @@
+# Rendered by 02-Install-Keycloak.ps1. The __PLACEHOLDER__ tokens are replaced
+# before the manifest reaches kubectl.
+#
+# start-dev runs H2 in dev-file mode under /opt/keycloak/data/h2, which lives
+# in the container's own writable layer. Without the volume below, every pod
+# replacement wipes clients, users, and mappers, and rotates the realm's
+# signing keys, so the JWKS pasted into SCM silently stops matching. A real
+# deployment uses `start` against Postgres with TLS terminated in front.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: keycloak-data
+  namespace: keycloak
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: __STORAGE_CLASS__
+  resources:
+    requests:
+      storage: __STORAGE_SIZE__
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  # Recreate, not RollingUpdate. On a single-node cluster the replacement pod
+  # cannot be scheduled alongside the outgoing one and the rollout hangs with
+  # "0/1 nodes are available: 1 Insufficient cpu". The data volume needs this
+  # too: an Azure managed disk is ReadWriteOnce, so the outgoing pod has to
+  # release it before the incoming one can attach.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      # The image runs as uid 1000, gid 0. A freshly provisioned Azure disk is
+      # owned by root, so without fsGroup the H2 file cannot be created and
+      # the container exits before the readiness probe ever runs.
+      securityContext:
+        fsGroup: 1000
+      volumes:
+      - name: keycloak-data
+        persistentVolumeClaim:
+          claimName: keycloak-data
+      containers:
+      - name: keycloak
+        image: __KEYCLOAK_IMAGE__
+        args: ["start-dev"]
+        volumeMounts:
+        - name: keycloak-data
+          mountPath: /opt/keycloak/data
+        env:
+        # Named explicitly rather than left to the start-dev default, so the
+        # pairing between this and the mounted volume above is visible.
+        - name: KC_DB
+          value: "dev-file"
+        - name: KC_BOOTSTRAP_ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-admin
+              key: username
+        - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-admin
+              key: password
+        - name: KC_PROXY_HEADERS
+          value: "xforwarded"
+        - name: KC_HTTP_ENABLED
+          value: "true"
+        - name: KC_HOSTNAME_STRICT
+          value: "false"
+        # Keycloak builds its OIDC discovery document from the Host header
+        # unless KC_HOSTNAME is set. The demo app calls Keycloak over cluster
+        # DNS while the browser is redirected to the load balancer address,
+        # and without a pinned hostname the two disagree on the issuer. The
+        # script inserts the entry below only when the address is known in
+        # advance, which is the case for an internal load balancer.
+__KC_HOSTNAME_ENV__
+        ports:
+        - name: http
+          containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /realms/master
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 300m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app: keycloak
+__SERVICE_ANNOTATIONS__
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: keycloak

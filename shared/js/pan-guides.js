@@ -703,6 +703,9 @@ const GLOBAL_NAV_GROUPS = [
   // Last, not second: training material you run in your own environment, not a
   // guide to a deployment. See SECTION_PINNED_LAST in build-catalog.js.
   { section: 'Labs' },
+  { id: 'labs-aigw-azure', label: 'AIGW Hybrid Lab on Azure', links: [
+    { t: 'Lab Guide', h: 'labs/aigw-hybrid-azure/index.html' },
+  ]},
   { id: 'labs', label: 'AIRS MLOps Lab', links: [
     { t: 'Overview', h: 'labs/airs-mlops/index.html' },
     { t: 'How the Lab Works', h: 'labs/airs-mlops/how-it-works.html', sub: true },

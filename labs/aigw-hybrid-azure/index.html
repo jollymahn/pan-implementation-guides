@@ -1,0 +1,2207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<title>Prisma AIRS AI Gateway Hybrid Lab on Azure | Implementation Guides</title>
+<link rel="stylesheet" href="../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="#top" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AIGW Hybrid Lab on Azure</span>
+  </a>
+  <nav class="header-nav">
+    <a href="#architecture-overview">Design</a>
+    <a href="#prepare-iac">Automation</a>
+    <a href="#troubleshooting">Troubleshooting</a>
+  </nav>
+</header>
+
+<!-- ── Layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Design</div>
+    <a href="#architecture-overview" data-section="architecture-overview">Architecture Overview</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prepare</div>
+    <a href="#prerequisites" data-section="prerequisites">Phase 1: Prerequisites</a>
+    <a href="#management-config" data-section="management-config">Phase 2: Configure SCM</a>
+    <a href="#review-checkpoint" data-section="review-checkpoint">Phase 3: Review Checkpoint</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Build</div>
+    <a href="#prepare-iac" data-section="prepare-iac">Phase 4: Prepare Automation</a>
+    <a href="#deploy-infrastructure" data-section="deploy-infrastructure">Phase 5: Deploy</a>
+    <a href="#app-onboarding" data-section="app-onboarding">Phase 6: Onboard Traffic</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Verify</div>
+    <a href="#verification" data-section="verification">Phase 7: Verification</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#cleanup" data-section="cleanup">Cleanup</a>
+    <a href="#reference" data-section="reference">Reference</a>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────── -->
+<main class="main-content">
+
+<div class="breadcrumb" id="top">
+  <a href="../../index.html">Home</a>
+  <span class="sep">|</span>
+  Hands-On Labs
+  <span class="sep">|</span>
+  AIGW Hybrid Lab on Azure
+</div>
+
+<div class="article">
+
+<h1>Prisma AIRS AI Gateway Hybrid Lab on Azure</h1>
+<p class="subtitle">End-to-end guide: an empty Azure subscription through a verified AI Gateway data plane on AKS, with Keycloak identity, a Windows traffic generator, and JWT-authenticated application traffic.</p>
+
+<div class="cloud-links">
+  <a href="terraform/README.md">Terraform module</a>
+  <a href="powershell/README.md">PowerShell scripts</a>
+  <a href="terraform/jwt-demo/">JWT demo app</a>
+</div>
+
+<div class="progress-phases">
+  <a href="#prerequisites" class="progress-phase active">
+    <span class="progress-phase-label">Phase 1</span>
+    Prerequisites
+  </a>
+  <a href="#management-config" class="progress-phase">
+    <span class="progress-phase-label">Phase 2</span>
+    Configure SCM
+  </a>
+  <a href="#review-checkpoint" class="progress-phase">
+    <span class="progress-phase-label">Phase 3</span>
+    Checkpoint
+  </a>
+  <a href="#prepare-iac" class="progress-phase">
+    <span class="progress-phase-label">Phase 4</span>
+    Prepare
+  </a>
+  <a href="#deploy-infrastructure" class="progress-phase">
+    <span class="progress-phase-label">Phase 5</span>
+    Deploy
+  </a>
+  <a href="#app-onboarding" class="progress-phase">
+    <span class="progress-phase-label">Phase 6</span>
+    Onboard
+  </a>
+  <a href="#verification" class="progress-phase">
+    <span class="progress-phase-label">Phase 7</span>
+    Verify
+  </a>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guide Approach</div>
+  <p>
+    This guide is management-first. Everything configurable in Strata Cloud Manager is configured
+    in Phase 2, before a single Azure resource exists, because the gateway's Helm values file is
+    produced by SCM and the deployment cannot start without it.
+  </p>
+  <p>
+    The design model is a single-region hub: one AKS cluster carrying the gateway data plane and
+    the identity provider, one VNet, and a Windows VM on a peer subnet acting as the traffic
+    source. There is no hub-and-spoke peering and no inbound path from the management plane,
+    because the <code>airs-gw</code> integration is outbound only.
+  </p>
+  <p>
+    Infrastructure is deployed by automation, not by hand. Two parallel implementations are
+    provided and either one builds the whole lab: a <a href="terraform/README.md">Terraform root
+    module</a> and a set of <a href="powershell/README.md">native Az PowerShell scripts</a>. Pick
+    one in Phase 4 and the tab selection follows you through Phase 5.
+  </p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Which Helm chart this guide follows</div>
+  <p>
+    This guide uses the <code>airs-gw</code> chart from
+    <code>https://portkey-ai.github.io/airs-gw-helm</code>, which is the chart the SCM Gateway
+    Registration wizard generates a <code>values.yaml</code> for. It is a different chart from
+    <code>portkey-ai/gateway</code>, the one documented on the platform deployment pages. The two
+    use different value keys, different registries, and different release names. Do not mix them.
+    Any reference you find to <code>docker.io/portkeyai/gateway_enterprise</code> belongs to the
+    other chart.
+  </p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="architecture-overview">Architecture Overview</h2>
+
+<p>
+  The lab is a self-hosted AI Gateway data plane running on AKS, registered to and managed by
+  Strata Cloud Manager. Application traffic enters the gateway, the gateway calls the upstream LLM
+  provider using credentials stored in SCM's Model Catalog, and telemetry flows back out to the
+  management plane. Nothing reaches into the cluster from outside.
+</p>
+
+<p><em>Topology: what runs where, and which direction each link is opened from.</em></p>
+<img src="diagrams/architecture-overview.svg"
+     alt="Lab topology. A VNet at 10.0.0.0/16 holds an aks-subnet at 10.0.1.0/24 running the airs-gw gateway, Keycloak and the optional JWT demo app on a single AKS node, each behind a load balancer, and a vm-subnet at 10.0.2.0/24 holding the Windows traffic generator. The gateway opens outbound HTTPS to Strata Cloud Manager and the LLM provider. A red crossed line marks the absence of any inbound path from SCM into the cluster."
+     loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Components and what each one costs</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Component</th><th>Specification</th><th>Estimated cost per month</th></tr>
+      <tr><td>AKS cluster</td><td>1 x <code>Standard_D2als_v7</code> (2 vCPU, 4 GiB), no zone pinning</td><td>~$35</td></tr>
+      <tr><td>AIGW data plane</td><td><code>airs-gw</code> chart, bundled Redis, LoadBalancer Service</td><td>$0, runs on AKS</td></tr>
+      <tr><td>Keycloak</td><td>Pod on AKS, internal LoadBalancer Service</td><td>$0, runs on AKS</td></tr>
+      <tr><td>Windows VM</td><td><code>Standard_D2als_v7</code> (2 vCPU, 4 GiB), RDP</td><td>~$70</td></tr>
+      <tr><td>Networking</td><td>VNet, load balancers, 3 Standard public IPs</td><td>~$15</td></tr>
+      <tr><td><strong>Total</strong></td><td></td><td><strong>~$120</strong></td></tr>
+    </table>
+    <p>
+      Sized for a <code>$200</code> Azure free-credit subscription, which runs the lab for roughly
+      six weeks. Deallocating the Windows VM between sessions roughly halves the burn.
+    </p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        Check the credit balance at
+        <a href="https://portal.azure.com/#view/Microsoft_Azure_GTM/ModernBillingMenuBlade">Azure Portal, Cost Management</a>
+        before starting. Less than <code>$120</code> remaining means the lab will not survive a
+        full month, so plan to tear down between sessions.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Traffic flow &mdash; what talks to what</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>From</th><th>To</th><th>Path</th><th>Why</th></tr>
+      <tr><td>Windows VM</td><td>Gateway LoadBalancer</td><td>VNet, port 80</td><td>Application traffic</td></tr>
+      <tr><td>Windows VM</td><td>Keycloak internal LoadBalancer</td><td>VNet, port 80</td><td>Browser login for the JWT demo</td></tr>
+      <tr><td>Gateway pod</td><td><code>api.portkey.ai</code></td><td>Outbound HTTPS</td><td>Config sync, analytics, heartbeat</td></tr>
+      <tr><td>Gateway pod</td><td><code>registry.portkey.ai</code></td><td>Outbound HTTPS</td><td>Image pull</td></tr>
+      <tr><td>Gateway pod</td><td>LLM provider</td><td>Outbound HTTPS</td><td>Upstream completions</td></tr>
+      <tr><td>Demo app pod</td><td>Keycloak</td><td>Cluster DNS</td><td>OIDC discovery and token exchange</td></tr>
+      <tr><td>SCM backend</td><td>Your cluster</td><td><strong>No path</strong></td><td>This integration is outbound only</td></tr>
+    </table>
+    <p>
+      That last row drives one of the most consequential decisions in this guide. Because SCM's
+      backend cannot reach into the cluster, it also cannot read a log store that lives there. See
+      the log store step in Phase 2.
+    </p>
+
+    <p><em>Management plane: every link is opened by the gateway, which is what rules out a self-hosted log store.</em></p>
+    <img src="diagrams/management-plane-flow.svg"
+         alt="Management plane flow. The airs-gw gateway pod opens two outbound HTTPS connections to Strata Cloud Manager: a config sync and heartbeat that pulls provider credentials down, and a telemetry push that sends request metadata and bodies out. The gateway can write to a LOG_STORE inside the environment, but a crossed red line shows SCM has no inbound path to read it, so every log detail view fails with Resource not found."
+         loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        After deployment, confirm the outbound path from inside a gateway pod. A response code of
+        any kind proves reachability:
+      </p>
+      <div class="code-block">
+        <pre><code>kubectl exec -n airs-gw &lt;GATEWAY_POD&gt; -- \
+  curl -sS -o /dev/null -w '%{http_code}\n' https://api.portkey.ai</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Address plan</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Range</th><th>Purpose</th><th>Notes</th></tr>
+      <tr><td><code>10.0.0.0/16</code></td><td>VNet address space</td><td></td></tr>
+      <tr><td><code>10.0.1.0/24</code></td><td><code>aks-subnet</code></td><td>Azure CNI assigns both node and pod addresses from here</td></tr>
+      <tr><td><code>10.0.1.250</code></td><td>Keycloak internal LoadBalancer</td><td>Pinned so <code>KC_HOSTNAME</code> can be set before the Service exists</td></tr>
+      <tr><td><code>10.0.1.251</code></td><td>JWT demo app internal LoadBalancer</td><td>Pinned so the Keycloak redirect URI can be set in one pass</td></tr>
+      <tr><td><code>10.0.2.0/24</code></td><td><code>vm-subnet</code></td><td>Windows traffic generator</td></tr>
+      <tr><td><code>172.16.0.0/16</code></td><td>Kubernetes service CIDR</td><td>Outside the VNet on purpose</td></tr>
+      <tr><td><code>172.16.0.10</code></td><td>Cluster DNS</td><td>Derived from the service CIDR</td></tr>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Why the service CIDR is not the AKS default</div>
+      <p>
+        AKS defaults its service CIDR to <code>10.0.0.0/16</code>, which is exactly the VNet
+        address space above. Cluster creation then fails with
+        <code>ServiceCidrOverlapExistingSubnetsCidr</code>. Both automation paths set
+        <code>172.16.0.0/16</code> instead and derive the DNS service address from it, so the two
+        cannot drift apart.
+      </p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After the cluster exists, confirm the ranges:</p>
+      <div class="code-block">
+        <pre><code>az aks show --resource-group aigw-lab-rg --name aigw-lab-aks \
+  --query '{service:networkProfile.serviceCidr,dns:networkProfile.dnsServiceIp}' -o table</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>The output reads <code>172.16.0.0/16</code> and <code>172.16.0.10</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>The two quota walls &mdash; read this before sizing anything</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      A free-tier subscription imposes two limits that shape every sizing decision in this lab.
+      Both are checked by the automation before anything is created, because Azure itself reports
+      them only after several minutes of provisioning.
+    </p>
+    <table>
+      <tr><th>Limit</th><th>Default value</th><th>Consumed by</th></tr>
+      <tr><td>Total Regional Cores</td><td>4 vCPU</td><td>1 AKS node (2) plus the Windows VM (2)</td></tr>
+      <tr><td>Standard public IPs</td><td>3</td><td>AKS outbound, gateway LoadBalancer, Windows VM</td></tr>
+    </table>
+    <p>
+      The consequences are concrete. A two-node cluster and the Windows VM cannot run at the same
+      time. Keycloak cannot have a public address, so it goes behind an internal load balancer and
+      is reached from the Windows VM rather than from a browser on your workstation.
+    </p>
+    <div class="callout callout-danger">
+      <div class="callout-title">A self-service quota increase is not available on free tier</div>
+      <p>
+        Requesting more cores through the <code>Microsoft.Quota</code> REST API fails after a short
+        delay with <code>provisioningState: Failed</code> and
+        <code>error.code: ResourceNotAvailableForOffer</code>. An Azure Portal support ticket is the
+        only route, and it is not instant. For a lab, scaling the node pool is faster and costs
+        nothing.
+      </p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Read your actual limits before committing to a size:</p>
+      <div class="code-block">
+        <pre><code>SUB=$(az account show --query id -o tsv)
+az rest --method get \
+  --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.Compute/locations/centralus/usages?api-version=2024-07-01" \
+  --query "value[?name.value=='cores']" -o table</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>
+        A <code>limit</code> of 4 confirms the free-tier defaults in this guide apply unchanged. A
+        higher number means the footprint can grow, and Phase 4 shows which variables to raise.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="prerequisites">Phase 1: Prerequisites</h2>
+
+<p>
+  Four things have to be true before any automation runs: the tooling is installed, the Azure
+  subscription is signed in and has its resource providers registered, the regional quotas are
+  known, and the chosen VM size is actually offered in the region.
+</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.1: Install the tooling</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      Both automation paths need <code>kubectl</code> and <code>helm</code>, because the Kubernetes
+      layer has no Azure-native equivalent. Beyond that, the Terraform path needs the Terraform CLI
+      and the PowerShell path needs the Az modules.
+    </p>
+
+    <div class="mgmt-tabs" data-tab-group="iac">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="terraform">4A &middot; Terraform</button>
+        <button class="mgmt-tab" data-plane="powershell">4B &middot; PowerShell</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="terraform">
+        <div class="code-block">
+          <pre><code>brew install azure-cli kubectl helm terraform
+
+az version
+kubectl version --client
+helm version
+terraform version</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Terraform 1.5.0 or newer. The module uses <code>terraform_data</code> preconditions, which landed in 1.4.</p>
+      </div>
+
+      <div class="mgmt-panel" data-plane="powershell">
+        <div class="code-block">
+          <pre><code>Install-Module Az.Accounts, Az.Resources, Az.Network, Az.Aks, Az.Compute -Scope CurrentUser
+Install-Module Az.ContainerRegistry -Scope CurrentUser   # only needed for the Phase 6 demo
+
+az aks install-cli        # kubectl
+winget install Helm.Helm  # or: brew install helm</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>
+          PowerShell 7 or newer. The scripts use <code>Set-StrictMode -Version Latest</code> and the
+          <code>$IsMacOS</code> automatic variable, neither of which behaves the same under Windows
+          PowerShell 5.1.
+        </p>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        Every version command returns a version string rather than
+        <code>command not found</code>. The automation re-checks this in Phase 4 and fails with an
+        install hint rather than a stack trace.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.2: Sign in and register the resource providers</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      Free-tier and newly created subscriptions frequently have the providers AKS depends on left
+      unregistered. The symptom appears several minutes into cluster creation as
+      <code>MissingSubscriptionRegistration</code>, so registering up front is worth the two
+      minutes.
+    </p>
+
+    <div class="mgmt-tabs" data-tab-group="iac">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="terraform">4A &middot; Terraform</button>
+        <button class="mgmt-tab" data-plane="powershell">4B &middot; PowerShell</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="terraform">
+        <div class="code-block">
+          <pre><code>az login
+az account set --subscription "&lt;SUBSCRIPTION_ID&gt;"
+
+for ns in Microsoft.ContainerService Microsoft.Network Microsoft.Compute Microsoft.Storage; do
+  az provider register --namespace "$ns"
+done
+
+az provider show --namespace Microsoft.ContainerService --query registrationState -o tsv</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+
+      <div class="mgmt-panel" data-plane="powershell">
+        <div class="code-block">
+          <pre><code>Connect-AzAccount
+Set-AzContext -Subscription '&lt;SUBSCRIPTION_ID&gt;'
+
+'Microsoft.ContainerService', 'Microsoft.Network', 'Microsoft.Compute', 'Microsoft.Storage' |
+    ForEach-Object { Register-AzResourceProvider -ProviderNamespace $_ }
+
+(Get-AzResourceProvider -ProviderNamespace Microsoft.ContainerService)[0].RegistrationState</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Contributor alone is not enough</div>
+      <p>
+        Both automation paths create a role assignment, granting the AKS cluster identity Network
+        Contributor on the VNet so internal load balancers can be placed. Creating a role assignment
+        needs Owner or User Access Administrator on the subscription. A Contributor-only account
+        fails with <code>AuthorizationFailed</code> on
+        <code>Microsoft.Authorization/roleAssignments/write</code>, and the Keycloak Service then
+        never gets an address. Check your own role:
+      </p>
+      <div class="code-block">
+        <pre><code>az role assignment list --assignee "$(az account show --query user.name -o tsv)" \
+  --query "[].roleDefinitionName" -o tsv</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>
+        Without that level of access, ask an administrator to create the assignment after the
+        cluster exists. The command is in the Troubleshooting entry on
+        <code>SyncLoadBalancerFailed</code>.
+      </p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        The registration state reads <code>Registered</code>, not <code>Registering</code>.
+        Registration takes a minute or two per provider and only has to happen once per
+        subscription.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.3: Record your regional quotas</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      Both automation paths carry a quota budget that fails the deployment before anything is
+      created when the requested footprint will not fit. The budget starts at the free-tier
+      defaults, so a subscription with more headroom needs the numbers corrected or the lab builds
+      smaller than it has to.
+    </p>
+
+    <ol>
+      <li>Read the Total Regional Cores limit for your region.</li>
+      <li>Read the Standard public IP limit for the same region.</li>
+      <li>Note both. Phase 4 sets them as inputs.</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>SUB=$(az account show --query id -o tsv)
+LOCATION=centralus
+
+# Total Regional Cores
+az rest --method get \
+  --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.Compute/locations/$LOCATION/usages?api-version=2024-07-01" \
+  --query "value[?name.value=='cores'].{name:name.value,used:currentValue,limit:limit}" -o table
+
+# Standard public IPs
+az network list-usages --location $LOCATION \
+  --query "[?contains(name.value,'PublicIPAddresses')].{name:name.localizedValue,used:currentValue,limit:limit}" -o table</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both commands return a numeric limit. A cores limit of 4 and a public IP limit of 3 match the defaults in this guide. If a limit is higher, record it for Phase 4.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1.4: Confirm the VM size is available</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      <code>Standard_D2als_v7</code> is the size this lab was validated on, for both the AKS nodes
+      and the Windows VM. It is not an arbitrary choice. <code>Standard_B2s</code> and
+      <code>Standard_B2als_v2</code> were both rejected on the subscription this lab was built on,
+      with <code>VMSizeNotSupported</code>, <code>RestrictedVMSize</code>, and later
+      <code>SkuNotAvailable</code>.
+    </p>
+
+    <div class="code-block">
+      <pre><code>az vm list-skus --location centralus --size Standard_D2als --output table
+
+# Restrictions on a specific size. An empty result means it is usable.
+az vm list-skus --location centralus --size Standard_D2als_v7 \
+  --query "[0].restrictions" -o json</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Being offered is not the same as having capacity</div>
+      <p>
+        A size can pass this check and still fail at create time with <code>SkuNotAvailable</code>
+        and the message "Following SKUs have failed for Capacity Restrictions". That is a regional
+        capacity problem rather than a quota problem, and the fix is a different size or a different
+        region. If that happens, the Azure Portal's AKS creation wizard is a useful oracle: it
+        filters its size list to what your subscription can actually use. Read a working size from
+        there, then pass it to the automation.
+      </p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>[]</code> comes back from the restrictions query. An array that is not empty gives the restriction type and the related zones or locations. If you see this, select a different size.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="management-config">Phase 2: Configure Strata Cloud Manager</h2>
+
+<p>
+  Everything in this phase happens in the SCM browser UI, and all of it happens before Azure is
+  touched. The deployment cannot start without the <code>values.yaml</code> produced here, and the
+  first test request cannot succeed without the provider and the API key.
+</p>
+
+<div class="callout callout-danger">
+  <div class="callout-title">values.yaml is a credential file</div>
+  <p>
+    The file downloaded in the first step carries your container registry password and your
+    <code>PORTKEY_CLIENT_AUTH</code> key. Never commit it. Both automation paths list it in
+    <code>.gitignore</code>, and both read it from disk rather than copying its contents into
+    source. Keep a backup in a password manager.
+  </p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.1: Register the gateway and download values.yaml</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      Registration creates the identity the data plane uses to report in to the management plane,
+      and produces the Helm values file that carries that identity.
+    </p>
+
+    <ol>
+      <li>Open Strata Cloud Manager and go to <strong>AI Gateway &gt; Admin Settings &gt; Gateway Registration</strong>.</li>
+      <li>Click <strong>Register Gateway</strong> and give it a name, for example <code>aigw-azure-lab</code>.</li>
+      <li>Work through to the <strong>Configure Gateway Deployment</strong> screen.</li>
+      <li>Download <code>values.yaml</code>.</li>
+      <li>Record your Organisation ID from the browser address bar: <code>https://stratacloudmanager.paloaltonetworks.com/&lt;org_id&gt;/</code>.</li>
+    </ol>
+
+    <p>The downloaded file looks like this, with real values in place of the placeholders:</p>
+
+    <div class="code-block">
+      <pre><code>imageCredentials:
+  - name: airsgatewayregistrycredentials
+    create: true
+    registry: "https://registry.portkey.ai"
+    username: &lt;populated by the wizard&gt;
+    password: &lt;populated by the wizard&gt;
+
+environment:
+  create: true
+  secret: true
+  data:
+    PORTKEY_CLIENT_AUTH: &lt;populated by the wizard&gt;
+    ORGANISATIONS_TO_SYNC: &lt;populated by the wizard&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">British spelling in the product</div>
+      <p>
+        <code>ORGANISATIONS_TO_SYNC</code> and the <strong>Organisation ID</strong> field use the
+        vendor's spelling. These are literal names, not typographical errors, and renaming them
+        breaks the deployment.
+      </p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The file that you downloaded contains all four of <code>imageCredentials</code>, <code>registry.portkey.ai</code>, <code>PORTKEY_CLIENT_AUTH</code>, and <code>ORGANISATIONS_TO_SYNC</code>. If the file does not have one of them, the wizard did not complete. Register a new gateway and download the file again.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.2: Add an LLM provider to the Model Catalog</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      The gateway holds no provider credentials of its own. It reads them from SCM over the
+      outbound config sync, which means the provider has to exist before the first request works.
+    </p>
+
+    <ol>
+      <li>Go to <strong>AI Gateway &gt; Model Catalog</strong>. Older SCM versions label this <strong>Integrations</strong>.</li>
+      <li>Add your provider, for example OpenAI, with a real and currently active API key.</li>
+      <li>Give the integration a <strong>slug</strong>. <code>openai</code> is the slug this guide assumes throughout.</li>
+      <li>Save.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Type the API key, do not paste and edit it</div>
+      <p>
+        A character above <code>U+00FF</code> anywhere in a stored provider key crashes the gateway
+        on every single request, before it ever looks at the request body, with
+        <code>TypeError: Cannot convert argument to a ByteString</code>. The usual cause is a shell
+        prompt glyph such as <code>&#10095;</code> picked up while copying from a terminal. Pasting a
+        key of the wrong type into the field, for example an OpenAI key into an Anthropic slot,
+        produces the same crash.
+      </p>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Reference the slug in the model field, not in a header</div>
+      <p>
+        Organizations with <code>block_inline_config</code> enabled, which is the common default,
+        reject the <code>x-portkey-provider</code> header with <code>inline_provider_blocked</code>.
+        Every request in this guide names the integration in the model field instead, as
+        <code>@&lt;slug&gt;/&lt;model&gt;</code>, and sends no provider header at all.
+      </p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        The integration appears in the Model Catalog list with the slug you chose and a status of
+        active. The slug is what Phase 6 puts in the model field, so copy it exactly.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.3: Create a Workspace API Key</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      This key authenticates application traffic to the gateway. It is separate from the
+      <code>PORTKEY_CLIENT_AUTH</code> value in <code>values.yaml</code>, which authenticates the
+      gateway to the management plane.
+    </p>
+
+    <ol>
+      <li>Go to <strong>AI Gateway &gt; API Keys</strong>.</li>
+      <li>Create a key, sometimes labeled a Gateway key or a service-account key.</li>
+      <li>Copy it immediately. SCM shows the value once.</li>
+      <li>Store it in a password manager, and export it in your shell for the Phase 6 tests.</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code># Keeps the key out of shell history and out of the guide's copy buttons.
+read -rs SCM_WORKSPACE_KEY &amp;&amp; export SCM_WORKSPACE_KEY</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>echo ${#SCM_WORKSPACE_KEY}</code> returns a length that is more than zero. Phase 6 tests the key against the gateway. This is not possible now, because the gateway does not exist yet.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2.4: Decide where prompt and response bodies are stored</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      The chart supports a self-hosted log store: bundled MinIO, or your own S3, Azure Blob, or GCS
+      bucket, selected with <code>LOG_STORE</code>. This guide leaves it unset, and that is a
+      deliberate decision rather than an omission.
+    </p>
+
+    <table>
+      <tr><th>Option</th><th>Write path</th><th>SCM log detail view</th><th>Where bodies live</th></tr>
+      <tr><td><code>LOG_STORE</code> unset (this guide)</td><td>Works</td><td>Works</td><td>Palo Alto Networks SCM backend, Americas region</td></tr>
+      <tr><td><code>LOG_STORE: azure</code></td><td>Works</td><td><strong>Fails every time</strong></td><td>Your storage account</td></tr>
+      <tr><td>Bundled MinIO</td><td>Image will not pull</td><td>n/a</td><td>n/a</td></tr>
+    </table>
+
+    <p>
+      Two independent things rule out self-hosting on this integration path. MinIO has locked both
+      <code>docker.io/minio/minio</code> and <code>quay.io/minio/minio</code> behind authentication
+      for every tag including <code>latest</code>, so the bundled option no longer pulls. Pointing
+      <code>LOG_STORE</code> at your own bucket does write correctly, verified directly against a
+      test Azure Storage Account, but clicking a log entry in SCM returns
+      <code>Error: Resource not found. Please try again.</code> every time. The Dashboard needs its
+      backend to read the body back, and on an outbound-only integration there is no path for it to
+      reach a store inside your environment.
+    </p>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Do not let a customer assume self-hosting keeps prompts local without stating the cost</div>
+      <p>
+        Leaving <code>LOG_STORE</code> unset means full prompt and response bodies are held by the
+        SCM backend rather than staying in the customer's environment. For a lab that wants working
+        logs, that is the right trade. For a deployment where data residency is a requirement, the
+        trade-off has to be a documented decision, and the person making it needs to know that
+        self-hosting the store currently breaks log viewing rather than relocating the data.
+      </p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You do not have to do anything to accept the default. To confirm your choice, make sure that the generated overlay has no <code>LOG_STORE</code> key:</p>
+      <div class="code-block">
+        <pre><code>grep -c LOG_STORE terraform/values.yaml || echo "not present, correct"</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="review-checkpoint">Phase 3: Review Checkpoint</h2>
+
+<p>
+  A hard gate. Everything below has to be true before any automation runs. Each item that is false
+  costs between ten minutes and a full rebuild to discover later.
+</p>
+
+<ul class="checklist">
+  <li>You installed the Azure CLI, <code>kubectl</code>, and <code>helm</code>. Each one reports a version.</li>
+  <li>You installed Terraform 1.5+ or PowerShell 7 with the Az modules for the path that you selected.</li>
+  <li>Signed in to the correct subscription, confirmed with <code>az account show</code> or <code>Get-AzContext</code>.</li>
+  <li>All four resource providers report <code>Registered</code>.</li>
+  <li>Total Regional Cores limit recorded for the target region.</li>
+  <li>Standard public IP limit recorded for the same region.</li>
+  <li><code>Standard_D2als_v7</code>, or a substitute, returns an empty restrictions array.</li>
+  <li>You registered a gateway in SCM and downloaded <code>values.yaml</code>.</li>
+  <li><code>values.yaml</code> contains <code>imageCredentials</code>, <code>PORTKEY_CLIENT_AUTH</code>, and <code>ORGANISATIONS_TO_SYNC</code>.</li>
+  <li>An LLM provider exists in the Model Catalog with a slug and a freshly typed API key.</li>
+  <li>You created a Workspace API Key and stored it.</li>
+  <li>The log store decision is understood and accepted.</li>
+</ul>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Every box has a tick. The automation checks most of these again in Phase 4. If a check fails, the automation does not start. A manual check here is faster than a failure message.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="prepare-iac">Phase 4: Prepare the Automation</h2>
+
+<p>Select one implementation. The two paths build the same lab. Each one is idempotent, and each one automates all the steps that it can. The remaining steps use the SCM browser interface. Your selection stays for the full page, and Phase 5 uses the tab that you select here.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Choosing a path</div>
+  <ul>
+    <li><strong>Terraform</strong> &mdash; state-tracked, declarative, and the only path that also automates the Phase 6 Keycloak realm. Pick this unless something rules it out.</li>
+    <li><strong>PowerShell</strong> &mdash; native Az cmdlets with no state file and no extra tooling to approve. Pick this on Windows, in a locked-down environment, or when reading sequential cmdlets is easier than reading HCL.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="iac">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="terraform">4A &middot; Terraform</button>
+    <button class="mgmt-tab" data-plane="powershell">4B &middot; PowerShell</button>
+  </div>
+
+  <!-- ── Terraform ───────────────────────────────────────────── -->
+  <div class="mgmt-panel active" data-plane="terraform">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 4A.1: Place the SCM values file</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The module reads the wizard's file from the disk. It then adds a generated overlay on top of the file. Because of this, the credentials do not go through a Terraform variable. They also do not go into a tfvars file.</p>
+        <div class="code-block">
+          <pre><code>cd terraform
+cp ~/Downloads/values.yaml .</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>Helm merges value files from left to right with a deep map merge. The wizard's file goes first, then the overlay. The overlay adds the Service block, and later the JWT settings. Helm does not change the content of the wizard's file.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <div class="code-block">
+            <pre><code>ls -l values.yaml &amp;&amp; grep -c PORTKEY_CLIENT_AUTH values.yaml</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>The file exists and the grep returns <code>1</code>. <code>git status</code> does not list it, because <code>.gitignore</code> covers it.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 4A.2: Set the variables</span>
+      </div>
+      <div class="collapsible-body">
+        <p>
+          The defaults already describe the validated free-tier lab, so an empty
+          <code>terraform.tfvars</code> is a working one. Override only what your subscription
+          needs.
+        </p>
+        <div class="code-block">
+          <pre><code>cp terraform.tfvars.example terraform.tfvars</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <table>
+          <tr><th>Variable</th><th>Default</th><th>Change it when</th></tr>
+          <tr><td><code>location</code></td><td><code>centralus</code></td><td>Another region suits you better</td></tr>
+          <tr><td><code>lab_mode</code></td><td><code>true</code></td><td>Your quotas are above the free-tier defaults</td></tr>
+          <tr><td><code>regional_core_quota</code></td><td><code>4</code></td><td>Step 1.3 reported a different number</td></tr>
+          <tr><td><code>public_ip_quota</code></td><td><code>3</code></td><td>Step 1.3 reported a different number</td></tr>
+          <tr><td><code>aks_node_count</code></td><td><code>1</code></td><td>You have 8 or more cores and want two nodes</td></tr>
+          <tr><td><code>aks_node_vm_size</code></td><td><code>Standard_D2als_v7</code></td><td>Step 1.4 showed restrictions</td></tr>
+          <tr><td><code>keycloak_internal_lb</code></td><td>follows <code>lab_mode</code></td><td>You have a spare public IP and want browser access</td></tr>
+          <tr><td><code>keycloak_persistence</code></td><td><code>true</code></td><td>Rarely. Turning it off means the realm and its signing keys die with the pod</td></tr>
+          <tr><td><code>rdp_source_address_prefix</code></td><td><code>*</code></td><td>Always, for anything longer than a short session</td></tr>
+          <tr><td><code>enable_jwt_auth</code></td><td><code>false</code></td><td>You are going on to Phase 6</td></tr>
+        </table>
+
+        <p>
+          Changing a VM size means changing the matching vCPU count as well, or the quota
+          precondition checks the wrong number and the deployment fails late instead of early:
+        </p>
+        <div class="code-block">
+          <pre><code>aks_node_vm_size = "Standard_D4als_v7"
+aks_node_vcpus   = 4</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Restrict RDP</div>
+          <p>
+            The default of <code>*</code> opens port 3389 to the internet. Find your address with
+            <code>curl -s ifconfig.me</code> and set
+            <code>rdp_source_address_prefix = "203.0.113.42/32"</code>.
+          </p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <div class="code-block">
+            <pre><code>terraform init
+terraform console &lt;&lt;&lt; 'local.cores_requested'</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>
+            The console prints the vCPU total your settings will consume. On the defaults that is
+            <code>4</code>, which exactly fills a free-tier quota.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 4A.3: Plan, and read the preflight output</span>
+      </div>
+      <div class="collapsible-body">
+        <p>
+          The plan runs four preconditions before it describes a single resource. Each one catches a
+          failure that Azure otherwise reports several minutes into provisioning.
+        </p>
+
+        <div class="code-block">
+          <pre><code>terraform plan</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <table>
+          <tr><th>Precondition</th><th>What it prevents</th></tr>
+          <tr><td>values file present</td><td>A failed Helm release after the cluster is already built</td></tr>
+          <tr><td>vCPU budget</td><td><code>InsufficientVCPUQuota</code> partway through VM creation</td></tr>
+          <tr><td>Public IP budget</td><td><code>PublicIPCountLimitReached</code> on the last resource</td></tr>
+          <tr><td>Service CIDR does not match the VNet</td><td><code>ServiceCidrOverlapExistingSubnetsCidr</code></td></tr>
+        </table>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The plan completes and reports about 20 resources to add. If a precondition fails, the message shows the calculation and gives the variable to change. Read the message before you run the command again.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /terraform panel -->
+
+  <!-- ── PowerShell ──────────────────────────────────────────── -->
+  <div class="mgmt-panel" data-plane="powershell">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 4B.1: Place the SCM values file</span>
+      </div>
+      <div class="collapsible-body">
+        <p>
+          The scripts read the wizard's file from disk and generate a small overlay beside it, so
+          the credentials stay out of the parameter file.
+        </p>
+        <div class="code-block">
+          <pre><code>cd powershell
+Copy-Item ~/Downloads/values.yaml .</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <div class="code-block">
+            <pre><code>Select-String -Path values.yaml -Pattern 'PORTKEY_CLIENT_AUTH' -Quiet</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>Returns <code>True</code>. <code>.gitignore</code> contains the file.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 4B.2: Edit Lab.parameters.psd1</span>
+      </div>
+      <div class="collapsible-body">
+        <p>
+          One file holds every input. The defaults describe the validated free-tier lab, so most
+          runs change nothing but the RDP source address.
+        </p>
+
+        <table>
+          <tr><th>Key</th><th>Default</th><th>Change it when</th></tr>
+          <tr><td><code>Location</code></td><td><code>centralus</code></td><td>Another region suits you better</td></tr>
+          <tr><td><code>LabMode</code></td><td><code>$true</code></td><td>Your quotas are above the free-tier defaults</td></tr>
+          <tr><td><code>RegionalCoreQuota</code></td><td><code>4</code></td><td>Step 1.3 reported a different number</td></tr>
+          <tr><td><code>PublicIpQuota</code></td><td><code>3</code></td><td>Step 1.3 reported a different number</td></tr>
+          <tr><td><code>AksNodeCount</code></td><td><code>1</code></td><td>You have 8 or more cores and want two nodes</td></tr>
+          <tr><td><code>NodeVmSize</code> and <code>NodeVcpus</code></td><td><code>Standard_D2als_v7</code>, <code>2</code></td><td>Step 1.4 showed restrictions. Change both together.</td></tr>
+          <tr><td><code>KeycloakInternalLb</code></td><td><code>$true</code></td><td>You have a spare public IP and want browser access</td></tr>
+          <tr><td><code>RdpSourceAddressPrefix</code></td><td><code>*</code></td><td>Always, for anything longer than a short session</td></tr>
+          <tr><td><code>EnableJwtAuth</code></td><td><code>$false</code></td><td>You are going on to Phase 6</td></tr>
+        </table>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Restrict RDP</div>
+          <p>
+            The default of <code>*</code> opens port 3389 to the internet. Find your address with
+            <code>(Invoke-RestMethod ifconfig.me/ip)</code> and set the prefix to
+            <code>203.0.113.42/32</code>.
+          </p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <div class="code-block">
+            <pre><code>Import-PowerShellDataFile ./Lab.parameters.psd1 | Format-List Prefix, Location, AksNodeCount, NodeVmSize</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <p>The file parses and prints your values. A parse error names the line to fix.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 4B.3: Run the prerequisite check</span>
+      </div>
+      <div class="collapsible-body">
+        <p>
+          This is the PowerShell equivalent of the Terraform preconditions, and it checks more
+          besides: modules, tooling, sign-in, provider registration, live VM size availability, the
+          quota budget against what Azure actually reports, and the contents of the values file.
+        </p>
+
+        <div class="code-block">
+          <pre><code>./00-Test-Prerequisites.ps1</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>
+          Where the configured quota and the reported quota disagree, the script says so rather than
+          guessing, because a stale <code>RegionalCoreQuota</code> silently shrinks the lab.
+        </p>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>
+            The script exits 0 and prints <code>All prerequisites satisfied</code>. A non-zero exit
+            lists each item with the exact command that fixes it.
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /powershell panel -->
+</div><!-- /mgmt-tabs -->
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="deploy-infrastructure">Phase 5: Deploy and Verify the Infrastructure</h2>
+
+<p>
+  One command builds the resource group, VNet, AKS cluster, the role assignment internal load
+  balancers depend on, Keycloak, the gateway Helm release, and the Windows VM. Budget 15 to 20
+  minutes, most of it AKS and the VM.
+</p>
+
+<div class="mgmt-tabs" data-tab-group="iac">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="terraform">4A &middot; Terraform</button>
+    <button class="mgmt-tab" data-plane="powershell">4B &middot; PowerShell</button>
+  </div>
+
+  <!-- ── Terraform ───────────────────────────────────────────── -->
+  <div class="mgmt-panel active" data-plane="terraform">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5A.1: Apply</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code>terraform apply</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">If the apply reports an unknown provider configuration</div>
+          <p>
+            The kubernetes and helm providers take their credentials from the AKS resource, which
+            does not exist yet on the first run. Terraform normally resolves this by ordering, but in
+            a fresh workspace it occasionally cannot. Build the cluster on its own, then run the full
+            apply:
+          </p>
+          <div class="code-block">
+            <pre><code>terraform apply -target=azurerm_kubernetes_cluster.aks
+terraform apply</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The apply completes with <code>Apply complete!</code> and an outputs block. If a resource has an error, the failure message gives its name. Run the apply again, and it continues from that resource.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5A.2: Read the outputs and connect kubectl</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code>terraform output
+
+# Credentials are marked sensitive, so read them explicitly.
+terraform output -raw windows_admin_password
+terraform output -raw keycloak_admin_password
+
+# Point the local kubectl at the new cluster.
+eval "$(terraform output -raw kubectl_credentials_command)"</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <table>
+          <tr><th>Output</th><th>What it is for</th></tr>
+          <tr><td><code>scm_gateway_url</code></td><td>Pasted into SCM in Phase 6</td></tr>
+          <tr><td><code>scm_mcp_gateway_url</code></td><td>Pasted into SCM in Phase 6</td></tr>
+          <tr><td><code>gateway_health_check</code></td><td>A ready-made curl command</td></tr>
+          <tr><td><code>keycloak_url</code></td><td>Internal address, reached from the Windows VM</td></tr>
+          <tr><td><code>windows_vm_public_ip</code></td><td>RDP target</td></tr>
+          <tr><td><code>quota_budget</code></td><td>What the footprint consumed against each limit</td></tr>
+        </table>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>
+            <code>gateway_public_ip</code> shows an address rather than <code>pending</code>, and
+            <code>kubectl get nodes</code> lists the node in <code>Ready</code> state.
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /terraform panel -->
+
+  <!-- ── PowerShell ──────────────────────────────────────────── -->
+  <div class="mgmt-panel" data-plane="powershell">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5B.1: Deploy</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="code-block">
+          <pre><code>./Deploy-Lab.ps1</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>
+          The orchestrator runs scripts <code>00</code> through <code>05</code> in order. Each one is
+          idempotent, so a failure can be fixed and the sequence resumed rather than restarted:
+        </p>
+
+        <div class="code-block">
+          <pre><code>./Deploy-Lab.ps1 -StartAt Gateway</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>
+          Valid resume points are <code>Prerequisites</code>, <code>Infrastructure</code>,
+          <code>Keycloak</code>, <code>Gateway</code>, <code>WindowsVm</code>, and
+          <code>Verify</code>. The failure message prints the right one.
+        </p>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>
+            The run ends with a green completion banner and the elapsed time, followed by the list of
+            remaining SCM tasks. A failure names the step and the resume command.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step 5B.2: Read the generated credentials</span>
+      </div>
+      <div class="collapsible-body">
+        <p>
+          Passwords are generated on first run and written to <code>.lab-state.json</code>, which is
+          gitignored and, on macOS and Linux, created with owner-only permissions. Re-running a
+          script reuses what is already there rather than rotating it.
+        </p>
+
+        <div class="code-block">
+          <pre><code>$state = Get-Content .lab-state.json | ConvertFrom-Json
+
+$state.GatewayIp
+$state.KeycloakIp
+$state.WindowsVmPublicIp
+$state.WindowsAdminPassword
+$state.KeycloakAdminPassword</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+
+        <p>
+          To supply your own passwords instead, write them into that file before the first run and
+          the scripts will use them.
+        </p>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>
+            Each property returns a value. <code>kubectl get nodes</code> lists the node in
+            <code>Ready</code> state, because <code>01-New-LabInfrastructure.ps1</code> already
+            merged the credentials into your kubeconfig.
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /powershell panel -->
+</div><!-- /mgmt-tabs -->
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.3: Confirm the workloads are running</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Common to both paths.</p>
+
+    <div class="code-block">
+      <pre><code>kubectl get nodes -o wide
+kubectl get pods -n airs-gw
+kubectl get pods -n keycloak
+kubectl get svc -n airs-gw
+kubectl get svc -n keycloak</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Expect a gateway pod, a Redis pod named <code>airs-gw-redis-0</code>, and a Keycloak pod.</p>
+
+    <table>
+      <tr><th>Pod status</th><th>Likely cause</th><th>Next step</th></tr>
+      <tr><td><code>ImagePullBackOff</code></td><td>Registry credentials wrong, or no egress to <code>registry.portkey.ai</code></td><td>Check <code>imageCredentials</code> in <code>values.yaml</code>, then test egress from a pod</td></tr>
+      <tr><td><code>CrashLoopBackOff</code></td><td>A bad environment variable or an auth failure</td><td><code>kubectl logs &lt;POD&gt; -n airs-gw --tail=50</code></td></tr>
+      <tr><td><code>Pending</code></td><td>Not enough node capacity</td><td><code>kubectl describe pod &lt;POD&gt; -n airs-gw</code> and read the Events</td></tr>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">A Keycloak Service stuck at &lt;pending&gt;</div>
+      <p>
+        Run <code>kubectl describe svc keycloak -n keycloak</code>. A
+        <code>SyncLoadBalancerFailed</code> event with a 403 <code>AuthorizationFailed</code> reading
+        the VNet subnet means the cluster identity is missing Network Contributor on the VNet. Both
+        automation paths grant it, and propagation takes a minute or two, so wait before
+        investigating further.
+      </p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        Every pod reads <code>Running</code>, and both Services show an <code>EXTERNAL-IP</code>
+        rather than <code>&lt;pending&gt;</code>. Keycloak's address is an internal one in the
+        <code>10.0.1.0/24</code> range, which is correct.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 5.4: Health-check the gateway</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>GATEWAY_IP=$(kubectl get svc airs-gw -n airs-gw -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+curl -s "http://${GATEWAY_IP}/v1/health"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>
+      The Service exposes two ports: 80 for the gateway itself at <code>/v1/...</code>, and 8788 for
+      MCP Gateway traffic, which this lab does not use.
+    </p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Port-forward instead of the load balancer</div>
+      <p>
+        Forward to the pod, not the Service. The bundled Redis pod shares the Service's selector
+        labels, so <code>kubectl port-forward svc/airs-gw</code> can land on Redis and return
+        nothing useful.
+      </p>
+      <div class="code-block">
+        <pre><code>kubectl port-forward -n airs-gw pod/airs-gw-&lt;hash&gt; 8787:8787</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        The health endpoint returns a response body rather than a connection error. Load balancer
+        programming can lag the address assignment by about a minute, so one retry is normal.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="app-onboarding">Phase 6: Onboard Traffic</h2>
+
+<p>
+  The gateway is running but SCM does not yet know where it lives, and nothing has sent it a
+  request. This phase closes both gaps, then adds a JWT-authenticated application as an optional
+  extension.
+</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.1: Register the gateway URLs in SCM</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      This tells SCM what base URL to show users. It is separate from the
+      <code>PORTKEY_CLIENT_AUTH</code> and <code>ORGANISATIONS_TO_SYNC</code> values already in
+      <code>values.yaml</code>, which drive the gateway's own outbound heartbeat.
+    </p>
+
+    <ol>
+      <li>In SCM, go to <strong>Organization Details &gt; General</strong>.</li>
+      <li>Set <strong>Gateway URLs</strong> to <code>http://&lt;GATEWAY_IP&gt;/v1</code>.</li>
+      <li>Set <strong>MCP Gateway URLs</strong> to <code>http://&lt;GATEWAY_IP&gt;:8788</code>.</li>
+      <li>Save.</li>
+    </ol>
+
+    <p>Both automation paths print these ready to paste:</p>
+
+    <div class="code-block">
+      <pre><code># Terraform
+terraform output -raw scm_gateway_url
+terraform output -raw scm_mcp_gateway_url
+
+# PowerShell
+(Get-Content .lab-state.json | ConvertFrom-Json).GatewayIp</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        Both fields save without a validation error and show the addresses on reload.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.2: Send the first request</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      The first request that returns a completion proves the whole chain at once: the load balancer,
+      the gateway, the config sync that delivered the provider credential, and the upstream provider
+      itself.
+    </p>
+
+    <p><em>Request pattern: the five hops a single completion travels.</em></p>
+    <img src="diagrams/inference-request-flow.svg"
+         alt="API key request flow in five numbered steps. The Windows VM posts to the gateway LoadBalancer on port 80, the load balancer forwards to the airs-gw pod, the pod resolves the integration slug and calls the LLM provider over outbound HTTPS with the credential attached, the completion returns along the same path, and analytics and log bodies are pushed outbound to Strata Cloud Manager. The request carries the slug in the model field as at-openai slash gpt-4o-mini rather than in an x-portkey-provider header."
+         loading="lazy">
+
+    <div class="code-block">
+      <pre><code>GATEWAY_IP=$(kubectl get svc airs-gw -n airs-gw -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+curl "http://${GATEWAY_IP}/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "x-portkey-api-key: ${SCM_WORKSPACE_KEY}" \
+  -d '{
+    "model": "@openai/gpt-4o-mini",
+    "messages": [{"role": "user", "content": "Hello from the AIGW lab."}]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>The PowerShell path has the same test built into its verification script:</p>
+
+    <div class="code-block">
+      <pre><code>./05-Test-LabDeployment.ps1 -WorkspaceApiKey $env:SCM_WORKSPACE_KEY</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>
+      Note the model field. The integration slug goes there as <code>@openai/gpt-4o-mini</code>, and
+      no <code>x-portkey-provider</code> header is sent, for the reason covered in Phase 2.
+    </p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A <code>200</code> with a normal OpenAI-style completion body. In one minute, the request appears in SCM under <strong>AI Gateway &gt; Observability &gt; Logs</strong>. Click the entry to open the detail view. The view shows the full request and response, and not <code>Error: Resource not found</code>. This confirms the log store decision from Phase 2.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.3: Generate traffic from the Windows VM</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      The VM sits on the same VNet as the cluster, so it reaches both the gateway's public address
+      and Keycloak's internal one. It is what makes the SCM analytics views worth looking at.
+    </p>
+
+    <ol>
+      <li>Connect over RDP to the VM's public address, using the generated administrator credentials.</li>
+      <li>Copy <code>powershell/Test-GatewayFromVm.ps1</code> to the VM through the RDP clipboard.</li>
+      <li>Run it with the gateway address, the Keycloak address, and the Workspace API Key.</li>
+    </ol>
+
+    <div class="code-block">
+      <pre><code>./Test-GatewayFromVm.ps1 `
+    -GatewayIp 203.0.113.10 `
+    -KeycloakIp 10.0.1.250 `
+    -WorkspaceApiKey '&lt;WORKSPACE_API_KEY&gt;' `
+    -Count 20 -DelaySeconds 3</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>
+      The script has no Az module dependency, so nothing extra needs installing on the VM. It checks
+      connectivity to both services first, then sends completions drawn from a rotating prompt list.
+    </p>
+
+    <div class="callout callout-note">
+      <div class="callout-title">An unauthenticated GET returns an error, and that is correct</div>
+      <p>
+        <code>Invoke-WebRequest http://&lt;GATEWAY_IP&gt;/v1 -UseBasicParsing</code> returns a
+        Portkey <code>Invalid API Key</code> JSON body. That is the gateway answering, which proves
+        routing works. It is not a connectivity failure.
+      </p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        The script reports every request as succeeded, and SCM's analytics views populate within a
+        minute or two. Failures print the gateway's own error text, which the Troubleshooting
+        section decodes.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 6.4: JWT authentication with Keycloak (optional)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      This extension replaces the shared Workspace API Key with per-user identity. A small Flask
+      application logs the user in against Keycloak over OIDC and forwards the resulting access
+      token to the gateway as a bearer credential. The application holds no gateway key and no
+      provider key at all.
+    </p>
+
+    <p>
+      Terraform drives the whole thing: the realm, the client, the protocol mappers, the test user,
+      the application deployment, and the JWKS extraction. The application source is in
+      <code>terraform/jwt-demo/app/</code>.
+    </p>
+
+    <p><em>Request pattern: the login round trip, the claims the token has to carry, and where the JWKS comes from.</em></p>
+    <img src="diagrams/jwt-request-flow.svg"
+         alt="JWT authenticated request flow. A setup band across the top shows the Keycloak realm's RSA keypair exported as jwks_json, pasted by hand into Strata Cloud Manager, then pulled down by the gateway on its next config sync. Below, the browser on the Windows VM opens the demo app, is redirected to Keycloak at 10.0.1.250 to sign in, and the app exchanges the code for a token over cluster DNS. The app then calls the gateway with an Authorization Bearer header, and the gateway calls the LLM provider only after the signature and claims both check out. The token must carry a portkey_workspace claim holding the workspace slug and a scopes array."
+         loading="lazy">
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Keycloak survives a restart, not a teardown</div>
+      <p>
+        The Deployment runs <code>start-dev</code>, whose H2 database writes to
+        <code>/opt/keycloak/data</code>. That path is mounted on a 4&nbsp;GiB managed disk, so a pod
+        restart or a reschedule onto another node keeps the realm and keeps the RSA signing keys
+        behind the JWKS registered in SCM. Without that volume the failure is a quiet one: SCM goes
+        on serving the JWKS pasted earlier and rejects every token, with nothing in the gateway logs
+        pointing at Keycloak.
+      </p>
+      <p>
+        Destroying the stack destroys the disk with it, so a full rebuild still means re-running this
+        apply and pasting a fresh JWKS. A Postgres backend is the next step up if the realm has to
+        outlive the cluster.
+      </p>
+    </div>
+
+    <ol>
+      <li>
+        Turn on gateway-side JWT validation and create the container registry. In
+        <code>terraform/terraform.tfvars</code>:
+        <div class="code-block">
+          <pre><code>enable_jwt_auth = true
+deploy_acr      = true</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="code-block">
+          <pre><code>terraform apply</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>
+        Build the application image and push it. AKS nodes use AMD64. On Apple Silicon the script
+        sets the platform:
+        <div class="code-block">
+          <pre><code>cd jwt-demo
+./build-and-push.sh</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>
+        Open a port-forward to Keycloak and leave it running. The Service is internal, so the admin
+        API is not otherwise reachable from your workstation:
+        <div class="code-block">
+          <pre><code>kubectl port-forward -n keycloak svc/keycloak 8081:80 &amp;</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>
+        Fill in the four necessary values, then apply:
+        <div class="code-block">
+          <pre><code>cp terraform.tfvars.example terraform.tfvars
+# portkey_workspace_slug, gateway_url, keycloak_browser_url,
+# keycloak_admin_password, app_image
+
+terraform init
+terraform apply</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>
+        Paste the JWKS into SCM, at
+        <strong>Admin Settings &gt; Organisation &gt; Authentication &gt; JWT Authentication</strong>,
+        choosing <strong>JWKS JSON</strong>:
+        <div class="code-block">
+          <pre><code>terraform output -raw jwks_json | pbcopy</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </li>
+      <li>
+        From the Windows VM's browser, open the application at
+        <code>http://10.0.1.251:5000</code>, sign in as <code>testuser</code>, and send a prompt.
+        The password comes from <code>terraform output -raw test_user_password</code>.
+      </li>
+    </ol>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">The workspace claim is the step that costs the most debugging time</div>
+      <p>
+        The gateway is documented to fall back to the organization's default workspace when a token
+        carries no workspace claim. On this integration path that fallback does not resolve
+        reliably, and every chat completion returns
+        <code>{"status":"failure","message":"Following keys are not valid: openai"}</code> even
+        though the identical request works with a plain API key. The fix is to stop relying on the
+        fallback and embed the workspace explicitly, which is what the
+        <code>portkey_workspace</code> protocol mapper does.
+      </p>
+      <p>
+        Use the workspace <strong>slug</strong>, not the display name. In SCM, open
+        <strong>Workspace Control &gt; your workspace &gt; Settings</strong>; the slug is shown top
+        right and reads like <code>ws-example-a-7c41b9</code>, as distinct from a display name like
+        <code>main_airs_workspace_4471206350</code>. The Terraform variable validates that the value
+        starts with <code>ws-</code> and rejects a display name.
+      </p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">Why the Keycloak hostname is pinned</div>
+      <p>
+        Keycloak builds its OIDC discovery document from the Host header unless
+        <code>KC_HOSTNAME</code> is set. The application calls Keycloak over cluster DNS while the
+        user's browser is redirected to the load balancer address, so without a pinned hostname the
+        two disagree on the issuer and the login round trip fails. The automation pins the internal
+        load balancer address up front, using a static address inside the AKS subnet, which is what
+        allows this to be configured in a single pass rather than read back off the Service.
+      </p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        The application page shows <code>Gateway response (HTTP 200)</code> with a real completion.
+        The claims table on the same page lists <code>portkey_workspace</code> holding your slug and
+        <code>scopes</code> holding <code>["completions.write"]</code>. Either reading
+        <code>MISSING</code> means the protocol mapper did not apply, and re-running the apply
+        rebuilds it.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="verification">Phase 7: Post-Deployment Verification</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 7.1: Confirm the SCM connection status</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      The gateway reports in to the management plane over an outbound heartbeat roughly once a
+      minute. The status in SCM is the single clearest indicator that the data plane and the
+      management plane agree.
+    </p>
+
+    <ol>
+      <li>Go to <strong>AI Gateway &gt; Admin Settings &gt; Gateway Registration</strong>.</li>
+      <li>Check <strong>Connection Status</strong> reads Active rather than Unknown.</li>
+      <li>Check <strong>Last Sync</strong> shows a recent timestamp rather than <code>--</code>.</li>
+    </ol>
+
+    <p>If the status stays Unknown after the pods have been running for a few minutes, test egress:</p>
+
+    <div class="code-block">
+      <pre><code>POD=$(kubectl get pods -n airs-gw -o name | grep -v redis | head -1)
+kubectl exec -n airs-gw "${POD#pod/}" -- \
+  curl -sS -o /dev/null -w '%{http_code}\n' https://api.portkey.ai
+
+kubectl get networkpolicies -n airs-gw</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        Connection Status reads Active and Last Sync is within the last couple of minutes. The curl
+        returns an HTTP status code of any kind, and the NetworkPolicy query returns no resources.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 7.2: Run the full endpoint summary</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>echo "=== Lab endpoints ==="
+kubectl get nodes -o wide
+kubectl get pods -A -o wide | grep -v kube-system
+kubectl get svc -n airs-gw
+kubectl get svc -n keycloak
+kubectl get svc -n jwt-demo 2&gt;/dev/null</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>The PowerShell path does the same checks, plus a live chat completion, in one script:</p>
+
+    <div class="code-block">
+      <pre><code>./05-Test-LabDeployment.ps1 -WorkspaceApiKey $env:SCM_WORKSPACE_KEY</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        The verification script exits 0 and prints an endpoint table. A non-zero exit lists each
+        problem it found, in the order it found them.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 7.3: Completion checklist</span>
+  </div>
+  <div class="collapsible-body">
+    <ul class="checklist">
+      <li>AKS node is <code>Ready</code>.</li>
+      <li>Gateway pod is <code>Running</code> in the <code>airs-gw</code> namespace.</li>
+      <li>Redis pod <code>airs-gw-redis-0</code> is <code>Running</code>.</li>
+      <li>The gateway's <code>/v1/health</code> endpoint responds.</li>
+      <li>A test chat completion returns a <code>200</code>.</li>
+      <li>The request appears in SCM under Observability, Logs.</li>
+      <li>Clicking the log entry opens the detail view with no "Resource not found" error.</li>
+      <li>Gateway Registration shows Active with a recent Last Sync.</li>
+      <li>Keycloak answers on its internal load balancer address.</li>
+      <li>The Windows VM is reachable over RDP.</li>
+      <li>The Windows VM reaches both Keycloak and the gateway.</li>
+      <li>Optional: the JWT demo returns a completion with no API key in the application.</li>
+    </ul>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every box has a tick. The lab is complete. You can now add guardrails, caching, and more providers.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<p>
+  Each entry below was hit during the build this guide is derived from. The symptom is given
+  verbatim, because that is what you will be searching for.
+</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Tokens that worked yesterday are all rejected today</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      Every request carrying a bearer token fails authentication, nothing in the lab was changed,
+      and the gateway logs point at the token rather than at Keycloak. Check whether the Keycloak
+      pod restarted:
+    </p>
+    <div class="code-block">
+      <pre><code>kubectl get pods -n keycloak</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>
+      A non-zero <code>RESTARTS</code> count, or an <code>AGE</code> younger than the cluster, means
+      Keycloak came back with a new database. It regenerates the realm's RSA signing keys on first
+      start, so the JWKS pasted into SCM no longer matches anything Keycloak signs. SCM has no way
+      to notice, which is why the error surfaces as a bad token rather than a key mismatch.
+    </p>
+    <p>
+      Confirm by comparing the <code>kid</code> Keycloak is serving now against the one in SCM:
+    </p>
+    <div class="code-block">
+      <pre><code>kubectl exec -n keycloak deploy/keycloak -- \
+  curl -s http://localhost:8080/realms/aigw-lab/protocol/openid-connect/certs \
+  | grep -o '"kid":"[^"]*"'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>
+      The fix is the data volume. Confirm the claim exists and is bound; if it is missing, the
+      Deployment was applied with <code>keycloak_persistence = false</code> or from an older copy of
+      these files. Re-apply, re-run the <code>jwt-demo</code> module, and paste the new JWKS into
+      SCM once more. From then on a restart keeps the keys.
+    </p>
+    <div class="code-block">
+      <pre><code>kubectl get pvc -n keycloak keycloak-data</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The claim reports <code>Bound</code>. Delete the pod with <code>kubectl delete pod -n keycloak -l app=keycloak</code>. Read the <code>kid</code> again: it has the same value as before. The gateway accepts a new token.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>inline_provider_blocked on a test request</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>{"status":"failure","error":{"code":"inline_provider_blocked",
+ "message":"Inline provider names are not allowed when block_inline_config is enabled.",
+ "field":"x-portkey-provider"}}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>
+      The organization has <code>block_inline_config</code> enabled. Remove the
+      <code>x-portkey-provider</code> header and reference the saved integration in the model field
+      instead, as <code>@&lt;slug&gt;/&lt;model&gt;</code>.
+    </p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The same request with the slug in the model field and no provider header returns a completion.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>TypeError: Cannot convert argument to a ByteString</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>TypeError: Cannot convert argument to a ByteString because the character at
+index 7 has a value of 10095 which is greater than 255.</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>
+      This fires on every request regardless of the body, because it happens while the gateway
+      builds outbound headers from a stored provider credential. <code>"Bearer "</code> is seven
+      characters, so index 7 is the first character of the key itself, and a code point like
+      <code>10095</code> is <code>U+276F</code>, the <code>&#10095;</code> shell prompt glyph: a
+      classic paste artifact.
+    </p>
+    <p>
+      Retype the affected provider's API key in the Model Catalog rather than pasting and editing,
+      or delete and recreate the provider entry. If it persists after retyping, check that the key
+      is the right type for that provider slot: an OpenAI <code>sk-proj-</code> key pasted into an
+      Anthropic provider produced this same error in testing.
+    </p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        Gateway pod logs show no ByteString errors after the next request, and the completion
+        returns normally. Allow a minute for the config heartbeat to pick up the new credential.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Following keys are not valid: openai</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>{"status":"failure","message":"Following keys are not valid: openai"}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>
+      Almost always a JWT workspace-resolution problem rather than a provider problem, especially
+      when the identical request succeeds with a plain API key. Decode the access token and check
+      the <code>portkey_workspace</code> claim:
+    </p>
+    <div class="code-block">
+      <pre><code>python3 -c "import base64,json,sys
+p = sys.argv[1].split('.')[1]; p += '=' * (-len(p) % 4)
+print(json.dumps(json.loads(base64.urlsafe_b64decode(p)), indent=2))" "&lt;ACCESS_TOKEN&gt;"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>
+      The claim has to be present and has to hold the workspace slug, which starts with
+      <code>ws-</code>, rather than the human-readable workspace name.
+    </p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        The decoded payload shows <code>portkey_workspace</code> with a <code>ws-</code> value, and
+        the demo application's claims table shows the same. The next completion returns a
+        <code>200</code>.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Error: Resource not found. Please try again. (clicking an SCM log entry)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      <code>LOG_STORE</code> is pointed at a store inside your environment. This integration path is
+      outbound only, so SCM's backend has no way to read the body back for the detail view, even
+      though the gateway's write path to that store works perfectly. This was confirmed by listing
+      the blobs directly and seeing correct content while every click in the SCM UI still failed.
+    </p>
+    <p>
+      Remove the <code>LOG_STORE</code> and <code>AZURE_*</code> keys from the values overlay and
+      upgrade the release. In the Terraform path this is the default, so the fix is to check that
+      nothing added them back:
+    </p>
+    <div class="code-block">
+      <pre><code>helm get values airs-gw -n airs-gw | grep -i log_store || echo "not set, correct"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Clicking a log entry in SCM opens the detail view with the full request and response.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>MinIO ImagePullBackOff: insufficient_scope or 401 UNAUTHORIZED</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      MinIO has locked <code>docker.io/minio/minio</code>, <code>quay.io/minio/minio</code>, and the
+      <code>mc</code> client images behind authentication for every tag, including
+      <code>latest</code>. Overriding <code>images.minioImage</code> does not help, because the gate
+      is on the registry rather than on the tag. There is no workaround short of supplying your own
+      authenticated pull credentials. The bundled MinIO log store is not usable, which is one of the
+      two reasons this guide leaves <code>LOG_STORE</code> unset.
+    </p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        With MinIO disabled, <code>kubectl get pods -n airs-gw</code> shows only the gateway and
+        Redis pods, both <code>Running</code>.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>SyncLoadBalancerFailed with 403 AuthorizationFailed</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      The AKS control plane identity cannot read
+      <code>Microsoft.Network/virtualNetworks/subnets</code> on the VNet, which it needs before
+      placing an internal load balancer. This happens because the VNet lives in your resource group
+      rather than in the AKS-managed node resource group.
+    </p>
+    <p>Both automation paths grant the role. To do it by hand:</p>
+    <div class="code-block">
+      <pre><code>AKS_PRINCIPAL_ID=$(az aks show --resource-group aigw-lab-rg --name aigw-lab-aks \
+  --query identity.principalId -o tsv)
+VNET_ID=$(az network vnet show --resource-group aigw-lab-rg --name aigw-lab-vnet \
+  --query id -o tsv)
+
+az role assignment create \
+  --assignee-object-id "$AKS_PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Network Contributor" \
+  --scope "$VNET_ID"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        After one to two minutes of propagation, <code>kubectl get svc keycloak -n keycloak</code>
+        shows an address in the <code>10.0.1.0/24</code> range rather than <code>&lt;pending&gt;</code>.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A rollout hangs on a single-node cluster</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      A <code>RollingUpdate</code> deployment on a one-node cluster tries to schedule the
+      replacement pod alongside the outgoing one and gets
+      <code>0/1 nodes are available: 1 Insufficient cpu</code>. Both automation paths set the
+      <code>Recreate</code> strategy on Keycloak and on the demo application for exactly this
+      reason. For a workload that still uses <code>RollingUpdate</code>, delete the old pod to free
+      the capacity:
+    </p>
+    <div class="code-block">
+      <pre><code>kubectl get pods -n keycloak
+kubectl delete pod -n keycloak &lt;OLD_POD_NAME&gt;</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>kubectl rollout status deployment/keycloak -n keycloak</code> completes rather than hanging.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>InsufficientVCPUQuota, and why not to add a second node pool</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      Adding a node pool with a different size to work around a rejected size makes the quota
+      problem worse rather than better: both pools hold their quota requests simultaneously. Delete
+      the cluster and recreate it with the working size as the only pool.
+    </p>
+    <p>To free cores for the Windows VM without rebuilding anything:</p>
+    <div class="code-block">
+      <pre><code># Azure CLI
+az aks nodepool scale --resource-group aigw-lab-rg \
+  --cluster-name aigw-lab-aks --name nodepool1 --node-count 1
+
+# PowerShell
+Update-AzAksNodePool -ResourceGroupName aigw-lab-rg `
+  -ClusterName aigw-lab-aks -Name nodepool1 -NodeCount 1</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>
+      The Terraform module sets <code>ignore_changes</code> on the node count, so scaling by hand
+      survives the next apply.
+    </p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        Pods reschedule onto the remaining node within a minute. <code>kubectl get pods -A -o wide</code>
+        shows everything <code>Running</code> on one node.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Expired or invalidated provider API key</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="code-block">
+      <pre><code>{"message":"Your API key has expired. Create a new API key to continue.","code":"expired_secret_key"}
+{"message":"Your API key has been invalidated.","code":"token_invalidated"}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>
+      Generate a fresh key from the provider's dashboard and update it in the Model Catalog. If the
+      provider's own dashboard shows the key as active but the gateway still rejects it, wait a
+      minute and retry: configs sync on roughly a one-minute heartbeat, so there is a short
+      propagation delay after any credential change.
+    </p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A completion returns a <code>200</code> within two minutes of saving the new key.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Nodes under memory pressure</span>
+  </div>
+  <div class="collapsible-body">
+    <p>
+      A 2 vCPU, 4 GiB node running the gateway, Redis, and Keycloak together is tight. Check the
+      actual numbers before changing anything:
+    </p>
+    <div class="code-block">
+      <pre><code>kubectl top nodes
+kubectl top pods -n airs-gw
+kubectl top pods -n keycloak</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>
+      Consistently above 80 percent means the node is undersized. For a lab, the cheapest fix is to
+      raise <code>aks_node_vm_size</code> or <code>NodeVmSize</code> to an 8 GiB size, update the
+      matching vCPU count, and rebuild.
+    </p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>kubectl top nodes</code> reports memory below 80 percent. The node did not evict any pods.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="cleanup">Cleanup</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Tear the lab down</span>
+  </div>
+  <div class="collapsible-body">
+    <div class="mgmt-tabs" data-tab-group="iac">
+      <div class="mgmt-tab-bar">
+        <button class="mgmt-tab active" data-plane="terraform">4A &middot; Terraform</button>
+        <button class="mgmt-tab" data-plane="powershell">4B &middot; PowerShell</button>
+      </div>
+
+      <div class="mgmt-panel active" data-plane="terraform">
+        <div class="code-block">
+          <pre><code>cd terraform/jwt-demo &amp;&amp; terraform destroy    # only if Phase 6 was built
+cd .. &amp;&amp; terraform destroy</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+
+      <div class="mgmt-panel" data-plane="powershell">
+        <div class="code-block">
+          <pre><code>./99-Remove-Lab.ps1</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>
+          Prompts for the resource group name, deletes it as a background job, and cleans up the
+          kubeconfig context and the local state file. <code>-Force</code> skips the prompt;
+          <code>-KeepState</code> keeps the generated passwords for a rebuild.
+        </p>
+      </div>
+    </div>
+
+    <p>
+      Deleting the resource group directly always works, and is the fallback when a destroy leaves
+      the AKS-managed node resource group behind:
+    </p>
+
+    <div class="code-block">
+      <pre><code>az group delete --name aigw-lab-rg --yes --no-wait
+kubectl config delete-context aigw-lab-aks</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>
+      To pause rather than destroy, deallocate the Windows VM. It stops the compute charge and
+      returns its two vCPUs to the regional quota:
+    </p>
+
+    <div class="code-block">
+      <pre><code>az vm deallocate --resource-group aigw-lab-rg --name aigw-lab-win</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>
+        <code>az group show --name aigw-lab-rg</code> returns <code>ResourceGroupNotFound</code>.
+        Deletion runs in the background and takes 5 to 10 minutes.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<h2 id="reference">Reference</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>airs-gw compared with portkey-ai/gateway</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th></th><th><code>airs-gw</code> (this guide)</th><th><code>portkey-ai/gateway</code></th></tr>
+      <tr><td>Helm repository</td><td><code>portkey-ai.github.io/airs-gw-helm</code></td><td><code>portkey-ai.github.io/helm</code></td></tr>
+      <tr><td>Chart name</td><td><code>airs-gw/airs-gw</code></td><td><code>portkey-ai/gateway</code></td></tr>
+      <tr><td>Image registry</td><td><code>registry.portkey.ai</code></td><td><code>docker.io/portkeyai</code></td></tr>
+      <tr><td>Default namespace</td><td><code>airs-gw</code></td><td><code>portkeyai</code></td></tr>
+      <tr><td>values.yaml source</td><td>SCM wizard download</td><td>Built by hand from the platform docs</td></tr>
+      <tr><td>Outbound endpoint</td><td><code>api.portkey.ai</code></td><td><code>aigw.portkey.ai</code> and <code>albus.portkey.ai</code></td></tr>
+      <tr><td>Connectivity</td><td>Outbound only</td><td>Outbound only in practice, though the platform pages describe an inbound path this integration does not support</td></tr>
+      <tr><td>Bundled MinIO</td><td>Present in the chart, but the images no longer pull</td><td>Not available</td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>helm list -n airs-gw</code> shows a chart with a name that starts with <code>airs-gw-</code>. A name that starts with <code>gateway-</code> shows that you installed the wrong chart. Its values keys do not match the wizard's file.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Outbound endpoints the cluster must reach</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <tr><th>Endpoint</th><th>Purpose</th><th>Required</th></tr>
+      <tr><td><code>api.portkey.ai</code></td><td>Config sync, analytics, management plane</td><td>Yes</td></tr>
+      <tr><td><code>registry.portkey.ai</code></td><td>Gateway image pull</td><td>Yes</td></tr>
+      <tr><td>Your LLM provider's API host</td><td>Upstream completions</td><td>Yes</td></tr>
+      <tr><td><code>quay.io</code></td><td>Keycloak image pull</td><td>Yes, for the identity layer</td></tr>
+      <tr><td><code>docker.io</code></td><td>Optional components only</td><td>No</td></tr>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <div class="code-block">
+        <pre><code>POD=$(kubectl get pods -n airs-gw -o name | grep -v redis | head -1)
+for host in api.portkey.ai registry.portkey.ai; do
+  printf '%s ' "$host"
+  kubectl exec -n airs-gw "${POD#pod/}" -- \
+    curl -sS -o /dev/null -w '%{http_code}\n' "https://$host"
+done</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>Each host returns an HTTP status code. A blank result or <code>000</code> shows that something blocks the egress traffic.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>What to build next</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li><strong>Guardrails</strong> &mdash; configure prompt and response guardrails in SCM and watch them fire against the traffic generator.</li>
+      <li><strong>More providers</strong> &mdash; add a second provider to the Model Catalog and route between them with <code>@&lt;slug&gt;/&lt;model&gt;</code>.</li>
+      <li><strong>Caching</strong> &mdash; enable simple or semantic caching in SCM and watch cache hits appear in analytics.</li>
+      <li><strong>A durable Keycloak</strong> &mdash; the mounted volume carries the realm across pod restarts, but not across a teardown. Replace the <code>start-dev</code> H2 database with Postgres to keep realms beyond the life of the cluster.</li>
+      <li><strong>A quota increase</strong> &mdash; file an Azure Portal support ticket for Total Regional Cores, then raise <code>aks_node_count</code> to run two nodes alongside the VM.</li>
+      <li><strong>TLS</strong> &mdash; terminate HTTPS in front of the gateway and Keycloak instead of running both on plain HTTP inside the VNet.</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each of these is an addition, and none of them needs a rebuild of the lab. You configure guardrails and caching fully in SCM. They become active on the next config heartbeat.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="download-md-btn" id="downloadMdBtn" onclick="downloadAsMarkdown()">&#8681; Markdown</button>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../shared/js/pan-guides.js"></script>
+<script src="../../shared/js/lunr.min.js"></script>
+<script src="../../shared/js/search.js"></script>
+</body>
+</html>

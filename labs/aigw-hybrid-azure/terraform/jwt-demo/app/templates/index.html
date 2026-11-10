@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIGW Lab &middot; JWT Demo</title>
+<style>
+  :root {
+    --gold: #FFB81C;
+    --navy: #00294D;
+    --link: #006DCC;
+    --border: #dee2e6;
+    --code-bg: #f8f9fa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0; color: #333; background: #fff;
+  }
+  header {
+    background: var(--gold); padding: 14px 24px; font-weight: 700;
+    color: var(--navy); letter-spacing: .04em;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 24px 64px; }
+  h1 { color: var(--navy); font-size: 1.6rem; margin-top: 0; }
+  h2 { color: var(--navy); font-size: 1.1rem; margin-top: 32px; }
+  a.btn, button {
+    display: inline-block; background: var(--link); color: #fff; border: 0;
+    padding: 10px 18px; border-radius: 4px; font-size: .95rem; cursor: pointer;
+    text-decoration: none;
+  }
+  a.btn.secondary { background: #6c757d; }
+  textarea {
+    width: 100%; min-height: 90px; padding: 10px; font-family: inherit;
+    font-size: .95rem; border: 1px solid var(--border); border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 12px; overflow-x: auto; font-size: .82rem;
+  }
+  .meta { color: #666; font-size: .88rem; }
+  .callout { border-left: 4px solid; padding: 12px 16px; border-radius: 4px; margin: 18px 0; }
+  .ok { background: #f0fdf4; border-color: #22c55e; }
+  .err { background: #fef2f2; border-color: #ef4444; }
+  .note { background: #e7f3ff; border-color: #3b82f6; }
+  .callout-title { font-weight: 700; margin-bottom: 6px; }
+  details { margin-top: 14px; }
+  summary { cursor: pointer; color: var(--link); font-size: .9rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--navy); }
+  code { font-family: "Source Code Pro", ui-monospace, monospace; font-size: .88em; }
+</style>
+</head>
+<body>
+<header>AIGW LAB &middot; JWT AUTHENTICATION DEMO</header>
+<main>
+
+<h1>Keycloak token to AI Gateway</h1>
+<p class="meta">
+  Gateway <code>{{ gateway_url }}</code> &middot; model <code>{{ gateway_model }}</code>
+</p>
+
+{% if not logged_in %}
+  <div class="callout note">
+    <div class="callout-title">Not signed in</div>
+    <p>
+      Sign in with Keycloak to get an access token. This app sends that token to
+      the gateway as a bearer credential and holds no API key of its own.
+    </p>
+  </div>
+  <a class="btn" href="{{ url_for('login') }}">Log in with Keycloak</a>
+{% else %}
+  <p>
+    Signed in as <strong>{{ username }}</strong>.
+    <a href="{{ url_for('logout') }}">Log out</a>
+  </p>
+
+  <form method="post" action="{{ url_for('ask') }}">
+    <textarea name="prompt" placeholder="Ask the gateway something">{{ result.prompt if result else '' }}</textarea>
+    <p><button type="submit">Send through the gateway</button></p>
+  </form>
+
+  {% if result %}
+    {% if result.status == 'ok' %}
+      <div class="callout ok">
+        <div class="callout-title">Gateway response (HTTP {{ result.http_status }})</div>
+        <p>{{ result.content }}</p>
+      </div>
+    {% else %}
+      <div class="callout err">
+        <div class="callout-title">
+          Gateway error{% if result.http_status %} (HTTP {{ result.http_status }}){% endif %}
+        </div>
+        <p>
+          A <code>400</code> reading <code>Following keys are not valid: openai</code>
+          means the token has no usable workspace claim. Confirm the
+          <code>portkey_workspace</code> mapper carries the workspace slug, not
+          the display name.
+        </p>
+      </div>
+    {% endif %}
+    <details>
+      <summary>Raw response body</summary>
+      <pre>{{ result.body }}</pre>
+    </details>
+  {% endif %}
+
+  <h2>Token claims</h2>
+  <table>
+    <tr><th>Claim</th><th>Value</th></tr>
+    <tr><td>iss</td><td><code>{{ claims.get('iss', '') }}</code></td></tr>
+    <tr><td>azp</td><td><code>{{ claims.get('azp', '') }}</code></td></tr>
+    <tr><td>preferred_username</td><td><code>{{ claims.get('preferred_username', '') }}</code></td></tr>
+    <tr><td>portkey_workspace</td><td><code>{{ claims.get('portkey_workspace', 'MISSING') }}</code></td></tr>
+    <tr><td>scopes</td><td><code>{{ claims.get('scopes', 'MISSING') }}</code></td></tr>
+  </table>
+
+  <details>
+    <summary>Full access token</summary>
+    <pre>{{ access_token }}</pre>
+  </details>
+{% endif %}
+
+</main>
+</body>
+</html>
