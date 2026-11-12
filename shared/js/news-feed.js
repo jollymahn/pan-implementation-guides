@@ -38,6 +38,41 @@ var NEWS_VISIBLE_COUNT = 6;
 var NEWS_ITEMS = [
   {
     badge: "New",
+    date: "2026-11-11",
+    title: "Organization properties: what every workspace inherits",
+    href: "guides/ai-gateway/configuration/organization-properties.html",
+    tags: "Chapter 5 of the configuration set, Full Logging against Metrics Only and whether a workspace may override it, Metadata schemas bind new keys and workspaces only and never retrofit the old ones, JSON Schema draft-07 with three mandatory elements, A budget limit cannot be edited once set by anyone including the owner, No periodic reset expires a production key permanently, Weekly and monthly resets land at midnight UTC, Budgets exist at three levels set in three places"
+  },
+  {
+    badge: "New",
+    date: "2026-11-11",
+    title: "Gateway access control, and the master key nobody chose",
+    href: "guides/ai-gateway/configuration/security-access-control.html",
+    tags: "Chapter 4 of the configuration set, Organization admins hold admin rights in every workspace with no way to restrict it, Admin differs from Owner only on billing, Workspace managers equal admins until you change it, A new organization arrives with a fully permissioned master API key, Logs against logs metadata is the payload decision, Data visibility scopes whose logs rather than redacting them, Saved-only mode defaults on for organizations created from 19 June 2026, Audit logs need no setup and are owner and admin only"
+  },
+  {
+    badge: "New",
+    date: "2026-11-11",
+    title: "Secret references keep provider keys in your own vault",
+    href: "guides/ai-gateway/configuration/secret-references.html",
+    tags: "Chapter 3 of the configuration set, AWS Secrets Manager Azure Key Vault and HashiCorp Vault, Nine authentication variants and which ones store no credential at all, The management plane never sees the secret value, Five minute data plane cache is also the rotation delay and the revocation delay, Saving a reference does not prove the vault can be read, Deletion is refused while an integration still uses it, Restricting a reference to named workspaces has no console path yet, Needs gateway 2.2.4 or higher"
+  },
+  {
+    badge: "New",
+    date: "2026-11-11",
+    title: "Authentication for the gateway: people, applications and agents",
+    href: "guides/ai-gateway/configuration/authentication-identity.html",
+    tags: "Chapter 2 of the configuration set, Allowed Domains gate provisioning so a sync run before them provisions nobody and reports nothing, OIDC and SAML with full Okta and Entra ID steps, Cloud Identity Engine directory sync is the SCM path and replaces standalone SCIM, Directory sync cannot map a group until the workspace exists so the mapping waits for chapter 8, Delta sync runs every 15 minutes, JWT needs RS256 and a kid that matches your JWKS, Admin keys reach every workspace and do not belong in an application"
+  },
+  {
+    badge: "New",
+    date: "2026-11-11",
+    title: "Organization registration, and pointing the console at your gateway",
+    href: "guides/ai-gateway/configuration/organization-registration.html",
+    tags: "Chapter 1 of the new thirteen chapter configuration set, Separate from the deployment guide which stops at the first model call, Licensing and activation reused from the shared snippet, Why a single Owner account is a single point of failure, Gateway URL and MCP Gateway URL are organization wide and save on blur, A self-hosted management plane ignores both fields and uses an environment variable, Do not split environments across organizations"
+  },
+  {
+    badge: "New",
     date: "2026-11-10",
     title: "AIGW Hybrid Lab on Azure, buildable on free Azure credit",
     href: "labs/aigw-hybrid-azure/index.html",

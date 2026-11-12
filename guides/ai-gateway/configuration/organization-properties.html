@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Organization Properties | AI Gateway Configuration | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#concept" data-section="concept">What inheritance means</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configure</div>
+    <a href="#request-logging" data-section="request-logging">1. Request logging</a>
+    <a href="#metadata" data-section="metadata">2. Required metadata</a>
+    <a href="#default-config" data-section="default-config">3. Default configs</a>
+    <a href="#budgets" data-section="budgets">4. Budget limits</a>
+    <a href="#rate-limits" data-section="rate-limits">5. Rate limits</a>
+    <a href="#notifications" data-section="notifications">6. Notifications</a>
+    <a href="#verify" data-section="verify">7. Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#elsewhere" data-section="elsewhere">Limits set elsewhere</a>
+    <a href="#next" data-section="next">Next chapter</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Configuration</a>
+  <span class="sep">|</span>
+  Organization Properties
+</div>
+
+<h1>Organization Properties</h1>
+<p class="subtitle">Chapter 5 of 13. What every workspace and every key inherits: the logging mode, mandatory metadata, enforced configs, and spending controls</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">Configuration Hub</a>
+  <a href="security-access-control.html" class="cloud-link">Previous: Security</a>
+</div>
+
+<!-- ── Concept ────────────────────────────────────────────────── -->
+<h2 id="concept">What inheritance means here</h2>
+
+<p>The settings in this chapter are the defaults a workspace is born with and the rules a key is bound by. Chapter 4 decided who may change things. This chapter decides what they inherit before they change anything.</p>
+
+<p>Timing matters more than usual, for two reasons that work differently:</p>
+
+<ul>
+  <li><strong>Metadata schemas apply to new objects only.</strong> Existing API keys and workspaces are untouched when you add a schema. It binds new keys, new workspaces, and existing keys at the point they are next updated.</li>
+  <li><strong>Budget limits are not retroactive and not editable.</strong> A limit applies to requests made after it is set, and once set it cannot be changed by anyone in the organization.</li>
+</ul>
+
+<div class="callout callout-warning">
+  <div class="callout-title">A budget limit is a one-way decision</div>
+  <p>Budget limits cannot be edited after they are set, by any organization member including the owner. Work out the number before you type it. An over-tight limit on a production key is corrected by replacing the key, not by raising the limit.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul>
+  <li>Chapters 1 to 4 complete</li>
+  <li>The <strong>Organization Owner</strong> role, since request logging and metadata schemas are owner-level</li>
+  <li>A decision from whoever owns data protection about whether payloads may be stored at all</li>
+  <li>The metadata fields your organization needs for cost attribution, for example team, cost center, environment, or service</li>
+  <li>A monthly spending figure per key you are willing to commit to, because the limit cannot be changed later</li>
+</ul>
+
+<!-- ── Step 1: Request logging ────────────────────────────────── -->
+<h2 id="request-logging">Step 1 &mdash; Set the request logging mode</h2>
+
+<p>This setting decides what the gateway stores for every LLM request in the organization. It is the single largest privacy control in the product.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 &mdash; Choose between full logging and metrics only</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Mode</th><th>Stores</th><th>Suits</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Full Logging</td><td>Complete request payloads, full response content, and all associated metrics and metadata</td><td>Debugging, prompt engineering, and investigating model behavior. You can see what was asked and what came back.</td></tr>
+        <tr><td>Metrics Only</td><td>Usage statistics such as tokens, latency, and cost, plus request metadata. No payloads.</td><td>Regulated data, or any environment where prompts carry information that must not be stored.</td></tr>
+      </tbody>
+    </table>
+    <ol>
+      <li>Go to <strong>Admin Settings &rarr; Organisation Properties</strong>.</li>
+      <li>Find <strong>Request Logging</strong>.</li>
+      <li>Select the mode and save.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Metrics Only cannot be applied backwards</div>
+      <p>Switching to Metrics Only stops new payloads being stored. Payloads already written stay written. If the organization has been running in Full Logging while this decision was pending, raise retention of the existing data separately rather than assuming the switch cleaned up behind it.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">This is a different control from the one in chapter 4</div>
+      <p>Logs Management on the Security tab decides who may read stored payloads. Request Logging decides whether payloads are stored at all. Metrics Only makes the Security tab question moot, because there is no content for anyone to read.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-request-logging.png | Admin Settings > Organization Properties, Request Logging section showing the mode selection and workspace override -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Make one model call after chapter 9 and open its log entry. In Full Logging the prompt and response are readable. In Metrics Only the entry shows tokens, latency, and cost with no content. Record this as an open check until an integration exists.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 &mdash; Decide whether workspaces may override it</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The same section controls whether workspace managers can change the organization logging setting for their own workspace.</p>
+    <ul>
+      <li><strong>Override allowed</strong> &mdash; a workspace handling sensitive data can tighten to Metrics Only without asking. A workspace can also loosen, which is the risk.</li>
+      <li><strong>Override restricted</strong> &mdash; the organization setting holds everywhere and only an owner changes it.</li>
+    </ul>
+    <div class="callout callout-warning">
+      <div class="callout-title">Allowing override means a team can turn payload logging back on</div>
+      <p>If Metrics Only exists because of a regulatory position rather than a preference, restrict the override. A control a workspace manager can undo is not a control you can describe to an auditor.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The override setting matches the strength of the reason behind your logging mode. Chapter 8 confirms the effect from inside a workspace.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 2: Metadata ───────────────────────────────────────── -->
+<h2 id="metadata">Step 2 &mdash; Require metadata on keys and workspaces</h2>
+
+<p>Metadata schemas make specific fields mandatory when an API key or a workspace is created. Without them, attribution depends on whoever created the key remembering to fill something in, which is to say it depends on nothing.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.1 &mdash; Decide the fields before writing the schema</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Pick fields that answer a question someone will actually ask. The usual set:</p>
+    <ul>
+      <li><strong>team_id</strong> &mdash; who owns the spend.</li>
+      <li><strong>cost_center</strong> &mdash; where it is charged.</li>
+      <li><strong>environment</strong> &mdash; development, staging, or production.</li>
+      <li><strong>service_id</strong> &mdash; which application the key belongs to.</li>
+    </ul>
+    <p>Every field adds friction to key creation, so require only what you will use. A field nobody queries is a field people fill with a placeholder.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>For each field, you can name the report or the question it serves.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.2 &mdash; Write the schema</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Schemas follow JSON Schema draft-07 with three constraints the gateway enforces:</p>
+    <table>
+      <thead>
+        <tr><th>Requirement</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>"type": "object"</code> at the top level</td><td>Mandatory. The schema describes a metadata object.</td></tr>
+        <tr><td><code>"additionalProperties": true</code></td><td>Mandatory, and must be <code>true</code>. Teams may add their own fields beyond the ones you require.</td></tr>
+        <tr><td>Every property typed <code>"string"</code></td><td>Other types are not accepted. A numeric cost center is still a string here.</td></tr>
+      </tbody>
+    </table>
+    <p>A schema that defines fields without requiring them:</p>
+    <div class="code-block"><pre><code>{
+  "type": "object",
+  "properties": {
+    "team_id": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p>Add a <code>required</code> array to make them mandatory:</p>
+    <div class="code-block"><pre><code>{
+  "type": "object",
+  "required": ["team_id", "service_id"],
+  "properties": {
+    "team_id": {
+      "type": "string"
+    },
+    "service_id": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <div class="callout callout-note">
+      <div class="callout-title">Defining a property does not require it</div>
+      <p>Only names listed in <code>required</code> are enforced. A schema with properties and no <code>required</code> array documents the fields and mandates none of them, which is a reasonable first step while teams get used to the idea.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The schema validates as JSON and carries all three mandatory elements.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.3 &mdash; Apply the schemas</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to <strong>Admin Settings &rarr; Organisation Properties</strong>.</li>
+      <li>Select <strong>API Key Metadata Schema</strong> or <strong>Workspace Metadata Schema</strong>.</li>
+      <li>Paste the schema and save.</li>
+    </ol>
+    <p>The two schemas are independent. A key schema and a workspace schema usually share fields and do not have to.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Existing keys and workspaces are not retrofitted</div>
+      <p>Enforcement starts at the next creation. Existing API keys and workspaces keep working without the fields, and an existing key picks up the requirement only when someone next updates it. A deployment that adds schemas late ends up with two populations, and only a deliberate pass over the old keys merges them.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">This is why the schema belongs before chapter 8</div>
+      <p>Every workspace created in chapter 8 and every key issued there will carry the fields. Adding the schema afterwards leaves exactly the gap described above.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-metadata-schema.png | Admin Settings > Organization Properties showing the API Key Metadata Schema editor with a sample schema -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Create a throwaway API key and confirm the form demands the required fields, then delete the key. A key that saves without them means the schema was accepted but the <code>required</code> array is missing or misspelled.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 3: Default config ─────────────────────────────────── -->
+<h2 id="default-config">Step 3 &mdash; Attach default configs to keys</h2>
+
+<p>A default config attached to an API key applies to every call made with that key. The caller writes no config ID, and you change the policy later by editing the config rather than by asking an application team to ship code.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.1 &mdash; Understand what a default config can carry</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A config holds routing and governance behavior, so attaching one by default lets you enforce:</p>
+    <ul>
+      <li>Which models and providers a key may reach.</li>
+      <li>Fallbacks, retries, and timeouts.</li>
+      <li>Guardrails and content moderation.</li>
+      <li>Caching behavior.</li>
+    </ul>
+    <p>The separation this creates is the point: application teams build applications, and governance lives in an object administrators control.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Pairs with saved-only mode</div>
+      <p>Chapter 4 can block callers supplying their own config inline. Combining that with a default config on every key means the policy you set is the policy that runs, with no path for a caller to route around it.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You can name the behavior the default config will carry for each key population.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.2 &mdash; Create the config, then attach it</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A config has to exist before a key can point at it, and a useful config references integrations and guardrails that chapters 6 and 9 create.</p>
+    <ol>
+      <li>Create a config in Strata Cloud Manager with the settings you want.</li>
+      <li>Note its config ID.</li>
+      <li>Open the API key and attach the config as its default.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">This step completes after chapters 6 and 9</div>
+      <p>A config written now can only reference what exists now, which is nothing to route to and no guardrail to apply. Decide the policy here, write the config once integrations and guardrails are in place, and attach it to keys before those keys reach an application team.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Recorded as an open item against chapter 9. When it completes, a call made with the key and no config reference behaves as the config specifies.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 4: Budgets ────────────────────────────────────────── -->
+<h2 id="budgets">Step 4 &mdash; Set budget limits on API keys</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 &mdash; Choose cost or tokens</span>
+  </div>
+  <div class="collapsible-body">
+    <p>When creating or editing an API key, toggle on <strong>Add Budget Limit</strong> and pick one:</p>
+    <table>
+      <thead>
+        <tr><th>Type</th><th>Set</th><th>Behaves</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Cost</td><td>A maximum spend in USD, minimum 1 dollar</td><td>Tracks what the usage costs, so model price changes move the ceiling in real terms.</td></tr>
+        <tr><td>Tokens</td><td>A maximum token count</td><td>Tracks consumption independently of price, which keeps the limit stable when pricing shifts.</td></tr>
+      </tbody>
+    </table>
+    <p>Pick tokens when you are protecting capacity, and cost when you are protecting a budget line.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The limit type matches what you are actually trying to control. A cost limit on a key whose risk is a runaway loop will trip late.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.2 &mdash; Choose the reset period</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Period</th><th>Behavior</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>No periodic reset</td><td>The limit applies until exhausted. The key stops working at that point and stays stopped.</td></tr>
+        <tr><td>Reset weekly</td><td>Resets every Sunday at midnight UTC.</td></tr>
+        <tr><td>Reset monthly</td><td>Resets on the first of each month at midnight UTC.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Midnight UTC is not midnight where your finance team sits</div>
+      <p>A monthly reset lands at midnight UTC on the first, which is the previous evening in the Americas and mid-morning in Asia. Teams reconciling spend against a local calendar month see a boundary that does not line up. Say so once rather than explaining it every month.</p>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">A budget limit with no reset stops a production key permanently</div>
+      <p>Reaching the limit expires the key. There is no raising it afterwards, because budget limits cannot be edited once set. For anything production-facing, choose a reset period or set the ceiling high enough that reaching it is genuinely an incident.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every key with a limit has a reset period you chose deliberately, and the production keys are not on the no-reset setting by accident.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 5: Rate limits ────────────────────────────────────── -->
+<h2 id="rate-limits">Step 5 &mdash; Set rate limits on API keys</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 &mdash; Pick a limit type and a window</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Rate limits control velocity rather than total spend. Toggle on <strong>Add Rate Limit</strong> when creating or editing a key.</p>
+    <ul>
+      <li><strong>Requests</strong> &mdash; a cap on the number of API calls.</li>
+      <li><strong>Tokens</strong> &mdash; a cap on token consumption rate.</li>
+    </ul>
+    <p>Three windows are available:</p>
+    <table>
+      <thead>
+        <tr><th>Window</th><th>Suits</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Per minute</td><td>High-frequency applications where a runaway loop must be caught quickly.</td></tr>
+        <tr><td>Per hour</td><td>Moderate usage, and the usual starting point.</td></tr>
+        <tr><td>Per day</td><td>Broad usage management, closer to a soft quota than a throttle.</td></tr>
+      </tbody>
+    </table>
+    <p>When the limit is reached, further requests are rejected until the window resets. Unlike a budget limit, this is temporary and self-clearing.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">A per-minute limit is the one that catches a loop</div>
+      <p>A daily cap on a runaway process is reached after the damage. Where the risk is an application retrying in a tight loop, the minute window is the one that helps, and a daily cap alongside it bounds the worst case.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each key's limit reflects its expected traffic with headroom. A limit set below normal peak turns into an incident on the first busy day.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 6: Notifications ──────────────────────────────────── -->
+<h2 id="notifications">Step 6 &mdash; Turn on notifications</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.1 &mdash; Add recipients who can act</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Toggle on <strong>Email Notifications</strong> when creating or editing a key with budget limits.</li>
+      <li>Type a recipient address and press Enter or click <strong>New</strong>.</li>
+      <li>Add as many as needed.</li>
+    </ol>
+    <p>Organization owners and admins are notified automatically when a limit is reached or a threshold is crossed. Recipients you add are in addition to them.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Notify the team that owns the key, not only the administrators</div>
+      <p>The default recipients are the people who administer the gateway. The people who can stop a runaway job are usually the application team. Add them, or the first warning reaches someone with no ability to act on it.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each key with a budget limit lists at least one recipient outside the administrator group.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 7: Verify ─────────────────────────────────────────── -->
+<h2 id="verify">Step 7 &mdash; Verify the chapter</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.1 &mdash; Confirm what every new workspace will inherit</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li>The request logging mode is set, and the override decision matches the reason behind it.</li>
+      <li>Both metadata schemas are applied, and a throwaway key creation demanded the required fields.</li>
+      <li>The default config policy is decided and recorded as an open item against chapter 9.</li>
+      <li>Budget limits, where set, have a deliberate reset period.</li>
+      <li>Rate limits reflect expected traffic with headroom.</li>
+      <li>Notification recipients include the teams that own the keys.</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All six hold. Stage 1 of the configuration set is complete: the organization has an identity, an identity provider, vault-backed credentials, a role model, and the defaults every workspace will inherit.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Elsewhere ──────────────────────────────────────────────── -->
+<h2 id="elsewhere">Limits set elsewhere</h2>
+
+<p>Budgets and rate limits exist at three levels, configured in three places. Setting one does not set the others.</p>
+
+<table>
+  <thead>
+    <tr><th>Level</th><th>Set in</th><th>Covered by</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>API key</td><td>The key's own settings</td><td>This chapter</td></tr>
+    <tr><td>Workspace</td><td>Workspace settings</td><td>Chapter 8</td></tr>
+    <tr><td>Integration, per workspace</td><td>Integration settings, under Workspace Provisioning, then Edit Budget and Rate Limits</td><td>Chapter 9</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Integration limits cascade, key limits do not</div>
+  <p>A budget set on an integration applies to every provider created from that integration, which makes it the broadest of the three. A key limit binds one credential. Decide which level each control belongs at before setting any of them, or you end up with three overlapping ceilings and no clear answer to which one stopped a request.</p>
+</div>
+
+<!-- ── Next ───────────────────────────────────────────────────── -->
+<h2 id="next">Next chapter</h2>
+
+<p>Chapter 6 covers guardrails: the built-in deterministic and LLM checks, synchronous against asynchronous evaluation, behavior on streamed responses, PII redaction, and organization-level enforcement. It is in preparation, and the <a href="index.html">configuration hub</a> tracks the remaining chapters.</p>
+
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

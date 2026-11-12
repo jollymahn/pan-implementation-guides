@@ -64,6 +64,16 @@ const EXEMPT = {
     'Is itself a planning tool that generates the engagement workbook',
   'docs/guides/airs-pov/index.html':
     'Generates POV documents at run time and is unlisted',
+  /* The AI Gateway configuration set is one engagement split across 13
+   * chapters for readability. Scoping a single chapter would produce 13
+   * part-estimates nobody can add up, so the set carries one playbook at its
+   * hub once every chapter publishes. Each chapter is listed here as it lands. */
+  'docs/guides/ai-gateway/configuration/authentication-identity.html':
+    'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
+  'docs/guides/ai-gateway/configuration/security-access-control.html':
+    'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
+  'docs/guides/ai-gateway/configuration/organization-properties.html':
+    'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
 };
 
 // ── Survey ───────────────────────────────────────────────────────────────────

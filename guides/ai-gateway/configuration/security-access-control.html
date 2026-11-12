@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Security and Access Control | AI Gateway Configuration | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#concept" data-section="concept">Two role models</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configure</div>
+    <a href="#roles" data-section="roles">1. The role model</a>
+    <a href="#master-key" data-section="master-key">2. Audit the master key</a>
+    <a href="#security-tab" data-section="security-tab">3. Security tab permissions</a>
+    <a href="#saved-only" data-section="saved-only">4. Saved-only mode</a>
+    <a href="#audit-logs" data-section="audit-logs">5. Audit logs</a>
+    <a href="#verify" data-section="verify">6. Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#key-permissions" data-section="key-permissions">API key permissions</a>
+    <a href="#next" data-section="next">Next chapter</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Configuration</a>
+  <span class="sep">|</span>
+  Security and Access Control
+</div>
+
+<h1>Security and Access Control</h1>
+<p class="subtitle">Chapter 4 of 13. The organization and workspace role models, the per-resource permissions that tune them, and the audit trail that records every change</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">Configuration Hub</a>
+  <a href="secret-references.html" class="cloud-link">Previous: Secret References</a>
+  <a href="organization-properties.html" class="cloud-link">Next: Organization Properties</a>
+</div>
+
+<!-- ── Concept ────────────────────────────────────────────────── -->
+<h2 id="concept">Two role models</h2>
+
+<p>The gateway has two independent role models. The organization model decides who administers the deployment. The workspace model decides what a team can do inside its own space. A user holds a role in each.</p>
+
+<p>Two rules connect them, and both surprise people:</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Organization owners and admins hold admin rights in every workspace</div>
+  <p>There is no workspace a user with an organization admin role cannot administer. Granting that role is a decision about the whole deployment, not about one team, and no workspace-level setting restricts it.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Organization membership comes first</div>
+  <p>A user must exist as an organization member before any workspace can invite them. Workspace admins and managers invite from the pool of organization members rather than from your directory, which is why chapter 2 set up provisioning before this chapter assigns roles.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul>
+  <li>Chapters 1 to 3 complete</li>
+  <li>The <strong>Organization Owner</strong> role, because the permission settings in step 3 are owner-level and admin-level</li>
+  <li>The list of teams that will hold workspaces, even in draft, because the permission decisions here shape what those teams can do</li>
+  <li>Your organization's position on whether engineers should read prompt and response payloads in logs</li>
+</ul>
+
+<div class="callout callout-note">
+  <div class="callout-title">Some settings have a version floor</div>
+  <p>Data visibility filtering needs gateway 2.2.4 or later, and on air-gapped deployments also backend 1.11.0 and frontend 1.6.4 or later. Only logs written after that version are filtered, so older logs stay visible to whoever could already see them. On SaaS the setting applies to logs from 19 February 2026 onward.</p>
+</div>
+
+<!-- ── Step 1: Roles ──────────────────────────────────────────── -->
+<h2 id="roles">Step 1 &mdash; Assign organization roles</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 &mdash; Understand what each organization role carries</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Owner and Admin are close to identical. Billing is the practical difference.</p>
+    <table>
+      <thead>
+        <tr><th>Feature</th><th>Owner</th><th>Admin</th><th>Member</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Logs and analytics</td><td>View, filter, group</td><td>View, filter, group</td><td>View, filter, group</td></tr>
+        <tr><td>Prompts</td><td>List, view, create, update, delete, publish</td><td>List, view, create, update, delete, publish</td><td>List, view, create, update</td></tr>
+        <tr><td>Configs</td><td>List, view, create, update, delete</td><td>List, view, create, update, delete</td><td>List, view, create</td></tr>
+        <tr><td>Guardrails</td><td>List, view, create, update, delete</td><td>List, view, create, update, delete</td><td>List, view, create, update</td></tr>
+        <tr><td>Integrations</td><td>List, create, edit, duplicate, delete, copy</td><td>List, create, edit, duplicate, delete, copy</td><td>List, copy</td></tr>
+        <tr><td>Model catalog providers and models</td><td>List, create, edit, duplicate, delete, copy</td><td>List, create, edit, duplicate, delete, copy</td><td>List, copy</td></tr>
+        <tr><td>Team</td><td>Add users, assign roles</td><td>Add users, assign roles</td><td>None</td></tr>
+        <tr><td>Organization settings</td><td>Update</td><td>Update</td><td>None</td></tr>
+        <tr><td>API keys</td><td>Create, edit, delete, update, rotate</td><td>Create, edit, delete, update, rotate</td><td>None</td></tr>
+        <tr><td>Billing</td><td>Manage</td><td>None</td><td>None</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Admin is not a reduced Owner</div>
+      <p>An organization admin can create and delete guardrails, rotate API keys, change organization settings, and assign roles. Treat the role as equivalent to Owner for every purpose except paying the bill, and grant it on that basis.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You can name every account that should hold Owner or Admin, and the list is short enough to read aloud. A deployment with more admins than workspaces has usually granted the role as a convenience.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 &mdash; Review the workspace roles you will assign later</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Workspaces do not exist until chapter 8. Decide the shape now, because step 3 configures what Manager and Member can actually do and those settings apply to every workspace.</p>
+    <table>
+      <thead>
+        <tr><th>Workspace role</th><th>Carries</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Admin</td><td>Complete control of workspace configuration and team management, including assigning the Admin role to others and creating workspace API keys.</td></tr>
+        <tr><td>Manager</td><td>Team and resource management. By default a manager holds the same permissions as an admin, which step 3 is where you change.</td></tr>
+        <tr><td>Member</td><td>Read-only on workspace resources: logs, prompts, configs, providers, and models. No create, update, or delete.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Manager equals Admin until you say otherwise</div>
+      <p>Workspace admins and managers hold the same permissions by default. If your model expects a manager to be a lighter role, step 3 is the only place that becomes true, and skipping it leaves two names for one level of access.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You can state, for each of the three workspace roles, what you intend it to be able to do. Step 3 turns that intent into settings.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.3 &mdash; Assign organization roles</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to <strong>Admin Settings</strong> and open the organization user list.</li>
+      <li>Set each account's role to Owner, Admin, or Member.</li>
+      <li>Leave everyone who only needs to work inside a workspace as a Member. The workspace role is what gives them their access, and chapter 8 assigns it.</li>
+    </ol>
+    <!-- screenshot-pending: aigw-cfg-org-roles.png | Organization user list showing the role column with a mix of Owner, Admin and Member, email addresses masked -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every account shows the role you intended. Users arriving later through directory sync land as members, so re-check this list after the first full sync rather than assuming it stays as you left it.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 2: Master key ─────────────────────────────────────── -->
+<h2 id="master-key">Step 2 &mdash; Audit the master API key</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.1 &mdash; Find the key the organization was created with</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A new organization is provisioned with a master API key that has every permission enabled. Nobody chose that; it comes with the organization. Find it before anything starts using it.</p>
+    <ol>
+      <li>Open the API keys list for the organization in <strong>Admin Settings</strong>.</li>
+      <li>Identify the key created at the same time as the organization.</li>
+      <li>Decide whether anything needs it. In most deployments nothing does, because the keys created in chapter 2 and chapter 8 are scoped to their consumers.</li>
+      <li>Either restrict its permissions to what one named consumer needs, or delete it.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">A fully permissioned key with no owner is the weakest point in a new deployment</div>
+      <p>The master key can read logs, change guardrails, manage users, and rotate other keys. Leaving it in place unexamined means an unattributed credential with complete access exists for the life of the organization.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-master-key.png | Organization API key list with the master key row and its permission summary, key value masked -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every key in the list has a named purpose and a recorded holder. No key remains whose only description is that it came with the organization.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 3: Security tab ───────────────────────────────────── -->
+<h2 id="security-tab">Step 3 &mdash; Configure the Security tab permissions</h2>
+
+<p>One page holds the permission model for every workspace. Go to <strong>Admin Settings &rarr; Security</strong>, where each section below appears in turn. Settings here apply organization-wide, so a workspace cannot loosen them locally.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Organization owners and admins are never restricted by these settings</div>
+  <p>Every section tunes what workspace managers and workspace members can do. Owners and admins see everything regardless, which is the same observation made at the top of this chapter arriving in a second place.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.1 &mdash; Logs Management</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Six switches, split across three roles and two levels of detail.</p>
+    <table>
+      <thead>
+        <tr><th>Permission</th><th>Grants</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Managers View Logs</td><td>Workspace managers see full log entries.</td></tr>
+        <tr><td>Managers View Logs Metadata</td><td>Workspace managers see log metadata.</td></tr>
+        <tr><td>Members View Logs</td><td>Workspace members see full log entries.</td></tr>
+        <tr><td>Members View Logs Metadata</td><td>Workspace members see log metadata.</td></tr>
+        <tr><td>Org-Admin View Logs</td><td>Organization admins see full log entries inside workspaces.</td></tr>
+        <tr><td>Org-Admin View Logs Metadata</td><td>Organization admins see log metadata inside workspaces.</td></tr>
+      </tbody>
+    </table>
+    <p>The distinction between the two is the whole point of the section:</p>
+    <ul>
+      <li><strong>Logs</strong> &mdash; complete entries, including request and response payloads. Prompts and model output are readable.</li>
+      <li><strong>Logs metadata</strong> &mdash; timestamps, model used, tokens consumed, and other metrics, with no content.</li>
+    </ul>
+    <p>All six are enabled by default, so every role reads payloads until you decide otherwise.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Payload access is a data protection decision, not a convenience one</div>
+      <p>Prompts routinely carry customer records, source code, and internal documents. Granting metadata without payloads gives a team everything it needs for cost and latency work while keeping content out of reach. Make this call with whoever owns data protection rather than defaulting it.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-security-logs-mgmt.png | Admin Settings > Security, Logs Management section showing all six toggles -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each of the six switches matches a decision you can explain. Step 6 confirms the effect with a real account.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.2 &mdash; Data Visibility</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Logs Management decides whether a role sees logs at all. Data Visibility decides whose logs it sees.</p>
+    <table>
+      <thead>
+        <tr><th>Permission</th><th>When enabled</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Managers View All Data</td><td>Workspace managers see logs, analytics, and traces from every user in the workspace.</td></tr>
+        <tr><td>Members View All Data</td><td>Workspace members see logs, analytics, and traces from every user in the workspace.</td></tr>
+      </tbody>
+    </table>
+    <p>Both are enabled by default. Disabling one restricts that role to data generated by its own API keys, across logs, analytics, and traces alike.</p>
+    <p>The restriction applies to browser sessions and to workspace user API keys. Organization-level and workspace-level service API keys are not affected, and a workspace user key fetching analytics or exporting logs through the API is filtered by the role of the user it belongs to.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">This is per-user scoping, not redaction</div>
+      <p>A member with this disabled still reads their own payloads in full. Use Logs Management to remove payload access; use Data Visibility to narrow whose requests are in scope. The two settings answer different questions and are often confused for each other.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Check the version floor from the prerequisites. On a deployment below it, the setting is present and has no effect, which looks identical to a setting that is working.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.3 &mdash; API Key Management</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Four switches controlling who may see and issue keys inside a workspace.</p>
+    <table>
+      <thead>
+        <tr><th>Permission</th><th>Grants</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>View Keys (Workspace Managers)</td><td>Managers see both user and service API keys in their workspace, limited to those created by workspace administrators.</td></tr>
+        <tr><td>Manage Keys (Workspace Managers)</td><td>Managers create, update, and delete user and service keys, including creating keys on behalf of another user.</td></tr>
+        <tr><td>View Keys (Workspace Members)</td><td>Members see user keys only, and only ones created for them.</td></tr>
+        <tr><td>Manage Keys (Workspace Members)</td><td>Members create, update, and delete their own user keys.</td></tr>
+      </tbody>
+    </table>
+    <p>Two kinds of key are involved. Service keys drive automated processes and integrations and are not tied to a person. User keys belong to an individual and carry that person's scope.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Creating keys for other people is an attribution problem</div>
+      <p>A manager with Manage Keys can issue a key on behalf of another user. Usage then attributes to that user rather than to the manager who created it, so the audit trail for key creation and the attribution in logs point at different people. Grant it where a team genuinely onboards its own members, and know the trade.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The four switches match your intent for manager and member autonomy. Chapter 8 exercises them against a real workspace.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.4 &mdash; The remaining resource sections</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The rest of the Security tab follows one pattern: a view switch and a write switch, for managers and for members, per resource.</p>
+    <table>
+      <thead>
+        <tr><th>Section</th><th>Switches</th><th>Default</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Analytics</td><td>Managers View Analytics, Members View Analytics</td><td>Both enabled.</td></tr>
+        <tr><td>Guardrails</td><td>Managers View, Managers Write, Members View, Members Write</td><td>Managers view and write; members view only.</td></tr>
+        <tr><td>Prompts</td><td>Managers View, Managers Write, Members View, Members Write</td><td>Managers view and write; members view only.</td></tr>
+        <tr><td>Integrations</td><td>Managers Write Workspace Integrations, Managers Write MCP Integrations, Managers Write MCP Servers</td><td>Chapters 9 and 10 depend on these.</td></tr>
+        <tr><td>Providers</td><td>View Providers, Manage Providers</td><td>Members view; managers view and manage.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Guardrail write access deserves a second look</div>
+      <p>A role that can write guardrails can also weaken or delete them. Leaving write access with workspace managers means a team can remove a control the organization put in place for it. Chapter 6 covers organization-level guardrails, which managers cannot touch, and that is the right home for anything that must hold.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-security-tab-full.png | Admin Settings > Security, full page scrolled to show several permission sections -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every section on the Security tab has been read and set deliberately. A section left at its default because you agreed with the default is a decision; one left because you did not scroll to it is not.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 4: Saved-only ─────────────────────────────────────── -->
+<h2 id="saved-only">Step 4 &mdash; Set saved-only mode</h2>
+
+<p>Saved-only mode, shown as <strong>Block Inline Configs</strong>, stops callers supplying a provider, endpoint, or config in the request itself. Requests must reference a saved resource by slug, which is the only way the allowlists, budgets, guardrails, and attribution attached to those resources reliably apply.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 &mdash; Find out what your organization already does</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The default depends on when the organization was created, so check rather than assume.</p>
+    <table>
+      <thead>
+        <tr><th>Organization created</th><th>Default</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>On or after 19 June 2026</td><td>Enabled. Inline provider configuration is rejected out of the box.</td></tr>
+        <tr><td>Before 19 June 2026</td><td>Disabled, to preserve existing traffic. Nothing changes until an administrator turns it on.</td></tr>
+      </tbody>
+    </table>
+    <p>New workspaces inherit the organization setting as it stands when they are created.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Hybrid deployments need gateway 2.11.0 or later</div>
+      <p>Below that version the setting exists and does nothing. Inline configuration is not blocked, and the console gives no indication that enforcement is inactive.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You know the current state of the setting and the gateway version behind it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.2 &mdash; Enable it</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to <strong>Admin Settings &rarr; Security</strong>.</li>
+      <li>Find <strong>Block Inline Configs</strong> and enable it.</li>
+    </ol>
+    <p>Enforcement is a data-plane check that runs once at the start of request processing, before routing. A request carrying an inline provider, endpoint, or config is rejected with HTTP 400 and an error code naming what was blocked, and it never reaches an upstream provider.</p>
+    <div class="callout callout-danger">
+      <div class="callout-title">Turning this on can break live applications immediately</div>
+      <p>Any caller that currently passes a provider name, a base URL, or an ad-hoc config object starts failing on the next request. On an organization created before 19 June 2026 with traffic already flowing, inventory what your callers send before enabling it, and give application teams a date.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Send one request with an inline provider and confirm it returns HTTP 400 with an error code identifying the blocked element. Send one referencing a saved resource by slug and confirm it proceeds. Before chapter 9 creates an integration there is no saved resource to reference, so run the second half of this check again then.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 5: Audit logs ─────────────────────────────────────── -->
+<h2 id="audit-logs">Step 5 &mdash; Confirm audit logging</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 &mdash; Open the audit log and find your own changes</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Audit logs collect automatically across every workspace. There is nothing to switch on.</p>
+    <ol>
+      <li>Go to <strong>Admin Settings &rarr; Audit Logs</strong>.</li>
+      <li>Find the changes you made earlier in this chapter.</li>
+    </ol>
+    <p>Each entry records:</p>
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Holds</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Timestamp</td><td>When the action occurred.</td></tr>
+        <tr><td>User</td><td>Who performed it.</td></tr>
+        <tr><td>Workspace</td><td>The workspace context, where one applies.</td></tr>
+        <tr><td>Action</td><td>Create, update, delete, and so on.</td></tr>
+        <tr><td>Resource</td><td>The entity affected.</td></tr>
+        <tr><td>Response Status</td><td>The HTTP status the action returned.</td></tr>
+        <tr><td>Client IP</td><td>Where the request came from.</td></tr>
+        <tr><td>Country</td><td>The geographic location associated with the request.</td></tr>
+      </tbody>
+    </table>
+    <p>Filters cover HTTP method, request ID, resource type, and action. Resource types include workspaces, API keys, integrations, model catalog, configs, prompts, guardrails, collections, labels, and the organization itself.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Access is limited to owners and admins</div>
+      <p>Nobody else reads the audit log, and no Security tab setting changes that. If your security operations team needs the data, they need an organization role or an export path, which chapter 13 covers.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-audit-logs.png | Admin Settings > Audit Logs showing recent entries with the filter bar, user emails and IPs masked -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Your own permission changes from step 3 appear as entries, attributed to your account, with a successful response status. An empty audit log after a chapter of changes means you are looking at the wrong organization.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 6: Verify ─────────────────────────────────────────── -->
+<h2 id="verify">Step 6 &mdash; Verify the chapter</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.1 &mdash; Prove the model with a real account</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Settings pages show intent. Only a sign-in shows effect.</p>
+    <ul>
+      <li>The Owner and Admin list is short and every entry is deliberate.</li>
+      <li>The master API key has been scoped or deleted.</li>
+      <li>Every section of the Security tab has been read and set.</li>
+      <li>Saved-only mode matches your decision, and you know the gateway version supports it.</li>
+      <li>Audit log entries exist for the changes you just made.</li>
+    </ul>
+    <div class="callout callout-warning">
+      <div class="callout-title">The real test waits for chapter 8</div>
+      <p>Manager and member permissions cannot be exercised until a workspace exists with someone in it. Carry this check forward: once chapter 8 creates the first workspace, sign in as a member and confirm they see what you intended and nothing else.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All five hold, and the deferred member sign-in is recorded as an open item against chapter 8.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Reference ──────────────────────────────────────────────── -->
+<h2 id="key-permissions">API key permissions and their defaults</h2>
+
+<p>Each API key carries its own permission set, separate from the role model above. These are the defaults a new key receives.</p>
+
+<table>
+  <thead>
+    <tr><th>Feature</th><th>Available settings</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Metrics</td><td>Disabled, Enabled</td><td>Disabled</td></tr>
+    <tr><td>Completions, meaning all LLM calls</td><td>Disabled, Enabled</td><td>Enabled</td></tr>
+    <tr><td>Prompts</td><td>Disabled, Read, Write, Delete</td><td>Read</td></tr>
+    <tr><td>Configs</td><td>Disabled, Read, Write, Delete</td><td>Disabled</td></tr>
+    <tr><td>Guardrails</td><td>Disabled, Read, Write, Delete</td><td>Disabled</td></tr>
+    <tr><td>Integrations</td><td>Disabled, Read, Write, Delete</td><td>Disabled</td></tr>
+    <tr><td>Model catalog providers</td><td>Disabled, Read, Write, Delete</td><td>Disabled</td></tr>
+    <tr><td>Model catalog models</td><td>Disabled, Read, Write, Delete</td><td>Disabled</td></tr>
+    <tr><td>Users, meaning team management</td><td>Disabled, Read, Write, Delete</td><td>Disabled</td></tr>
+  </tbody>
+</table>
+
+<p>The defaults are already close to least privilege: a new key calls models and reads prompts, and nothing else. The exception is the master key covered in step 2, which arrives with everything enabled.</p>
+
+<!-- ── Next ───────────────────────────────────────────────────── -->
+<h2 id="next">Next chapter</h2>
+
+<p><a href="organization-properties.html">Chapter 5, Organization properties</a>, sets what every workspace inherits: the request logging mode, mandatory metadata, enforced default configs, and budget and rate limits on API keys.</p>
+
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

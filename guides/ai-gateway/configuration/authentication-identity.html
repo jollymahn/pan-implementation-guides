@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Authentication and Identity | AI Gateway Configuration | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#concept" data-section="concept">Three ways in</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configure</div>
+    <a href="#allowed-domains" data-section="allowed-domains">1. Allowed domains</a>
+    <a href="#sso" data-section="sso">2. Single sign-on</a>
+    <a href="#provisioning" data-section="provisioning">3. User provisioning</a>
+    <a href="#jwt" data-section="jwt">4. JWT validation</a>
+    <a href="#api-keys" data-section="api-keys">5. API keys</a>
+    <a href="#verify" data-section="verify">6. Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#deferred" data-section="deferred">Deferred to later chapters</a>
+    <a href="#next" data-section="next">Next chapter</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Configuration</a>
+  <span class="sep">|</span>
+  Authentication and Identity
+</div>
+
+<h1>Authentication and Identity</h1>
+<p class="subtitle">Chapter 2 of 13. Attaching an identity provider to the organization, gating which email domains may enter it, automating provisioning, and issuing the keys that machines use</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">Configuration Hub</a>
+  <a href="organization-registration.html" class="cloud-link">Previous: Registration</a>
+  <a href="secret-references.html" class="cloud-link">Next: Secret References</a>
+  <a href="../agent-identity-entra.html" class="cloud-link">Agent Identity with Entra ID</a>
+</div>
+
+<!-- ── Concept ────────────────────────────────────────────────── -->
+<h2 id="concept">Three ways in</h2>
+
+<p>Three distinct populations authenticate to the gateway, and each uses a different mechanism. Configuring one does nothing for the other two.</p>
+
+<table>
+  <thead>
+    <tr><th>Who</th><th>Mechanism</th><th>Configured in</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>People opening the console</td><td>Single sign-on over OIDC or SAML, gated by allowed domains</td><td>Steps 1 and 2</td></tr>
+    <tr><td>Applications calling the inference API</td><td>API keys, either organization-scoped or workspace-scoped</td><td>Step 5</td></tr>
+    <tr><td>Agents and services presenting a token</td><td>JWT validated against JWKS configured on the organization</td><td>Step 4</td></tr>
+  </tbody>
+</table>
+
+<p>Automated provisioning sits alongside these. It does not authenticate anyone; it creates and removes the accounts that single sign-on then admits.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Allowed domains come first, and the reason is not cosmetic</div>
+  <p>Provisioning only creates users whose email domain is verified on the organization. Running a provisioning sync before step 1 produces no users and no error that explains why, which is a long way to travel for a silent result. Set the domains first.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul>
+  <li>Chapter 1 complete, with an organization you own</li>
+  <li>The <strong>Organization Owner</strong> role, because authentication settings are owner-level</li>
+  <li>Administrative access to your identity provider, for creating an application registration</li>
+  <li>The list of email domains your organization uses, including any acquired or legacy domains</li>
+  <li>For the Cloud Identity Engine path, a Strata Cloud Manager tenant with Cloud Identity Engine activated and at least one directory synced</li>
+</ul>
+
+<div class="callout callout-note">
+  <div class="callout-title">Keep a non-SSO route open while you work</div>
+  <p>Configure single sign-on in a session where you still hold a working console login through another browser or profile. A misconfigured issuer URL or redirect URI locks everyone out of the organization, and recovering from that means contacting support rather than fixing a field.</p>
+</div>
+
+<!-- ── Step 1: Allowed domains ────────────────────────────────── -->
+<h2 id="allowed-domains">Step 1 &mdash; Set the allowed domains</h2>
+
+<p>Allowed domains restrict which email domains may authenticate into the organization. They also decide which users provisioning is permitted to create.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 &mdash; Add every domain your users sign in with</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to <strong>Admin Settings &rarr; Authentication Settings</strong>.</li>
+      <li>Find the <strong>Allowed Domains</strong> section.</li>
+      <li>Add each domain, for example <code>example.com</code>.</li>
+      <li>Repeat for every domain in use, including domains from acquisitions and any domain your contractors sign in with.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">A missing domain fails quietly</div>
+      <p>Users on an unlisted or unverified domain are skipped during provisioning rather than reported as errors. If a sync later reports fewer users than the directory group holds, an absent domain is the first thing to check.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-allowed-domains.png | Admin Settings > Authentication Settings, Allowed Domains section with two generic domains listed -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every domain that appears in your users' email addresses is listed. Count the distinct domains in the directory group you plan to sync and compare the two lists.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 2: SSO ────────────────────────────────────────────── -->
+<h2 id="sso">Step 2 &mdash; Configure single sign-on</h2>
+
+<p>The gateway accepts either OIDC or SAML. Pick one. The choice usually follows whatever your identity provider team already standardized on, and the selection below persists as you move through the page.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which path should I pick?</div>
+  <ul>
+    <li><strong>OIDC</strong> &mdash; the default choice for Okta and Entra ID. It needs an issuer URL, a client ID, and a client secret, and it supports refresh tokens through the <code>offline_access</code> scope.</li>
+    <li><strong>SAML</strong> &mdash; use when your identity provider team requires SAML or when an existing SAML application is being reused. It needs either a metadata URL or metadata XML.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="aigw-sso-protocol">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="oidc">2A &middot; OIDC</button>
+    <button class="mgmt-tab" data-plane="saml">2B &middot; SAML</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="oidc">
+
+    <p>The gateway needs three values from your identity provider: the issuer URL, the client ID, and the client secret. The OIDC well-known configuration document must be reachable at the issuer URL.</p>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.1 &mdash; Create the application in your identity provider</span>
+      </div>
+      <div class="collapsible-body">
+        <p>The gateway requires these scopes on the application:</p>
+        <ul>
+          <li><code>openid</code></li>
+          <li><code>profile</code></li>
+          <li><code>email</code></li>
+          <li><code>offline_access</code></li>
+        </ul>
+        <p>The redirect URI is the Strata Cloud Manager console address, <code>https://stratacloudmanager.paloaltonetworks.com/</code>.</p>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Okta</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>In the Okta dashboard, open <strong>Applications</strong> and create a new app integration.</li>
+              <li>Select <strong>OIDC - OpenID Connect</strong> as the sign-in method.</li>
+              <li>Select <strong>Web Application</strong> as the application type.</li>
+              <li>Set the sign-in redirect URI to <code>https://stratacloudmanager.paloaltonetworks.com/</code>.</li>
+              <li>Check both <strong>Authorization code</strong> and <strong>Refresh Token</strong> as grant types, then create the application.</li>
+              <li>Open the application's <strong>General</strong> section and edit General Settings. Set <strong>Login initiated by</strong> to <strong>Either Okta or app</strong>, and set the initiate login URI to the same console address.</li>
+              <li>Open the <strong>Sign On</strong> section, edit it, select <strong>Okta URL</strong> as the issuer, and save.</li>
+            </ol>
+            <p>Collect three values: the issuer from the Sign On section, the client ID, and the client secret from <strong>General &rarr; Client Credentials &rarr; Client Secrets</strong>.</p>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Entra ID</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>Sign in to the Azure portal and open Microsoft Entra ID.</li>
+              <li>Under <strong>Manage</strong>, select <strong>App registrations &rarr; New registration</strong>.</li>
+              <li>Enter a name and choose the supported account types your organization requires.</li>
+              <li>Under <strong>Redirect URI</strong>, select <strong>Web</strong> as the platform and enter <code>https://stratacloudmanager.paloaltonetworks.com/</code>.</li>
+              <li>Register the application.</li>
+              <li>Open <strong>Certificates &amp; secrets &rarr; Client secrets &rarr; New client secret</strong>. Set an expiry that matches your rotation policy and add it.</li>
+            </ol>
+            <p>Collect three values from <strong>Overview</strong>: the OpenID Connect metadata document URL from <strong>Endpoints</strong>, the Application (client) ID from <strong>Essentials</strong>, and the client secret you just created.</p>
+            <div class="callout callout-warning">
+              <div class="callout-title">Record the secret expiry date now</div>
+              <p>Entra client secrets expire. When the secret expires, every console sign-in through this application fails at once. Put the expiry date in the same calendar you use for certificate renewals.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.2 &mdash; Enter the values in the console</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Go to <strong>Admin Settings &rarr; Authentication Settings &rarr; OIDC</strong>.</li>
+          <li>Enter the <strong>Issuer URL</strong>, the <strong>Client ID</strong>, and the <strong>Client Secret Key</strong>.</li>
+          <li>Save.</li>
+        </ol>
+        <!-- screenshot-pending: aigw-cfg-oidc-settings.png | Admin Settings > Authentication Settings > OIDC with fields populated, secret masked -->
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Open a private browser window and sign in to Strata Cloud Manager. The identity provider prompts for credentials and returns you to the console signed in. Keep your original session open until this works.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.3 &mdash; Change the client authentication method, if your provider requires it</span>
+      </div>
+      <div class="collapsible-body">
+        <p>By default the gateway authenticates to the token endpoint with <code>client_secret_basic</code>. Change it only when your identity provider rejects that method.</p>
+        <ul>
+          <li>Set <code>token_endpoint_auth_method</code> in the OIDC settings to the method your provider expects, for example <code>client_secret_post</code> or <code>private_key_jwt</code>.</li>
+          <li>For <code>private_key_jwt</code>, also supply a <code>jwks</code> object holding your client's private key set, and register the matching public JWKS with your identity provider.</li>
+        </ul>
+        <p>Supplying a JWKS without naming a method selects <code>private_key_jwt</code> automatically.</p>
+        <div class="callout callout-note">
+          <div class="callout-title">Self-hosted management planes use environment variables</div>
+          <p>A self-hosted deployment running in single-organization SSO mode sets the same behavior through <code>OIDC_TOKEN_ENDPOINT_AUTH_METHOD</code> and <code>OIDC_CLIENT_JWKS</code> on the backend service. Air-gapped deployments add custom scopes through <code>OIDC_CUSTOM_SCOPES</code> as a comma-separated list.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>A sign-in from a private browser window completes. A failure here appears as a token exchange error rather than a credential prompt, which distinguishes it from a wrong password.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /oidc panel -->
+
+  <div class="mgmt-panel" data-plane="saml">
+
+    <p>SAML needs either a provider metadata URL or the metadata XML. The gateway supplies two values your identity provider needs in return, and both are shown in the console before you start.</p>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.1 &mdash; Collect the two values the gateway publishes</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Go to <strong>Admin Settings &rarr; Authentication Settings &rarr; SAML</strong>.</li>
+          <li>Copy the <strong>SAML Redirect/Consumer Service URL</strong>.</li>
+          <li>Copy the <strong>SAML Entity ID</strong>.</li>
+        </ol>
+        <p>Your identity provider application needs both before it can be created, so collect them first rather than switching back and forth.</p>
+        <!-- screenshot-pending: aigw-cfg-saml-sp-values.png | Admin Settings > Authentication Settings > SAML showing the consumer service URL and entity ID -->
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>You have both values recorded. Nothing has changed in the console yet.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.2 &mdash; Create the application in your identity provider</span>
+      </div>
+      <div class="collapsible-body">
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Okta</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>In the Okta dashboard, open <strong>Applications</strong> and create a new app integration.</li>
+              <li>Select <strong>SAML 2.0</strong> as the sign-in method.</li>
+              <li>In <strong>Configure SAML</strong>, set <strong>Single sign-on URL</strong> to the SAML Redirect/Consumer Service URL you copied.</li>
+              <li>Set <strong>Audience URI (SP Entity ID)</strong> to the SAML Entity ID you copied.</li>
+              <li>Create the application.</li>
+              <li>Open <strong>Sign On</strong>, then the <strong>SAML 2.0</strong> tab, then <strong>Metadata details</strong>, and copy the <strong>Metadata URL</strong>.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="collapsible">
+          <div class="collapsible-header">
+            <span class="chevron">&#9654;</span>
+            <span>Entra ID</span>
+          </div>
+          <div class="collapsible-body">
+            <ol>
+              <li>Sign in to the Azure portal and open Microsoft Entra ID.</li>
+              <li>Under <strong>Manage</strong>, select <strong>App registrations &rarr; New registration</strong>.</li>
+              <li>Enter a name and choose the supported account types your organization requires.</li>
+              <li>Under <strong>Redirect URI</strong>, select <strong>Web</strong> as the platform and enter the SAML Redirect/Consumer Service URL.</li>
+              <li>Register the application.</li>
+              <li>Select <strong>Endpoints</strong> at the top of the page and copy the <strong>Federation metadata document URL</strong>.</li>
+              <li>In the left panel, select <strong>Expose an API</strong>. Next to <strong>Application ID URI</strong>, select <strong>Add</strong>, enter the SAML Entity ID, and save.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>2.3 &mdash; Enter the metadata in the console</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Go to <strong>Admin Settings &rarr; Authentication Settings &rarr; SAML</strong>.</li>
+          <li>Paste the metadata URL into <strong>Provider Metadata URL</strong>, or paste the XML into <strong>Provider Metadata XML</strong>.</li>
+          <li>Save.</li>
+        </ol>
+        <p>A metadata URL is preferable to pasted XML, because the gateway re-reads it when your identity provider rotates its signing certificate. Pasted XML has to be replaced by hand at every rotation.</p>
+        <!-- screenshot-pending: aigw-cfg-saml-settings.png | Admin Settings > Authentication Settings > SAML with a metadata URL populated -->
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Open a private browser window and sign in to Strata Cloud Manager. The identity provider prompts for credentials and returns you to the console signed in. Keep your original session open until this works.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /saml panel -->
+</div><!-- /mgmt-tabs -->
+
+<!-- ── Step 3: Provisioning ───────────────────────────────────── -->
+<h2 id="provisioning">Step 3 &mdash; Automate user provisioning</h2>
+
+<p>Provisioning creates and removes accounts from your directory instead of by hand. Which path you take is decided by your deployment rather than by preference.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which path should I pick?</div>
+  <ul>
+    <li><strong>Cloud Identity Engine directory sync</strong> &mdash; the path for a Strata Cloud Manager tenant. It pulls users and groups from Entra ID, Okta, or on-premises Active Directory through the Cloud Identity Engine, and it replaces standalone SCIM.</li>
+    <li><strong>SCIM provisioning</strong> &mdash; the path for a deployment that is not on a Strata Cloud Manager tenant. Directory sync is not available there.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="aigw-provisioning">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="cie">3A &middot; Cloud Identity Engine</button>
+    <button class="mgmt-tab" data-plane="scim">3B &middot; SCIM</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="cie">
+
+    <p>Directory sync has two halves. The directory connection, the identity attribute, and the auth profile are configured here. Mapping directory groups to workspaces happens in chapter 8, because a mapping needs a workspace that already exists.</p>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.1 &mdash; Confirm a directory is connected in the Cloud Identity Engine</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In Strata Cloud Manager, open the <strong>Cloud Identity Engine</strong> console.</li>
+          <li>Go to <strong>Directory Sync &rarr; Directories</strong>.</li>
+          <li>Confirm at least one directory is listed with a successful sync status.</li>
+        </ol>
+        <p>To add one, click <strong>Add New Directory</strong> and choose the type:</p>
+        <table>
+          <thead>
+            <tr><th>Directory type</th><th>Provider</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Cloud Directory</td><td>Entra ID, Okta, Google</td><td>The most common setup.</td></tr>
+            <tr><td>On-Premises Directory</td><td>Active Directory</td><td>Requires a Cloud Identity agent installed on-premises.</td></tr>
+            <tr><td>CIE Directory</td><td>Cloud Identity Engine</td><td>A local directory managed entirely within the Cloud Identity Engine.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The directory listing shows your directory with a sync status of success, a user count, and a group count. A directory with zero groups gives chapter 8 nothing to map.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.2 &mdash; Select the connected directory</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>In the AI Gateway, go to <strong>Admin Settings &rarr; Authentication &rarr; Directory Sync</strong>.</li>
+          <li>Open the <strong>Connected Directory</strong> dropdown. It lists every directory available from the Cloud Identity Engine with its provider type and entity counts.</li>
+          <li>Select your directory.</li>
+        </ol>
+        <p>The <strong>Configure in CIE</strong> button on this page returns you to the Cloud Identity Engine console if the directory you expect is missing.</p>
+        <!-- screenshot-pending: aigw-cfg-directory-sync.png | Admin Settings > Authentication > Directory Sync, full page showing Connected Directory, User Identity Attribute, Auth Profile and Sync State -->
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The dropdown shows your directory with non-zero user and group counts.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.3 &mdash; Choose the user identity attribute</span>
+      </div>
+      <div class="collapsible-body">
+        <p>This setting decides which directory attribute becomes the user's email address in the gateway.</p>
+        <table>
+          <thead>
+            <tr><th>Attribute</th><th>Use when</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>UPN (User Principal Name)</td><td>The user principal name matches the user's email address. This is the default choice.</td></tr>
+            <tr><td>Mail (Primary Email)</td><td>The user principal name differs from the email address, for example a principal name on an <code>onmicrosoft.com</code> domain against a real mail domain.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout callout-warning">
+          <div class="callout-title">Pick the attribute that is populated for everyone</div>
+          <p>A user missing the selected attribute is skipped during sync rather than reported. Check the attribute is populated across the whole directory before choosing it, and remember that the resulting domain must appear in the allowed domains from step 1.</p>
+        </div>
+        <div class="callout callout-note">
+          <div class="callout-title">Changing it later is safe</div>
+          <p>Changing the attribute after setup triggers an automatic full re-sync that updates every user's email address. No users are removed by that re-sync.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The selected attribute matches the domains you listed in step 1.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.4 &mdash; Save and select an auth profile</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Click <strong>Save</strong> to persist the connected directory and the identity attribute. The background sync scheduler starts at this point.</li>
+          <li>Open the <strong>Auth Profile</strong> dropdown and select a profile. These profiles come from the authentication profiles configured in the Cloud Identity Engine.</li>
+        </ol>
+        <p>The auth profile validates user identity during MCP inbound authentication, which chapter 10 builds on. Selecting it now means chapter 10 has one fewer dependency to resolve.</p>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The <strong>Directory Sync State</strong> section shows a status of Success or In Progress, with a <strong>Last Updated</strong> timestamp. A status of Failed here blocks everything downstream, so resolve it before continuing.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.5 &mdash; Know the sync cadence before you troubleshoot</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Three timings explain most of what looks like a broken sync:</p>
+        <ul>
+          <li><strong>Delta sync</strong> &mdash; group membership changes are pulled every 15 minutes, so a directory change can take that long to appear.</li>
+          <li><strong>Automatic full sync</strong> &mdash; when the Cloud Identity Engine rebuilds its cache, roughly weekly, the gateway performs a full sync on its own.</li>
+          <li><strong>Manual full sync</strong> &mdash; the <strong>Full Sync</strong> button forces a complete pull. If a sync is already running, the forced one starts when the current one finishes.</li>
+        </ul>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Click <strong>Full Sync</strong> and watch <strong>Objects Synced</strong> and <strong>Last Updated</strong> change. Until chapter 8 maps a group to a workspace, the object count reflects mapped objects only, so a low number here is expected rather than a fault.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /cie panel -->
+
+  <div class="mgmt-panel" data-plane="scim">
+
+    <p>SCIM automates user creation, updates, deprovisioning, and workspace group membership from your identity provider. Entra ID and Okta are the supported providers.</p>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.1 &mdash; Collect the SCIM base URL and generate a token</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Go to <strong>Admin Settings &rarr; Authentication Settings &rarr; SCIM Provisioning</strong>.</li>
+          <li>Copy the <strong>SCIM URL</strong>.</li>
+          <li>Generate an API token on the same page and copy it.</li>
+        </ol>
+        <p>Your identity provider sends the token as a bearer credential on every SCIM request:</p>
+        <div class="code-block"><pre><code>Authorization: Bearer &lt;your-api-token&gt;</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <div class="callout callout-warning">
+          <div class="callout-title">The token is shown once</div>
+          <p>Store it in your secrets manager as you generate it. Recovering it later means generating a new one and updating the identity provider, which interrupts provisioning until both sides match again.</p>
+        </div>
+        <!-- screenshot-pending: aigw-cfg-scim-provisioning.png | Admin Settings > Authentication Settings > SCIM Provisioning showing the SCIM URL and token generation, token masked -->
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>You hold both the SCIM URL and the bearer token, and the token is stored outside the console.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.2 &mdash; Configure the identity provider</span>
+      </div>
+      <div class="collapsible-body">
+        <p>In your identity provider's provisioning configuration, supply two fields:</p>
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>SCIM Base URL</td><td>The SCIM URL copied in step 3.1</td></tr>
+            <tr><td>Bearer Token</td><td>The API token generated in step 3.1</td></tr>
+          </tbody>
+        </table>
+        <p>The gateway supports the full set of operations, so provisioning, updates, and deprovisioning all flow through for both users and groups:</p>
+        <ul>
+          <li>User provisioning, updates, and deprovisioning</li>
+          <li>Group provisioning, updates, and deprovisioning, where a group maps to a workspace</li>
+        </ul>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Run the identity provider's test or validation action for the connection. It authenticates against the SCIM URL and returns success before any user is provisioned.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.3 &mdash; Provision a first user and confirm</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Assign one test user to the application in your identity provider.</li>
+          <li>Run a provisioning cycle, or wait for the scheduled one.</li>
+          <li>Check the organization user list in the gateway for the new account.</li>
+        </ol>
+        <div class="callout callout-warning">
+          <div class="callout-title">No user and no error means the domain is not allowed</div>
+          <p>SCIM only provisions users whose email domain is verified in <strong>Allowed Domains</strong>. A user on an unlisted domain is skipped silently. Return to step 1 and add the domain, then run the cycle again.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The test user appears in the organization user list. Removing the user's application assignment and running another cycle removes the account, which confirms deprovisioning works as well as provisioning.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /scim panel -->
+</div><!-- /mgmt-tabs -->
+
+<!-- ── Step 4: JWT ────────────────────────────────────────────── -->
+<h2 id="jwt">Step 4 &mdash; Configure JWT validation</h2>
+
+<p>Clients can present a JWT instead of an API key, in either the <code>x-portkey-api-key</code> header or an <code>Authorization: Bearer</code> header. The gateway validates it against JWKS held on the organization. Configure this when agents or services authenticate with tokens from your identity provider rather than with static keys.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Skip this step if every client uses an API key</div>
+  <p>JWT validation is additive. Leaving it unconfigured changes nothing for API key clients, and step 5 covers the keys those clients need.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 &mdash; Check your tokens meet the hard requirements</span>
+  </div>
+  <div class="collapsible-body">
+    <p>These constraints are rejections rather than preferences. Confirm them against a real token before configuring anything, because a token that fails one of them is refused with no partial behavior.</p>
+    <table>
+      <thead>
+        <tr><th>Element</th><th>Requirement</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>alg</code> header</td><td>Must be <code>RS256</code>. Symmetric algorithms such as <code>HS256</code> are refused.</td></tr>
+        <tr><td><code>typ</code> header</td><td>Must be <code>JWT</code>.</td></tr>
+        <tr><td><code>kid</code> header</td><td>Required, and must match a <code>kid</code> present in your JWKS.</td></tr>
+        <tr><td>Key type and size</td><td>RSA, 2048 bits or larger.</td></tr>
+        <tr><td>JWKS contents</td><td>Public key parameters only. Private key material must never appear.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Decode one real token from your identity provider and confirm the three header fields. A missing <code>kid</code> is the most common cause of a token that looks correct and is still refused.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.2 &mdash; Add the JWKS to the organization</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to <strong>Admin Settings &rarr; Organisation &rarr; Authentication</strong>.</li>
+      <li>Supply one of the two forms:
+        <ul>
+          <li><strong>JWKS URL</strong> &mdash; public keys are fetched dynamically. Several URLs may be given as a comma-separated list, which the gateway fetches and merges. This is what you use while rotating between identity providers.</li>
+          <li><strong>JWKS JSON</strong> &mdash; a static document holding the public keys.</li>
+        </ul>
+      </li>
+      <li>Save.</li>
+    </ol>
+    <p>Prefer the URL form. A static document has to be replaced by hand every time your identity provider rotates its signing key, and a missed rotation refuses every token at once.</p>
+    <!-- screenshot-pending: aigw-cfg-jwt-jwks.png | Admin Settings > Organisation > Authentication showing the JWKS URL field populated -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Step 4.4 performs the end-to-end check. Saving the JWKS on its own proves only that the field accepted the value.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.3 &mdash; Confirm the claims your tokens carry</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Required claims:</p>
+    <table>
+      <thead>
+        <tr><th>Claim</th><th>Meaning</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>portkey_oid</code> or <code>organisation_id</code></td><td>The organization identifier recorded in chapter 1.</td></tr>
+        <tr><td><code>portkey_workspace</code> or <code>workspace_slug</code></td><td>The workspace the token acts in. Chapter 8 creates the workspaces these refer to.</td></tr>
+        <tr><td><code>scope</code> or <code>scopes</code></td><td>The permissions the token grants.</td></tr>
+        <tr><td><code>exp</code></td><td>Expiry as a UNIX timestamp in seconds. Mandatory. A token with no <code>exp</code>, or an expired one, is refused, with a small tolerance for clock skew.</td></tr>
+      </tbody>
+    </table>
+    <p>Optional claims add per-token behavior: <code>defaults</code> applies default settings to every request made with the token, and <code>usage_limits</code> and <code>rate_limits</code> enforce caps on it. The <code>iat</code> and <code>nbf</code> claims are recommended and not required.</p>
+    <p>The gateway attributes usage to a user by taking the first claim present, in this order: <code>email_id</code>, then <code>sub</code>, then <code>uid</code>. Attribution in logs and metrics follows that precedence, so a token carrying only <code>sub</code> reports a subject identifier where you may expect an address.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Hosted against hybrid</div>
+      <p>The hosted gateway validates JWTs on the management plane and requires both <code>portkey_oid</code> and <code>portkey_workspace</code>. Hybrid and air-gapped deployments can enable gateway-local validation so tokens are checked at the gateway, in which case the organization and workspace can be resolved from deployment configuration and a standard identity provider token works unmodified. The <a href="../agent-identity-entra.html">agent identity guide</a> walks the hybrid claim path in detail.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A decoded token shows all four required claims, and the organization identifier matches the one recorded in chapter 1.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.4 &mdash; Make a call with a token</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Send one request to the gateway with the JWT in place of an API key. Until chapter 9 configures an integration there is no model to reach, so at this stage a rejected credential and a missing model are different outcomes and you are only checking the credential.</p>
+    <ul>
+      <li>An authentication error means the token, the JWKS, or a claim is wrong.</li>
+      <li>An error about the model or the integration means authentication passed.</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The response is anything other than an authentication failure. Re-run this check after chapter 9 to confirm the full path.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 5: API keys ───────────────────────────────────────── -->
+<h2 id="api-keys">Step 5 &mdash; Understand and issue API keys</h2>
+
+<p>API keys authenticate requests to the inference API. They are not accepted on the Admin API, which uses a Strata Cloud Manager access token issued to a service account instead.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 &mdash; Choose the right kind of key</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Key type</th><th>Scope</th><th>Issued to</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Admin API key</td><td>The whole organization, reaching across every workspace</td><td>Administrative automation only. Owners and organization admins create them.</td></tr>
+        <tr><td>Workspace API key</td><td>One workspace</td><td>Applications and services. This is what application teams receive.</td></tr>
+      </tbody>
+    </table>
+    <p>An admin key can target a specific workspace by naming a workspace identifier when it updates an entity, which is why its reach is wider than it first appears.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Do not hand an admin key to an application</div>
+      <p>An admin key carries organization-wide scope including user management, guardrail changes, and key rotation. An application that only needs to call a model needs a workspace key. Chapter 8 issues those once the workspaces exist.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You can state which key type each planned consumer will hold. Issuing the workspace keys themselves waits for chapter 8.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.2 &mdash; Create the first admin key</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to <strong>Admin Settings</strong> and open the API keys section for the organization.</li>
+      <li>Create a key, name it for the automation that will hold it rather than for the person creating it, and record it in your secrets manager.</li>
+    </ol>
+    <p>Name keys after their consumer. A key called <code>ci-pipeline-provisioning</code> can be rotated with confidence; a key called <code>admin-key-2</code> cannot, because nobody knows what breaks when it changes.</p>
+    <!-- screenshot-pending: aigw-cfg-admin-api-keys.png | Organization API keys list showing one named key, key values masked -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The key appears in the list with the name you gave it, and the value is stored outside the console.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.3 &mdash; Plan rotation before keys are in use</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Keys support rotation, which regenerates the value in place. Agreeing the cadence now is easier than agreeing it during an incident.</p>
+    <ul>
+      <li>Decide a rotation interval per key type and write it down with the key inventory.</li>
+      <li>Record which system holds each key, so rotation has a known blast radius.</li>
+      <li>Rotate the admin key you just created once, before anything depends on it, to confirm the process works while nothing breaks.</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A rotation of the unused admin key completes and produces a new value. Your inventory records the interval and the holder for every key issued so far.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 6: Verify ─────────────────────────────────────────── -->
+<h2 id="verify">Step 6 &mdash; Verify the chapter</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.1 &mdash; Confirm identity works end to end</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li>Every email domain in use appears under <strong>Allowed Domains</strong>.</li>
+      <li>A sign-in from a private browser window completes through the identity provider.</li>
+      <li>Provisioning shows a successful state, whether through directory sync or SCIM.</li>
+      <li>A test user provisioned from the directory appears in the organization user list.</li>
+      <li>If tokens are in use, a call carrying a JWT fails for a reason other than authentication.</li>
+      <li>At least one named admin key exists and is recorded in your secrets manager.</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All six hold. Sign out completely and sign back in through the identity provider as a final check that no fallback session is masking a broken configuration.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Deferred ───────────────────────────────────────────────── -->
+<h2 id="deferred">Deferred to later chapters</h2>
+
+<p>Three pieces of identity work cannot complete here, because each needs something that does not exist yet.</p>
+
+<table>
+  <thead>
+    <tr><th>Work</th><th>Blocked by</th><th>Completed in</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Mapping directory groups to workspaces</td><td>Directory sync does not create workspaces, and a mapping needs an existing one</td><td>Chapter 8</td></tr>
+    <tr><td>Issuing workspace API keys</td><td>No workspaces exist yet</td><td>Chapter 8</td></tr>
+    <tr><td>Per-resource permissions for logs, analytics, providers and keys</td><td>Belongs with the role model rather than with sign-in</td><td>Chapter 4</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Group mappings are a one-to-one link, and removing one is immediate</div>
+  <p>Each directory group maps to exactly one workspace, and each workspace takes exactly one group. Deleting a mapping removes the provisioned users from that workspace straight away, and the only recovery is to re-create the mapping and wait for a sync. Chapter 8 covers the mapping work with that constraint in mind.</p>
+</div>
+
+<!-- ── Next ───────────────────────────────────────────────────── -->
+<h2 id="next">Next chapter</h2>
+
+<p><a href="secret-references.html">Chapter 3, Secret references</a>, points the gateway at credentials held in your own vault, so that the integrations and plugins configured later never store a provider key in the gateway.</p>
+
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

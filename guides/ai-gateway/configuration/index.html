@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Gateway Configuration | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#scope" data-section="scope">What this covers</a>
+    <a href="#order" data-section="order">Why the order matters</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Stages</div>
+    <a href="#foundation" data-section="foundation">Foundation</a>
+    <a href="#protection" data-section="protection">Protection</a>
+    <a href="#tenancy" data-section="tenancy">Tenancy</a>
+    <a href="#supply" data-section="supply">Supply</a>
+    <a href="#runtime" data-section="runtime">Runtime and visibility</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#roles" data-section="roles">Who can do what</a>
+    <a href="#not-covered" data-section="not-covered">Outside this set</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  Gateway Configuration
+</div>
+
+<h1>AI Gateway Configuration</h1>
+<p class="subtitle">Configuring a licensed AI Gateway from an empty organization to a governed, multi-workspace deployment, in the order the product requires</p>
+
+<div class="cloud-links">
+  <a href="organization-registration.html" class="cloud-link">Start: Organization Registration</a>
+  <a href="../ai-gateway-deployment.html" class="cloud-link">Deployment Guide</a>
+  <a href="../ai-gateway-readiness.html" class="cloud-link">Customer Readiness</a>
+</div>
+
+<!-- ── Scope ──────────────────────────────────────────────────── -->
+<h2 id="scope">What this covers</h2>
+
+<p>This set configures the gateway itself. It assumes the data plane already exists, whether that is the hosted SaaS plane or a self-hosted hybrid plane you installed from the <a href="../hybrid-infrastructure.html">hybrid infrastructure guide</a>. Nothing here deploys infrastructure.</p>
+
+<p>Every step is a click path in Strata Cloud Manager. Where a capability has no console path today, the chapter says so and says what the alternative is rather than switching you to an API workflow for one setting.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Relationship to the deployment guide</div>
+  <p>The <a href="../ai-gateway-deployment.html">AI Gateway Deployment Guide</a> takes a licensed tenant to a first working model call, with one integration and a basic guardrail. That is the shortest path to proving the gateway works. This set is the full build: the same ground covered in depth, plus identity, access control, governance defaults, workspaces, the MCP and agent gateways, routing behavior, and observability.</p>
+</div>
+
+<!-- ── Order ──────────────────────────────────────────────────── -->
+<h2 id="order">Why the order matters</h2>
+
+<p>The chapters run in sequence because several settings bind only what comes after them. Working out of order produces a tenant that looks configured and behaves inconsistently.</p>
+
+<table>
+  <thead>
+    <tr><th>Gate</th><th>Set in</th><th>What breaks if you skip ahead</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Allowed Domains</td><td>Chapter 2</td><td>SCIM provisions nobody. The gateway only creates users whose email domain is verified on the organization, so a provisioning run against an empty domain list silently yields zero users.</td></tr>
+    <tr><td>Secret references</td><td>Chapter 3</td><td>Integrations and plugins store raw credentials. Moving them to vault references later means editing every integration by hand.</td></tr>
+    <tr><td>Roles and permissions</td><td>Chapter 4</td><td>Users arrive before the model that governs them and inherit whatever the default allows.</td></tr>
+    <tr><td>Organization defaults and guardrails</td><td>Chapters 5 and 6</td><td>Workspaces created earlier do not pick up an enforced default config or an organization guardrail retroactively for traffic already flowing.</td></tr>
+    <tr><td>Workspaces</td><td>Chapter 8</td><td>Integrations are provisioned to workspaces. With no workspaces, provisioning has no target and every integration lands organization-wide.</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Foundation ─────────────────────────────────────────────── -->
+<h2 id="foundation">Stage 1 &mdash; Foundation</h2>
+
+<p>Five chapters that establish who the organization is, who may sign in, how credentials are held, who may change what, and what every workspace inherits.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Chapter 1 &mdash; Organization registration and gateway URLs</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Licensing and activation, confirming the organization, the Organisation ID, and pointing the console at a self-hosted gateway so generated code snippets and playground calls use your endpoint instead of the cloud default.</p>
+    <p><a href="organization-registration.html">Open Chapter 1</a></p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Chapter 2 &mdash; Authentication and identity</span>
+  </div>
+  <div class="collapsible-body">
+    <p>OIDC and SAML single sign-on with per-provider setup for Okta and Entra ID, allowed domains, SCIM provisioning, Cloud Identity Engine directory sync, JWT validation for agent traffic, and the two kinds of API key.</p>
+    <p><a href="authentication-identity.html">Open Chapter 2</a></p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Chapter 3 &mdash; Secret references</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Pointing the gateway at credentials held in AWS Secrets Manager, Azure Key Vault, or HashiCorp Vault instead of storing provider keys in the gateway, with the authentication variants for each vault.</p>
+    <p><a href="secret-references.html">Open Chapter 3</a></p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Chapter 4 &mdash; Security and access control</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Organization and workspace roles, the per-resource permission settings for logs, analytics, providers and keys, data visibility, saved-only mode, and audit logs.</p>
+    <p><a href="security-access-control.html">Open Chapter 4</a></p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Chapter 5 &mdash; Organization properties</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Request logging mode, mandatory metadata schemas, enforced default configs, and budget and rate limits on API keys.</p>
+    <p><a href="organization-properties.html">Open Chapter 5</a></p>
+  </div>
+</div>
+
+<!-- ── Protection ─────────────────────────────────────────────── -->
+<h2 id="protection">Stage 2 &mdash; Protection</h2>
+
+<p>Two chapters covering what inspects traffic before any traffic exists.</p>
+
+<ul>
+  <li><strong>Chapter 6 &mdash; Guardrails.</strong> The built-in deterministic and LLM checks, synchronous against asynchronous evaluation, streaming behavior, PII redaction, and organization-level enforcement. <em>In progress.</em></li>
+  <li><strong>Chapter 7 &mdash; Plugins.</strong> Partner guardrail plugins including Prisma AIRS, credential configuration, and bringing your own guardrail. <em>In progress.</em></li>
+</ul>
+
+<!-- ── Tenancy ────────────────────────────────────────────────── -->
+<h2 id="tenancy">Stage 3 &mdash; Tenancy</h2>
+
+<ul>
+  <li><strong>Chapter 8 &mdash; Workspaces.</strong> Creating workspaces, adding members, workspace API keys, workspace-level guardrails, and workspace budgets and rate limits. <em>In progress.</em></li>
+</ul>
+
+<!-- ── Supply ─────────────────────────────────────────────────── -->
+<h2 id="supply">Stage 4 &mdash; Supply</h2>
+
+<ul>
+  <li><strong>Chapter 9 &mdash; LLM integrations and the model catalog.</strong> Provider integrations, model provisioning, overrides, pricing adjustments, custom models and hosts. <em>In progress.</em></li>
+  <li><strong>Chapter 10 &mdash; MCP gateway.</strong> The registry, internal and external servers, authentication and authorization, guardrails, rate limits, and circuit breakers. <em>In progress.</em></li>
+  <li><strong>Chapter 11 &mdash; Agent gateway.</strong> The agent registry, servers, and the agent catalog. <em>In progress.</em></li>
+</ul>
+
+<!-- ── Runtime ────────────────────────────────────────────────── -->
+<h2 id="runtime">Stage 5 &mdash; Runtime and visibility</h2>
+
+<ul>
+  <li><strong>Chapter 12 &mdash; Routing and reliability.</strong> Configs, fallbacks, load balancing, conditional routing, retries, circuit breakers, canary testing, and caching. <em>In progress.</em></li>
+  <li><strong>Chapter 13 &mdash; Observability.</strong> Logs and log export, analytics, filters, traces, metadata, feedback, cost management, and OpenTelemetry. <em>In progress.</em></li>
+</ul>
+
+<!-- ── Roles ──────────────────────────────────────────────────── -->
+<h2 id="roles">Who can do what</h2>
+
+<p>Most of this set requires the organization Owner or Admin role. Workspace-scoped settings can be delegated once chapter 8 creates the workspaces and chapter 4 establishes the role model.</p>
+
+<table>
+  <thead>
+    <tr><th>Chapters</th><th>Minimum role</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1, 2, 3, 5</td><td>Organization Owner</td><td>Authentication settings and organization defaults are owner-level changes.</td></tr>
+    <tr><td>4</td><td>Organization Owner</td><td>Role assignment and permission configuration.</td></tr>
+    <tr><td>6, 7</td><td>Organization Owner or Admin</td><td>Organization guardrails are owner-level; workspace guardrails follow the workspace role.</td></tr>
+    <tr><td>8 to 13</td><td>Organization Admin, or Workspace Admin within a workspace</td><td>Delegable once the workspace exists.</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Not covered ────────────────────────────────────────────── -->
+<h2 id="not-covered">Outside this set</h2>
+
+<ul>
+  <li><strong>Data plane deployment.</strong> Installing the hybrid gateway is covered by the <a href="../kubernetes-deployment.html">Kubernetes</a> and <a href="../serverless-deployment.html">ECS and Container Apps</a> guides.</li>
+  <li><strong>Customer-managed encryption keys.</strong> Bringing your own KMS key is arranged with Palo Alto Networks rather than configured in the console, so it is not a procedure in this set. Platform encryption applies regardless: traffic uses TLS 1.2 or higher, and stored data uses AES-256.</li>
+  <li><strong>Client application setup.</strong> Pointing developer tools at the gateway is covered by the <a href="../ai-gateway-client-apps.html">client applications guide</a>.</li>
+</ul>
+
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>
