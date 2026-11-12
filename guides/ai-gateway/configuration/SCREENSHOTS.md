@@ -78,9 +78,23 @@ running the rest of the configuration, or they are gone:
 | `aigw-cfg-request-logging.png` | Admin Settings → Organisation Properties, Request Logging section with the mode selection and the workspace override. |
 | `aigw-cfg-metadata-schema.png` | The API Key Metadata Schema editor holding a sample schema. |
 
+## Chapter 6 — Guardrails
+
+| File | What to capture |
+|---|---|
+| `aigw-cfg-guardrail-create.png` | The Guardrails create page with two or three checks added and the check sidebar visible. |
+| `aigw-cfg-org-guardrails.png` | Admin Settings → Organisation Guardrails with an input and an output guardrail selected. |
+
+## Chapter 7 — Plugins
+
+| File | What to capture |
+|---|---|
+| `aigw-cfg-plugins-list.png` | Settings → Plugins showing the partner list, one enabled and the rest available. |
+| `aigw-cfg-airs-check.png` | The PANW Prisma AIRS Guardrail check configuration panel with its parameter fields. |
+
 ## Not yet listed
 
-Chapters 6 to 13 are in preparation. Their capture points are added here as each
+Chapters 8 to 13 are in preparation. Their capture points are added here as each
 chapter is drafted.
 
 ## Playwright notes

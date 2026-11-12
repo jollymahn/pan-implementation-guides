@@ -38,6 +38,20 @@ var NEWS_VISIBLE_COUNT = 6;
 var NEWS_ITEMS = [
   {
     badge: "New",
+    date: "2026-11-12",
+    title: "Partner plugins, and tuning Prisma AIRS for agentic clients",
+    href: "guides/ai-gateway/configuration/plugins.html",
+    tags: "Chapter 7 of the configuration set, Nineteen partners enable then credential then appear as guardrail checks, Credentials live under Plugins or Integrations depending on partner and version, Prisma AIRS scan scope is the exception to the last-message rule and reaches all_messages, Default AI Model and Application User make AIRS reporting useless for attribution, Claude Code and Cursor scaffolding causes false positives that strip_scaffolding fixes, Online search sends prompts out and brings untrusted text back, Webhook Fail on Error decides whether your control fails open or closed, Self-hosted needs TRUSTED_CUSTOM_HOSTS for private webhooks"
+  },
+  {
+    badge: "New",
+    date: "2026-11-12",
+    title: "Guardrails, and the four constraints that shape every one",
+    href: "guides/ai-gateway/configuration/guardrails.html",
+    tags: "Chapter 6 of the configuration set, Only the last message is evaluated so an earlier injection is not re-examined, One guardrail covers input or output and never both, Checks return a boolean with no score to threshold on, Async defaults to true so a new guardrail logs rather than blocks, Status 446 denied and 246 failed but allowed replace the provider code, An output guardrail cannot stop a streamed response, Ten endpoints run no guardrails at all, Full BASIC and PRO check catalog with directions"
+  },
+  {
+    badge: "New",
     date: "2026-11-11",
     title: "Organization properties: what every workspace inherits",
     href: "guides/ai-gateway/configuration/organization-properties.html",

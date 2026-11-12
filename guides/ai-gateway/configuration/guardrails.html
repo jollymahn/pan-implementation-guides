@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Guardrails | AI Gateway Configuration | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#concept" data-section="concept">Checks, actions, configs</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configure</div>
+    <a href="#create" data-section="create">1. Create and add checks</a>
+    <a href="#actions" data-section="actions">2. Set the actions</a>
+    <a href="#redaction" data-section="redaction">3. PII redaction</a>
+    <a href="#enforce" data-section="enforce">4. Enforce organization-wide</a>
+    <a href="#attach" data-section="attach">5. Attach through a config</a>
+    <a href="#verify" data-section="verify">6. Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#catalog" data-section="catalog">Built-in check catalog</a>
+    <a href="#coverage" data-section="coverage">Where guardrails do not run</a>
+    <a href="#next" data-section="next">Next chapter</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Configuration</a>
+  <span class="sep">|</span>
+  Guardrails
+</div>
+
+<h1>Guardrails</h1>
+<p class="subtitle">Chapter 6 of 13. Building checks, deciding what happens when one fails, and enforcing a baseline across the whole organization</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">Configuration Hub</a>
+  <a href="organization-properties.html" class="cloud-link">Previous: Organization Properties</a>
+  <a href="plugins.html" class="cloud-link">Next: Plugins</a>
+  <a href="../streaming-caching-a2a.html" class="cloud-link">Streaming and Guardrails</a>
+</div>
+
+<!-- ── Concept ────────────────────────────────────────────────── -->
+<h2 id="concept">Checks, actions, configs</h2>
+
+<p>A guardrail is two things assembled: a set of <strong>checks</strong> that each return yes or no, and a set of <strong>actions</strong> that decide what the gateway does with those verdicts. Creating one does not make it active. It becomes active either by being enforced at the organization level, or by being named in a config that a request uses.</p>
+
+<p>Four constraints shape every guardrail you build, and all four surprise people who expect a content filter:</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The gateway's own checks evaluate only the last message</div>
+  <p>Input guardrails built from the catalog below look at the last message in the request body, not the whole conversation. A prompt injection planted three turns earlier is not re-examined on this turn. Design these checks around the newest message.</p>
+  <p>Some partner checks are the exception and take a scope parameter of their own. The Prisma AIRS check, for instance, scans anything from the last message up to the entire conversation. <a href="plugins.html">Chapter 7</a> covers that setting, and it is the route to full-conversation analysis.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">One guardrail validates input or output, never both</div>
+  <p>The direction is fixed when you create it, and the actions you set apply only to that direction. Covering both means building two guardrails. A single guardrail with checks for both directions is a configuration that cannot work.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">A check returns a boolean and nothing else</div>
+  <p>Every check answers yes or no. There is no score, no confidence, and no partial result to threshold on. Orchestration comes from the actions in step 2, not from the checks.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Guardrails are text-only</div>
+  <p>Image inputs, whether base64 or URLs in a multimodal message, are not evaluated. Only the text portions of a message reach the checks.</p>
+</div>
+
+<p>Which checks you can use depends on the plan:</p>
+
+<table>
+  <thead>
+    <tr><th>Plan</th><th>Available checks</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Developer</td><td><code>BASIC</code> only</td></tr>
+    <tr><td>Production</td><td><code>BASIC</code>, <code>PARTNER</code>, and <code>PRO</code></td></tr>
+    <tr><td>Enterprise</td><td>All of the above plus custom guardrails</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul>
+  <li>Chapters 1 to 5 complete</li>
+  <li>The <strong>Organization Owner</strong> role for step 4, since organization guardrails are owner-level</li>
+  <li>A decision on which checks are advisory and which must block, because step 2 turns that into behavior</li>
+  <li>For partner checks, the partner credential, which <a href="secret-references.html">chapter 3</a> can hold as a vault reference</li>
+</ul>
+
+<div class="callout callout-note">
+  <div class="callout-title">Why this comes before workspaces</div>
+  <p>An organization guardrail applies to every request in the organization, including requests from workspaces created later. Setting the baseline now means every workspace in chapter 8 inherits it rather than being retrofitted one at a time.</p>
+</div>
+
+<!-- ── Step 1: Create ─────────────────────────────────────────── -->
+<h2 id="create">Step 1 &mdash; Create a guardrail and add checks</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 &mdash; Decide the direction first</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Before opening the console, settle which direction this guardrail covers, because it cannot be changed into the other one later.</p>
+    <table>
+      <thead>
+        <tr><th>Direction</th><th>Runs</th><th>Typical job</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Input, meaning the prompt</td><td>On the user's prompt before the model is called</td><td>Prompt injection, PII in the prompt, model allowlisting, required metadata</td></tr>
+        <tr><td>Output</td><td>On the model's generated text after the call</td><td>Schema conformance, PII in the response, content moderation, leaked code</td></tr>
+      </tbody>
+    </table>
+    <p>Most deployments need one of each, so expect to run this step twice.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You can state the direction and name the checks that belong to it. A check that only supports the other direction, which the <a href="#catalog">catalog</a> marks, is a sign the split is wrong.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 &mdash; Create it and add the checks</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Open the <strong>Guardrails</strong> page and click <strong>Create</strong>.</li>
+      <li>Add checks from the sidebar. Each one has its own input fields, so fill them in and save the check.</li>
+      <li>Add as many checks as the guardrail needs. There is no limit.</li>
+      <li>Name the guardrail and save it.</li>
+    </ol>
+    <p>Saving produces a guardrail ID. Record it: steps 4 and 5 both reference it.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Name for the direction and the intent</div>
+      <p>A guardrail called <code>input-pii-block</code> is obvious in a config six months later. One called <code>guardrail-2</code> means reading its checks to find out what it does, every time.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-guardrail-create.png | The Guardrails create page with two or three checks added and the check sidebar visible -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The guardrail appears in the list with its ID, and every check within it supports the direction you chose.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 2: Actions ────────────────────────────────────────── -->
+<h2 id="actions">Step 2 &mdash; Set the actions</h2>
+
+<p>Actions are where a guardrail becomes either an observation or a control. There are four settings, and the defaults are deliberately passive: a freshly created guardrail logs and blocks nothing.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.1 &mdash; Async: observe or gate</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Setting</th><th>Behavior</th><th>Latency</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Async true, the default</td><td>Checks run in parallel with the model call. Results are logged and change nothing.</td><td>None</td></tr>
+        <tr><td>Async false</td><td>Checks run before the request reaches the model, or before the response reaches the caller. Results can deny or modify.</td><td>Adds the time the checks take</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">A guardrail left on the default never blocks anything</div>
+      <p>Async true is the shipped state. A team that creates a guardrail, attaches it, and assumes traffic is now controlled has built a logger. Setting async to false is what makes it a control.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each guardrail's async setting matches whether you intend it to observe or to gate.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.2 &mdash; Deny: what a failure costs</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Setting</th><th>On a failed check</th><th>Status returned</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Deny true</td><td>The request is killed.</td><td><code>446</code></td></tr>
+        <tr><td>Deny false, the default</td><td>The request proceeds anyway, and the failure is recorded.</td><td><code>246</code></td></tr>
+        <tr><td>Either, all checks pass</td><td>The request proceeds.</td><td><code>200</code></td></tr>
+      </tbody>
+    </table>
+    <p>Those two status codes are specific to the gateway and replace the provider's own code when async is false. Anything consuming the gateway needs to handle them.</p>
+    <div class="callout callout-danger">
+      <div class="callout-title">Tell application teams about 246 and 446 before you enable deny</div>
+      <p>A client written against standard HTTP semantics treats <code>246</code> as a success in the 2xx range and <code>446</code> as an unrecognized failure. Neither is handled sensibly by default. Roll deny out on a subset of traffic first and confirm the callers cope.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>For every guardrail with deny true, the teams calling through it know what <code>446</code> means and have agreed how their application responds.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.3 &mdash; Sequential: ordering and cost</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Setting</th><th>Behavior</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Sequential false, the default</td><td>All checks run at once. Faster when the checks are independent.</td></tr>
+        <tr><td>Sequential true</td><td>Checks run one after another, each starting when the previous finishes. Adds latency.</td></tr>
+      </tbody>
+    </table>
+    <p>Leave it parallel unless the checks genuinely depend on each other or you need predictable ordering.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Sequential is on only where you can name the dependency that requires it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.4 &mdash; Feedback on success and failure</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two further actions append custom feedback to the request, one when every check passes and one when any check fails. Both are worth setting.</p>
+    <p>Over time this builds a dataset of guardrail verdicts against real traffic, which is the only practical way to find out whether a check is tuned correctly before you set deny on it.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">This is how you earn the right to turn deny on</div>
+      <p>Run a new guardrail with async true and feedback configured for a period. The feedback record shows how often it would have fired and on what. Enable deny once that rate is one you can defend to the teams it will affect.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both feedback actions are configured on every guardrail you intend to enforce later.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 3: Redaction ──────────────────────────────────────── -->
+<h2 id="redaction">Step 3 &mdash; Turn on PII redaction</h2>
+
+<p>Redaction replaces sensitive values in the request before it reaches the model, rather than rejecting the request. It is the right answer when the prompt is legitimate and the data in it is not.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.1 &mdash; Enable it on a PII check</span>
+  </div>
+  <div class="collapsible-body">
+    <p>On the guardrail creation page, PII checks carry a <strong>Redact PII</strong> toggle. Enabling it redacts matches instead of only reporting them.</p>
+    <p>Five providers support redaction:</p>
+    <table>
+      <thead>
+        <tr><th>Provider</th><th>Redacts</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Prisma AIRS AI Gateway Pro PII</td><td>Phone numbers, email addresses, location information, IP addresses, social security numbers, names, and credit card information.</td></tr>
+        <tr><td>Patronus AI</td><td>Confidential business content, based on an enterprise PII dataset covering meeting notes, contracts, marketing email, and performance reviews.</td></tr>
+        <tr><td>Pangea</td><td>Geographic locations, payment card data, and other sensitive types, with customizable rules.</td></tr>
+        <tr><td>AWS Bedrock Guardrails</td><td>Predefined PII types, plus custom types defined with regular expressions.</td></tr>
+        <tr><td>Promptfoo</td><td>PII exposures in session data, through social engineering, and through direct exposure.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Step 6 sends a prompt containing a test value and confirms the stored log shows the redacted form rather than the original.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.2 &mdash; Redact a pattern of your own</span>
+  </div>
+  <div class="collapsible-body">
+    <p>For identifiers specific to your organization, such as an internal account number, use the Regex Match check with redaction rather than a PII provider.</p>
+    <ol>
+      <li>On the <strong>Guardrails</strong> page, click <strong>Create</strong>.</li>
+      <li>Choose <strong>Regex Match</strong> from the BASIC category.</li>
+      <li>Enter the pattern in <strong>Regex Rule</strong>, for example <code>\b\d{3}-\d{2}-\d{4}\b</code> for a social security number shape.</li>
+      <li>Set <strong>Replacement Text</strong>, for example <code>[REDACTED]</code>.</li>
+      <li>Toggle <strong>Redact</strong> on.</li>
+      <li>Leave <strong>Inverse</strong> off, unless you intend to redact everything except the pattern.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Inverse redacts the opposite of what you matched</div>
+      <p>Turning Inverse on replaces everything that does not match the pattern. On a prompt, that removes the prompt. It has uses, and none of them is the one you reached this step for.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Test the pattern against a sample string before saving. A regex that matches nothing produces a guardrail that passes everything and looks healthy doing it.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 4: Enforce ────────────────────────────────────────── -->
+<h2 id="enforce">Step 4 &mdash; Enforce a baseline organization-wide</h2>
+
+<p>Organization guardrails apply to every API request in the organization, with no config needed and nothing for a caller to opt into. This is the baseline that holds regardless of what a workspace or an application does.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 &mdash; Set the input and output guardrails</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to <strong>Admin Settings &rarr; Organisation Guardrails</strong>.</li>
+      <li>Add your input guardrail, your output guardrail, or both.</li>
+      <li>Save.</li>
+    </ol>
+    <p>The guardrails offered here are the same ones built in step 1, including partner checks.</p>
+    <!-- screenshot-pending: aigw-cfg-org-guardrails.png | Admin Settings > Organisation Guardrails with an input and an output guardrail selected -->
+    <div class="callout callout-warning">
+      <div class="callout-title">Keep the organization baseline small</div>
+      <p>Every request in the deployment pays for these checks. A heavy organization guardrail with async false adds its latency to all traffic, including traffic that never needed it. Put the universal minimum here and the specific controls in workspace guardrails, which chapter 8 covers.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The setting saves and both slots show the guardrail you intended. Step 6 confirms enforcement with a real request.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.2 &mdash; Know what you cannot exempt from the console</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Some workspaces have a genuine reason to run without the organization baseline, an internal evaluation sandbox being the usual one.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Workspace exclusions have no console path today</div>
+      <p>Exemptions are managed per guardrail direction through the Admin API, authorized with a Strata Cloud Manager access token belonging to a service account that can administer the organization. Console support is stated as coming, and is not present.</p>
+      <p>If you want to stay inside the console, the alternative is to leave the organization slots empty and set the same guardrail on each workspace that needs it in chapter 8. That trades one setting for several and keeps every control visible in the interface.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You have decided between an organization baseline with API-managed exemptions and per-workspace guardrails, and recorded which one this deployment uses.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 5: Attach ─────────────────────────────────────────── -->
+<h2 id="attach">Step 5 &mdash; Attach a guardrail through a config</h2>
+
+<p>Beyond the organization baseline, a guardrail becomes active by being named in a config. This is how a specific application gets a specific control.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 &mdash; Name the guardrails in the config</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A config takes two keys, each holding a list of guardrail IDs:</p>
+    <table>
+      <thead>
+        <tr><th>Key</th><th>Applies to</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>input_guardrails</code></td><td>The input, before the model is called</td></tr>
+        <tr><td><code>output_guardrails</code></td><td>The output, after the model responds</td></tr>
+      </tbody>
+    </table>
+    <div class="code-block"><pre><code>{
+  "retry": {
+    "attempts": 3
+  },
+  "cache": {
+    "mode": "simple"
+  },
+  "provider": "@openai-xxx",
+  "input_guardrails": ["guardrails-id-xxx"],
+  "output_guardrails": ["guardrails-id-yyy"]
+}</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <div class="callout callout-note">
+      <div class="callout-title">An older hook syntax still works</div>
+      <p>The same effect can be written as <code>before_request_hooks</code> and <code>after_request_hooks</code>, each taking objects of the form <code>{"id": "$guardrail_id"}</code>. You will meet it in existing configs and in raw JSON guardrails. Prefer the two keys above for anything new.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The config saves and names the guardrail IDs recorded in step 1.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.2 &mdash; Make the config reach the request</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A config applies when a request references it, or when it is attached to an API key as that key's default. The second is what <a href="organization-properties.html">chapter 5</a> set up, and it is the stronger option because the caller writes nothing.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">This step completes in chapter 9</div>
+      <p>A config needs a provider to route to, and the integration that provides it does not exist until chapter 9. Build the guardrails now, enforce the organization baseline now, and attach configs once there is something to call.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Recorded as an open item against chapter 9. The organization baseline from step 4 is already active and does not wait for it.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 6: Verify ─────────────────────────────────────────── -->
+<h2 id="verify">Step 6 &mdash; Verify the chapter</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.1 &mdash; Prove a guardrail fires</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A guardrail that has never fired is a guardrail you have not tested. Prove it deliberately.</p>
+    <ol>
+      <li>Send a request that should fail the check, for example a prompt containing a test value your PII check targets.</li>
+      <li>Open the log entry for that request and read the guardrail result.</li>
+      <li>Send a request that should pass, and confirm it does.</li>
+    </ol>
+    <p>What you should see:</p>
+    <table>
+      <thead>
+        <tr><th>Configuration</th><th>Expected result</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Async true</td><td>Status <code>200</code>, with the failure recorded in the log. The request completes normally.</td></tr>
+        <tr><td>Async false, deny false</td><td>Status <code>246</code>. The request still completes.</td></tr>
+        <tr><td>Async false, deny true</td><td>Status <code>446</code>. The request is killed and never reaches the model.</td></tr>
+        <tr><td>Redaction enabled</td><td>Status <code>200</code>, and the stored prompt shows the replacement text rather than the original value.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Both halves matter</div>
+      <p>A check that fires on everything looks identical to a working control until the day it blocks legitimate traffic. Confirm the passing case as carefully as the failing one.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">This needs a model to call</div>
+      <p>Until chapter 9 creates an integration there is nothing to route to. Record this check as an open item and run it as the first thing you do once an integration exists.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both the failing and the passing request behave as the table predicts, for each guardrail you intend to rely on.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Catalog ────────────────────────────────────────────────── -->
+<h2 id="catalog">Built-in check catalog</h2>
+
+<p>The gateway ships deterministic checks and LLM-based checks. Deterministic ones are fast and certain; LLM-based ones catch concepts a pattern cannot.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>BASIC &mdash; deterministic checks</span>
+  </div>
+  <div class="collapsible-body">
+    <p><strong>Text and format</strong></p>
+    <table>
+      <thead>
+        <tr><th>Check</th><th>Does</th><th>Direction</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Regex Match</td><td>Matches the text against a regular expression.</td><td>Input, Output</td></tr>
+        <tr><td>Sentence Count</td><td>Enforces a sentence count or range.</td><td>Input, Output</td></tr>
+        <tr><td>Word Count</td><td>Enforces a word count or range.</td><td>Input, Output</td></tr>
+        <tr><td>Character Count</td><td>Enforces a character count or range.</td><td>Input, Output</td></tr>
+        <tr><td>Uppercase check</td><td>Tests whether content is all uppercase.</td><td>Input, Output</td></tr>
+        <tr><td>Lowercase Detection</td><td>Tests whether content is lowercase.</td><td>Input, Output</td></tr>
+        <tr><td>Ends With</td><td>Tests for a specified suffix.</td><td>Input, Output</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Data and structure</strong></p>
+    <table>
+      <thead>
+        <tr><th>Check</th><th>Does</th><th>Direction</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>JSON Schema</td><td>Validates the response JSON against a schema.</td><td>Output only</td></tr>
+        <tr><td>JSON Keys</td><td>Tests for any, all, or none of the named keys.</td><td>Output only</td></tr>
+        <tr><td>Valid URLs</td><td>Tests that URLs in the content are valid, optionally by DNS.</td><td>Output only</td></tr>
+        <tr><td>Contains Code</td><td>Detects code in a named format such as SQL, Python, or TypeScript.</td><td>Output only</td></tr>
+        <tr><td>Not Null</td><td>Tests that the response is not null, undefined, or empty.</td><td>Output only</td></tr>
+        <tr><td>Contains</td><td>Tests for any, all, or none of the given words or phrases.</td><td>Output only</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Security and routing</strong></p>
+    <table>
+      <thead>
+        <tr><th>Check</th><th>Does</th><th>Direction</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>JWT Token Validator</td><td>Verifies signatures against JWKS, introspects tokens, validates and extracts claims.</td><td>Input only</td></tr>
+        <tr><td>Request Parameters Check</td><td>Allows or blocks tools, top-level request keys, and specific parameter values.</td><td>Input only</td></tr>
+        <tr><td>Model Whitelist</td><td>Tests whether the requested model is on an allowlist, invertible to a blocklist.</td><td>Input only</td></tr>
+        <tr><td>Model Rules</td><td>Allows requests by metadata-driven rules mapping to permitted models.</td><td>Input only</td></tr>
+        <tr><td>Allowed Request Types</td><td>Allows or blocks whole endpoints.</td><td>Input only</td></tr>
+        <tr><td>Required Metadata Keys</td><td>Tests that the metadata carries the required keys.</td><td>Input only</td></tr>
+        <tr><td>Required Metadata Key-Value Pairs</td><td>Tests for specific pairs, matching exactly, by substring, or by regex.</td><td>Input only</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Media and extensibility</strong></p>
+    <table>
+      <thead>
+        <tr><th>Check</th><th>Does</th><th>Direction</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Inline Image URLs</td><td>Fetches external image URLs and converts them to inline base64. Built for environments where the provider cannot reach external URLs.</td><td>Input only</td></tr>
+        <tr><td>Webhook</td><td>Calls your own endpoint for a custom verdict.</td><td>Input, Output</td></tr>
+        <tr><td>Log</td><td>Posts to a log URL and always returns true.</td><td>Output only</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Two checks worth noticing</div>
+      <p>Model Whitelist and Required Metadata Keys are governance controls wearing a guardrail's clothing. Enforcing model choice and metadata through an organization guardrail reaches traffic that a config-based control would miss.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>PRO &mdash; LLM-based checks</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Check</th><th>Does</th><th>Direction</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Moderate Content</td><td>Applies named content moderation categories.</td><td>Input only</td></tr>
+        <tr><td>Check Language</td><td>Tests whether content is in a named language.</td><td>Input only</td></tr>
+        <tr><td>Detect PII</td><td>Detects personally identifiable information by category. Supports redaction.</td><td>Input, Output</td></tr>
+        <tr><td>Detect Gibberish</td><td>Detects gibberish content.</td><td>Input, Output</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">An LLM check means a second model call</div>
+      <p>PRO checks evaluate with a model, so they cost tokens and add latency that a regular expression does not. With async false they sit directly in the request path. Measure one before enabling it across all traffic.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Partner checks</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Nineteen partner platforms plug in as guardrail providers. Add the partner credential and their policies run on gateway calls alongside the built-in checks.</p>
+    <p>Acuvity, Akto, Aporia, AWS Bedrock, Azure, CrowdStrike AIDR, Exa, F5, Javelin, Lasso Security, Mistral, Palo Alto Networks Prisma AIRS, Pangea, Patronus, Pillar, Prompt Security, Qualifire, Tavily, Walled AI, and Zscaler.</p>
+    <p>Chapter 7 covers plugin configuration, with the full procedure for Prisma AIRS and the pattern for adding any other partner.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Bring your own</div>
+      <p>A custom guardrail is a webhook. The Webhook check in the BASIC catalog calls your endpoint and uses its answer as the verdict, which is how a model or rules engine you already run becomes a gateway guardrail.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Coverage ───────────────────────────────────────────────── -->
+<h2 id="coverage">Where guardrails do not run</h2>
+
+<p>Guardrails evaluate on inference endpoints where the gateway can extract text. Knowing the gaps matters, because an endpoint that runs no guardrail is a path around every control in this chapter.</p>
+
+<table>
+  <thead>
+    <tr><th>Endpoint</th><th>Input</th><th>Output</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>/v1/chat/completions</code></td><td>Yes</td><td>Yes</td></tr>
+    <tr><td><code>/v1/completions</code></td><td>Yes</td><td>Yes</td></tr>
+    <tr><td><code>/v1/messages</code>, Anthropic</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td><code>/v1/responses</code>, on POST</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td><code>/v1/prompts/{promptId}/completions</code></td><td>Yes</td><td>Yes</td></tr>
+    <tr><td><code>/v1/embeddings</code></td><td>Yes</td><td>No model output exists to evaluate</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title">These endpoints run no guardrails at all</div>
+  <p>Assistants and threads, audio, images, files, batches, fine-tuning, moderations, models, prompt rendering without a model call, and retrieving a stored response with <code>GET /v1/responses</code>. If your applications use any of them, the controls in this chapter do not apply to that traffic and something else has to.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Streaming, and what an output guardrail can actually do</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Input and output guardrails behave very differently on a streamed response.</p>
+    <table>
+      <thead>
+        <tr><th>Type</th><th>On a streaming request</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Input guardrails</td><td>Evaluated before the stream starts. A failure with deny true blocks the stream with <code>446</code> before any token is sent.</td></tr>
+        <tr><td>Output guardrails</td><td>Evaluated on the full response after the stream completes. Results are informational only.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-danger">
+      <div class="callout-title">An output guardrail cannot stop a streamed response</div>
+      <p>By the time the full text is assembled and checked, the caller already has every token. No fallback or retry is triggered. An output control that must actually prevent delivery cannot be built on streaming, and the only enforcement point left is the input side.</p>
+    </div>
+    <p>Results arrive as a <code>hook_results</code> chunk after the <code>[DONE]</code> marker. To see them, set:</p>
+    <div class="code-block"><pre><code>x-portkey-strict-open-ai-compliance: false</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+    <p>The header defaults to <code>true</code>, which hides those chunks. Input guardrail results appear in the first chunk on <code>/chat/completions</code>, or as a separate event on <code>/messages</code>. For Anthropic <code>/messages</code> streaming, <code>hook_results</code> are not reachable through the Anthropic SDK, so use raw HTTP to see them.</p>
+    <p>The <a href="../streaming-caching-a2a.html">streaming, caching, and A2A guide</a> covers the streaming path in more depth.</p>
+  </div>
+</div>
+
+<!-- ── Next ───────────────────────────────────────────────────── -->
+<h2 id="next">Next chapter</h2>
+
+<p><a href="plugins.html">Chapter 7, Plugins</a>, covers the partner guardrail platforms, their credentials, the full procedure for Prisma AIRS, capability plugins, and bringing your own guardrail through a webhook.</p>
+
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

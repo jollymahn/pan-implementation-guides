@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Plugins | AI Gateway Configuration | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#concept" data-section="concept">What a plugin is</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configure</div>
+    <a href="#enable" data-section="enable">1. Enable and credential</a>
+    <a href="#airs" data-section="airs">2. Prisma AIRS</a>
+    <a href="#capability" data-section="capability">3. Capability plugins</a>
+    <a href="#byo" data-section="byo">4. Bring your own</a>
+    <a href="#verify" data-section="verify">5. Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#partners" data-section="partners">Partner catalog</a>
+    <a href="#next" data-section="next">Next chapter</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Configuration</a>
+  <span class="sep">|</span>
+  Plugins
+</div>
+
+<h1>Plugins</h1>
+<p class="subtitle">Chapter 7 of 13. Connecting partner security platforms to the gateway, configuring the Prisma AIRS check in full, and wiring in a guardrail you already run</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">Configuration Hub</a>
+  <a href="guardrails.html" class="cloud-link">Previous: Guardrails</a>
+  <a href="../../airs/index.html" class="cloud-link">Prisma AIRS Platform</a>
+</div>
+
+<!-- ── Concept ────────────────────────────────────────────────── -->
+<h2 id="concept">What a plugin is</h2>
+
+<p>A plugin connects an outside platform to the gateway by holding its credential. Once enabled, that platform's checks appear in the same guardrail catalog as the built-in ones and are built, actioned, and attached exactly as <a href="guardrails.html">chapter 6</a> describes.</p>
+
+<p>Two kinds exist, and they do opposite things:</p>
+
+<table>
+  <thead>
+    <tr><th>Kind</th><th>Does</th><th>Examples</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Guardrail partners</td><td>Inspects a request or response and returns a verdict. Can block.</td><td>Prisma AIRS, Pangea, Patronus, Mistral, AWS Bedrock Guardrails</td></tr>
+    <tr><td>Capability plugins</td><td>Adds content to a request before it reaches the model. Does not block.</td><td>Exa and Tavily online search</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">A capability plugin is a guardrail that never says no</div>
+  <p>Exa and Tavily are configured through the guardrail machinery because that is where the gateway's request interception lives, not because they gate anything. They enrich the prompt and pass it on. Setting deny on one has nothing to act upon.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">This is not the same as the AIRS Integrations guides</div>
+  <p>The <a href="../../airs-integrations/index.html">AIRS Integrations</a> family covers Prisma AIRS scanning <em>inside other platforms</em>: Claude Code, Kong, LiteLLM, Azure API Management, Apigee, and CI/CD pipelines. This chapter is the opposite direction, bringing partner platforms <em>into the gateway</em>. If the gateway is your enforcement point, you are in the right place.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul>
+  <li><a href="guardrails.html">Chapter 6</a> complete, because a plugin produces checks and the actions model is covered there</li>
+  <li>An account with the partner, and an API key from it</li>
+  <li>A <code>Production</code> plan or above, since partner checks are not available on <code>Developer</code></li>
+  <li>For Prisma AIRS, an activated AIRS tenant in Strata Cloud Manager with at least one security profile</li>
+</ul>
+
+<div class="callout callout-note">
+  <div class="callout-title">Hold partner credentials in your vault</div>
+  <p>Partner API keys are credentials like any other. <a href="secret-references.html">Chapter 3</a> set up secret references so they live in your vault rather than in the gateway, which is the reason that chapter came before this one.</p>
+</div>
+
+<!-- ── Step 1: Enable ─────────────────────────────────────────── -->
+<h2 id="enable">Step 1 &mdash; Enable a plugin and add its credential</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 &mdash; Find the plugin surface</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Partner credentials are entered in one of two places, depending on the partner and the gateway version:</p>
+    <ul>
+      <li><strong>Settings &rarr; Plugins</strong> &mdash; find the partner in the list, click <strong>Enable</strong>, and enter the API key.</li>
+      <li><strong>Settings &rarr; Integrations</strong> &mdash; click the edit control on the partner's row and add the credential there.</li>
+    </ul>
+    <div class="callout callout-note">
+      <div class="callout-title">Check both before concluding a partner is missing</div>
+      <p>The upstream documentation uses both names, and which one your console shows depends on the partner and the version you are running. The outcome is identical: a stored credential that makes the partner's checks selectable. Look in the other place before raising a support case.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-plugins-list.png | Settings > Plugins showing the partner list with one enabled and the rest available -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The partner shows as enabled with a credential stored. Nothing is enforced yet; the plugin only makes checks available.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 &mdash; Confirm the checks appeared</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to the <strong>Guardrails</strong> page and click <strong>Create</strong>.</li>
+      <li>Search the check sidebar for the partner's name.</li>
+    </ol>
+    <p>Its checks now sit alongside the BASIC and PRO ones. From here the partner check behaves like any other: same actions, same direction constraint, same status codes.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The partner's checks are listed and selectable. Checks that do not appear after enabling usually mean the plan does not include partner guardrails.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 2: AIRS ───────────────────────────────────────────── -->
+<h2 id="airs">Step 2 &mdash; Configure the Prisma AIRS check</h2>
+
+<p>Prisma AIRS blocks a prompt or response when AI Runtime Security returns a block action. It is the partner most deployments of this gateway start with, and it carries parameters the other partners do not.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.1 &mdash; Prepare Prisma AIRS itself</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Three things must exist on the AIRS side before the gateway can use it:</p>
+    <ol>
+      <li>Prisma AIRS onboarded and activated in Strata Cloud Manager.</li>
+      <li>At least one security profile carrying the threat detection rules you want applied.</li>
+      <li>The profile name or profile ID recorded, if you intend to target a specific profile.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Targeting a profile is optional</div>
+      <p>Leaving both profile fields empty makes AIRS use the profile linked to your API key in Strata Cloud Manager. That is a reasonable default for a single-profile deployment and ambiguous for a multi-profile one, where naming the profile explicitly documents the intent.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The security profile exists in Strata Cloud Manager, and you hold the API key plus the profile name or ID.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.2 &mdash; Add the credential and the check</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Open the plugin surface from step 1 and edit the <strong>Palo Alto Networks Prisma AIRS</strong> entry.</li>
+      <li>Add your Prisma AIRS API key from Strata Cloud Manager, and save.</li>
+      <li>Go to the <strong>Guardrails</strong> page and click <strong>Create</strong>.</li>
+      <li>Search for <strong>PANW Prisma AIRS Guardrail</strong> and click <strong>Add</strong>.</li>
+    </ol>
+    <p>The check runs on both hooks, so one guardrail can be built for the input and a second for the output.</p>
+    <!-- screenshot-pending: aigw-cfg-airs-check.png | The PANW Prisma AIRS Guardrail check configuration panel with its parameter fields -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The check is added to a guardrail and its parameter fields are editable.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.3 &mdash; Set the parameters</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Every parameter is optional, and the defaults are worth knowing because several of them show up later in reporting.</p>
+    <table>
+      <thead>
+        <tr><th>Parameter</th><th>Default</th><th>What it does</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Profile Name</td><td>None</td><td>The AIRS security profile to apply.</td></tr>
+        <tr><td>Profile ID</td><td>None</td><td>The same selection by ID. Usable instead of or alongside the name.</td></tr>
+        <tr><td>AI Model</td><td><code>unknown-model</code></td><td>Model identifier used for tracking and reporting.</td></tr>
+        <tr><td>Application User</td><td><code>portkey-gateway</code></td><td>User identifier in AIRS audit logs and user-level analytics.</td></tr>
+        <tr><td>Application Name</td><td>None</td><td>Application name for tracking, which AIRS prefixes with <code>Portkey-</code>.</td></tr>
+        <tr><td>Scan Scope</td><td><code>last_message</code></td><td>Which messages are scanned. See 2.4.</td></tr>
+        <tr><td>Strip Scaffolding</td><td><code>false</code></td><td>Removes known agent-harness wrappers before scanning. See 2.4.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Leaving the defaults makes AIRS reporting useless for attribution</div>
+      <p>Without AI Model and Application User, every request in the AIRS console arrives as <code>unknown-model</code> from <code>portkey-gateway</code>. The security team then sees threats with no way to tell which application or user produced them. Set all three tracking fields even though none is required.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The three tracking parameters carry real values, and the profile selection matches the profile you built in 2.1.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.4 &mdash; Tune scan scope, especially for agentic clients</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Scan Scope is the one parameter that changes what the gateway can detect, and it is the exception to the last-message rule stated in chapter 6.</p>
+    <table>
+      <thead>
+        <tr><th>Scope</th><th>Scans</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>last_message</code></td><td>The last message only. The default, and the same behavior as the gateway's own checks.</td></tr>
+        <tr><td><code>last_user_message</code></td><td>The most recent message from the user, skipping assistant and tool turns after it.</td></tr>
+        <tr><td><code>user_messages</code></td><td>Every user message in the conversation.</td></tr>
+        <tr><td><code>all_messages</code></td><td>The entire conversation.</td></tr>
+      </tbody>
+    </table>
+    <p>Agentic clients such as Claude Code, Cursor, and Cline inject scaffolding into messages: system reminders, MCP tool instructions, and mode markers. That scaffolding reads like an instruction injection to a security scanner, so it generates false positives on traffic that is entirely normal.</p>
+    <p>Two settings address it together:</p>
+    <ul>
+      <li>Set <strong>Scan Scope</strong> to <code>last_user_message</code>, so the scan targets what the human actually sent.</li>
+      <li>Turn <strong>Strip Scaffolding</strong> on, which removes known harness wrappers before scanning.</li>
+    </ul>
+    <div class="callout callout-warning">
+      <div class="callout-title">Widening the scope costs more than latency</div>
+      <p><code>all_messages</code> re-scans the whole conversation on every turn, so a long session rescans the same early messages repeatedly. That raises both the time per request and the volume AIRS processes. Widen the scope because a threat model requires it, not as a precaution.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Run an ordinary agentic session through the gateway and check the AIRS console for blocks. Scaffolding false positives appear as blocks on requests the user would call routine, and they disappear once scope and stripping are set.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 3: Capability ─────────────────────────────────────── -->
+<h2 id="capability">Step 3 &mdash; Add a capability plugin</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.1 &mdash; Enable online search</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Exa and Tavily give an offline model current information by searching the web and adding the results to the prompt. The sequence is:</p>
+    <ol>
+      <li>A caller sends a prompt that needs up-to-date information.</li>
+      <li>The gateway intercepts it and sends a search query to the provider.</li>
+      <li>The provider returns results.</li>
+      <li>The gateway adds those results to the prompt as context.</li>
+      <li>The enriched prompt goes to the model.</li>
+    </ol>
+    <p>To set it up:</p>
+    <ol>
+      <li>Go to <strong>Settings &rarr; Plugins</strong>, find the provider, and click <strong>Enable</strong>.</li>
+      <li>Enter the API key from the provider's dashboard and save.</li>
+      <li>On the <strong>Guardrails</strong> page, click <strong>Create</strong>, search for the provider's online search check, and add it.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">This sends prompt content to a third party and brings untrusted text back</div>
+      <p>Two exposures arrive together. The search query derived from your prompt leaves your boundary, and the web content returned is injected into the prompt the model then reads, which is a prompt injection path by design. Pair online search with an input guardrail that runs after it, and do not enable it on workspaces handling confidential prompts.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Ask a question whose answer postdates the model's training cutoff. A current answer confirms the plugin fired; a refusal or a stale answer means it did not.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 4: BYO ────────────────────────────────────────────── -->
+<h2 id="byo">Step 4 &mdash; Bring your own guardrail</h2>
+
+<p>A guardrail pipeline you already run becomes a gateway check through a webhook. The gateway sends the request or response to your endpoint, your endpoint returns a verdict, and the gateway applies your configured actions to it.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 &mdash; Configure the webhook check</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Add a <strong>Webhook</strong> check to a guardrail and complete these fields:</p>
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Type</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Webhook URL</td><td>string</td><td>Your endpoint. Must be reachable from the gateway.</td></tr>
+        <tr><td>Headers</td><td>JSON</td><td>Headers sent with each request, which is where your own authentication goes.</td></tr>
+        <tr><td>Timeout</td><td>number, milliseconds</td><td>How long the gateway waits for a verdict.</td></tr>
+        <tr><td>Fail on Error</td><td>boolean</td><td>Whether a non-200 response or a timeout counts as a failed check.</td></tr>
+        <tr><td>Forward Headers</td><td>array of strings</td><td>Client headers to pass through to your webhook.</td></tr>
+        <tr><td>Execute on Proxy</td><td>boolean</td><td>Whether the webhook also runs on proxy requests to <code>/v1/*</code>.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-danger">
+      <div class="callout-title">Fail on Error decides whether your control fails open or closed</div>
+      <p>Left off, a webhook that times out or errors produces a passing check, so an outage in your own service silently disables the guardrail. Turned on, an outage blocks traffic. Neither is automatically right, and the choice has to be made deliberately rather than discovered during an incident. Set the timeout low enough that a hung endpoint does not hold requests open.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Self-hosted gateways need private endpoints allowlisted</div>
+      <p>On a self-hosted gateway, a webhook on a private network must be listed in <code>TRUSTED_CUSTOM_HOSTS</code>. Without it the call is refused regardless of network reachability, which looks like a connectivity fault and is not one.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Send a request that should fail your webhook's logic and confirm the verdict arrives. Then stop the webhook service and confirm the Fail on Error behavior matches what you chose, because that is the case nobody tests until it happens.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 5: Verify ─────────────────────────────────────────── -->
+<h2 id="verify">Step 5 &mdash; Verify the chapter</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 &mdash; Confirm the partner path end to end</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li>Each partner you need shows as enabled with a stored credential.</li>
+      <li>The partner's checks appear in the guardrail check list.</li>
+      <li>For Prisma AIRS, the tracking parameters carry real values rather than the defaults.</li>
+      <li>Scan scope and scaffolding stripping are set for any workspace serving agentic clients.</li>
+      <li>Any webhook check has a deliberate Fail on Error setting that has been tested.</li>
+    </ul>
+    <div class="callout callout-warning">
+      <div class="callout-title">A partner block has two consoles</div>
+      <p>When a partner check blocks a request, the gateway log shows the guardrail verdict and the partner's own console shows why. Confirm you can see both and that someone owns watching the second one. A verdict with no visible reason is hard to act on.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Firing the check needs a model to call</div>
+      <p>As with chapter 6, proving a check fires needs an integration from chapter 9. Record it as an open item and run it alongside the chapter 6 verification.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All five hold, and the live-fire test is recorded against chapter 9.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Partners ───────────────────────────────────────────────── -->
+<h2 id="partners">Partner catalog</h2>
+
+<p>Nineteen partners connect as guardrail providers. All follow the pattern in step 1: enable, add the credential, then build a guardrail from the checks that appear.</p>
+
+<table>
+  <thead>
+    <tr><th>Partner</th><th>Generally used for</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Palo Alto Networks Prisma AIRS</td><td>Runtime AI security: prompt injection, data leakage, and AI-specific threats. Covered in full in step 2.</td></tr>
+    <tr><td>Acuvity</td><td>AI runtime protection.</td></tr>
+    <tr><td>Akto</td><td>API and AI security testing.</td></tr>
+    <tr><td>Aporia</td><td>Guardrail policies for LLM applications.</td></tr>
+    <tr><td>AWS Bedrock Guardrails</td><td>Bedrock-native guardrail policies, including PII with custom regex types.</td></tr>
+    <tr><td>Azure</td><td>Azure content safety checks.</td></tr>
+    <tr><td>CrowdStrike AIDR</td><td>AI detection and response.</td></tr>
+    <tr><td>Exa</td><td>Online search enrichment. A capability plugin, not a guardrail.</td></tr>
+    <tr><td>F5</td><td>Application and AI traffic guardrails.</td></tr>
+    <tr><td>Javelin</td><td>LLM security policies.</td></tr>
+    <tr><td>Lasso Security</td><td>LLM threat detection.</td></tr>
+    <tr><td>Mistral</td><td>Moderation checks.</td></tr>
+    <tr><td>Pangea</td><td>Redaction and detection across PII, payment card data, and other sensitive types.</td></tr>
+    <tr><td>Patronus</td><td>Enterprise PII detection and redaction in business content.</td></tr>
+    <tr><td>Pillar</td><td>LLM security monitoring.</td></tr>
+    <tr><td>Prompt Security</td><td>Prompt-layer threat protection.</td></tr>
+    <tr><td>Qualifire</td><td>LLM output quality and safety checks.</td></tr>
+    <tr><td>Tavily</td><td>Online search enrichment. A capability plugin, not a guardrail.</td></tr>
+    <tr><td>Walled AI</td><td>Content safety.</td></tr>
+    <tr><td>Zscaler</td><td>AI traffic inspection.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Adding a partner not listed here</div>
+  <p>The list moves as partners are added. If a platform you use is in the console and not in this table, the step 1 pattern still applies without change. If it is not in the console at all, the webhook route in step 4 reaches it.</p>
+</div>
+
+<!-- ── Next ───────────────────────────────────────────────────── -->
+<h2 id="next">Next chapter</h2>
+
+<p>Chapter 8 covers workspaces: creating them, adding members, workspace API keys, workspace-level guardrails, budgets and rate limits, and the directory group mappings deferred from chapter 2. It is in preparation, and the <a href="index.html">configuration hub</a> tracks the remaining chapters.</p>
+
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>
