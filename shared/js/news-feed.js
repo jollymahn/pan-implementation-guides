@@ -39,6 +39,13 @@ var NEWS_ITEMS = [
   {
     badge: "New",
     date: "2026-11-12",
+    title: "Workspaces, and why no application can call a model until one exists",
+    href: "guides/ai-gateway/configuration/workspaces.html",
+    tags: "Chapter 8 of the configuration set, Completion APIs are workspace-scoped so there is no org-level key that calls a model, Closes the group mappings and workspace keys deferred from chapter 2 and the permission test from chapter 4, A directory group maps to exactly one workspace and removing a mapping deprovisions users immediately, Fewer members than the group means a missing allowed domain, User keys are what make per-user data visibility actually separate anything, A workspace rate limit rejects every key at once, Custom reset intervals are Admin API only, The Shared Team Workspace cannot be deleted"
+  },
+  {
+    badge: "New",
+    date: "2026-11-12",
     title: "Partner plugins, and tuning Prisma AIRS for agentic clients",
     href: "guides/ai-gateway/configuration/plugins.html",
     tags: "Chapter 7 of the configuration set, Nineteen partners enable then credential then appear as guardrail checks, Credentials live under Plugins or Integrations depending on partner and version, Prisma AIRS scan scope is the exception to the last-message rule and reaches all_messages, Default AI Model and Application User make AIRS reporting useless for attribution, Claude Code and Cursor scaffolding causes false positives that strip_scaffolding fixes, Online search sends prompts out and brings untrusted text back, Webhook Fail on Error decides whether your control fails open or closed, Self-hosted needs TRUSTED_CUSTOM_HOSTS for private webhooks"

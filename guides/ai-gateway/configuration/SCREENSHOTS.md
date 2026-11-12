@@ -92,9 +92,17 @@ running the rest of the configuration, or they are gone:
 | `aigw-cfg-plugins-list.png` | Settings → Plugins showing the partner list, one enabled and the rest available. |
 | `aigw-cfg-airs-check.png` | The PANW Prisma AIRS Guardrail check configuration panel with its parameter fields. |
 
+## Chapter 8 — Workspaces
+
+| File | What to capture |
+|---|---|
+| `aigw-cfg-workspace-create.png` | The create workspace form with a name and the required metadata fields populated with generic values. |
+| `aigw-cfg-group-mapping.png` | The Add Group Mapping dialog with a CIE group and a workspace selected. Mask real group names. |
+| `aigw-cfg-workspace-keys.png` | AI Gateway → Security Keys showing the Service and User tabs with one named key, values masked. |
+
 ## Not yet listed
 
-Chapters 8 to 13 are in preparation. Their capture points are added here as each
+Chapters 9 to 13 are in preparation. Their capture points are added here as each
 chapter is drafted.
 
 ## Playwright notes

@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Workspaces | AI Gateway Configuration | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#concept" data-section="concept">What a workspace is</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configure</div>
+    <a href="#plan" data-section="plan">1. Plan the layout</a>
+    <a href="#create" data-section="create">2. Create a workspace</a>
+    <a href="#members" data-section="members">3. Add members</a>
+    <a href="#keys" data-section="keys">4. Issue API keys</a>
+    <a href="#ws-guardrails" data-section="ws-guardrails">5. Workspace guardrails</a>
+    <a href="#limits" data-section="limits">6. Budgets and rate limits</a>
+    <a href="#verify" data-section="verify">7. Verify</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#deleting" data-section="deleting">Deleting a workspace</a>
+    <a href="#next" data-section="next">Next chapter</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Configuration</a>
+  <span class="sep">|</span>
+  Workspaces
+</div>
+
+<h1>Workspaces</h1>
+<p class="subtitle">Chapter 8 of 13. Creating the team boundaries, filling them from your directory, issuing the keys applications actually use, and closing the checks deferred from chapters 2, 4 and 5</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">Configuration Hub</a>
+  <a href="plugins.html" class="cloud-link">Previous: Plugins</a>
+  <a href="authentication-identity.html" class="cloud-link">Chapter 2: Identity</a>
+</div>
+
+<!-- ── Concept ────────────────────────────────────────────────── -->
+<h2 id="concept">What a workspace is</h2>
+
+<p>A workspace is a sub-organization: a boundary around a team's data, members, resources, and visibility. Everything you built in chapters 1 to 7 was organization-wide. This is where the deployment divides.</p>
+
+<p>One fact shapes everything else in this chapter:</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Completion APIs are always workspace-scoped</div>
+  <p>Model calls can only be made with a workspace API key. There is no organization-level key that calls a model. Until a workspace exists and holds a key, no application can use the gateway at all, which is why this chapter blocks every application team waiting on you.</p>
+</div>
+
+<p>This chapter also closes three items held open earlier:</p>
+
+<table>
+  <thead>
+    <tr><th>Deferred from</th><th>Because</th><th>Closed in</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Chapter 2, directory group mappings</td><td>Directory sync cannot create workspaces, so a mapping needs one to exist</td><td>Step 3</td></tr>
+    <tr><td>Chapter 2, workspace API keys</td><td>No workspace existed to scope them to</td><td>Step 4</td></tr>
+    <tr><td>Chapter 4, manager and member permission test</td><td>Permissions cannot be exercised without a workspace and a person in it</td><td>Step 7</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">You already have one workspace</div>
+  <p>Every organization carries a default <strong>Shared Team Workspace</strong>. It cannot be deleted. Treat it as the catch-all it is, and avoid letting production traffic settle there by default, because a workspace you cannot remove is a poor place for anything you may later need to separate.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul>
+  <li>Chapters 1 to 7 complete</li>
+  <li>An <strong>Organization Owner</strong> or <strong>Organization Admin</strong> account, because only those roles create workspaces</li>
+  <li>The team structure you want to reflect, from step 1</li>
+  <li>Values for any fields the workspace metadata schema from <a href="organization-properties.html">chapter 5</a> marks required</li>
+  <li>For directory mapping, a successful sync state from <a href="authentication-identity.html">chapter 2</a> and the names of the groups to map</li>
+</ul>
+
+<!-- ── Step 1: Plan ───────────────────────────────────────────── -->
+<h2 id="plan">Step 1 &mdash; Plan the layout before creating anything</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 &mdash; Choose what a workspace represents</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Pick one axis and hold to it. Mixing axes produces a list nobody can reason about six months later.</p>
+    <table>
+      <thead>
+        <tr><th>Axis</th><th>Works when</th><th>Watch for</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>By team</td><td>Budgets and access follow organizational lines. The most common choice.</td><td>Teams that share an application end up splitting its traffic across two workspaces.</td></tr>
+        <tr><td>By application</td><td>Cost attribution per product matters more than per team.</td><td>The count grows quickly, and each one needs members and keys maintained.</td></tr>
+        <tr><td>By environment</td><td>Development, staging and production need different guardrails and budgets.</td><td>Three workspaces per team multiplies the administration.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">One-to-one with directory groups, if you are mapping</div>
+      <p>A directory group maps to exactly one workspace, and a workspace takes exactly one group. If membership will be driven from your directory, the workspace layout has to mirror a group layout that already exists, or someone has to create the groups first.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You have a written list of workspaces, the axis they follow, and for each one the directory group it will map to or the fact that it will be populated by hand.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 2: Create ─────────────────────────────────────────── -->
+<h2 id="create">Step 2 &mdash; Create a workspace</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.1 &mdash; Create it</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Open the workspace dropdown in the sidebar.</li>
+      <li>Create a new workspace and give it a name matching your plan from step 1.</li>
+      <li>Complete any metadata fields the schema from chapter 5 requires.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">The metadata schema proves itself here</div>
+      <p>If chapter 5 defined a workspace metadata schema with required fields, the creation form demands them now. A form that does not is the signal that the schema saved without its <code>required</code> array, and this is the cheapest moment to find that out.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-workspace-create.png | The create workspace form with name and required metadata fields populated with generic values -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The workspace appears in the dropdown, and it inherited the organization defaults: the request logging mode from chapter 5, the saved-only setting from chapter 4, and the organization guardrails from chapter 6.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.2 &mdash; Confirm what it inherited</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A new workspace takes the organization settings as they stand at the moment of creation. Confirm rather than assume, because anything set after this point does not reach back.</p>
+    <table>
+      <thead>
+        <tr><th>Inherited</th><th>Set in</th><th>Changeable per workspace</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Saved-only mode</td><td>Chapter 4</td><td>No, it follows the organization</td></tr>
+        <tr><td>Request logging mode</td><td>Chapter 5</td><td>Only if the organization allows the override</td></tr>
+        <tr><td>Organization guardrails</td><td>Chapter 6</td><td>No, exemptions are Admin API only</td></tr>
+        <tr><td>Metadata requirements</td><td>Chapter 5</td><td>No</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each inherited setting reads as you expect from inside the new workspace. A mismatch means the organization setting changed after an earlier workspace was created, and the two now differ.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 3: Members ────────────────────────────────────────── -->
+<h2 id="members">Step 3 &mdash; Add members</h2>
+
+<p>Membership arrives one of two ways. Both require the person to be an organization member first, which is what chapter 2 set provisioning up to do.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which path should I pick?</div>
+  <ul>
+    <li><strong>Directory mapping</strong> &mdash; membership follows a directory group automatically, including removals. This is the deferred work from chapter 2 and the right answer for anything long-lived.</li>
+    <li><strong>Manual invitation</strong> &mdash; a workspace admin or manager invites named organization members. Right for small or short-lived workspaces, and for people who are not in a suitable group.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="aigw-ws-membership">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="directory">3A &middot; Directory mapping</button>
+    <button class="mgmt-tab" data-plane="manual">3B &middot; Manual invitation</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="directory">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.1 &mdash; Map a directory group to the workspace</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Go to <strong>Admin Settings &rarr; Authentication &rarr; Directory Sync</strong>.</li>
+          <li>In <strong>Group Mappings</strong>, click <strong>Add Mapping</strong>.</li>
+          <li>Select a <strong>CIE Group</strong> from the dropdown, which lists the groups in your connected directory.</li>
+          <li>Select the <strong>Workspace</strong> to map it to.</li>
+          <li>Click <strong>Add</strong>.</li>
+        </ol>
+        <p>Members of that group are provisioned into the workspace automatically from the next sync.</p>
+        <div class="callout callout-warning">
+          <div class="callout-title">The mapping is strictly one to one</div>
+          <p>A group maps to one workspace, and a workspace accepts one group. A team whose membership spans two directory groups cannot be assembled this way, and the usual fix is a new group in the directory rather than a second mapping.</p>
+        </div>
+        <!-- screenshot-pending: aigw-cfg-group-mapping.png | The Add Group Mapping dialog with a CIE group and a workspace selected, names generic -->
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The mapping appears in the list. Members take up to 15 minutes to arrive on the delta sync, or press <strong>Full Sync</strong> to force it.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.2 &mdash; Confirm the members arrived</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Go to <strong>AI Gateway &rarr; Workspace Control</strong>.</li>
+          <li>Open the workspace and go to the <strong>Members</strong> tab.</li>
+        </ol>
+        <p>Each entry shows the display name from the directory's common name attribute, the email derived from the identity attribute you chose in chapter 2, when the user was provisioned, and when their membership last changed.</p>
+        <div class="callout callout-warning">
+          <div class="callout-title">Fewer members than the group holds means an allowed domain is missing</div>
+          <p>Users whose email domain is not verified on the organization are skipped silently, and users missing the selected identity attribute are skipped too. Both were set in chapter 2, and both fail quietly here rather than at the point you configured them.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The member count matches the directory group. Add a user to the group in your directory, force a sync, and confirm they appear, which proves the ongoing path rather than just the initial load.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.3 &mdash; Understand what removing a mapping does</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Deleting a mapping with the trash icon removes every user it provisioned from that workspace, immediately.</p>
+        <div class="callout callout-danger">
+          <div class="callout-title">There is no undo</div>
+          <p>Recovery means re-creating the mapping and waiting for a sync to re-provision everyone. Anything those users held in the workspace is inaccessible to them in the meantime, and a mapping deleted to tidy up during business hours takes a team offline.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Nobody removes a mapping without knowing this. Say it out loud to whoever else administers the organization.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /directory -->
+
+  <div class="mgmt-panel" data-plane="manual">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.1 &mdash; Invite organization members</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Workspace admins and managers invite from the pool of existing organization members and assign a workspace role as they do.</p>
+        <table>
+          <thead>
+            <tr><th>Role</th><th>Grants</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Admin</td><td>Full control of the workspace, including assigning the Admin role and creating API keys.</td></tr>
+            <tr><td>Manager</td><td>Team and resource management, bounded by the Security tab settings from chapter 4.</td></tr>
+            <tr><td>Member</td><td>Read-only on workspace resources.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout callout-warning">
+          <div class="callout-title">Someone not in the organization cannot be invited</div>
+          <p>The invitation list contains organization members only. A person who does not appear has not been provisioned yet, which is a chapter 2 problem rather than a workspace one.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Each invited person appears on the <strong>Members</strong> tab with the role you assigned.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>3.2 &mdash; Record who maintains the list</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Manual membership has no leaver process attached to it. When someone changes team or leaves, nothing removes them from the workspace unless a person does it.</p>
+        <div class="callout callout-warning">
+          <div class="callout-title">Name an owner for every manually populated workspace</div>
+          <p>Directory-mapped workspaces deprovision on their own. Manual ones accumulate former members indefinitely. If you cannot name who reviews the list and how often, map the workspace to a directory group instead.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Every manually populated workspace has a named owner and a review cadence recorded outside the console.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /manual -->
+</div><!-- /mgmt-tabs -->
+
+<!-- ── Step 4: Keys ───────────────────────────────────────────── -->
+<h2 id="keys">Step 4 &mdash; Issue workspace API keys</h2>
+
+<p>These are the keys applications use. Both types are scoped to the workspace and can only act within it.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 &mdash; Choose service or user</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Type</th><th>Tied to</th><th>Use for</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Service</td><td>Nobody. A shared key.</td><td>Applications, automated processes, and integrations.</td></tr>
+        <tr><td>User</td><td>A specific workspace member.</td><td>Individual access, and per-person attribution in logs and analytics.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">User keys are what make per-user data visibility work</div>
+      <p>The Data Visibility settings in chapter 4 scope what a manager or member sees to data generated by their own API keys. That only separates anything if people hold user keys. A workspace where everyone shares one service key gives every member the same view whatever those settings say.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You can state which type each planned consumer gets, and the choice is consistent with the visibility model from chapter 4.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.2 &mdash; Create a key</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Select the workspace from the <strong>Workspace</strong> dropdown at the top of the page.</li>
+      <li>Go to <strong>AI Gateway &rarr; Security Keys</strong>. The page has a <strong>Service</strong> tab and a <strong>User</strong> tab.</li>
+      <li>Click <strong>+ Create New</strong>.</li>
+      <li>Choose the <strong>API Key Type</strong>. For a user key, pick the member under <strong>Select User</strong>, which lists only people already in this workspace.</li>
+      <li>Enter an <strong>API Key Name</strong>, which is required.</li>
+      <li>Optionally add a short description, a configuration, and metadata.</li>
+      <li>Click <strong>Next: Set Permissions</strong> and set permissions per resource: Agents, Completions, Logs, MCP and Prompts, each with actions such as invoke, write and render.</li>
+      <li>Click <strong>Create Gateway API Key</strong>.</li>
+      <li>Copy the key.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">The key is shown once</div>
+      <p>It cannot be retrieved afterwards. Put it in your secrets manager before clicking <strong>Copy and Close</strong>. Recovering a lost key means creating a replacement and updating whatever held the old one.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Attach the default config here if chapter 5 defined one</div>
+      <p>The <strong>Configuration</strong> field is where the enforced default config from chapter 5 attaches. That config needs an integration to reference, so it arrives in chapter 9, and keys issued before then are updated once it exists.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-workspace-keys.png | AI Gateway > Security Keys showing the Service and User tabs with one named key, values masked -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The key appears on the correct tab with the name you gave it, and the value is stored outside the console. A user key shows the member it belongs to.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 5: Workspace guardrails ───────────────────────────── -->
+<h2 id="ws-guardrails">Step 5 &mdash; Set workspace guardrails</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 &mdash; Choose a default input and output guardrail</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the sidebar, click the workspace and select the edit option.</li>
+      <li>In <strong>Edit Workspace</strong>, choose an <strong>Input Guardrail</strong> and an <strong>Output Guardrail</strong>.</li>
+      <li>Save.</li>
+    </ol>
+    <p>These apply to every request made within the workspace, on top of any organization guardrail from chapter 6.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Only guardrails created in this workspace are offered</div>
+      <p>The dropdowns list guardrails belonging to the workspace, not the organization's library. A guardrail built at the organization level for everyone is not selectable here, so a control you want in several workspaces is either an organization guardrail or a guardrail rebuilt in each one.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">This is the console-only route around the exclusion gap</div>
+      <p>Chapter 6 noted that exempting a workspace from an organization guardrail needs the Admin API. If you want every control visible in the console, leave the organization slots empty and set guardrails per workspace here. You trade one setting for several and gain the ability to leave a sandbox uncovered without an API call.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both slots show the guardrail you intended. Proving they fire needs a model to call, which arrives in chapter 9.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 6: Limits ─────────────────────────────────────────── -->
+<h2 id="limits">Step 6 &mdash; Set budgets and rate limits</h2>
+
+<p>Workspace limits sit between the key limits from chapter 5 and the integration limits in chapter 9. They stop one team consuming a disproportionate share regardless of how many keys it holds.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.1 &mdash; Open the budget controls</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the sidebar, click <strong>Workspace Control</strong> for the workspace.</li>
+      <li>Select the <strong>Budget Allocation</strong> tab.</li>
+    </ol>
+    <p>Who can do this:</p>
+    <ul>
+      <li>Organization owners and organization admins</li>
+      <li>Workspace admins</li>
+      <li>Workspace managers, but only if an organization admin enabled workspace management permissions in Admin Settings</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The tab opens. If it does not and you expected it to, check the workspace management permission rather than the role.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.2 &mdash; Set a rate limit</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Toggle on <strong>Add Rate Limit</strong>.</li>
+      <li>Choose <strong>Requests</strong> or <strong>Tokens</strong>.</li>
+      <li>Enter the value in <strong>Set Rate Limit</strong>.</li>
+      <li>Choose an interval: per minute, per hour, or per day.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">A workspace rate limit rejects every key at once</div>
+      <p>When the workspace reaches its limit, all subsequent requests are rejected whichever key made them. A single misbehaving application therefore takes out every other application in the same workspace. Where one noisy workload must not affect its neighbors, separate workspaces rather than a shared limit is the answer.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The limit is above the combined expected peak of everything in the workspace, not above the peak of its largest consumer.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.3 &mdash; Set a budget and an alert threshold</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Toggle on <strong>Add Budget</strong>.</li>
+      <li>Choose <strong>Cost</strong> or <strong>Tokens</strong>.</li>
+      <li>Enter the amount in <strong>Budget Limit</strong>.</li>
+      <li>Set an <strong>Alert Threshold</strong>, which notifies before the full budget is consumed while the workspace keeps running.</li>
+      <li>Choose a periodic reset.</li>
+    </ol>
+    <table>
+      <thead>
+        <tr><th>Reset</th><th>Behavior</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>No periodic reset</td><td>Applies until exhausted.</td></tr>
+        <tr><td>Reset weekly</td><td>Every Sunday at midnight UTC.</td></tr>
+        <tr><td>Reset monthly</td><td>The first of each month at midnight UTC.</td></tr>
+        <tr><td>Custom reset days</td><td>Any interval from 1 to 365 days. Admin API only, and mutually exclusive with the options above.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Always set the alert threshold</div>
+      <p>Without one, the first signal that a workspace is out of budget is the workspace stopping. The threshold is the only warning between normal operation and a hard stop, and notifications go to organization administrators and owners.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Custom reset intervals are an API-only option</div>
+      <p>The console offers none, weekly and monthly. A custom interval, and a specific first-reset date, are set through the Admin API. Where a console-only deployment needs a different cycle, monthly is the closest available and the difference is worth stating to whoever owns the budget.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each workspace with a budget has an alert threshold and a reset period, and the recipients of those alerts know what the workspace does.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 7: Verify ─────────────────────────────────────────── -->
+<h2 id="verify">Step 7 &mdash; Verify, including the checks held open since chapter 4</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.1 &mdash; Sign in as a member and confirm the permission model</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This is the test chapter 4 could not run. Settings pages showed intent; this shows effect.</p>
+    <ol>
+      <li>Sign in as an account holding the workspace <strong>Member</strong> role, in a separate browser profile.</li>
+      <li>Check each decision made on the Security tab in chapter 4.</li>
+    </ol>
+    <table>
+      <thead>
+        <tr><th>If chapter 4 set</th><th>The member should</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Members View Logs off</td><td>Not see log entries at all.</td></tr>
+        <tr><td>Members View Logs Metadata on, View Logs off</td><td>See timestamps, model and token counts, with no prompt or response content.</td></tr>
+        <tr><td>Members View All Data off</td><td>See only data generated by their own API keys.</td></tr>
+        <tr><td>Members Write Prompts off</td><td>Read prompts and be unable to change them.</td></tr>
+        <tr><td>Manage Keys (Members) off</td><td>Be unable to create a key.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Repeat as a Manager</div>
+      <p>Manager and Admin hold the same permissions by default. If chapter 4 separated them, a manager sign-in is the only thing that proves the separation took. Skipping it leaves two role names that may still be one level of access.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every row behaves as the table predicts, for both a member and a manager. Anything that does not is a chapter 4 setting to revisit now rather than after the workspace is in use.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>7.2 &mdash; Confirm the chapter</span>
+  </div>
+  <div class="collapsible-body">
+    <ul>
+      <li>Every planned workspace exists and carries its required metadata.</li>
+      <li>Members arrived, by mapping or by invitation, and the count matches the source.</li>
+      <li>Each workspace holds at least one named API key, stored in your secrets manager.</li>
+      <li>Workspace guardrails are set where the organization baseline is not enough.</li>
+      <li>Budgets carry an alert threshold and a reset period.</li>
+      <li>A member and a manager sign-in confirmed the permission model.</li>
+    </ul>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All six hold. The deployment now has teams, boundaries and keys. Chapter 9 gives them something to call.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Deleting ───────────────────────────────────────────────── -->
+<h2 id="deleting">Deleting a workspace</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Removing a workspace you no longer need</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A workspace cannot be deleted while it holds resources. Prompts, prompt partials, providers, configs and guardrails all have to go first.</p>
+    <ol>
+      <li>Open the workspace menu in the sidebar.</li>
+      <li>Select the workspace.</li>
+      <li>Click the delete option next to its name.</li>
+      <li>If a warning lists remaining resources, remove those and return.</li>
+      <li>Type the workspace name in the confirmation field.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">Deletion is permanent</div>
+      <p>There is no undo and no recovery. Export anything in the workspace you may need, including logs, before starting.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">The Shared Team Workspace cannot be deleted</div>
+      <p>The default workspace is permanent. If traffic has accumulated there that belongs elsewhere, the move is to create the proper workspace and repoint the applications, not to remove the original.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The workspace is gone from the dropdown, and any directory group mapped to it has had its mapping removed too, since the mapping has nowhere left to point.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Next ───────────────────────────────────────────────────── -->
+<h2 id="next">Next chapter</h2>
+
+<p>Chapter 9 covers LLM integrations and the model catalog: provider integrations, provisioning models to the workspaces you just built, overrides, pricing adjustments, custom models and hosts. It also runs the live-fire checks held open since chapter 3. It is in preparation, and the <a href="index.html">configuration hub</a> tracks the remaining chapters.</p>
+
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

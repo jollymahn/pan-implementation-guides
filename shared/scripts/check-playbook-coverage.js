@@ -78,6 +78,8 @@ const EXEMPT = {
     'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
   'docs/guides/ai-gateway/configuration/plugins.html':
     'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
+  'docs/guides/ai-gateway/configuration/workspaces.html':
+    'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
 };
 
 // ── Survey ───────────────────────────────────────────────────────────────────
