@@ -11,7 +11,7 @@
 #    CUSTOMER_ADMIN_IP       — your public IP for management access (e.g. 203.0.113.5/32)
 #    CUSTOMER_REGION         — Azure region (e.g. East US 2, West Europe, Australia East)
 #    CUSTOMER_RG_NAME        — Azure resource group name (e.g. vmseries-hub-prod)
-#    CUSTOMER_PREFIX         — resource name prefix (e.g. acme-, viasat-)
+#    CUSTOMER_PREFIX         — resource name prefix (e.g. acme-, contoso-)
 #    CUSTOMER_FW1_HOSTNAME   — hostname for hub firewall 1 (e.g. hub-fw1)
 #    CUSTOMER_FW2_HOSTNAME   — hostname for hub firewall 2 (e.g. hub-fw2)
 #    CUSTOMER_SCM_LABEL      — SCM device label / tplname (e.g. hub-azure)
