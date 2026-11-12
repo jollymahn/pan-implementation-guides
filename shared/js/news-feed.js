@@ -39,6 +39,13 @@ var NEWS_ITEMS = [
   {
     badge: "New",
     date: "2026-11-12",
+    title: "Integrations, the model catalog, and the first call that proves it all",
+    href: "guides/ai-gateway/configuration/integrations.html",
+    tags: "Chapter 9 of the configuration set, Integration is the org credential and a Provider is what a workspace sees, The model allowlist is set on the integration and nowhere else, Allow All Models includes models the provider has not released yet, All Workspaces includes workspaces that do not exist yet, The slug ends up in application code so pick the convention first, Secret Ref toggle keeps provider keys in your vault, Pricing multipliers need gateway 2.7.0, Step 5 is a failure table where every row points at one earlier chapter, Step 6 clears the deferred checks from chapters 3 5 6 7 and 8"
+  },
+  {
+    badge: "New",
+    date: "2026-11-12",
     title: "Workspaces, and why no application can call a model until one exists",
     href: "guides/ai-gateway/configuration/workspaces.html",
     tags: "Chapter 8 of the configuration set, Completion APIs are workspace-scoped so there is no org-level key that calls a model, Closes the group mappings and workspace keys deferred from chapter 2 and the permission test from chapter 4, A directory group maps to exactly one workspace and removing a mapping deprovisions users immediately, Fewer members than the group means a missing allowed domain, User keys are what make per-user data visibility actually separate anything, A workspace rate limit rejects every key at once, Custom reset intervals are Admin API only, The Shared Team Workspace cannot be deleted"

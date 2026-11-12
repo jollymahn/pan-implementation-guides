@@ -100,9 +100,18 @@ running the rest of the configuration, or they are gone:
 | `aigw-cfg-group-mapping.png` | The Add Group Mapping dialog with a CIE group and a workspace selected. Mask real group names. |
 | `aigw-cfg-workspace-keys.png` | AI Gateway → Security Keys showing the Service and User tabs with one named key, values masked. |
 
+## Chapter 9 — Integrations and the model catalog
+
+| File | What to capture |
+|---|---|
+| `aigw-cfg-integration-secretref.png` | The integration credential field with the Secret Ref toggle enabled and a reference selected. |
+
+Existing captures in `aigw-screenshots/` already cover the integrations page,
+integration creation and the model tab. Check those before taking new ones.
+
 ## Not yet listed
 
-Chapters 9 to 13 are in preparation. Their capture points are added here as each
+Chapters 10 to 13 are in preparation. Their capture points are added here as each
 chapter is drafted.
 
 ## Playwright notes

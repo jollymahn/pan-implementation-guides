@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Integrations and the Model Catalog | AI Gateway Configuration | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#concept" data-section="concept">Integration, provider, model</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configure</div>
+    <a href="#create" data-section="create">1. Create an integration</a>
+    <a href="#models" data-section="models">2. Model provisioning</a>
+    <a href="#pricing" data-section="pricing">3. Pricing</a>
+    <a href="#workspaces" data-section="workspaces">4. Workspace provisioning</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prove it works</div>
+    <a href="#firstcall" data-section="firstcall">5. The first model call</a>
+    <a href="#backlog" data-section="backlog">6. Clear the deferred checks</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#governance" data-section="governance">Workspace-created integrations</a>
+    <a href="#limits" data-section="limits">The three limit levels</a>
+    <a href="#next" data-section="next">Next chapter</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Configuration</a>
+  <span class="sep">|</span>
+  Integrations and the Model Catalog
+</div>
+
+<h1>Integrations and the Model Catalog</h1>
+<p class="subtitle">Chapter 9 of 13. Connecting providers, deciding which models anyone may call, handing them to workspaces, and finally making a request that proves the whole set works</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">Configuration Hub</a>
+  <a href="workspaces.html" class="cloud-link">Previous: Workspaces</a>
+  <a href="../ai-gateway-model-prerequisites.html" class="cloud-link">Provider Prerequisites</a>
+</div>
+
+<!-- ── Concept ────────────────────────────────────────────────── -->
+<h2 id="concept">Integration, provider, model</h2>
+
+<p>Three words that sound interchangeable and are not. Getting them straight makes the rest of the chapter obvious.</p>
+
+<table>
+  <thead>
+    <tr><th>Term</th><th>Lives at</th><th>Is</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Integration</td><td>The organization</td><td>A stored credential for one provider, plus the list of models it exposes and the workspaces allowed to use it.</td></tr>
+    <tr><td>Provider</td><td>A workspace</td><td>What an integration looks like once it has been provisioned to that workspace. The team uses it without ever seeing the credential.</td></tr>
+    <tr><td>Model</td><td>The model catalog</td><td>An individual model, available only if the integration enabled it.</td></tr>
+  </tbody>
+</table>
+
+<p>The flow runs one way: store the credential once as an integration, choose which models it exposes, share it with workspaces, and each workspace gets the same credential under its own budget and rate limits.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Credentials are never exposed to the teams using them</div>
+  <p>A workspace sees a usable provider, not an API key. Keys are encrypted at rest and decrypted in memory inside sandboxed workers at the moment a request is made. That is the reason to centralize integrations rather than let each team enter its own.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The model allowlist is set here and nowhere else</div>
+  <p>Workspaces see only the models their integration enabled. A team asking for access to a model is asking you to change the integration, not their workspace. Set this deliberately in step 2, because leaving it open means every workspace can call the most expensive model the provider offers.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul>
+  <li>Chapters 1 to 8 complete, with at least one workspace holding an API key</li>
+  <li>Provider credentials, or a secret reference from <a href="secret-references.html">chapter 3</a> that holds them</li>
+  <li>The list of models each team is approved to use</li>
+  <li>For pricing adjustments, gateway 2.7.0 or higher, and on air-gapped deployments backend 1.15.0 and frontend 1.8.1 or higher</li>
+</ul>
+
+<div class="callout callout-note">
+  <div class="callout-title">Per-provider preparation is its own exercise</div>
+  <p>Each provider wants different things: an API key for OpenAI, an access key pair or an assumed role for Bedrock, a deployment name for Azure OpenAI, a service account for Vertex AI. The <a href="../ai-gateway-model-prerequisites.html">model provider prerequisites guide</a> lists what to collect for each one. Have it in hand before step 1.</p>
+</div>
+
+<!-- ── Step 1: Create ─────────────────────────────────────────── -->
+<h2 id="create">Step 1 &mdash; Create an integration</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 &mdash; Find the provider</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to <strong>Integrations</strong> in the organization settings.</li>
+      <li>Click <strong>Create New Integration</strong>, or find the provider on the <strong>All</strong> tab and click <strong>Connect</strong>.</li>
+    </ol>
+    <p>The page has three tabs, and they answer different questions:</p>
+    <table>
+      <thead>
+        <tr><th>Tab</th><th>Shows</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>All</td><td>Every provider the gateway supports. The starting point for a new connection.</td></tr>
+        <tr><td>Connected</td><td>Integrations connected at the organization level. Your main management view.</td></tr>
+        <tr><td>Workspace-Created</td><td>Integrations created by workspace admins for their own workspaces. Covered in the governance section below.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Your provider appears on the <strong>All</strong> tab. A provider that is not listed is a candidate for a custom model with a custom host, covered in step 2.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 &mdash; Set the details, and choose the slug carefully</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Field</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Name</td><td>Descriptive, for humans. For example <code>Bedrock Production</code>.</td></tr>
+        <tr><td>Slug</td><td>The unique identifier used in API calls. For example <code>bedrock-prod</code>.</td></tr>
+        <tr><td>Description</td><td>Optional context about what this integration is for.</td></tr>
+        <tr><td>Endpoint Type</td><td>Public or private.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-danger">
+      <div class="callout-title">The slug ends up in application code</div>
+      <p>Callers reference the integration by slug, so it is effectively a public interface. Changing it later means changing every application and every config that names it. Decide the convention now, across all your integrations, rather than naming the first one and improvising the rest.</p>
+      <p>A convention that holds up: provider and environment, lowercase, hyphenated. <code>openai-prod</code>, <code>openai-dev</code>, <code>bedrock-prod</code>. Avoid team names, which change, and avoid model names, since one integration carries many models.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The slug follows a convention you have written down and can apply to every integration you are about to create.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.3 &mdash; Supply the credential, by vault reference if you can</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This is where chapter 3 pays off. The credential field carries a toggle.</p>
+    <ol>
+      <li>Switch the toggle to <strong>Secret Ref</strong>.</li>
+      <li>Select the secret reference you created in chapter 3.</li>
+      <li>If the reference points at a secret holding several values, supply a <strong>Secret Key</strong> to pick the right one.</li>
+    </ol>
+    <p>The alternative is pasting the key directly, which stores it in the gateway rather than in your vault.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Why the toggle is worth using even though both work</div>
+      <p>A referenced credential rotates in your vault with no change here, and the five-minute data plane cache picks it up. A pasted credential has to be re-entered on every integration that uses it at every rotation. The difference compounds with the number of integrations.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Provider-specific fields can also be referenced</div>
+      <p>It is not only the main API key. Provider configuration fields such as an AWS secret access key or an Entra client secret can each resolve from a reference. If a provider needs two secrets, both can come from the vault rather than one of each.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-integration-secretref.png | The integration credential field with the Secret Ref toggle enabled and a reference selected -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration saves. This still does not prove the vault can be read, which is the check chapter 3 deferred and step 5 finally runs.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 2: Models ─────────────────────────────────────────── -->
+<h2 id="models">Step 2 &mdash; Decide which models exist</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.1 &mdash; Set the allowlist</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the integration, go to <strong>Model Provisioning</strong>.</li>
+      <li>Choose one:
+        <ul>
+          <li><strong>Allow All Models</strong> gives access to everything the provider offers, including models released after you configured this.</li>
+          <li><strong>Allow Specific Models</strong> builds an allowlist.</li>
+        </ul>
+      </li>
+    </ol>
+    <p>Whatever you choose applies to every provider created from this integration, in every workspace it reaches.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Allow All includes models that do not exist yet</div>
+      <p>A provider adding a new flagship model makes it immediately callable by every workspace on this integration, at whatever it costs, with no action from you. On an allowlist, the same release is invisible until you add it. The allowlist is more work and it is the only one of the two that is a cost control.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The enabled models match what you approved. Count them: an allowlist that quietly matches the provider's full list is not an allowlist.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.2 &mdash; Add a custom model</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The catalog is not limited to a provider's standard list. Three cases need this:</p>
+    <ul>
+      <li><strong>Fine-tuned models</strong>, such as a fine-tune of an OpenAI or Anthropic base model.</li>
+      <li><strong>Self-hosted or internal models</strong> running on your own infrastructure.</li>
+      <li><strong>Models from a provider the gateway does not natively support</strong>, mapped onto a compatible API signature.</li>
+    </ul>
+    <ol>
+      <li>In <strong>Model Provisioning</strong>, click <strong>Add Model</strong>.</li>
+      <li>Set a <strong>Model Slug</strong>, lowercase and unique. This is what callers put in their request.</li>
+      <li>Add a short description and the model type.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Per-model routing</div>
+      <p>A custom model can carry its own <code>custom_host</code> and <code>custom_headers</code>, so different models under one integration reach different upstreams. Model-level headers override integration-level ones. This is how a self-hosted model sits in the same catalog as a hosted one.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The custom model appears in the catalog with the same governance controls as a standard one. Step 5 confirms it is reachable.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 3: Pricing ────────────────────────────────────────── -->
+<h2 id="pricing">Step 3 &mdash; Make the cost figures true</h2>
+
+<p>The gateway calculates cost from standard list pricing. If what you pay differs, every cost figure in every dashboard is wrong until you tell it. Two mechanisms, at different levels.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.1 &mdash; Override pricing for one model</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In <strong>Model Provisioning</strong>, find the model.</li>
+      <li>Click the edit control on its row.</li>
+      <li>Set your pricing values and save.</li>
+    </ol>
+    <p>Subsequent requests cost out at the new rates. Use it for a negotiated rate on a specific model, for internal chargeback, or to price a private model that has no list rate at all.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Make a call after saving and check the cost on the log entry against a hand calculation. Pricing changes are not retroactive, so earlier entries keep the old rate.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.2 &mdash; Apply a multiplier to the whole integration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Pricing adjustments scale every model on an integration at once, which suits a contract discount better than editing models one at a time.</p>
+    <ol>
+      <li>Open the integration at the <strong>Integration Details</strong> step.</li>
+      <li>Toggle <strong>Pricing Adjustments</strong> on.</li>
+      <li>Choose a multiplier mode: <strong>Default</strong> for the common token types, or <strong>Custom</strong> for a JSON editor covering reasoning, audio, image and additional units.</li>
+      <li>Enter the multipliers. Empty fields inherit from the default.</li>
+      <li>Save.</li>
+    </ol>
+    <table>
+      <thead>
+        <tr><th>Multiplier</th><th>Effect</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>1</code></td><td>Unchanged.</td></tr>
+        <tr><td><code>0.8</code></td><td>A 20 percent discount, for a negotiated rate.</td></tr>
+        <tr><td><code>1.2</code></td><td>A 20 percent markup, for internal showback that includes platform overhead.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Check the version before planning around this</div>
+      <p>Pricing adjustments need gateway 2.7.0 or higher, and on air-gapped deployments backend 1.15.0 and frontend 1.8.1. Below those the toggle is absent and per-model overrides from 3.1 are the only route.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Two integrations of the same provider can price differently</div>
+      <p>A discounted production integration and a standard-rate sandbox can sit side by side, each reporting its own effective cost. That is the cleanest way to stop sandbox spend distorting production figures.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A call through the integration reports a cost matching list price times your multiplier.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 4: Workspace provisioning ─────────────────────────── -->
+<h2 id="workspaces">Step 4 &mdash; Hand the integration to workspaces</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 &mdash; Choose which workspaces get it</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the integration, go to <strong>Workspace Provisioning</strong>.</li>
+      <li>Choose <strong>All Workspaces</strong> or <strong>Specific Workspaces</strong>.</li>
+    </ol>
+    <p>Each provisioned workspace sees the integration as a provider in its model catalog and can use it immediately, with no credential to enter.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">All Workspaces includes workspaces that do not exist yet</div>
+      <p>Like the model allowlist, this setting reaches forward. A workspace created in six months inherits the integration without anyone deciding it should. Where an integration carries a production credential, name the workspaces explicitly.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Separate integrations per environment</div>
+      <p>One integration for development and another for production, each provisioned to its own workspaces, keeps the credentials separate and lets you price, limit and revoke them independently. Sharing one integration across both means a credential rotation touches production and development together.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Open a provisioned workspace and confirm the provider appears in its model catalog, showing only the models enabled in step 2.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.2 &mdash; Set per-workspace limits</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each provisioned workspace can carry its own limits on this integration.</p>
+    <ol>
+      <li>Click the <strong>Edit Budget &amp; Rate Limits</strong> control on a workspace row.</li>
+      <li>Set budget limits, rate limits, and model access for that workspace.</li>
+      <li>Optionally select the option to apply the same limits to every workspace where this integration is enabled.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">An integration budget cascades to every provider created from it</div>
+      <p>This is the broadest of the three limit levels. A budget here governs all usage of the integration in that workspace, across every provider derived from it. The same rules as chapter 5 apply: it is not retroactive, and once set it cannot be edited by anyone.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each workspace row shows the limits you intended, and you can explain why a given workspace has the number it has.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 5: First call ─────────────────────────────────────── -->
+<h2 id="firstcall">Step 5 &mdash; Make the first model call</h2>
+
+<p>Everything up to here has been configuration you could not test. One request now exercises the whole stack: the credential, the vault, the allowlist, the workspace key, the guardrails, and the logging mode.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>5.1 &mdash; Send one request</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Use the workspace API key from chapter 8 and name a model the allowlist permits. The gateway's own playground or a simple request from your workstation both work.</p>
+    <p>Read the result against this table before changing anything:</p>
+    <table>
+      <thead>
+        <tr><th>Outcome</th><th>Means</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>A model response</td><td>The whole path works. Continue to 5.2.</td></tr>
+        <tr><td>Authentication rejected at the gateway</td><td>The workspace key is wrong, or it lacks the completions permission from chapter 8.</td></tr>
+        <tr><td>Gateway error fetching the secret</td><td>The secret reference path or the vault permission is wrong. This is the chapter 3 check finally reporting.</td></tr>
+        <tr><td>Provider rejects the credential</td><td>The secret resolved but holds the wrong value, or the wrong key within a multi-value secret.</td></tr>
+        <tr><td>Model not found or not permitted</td><td>The model is not on the step 2 allowlist, or the integration is not provisioned to this workspace.</td></tr>
+        <tr><td>HTTP <code>400</code> naming an inline element</td><td>Saved-only mode from chapter 4 is on and the request passed an inline provider or config. Reference a saved resource instead.</td></tr>
+        <tr><td>HTTP <code>446</code></td><td>A guardrail denied it. The configuration is working; the request failed a check.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Every row is a different chapter reporting back</div>
+      <p>This is the first moment the set can fail honestly. Work the table rather than guessing, because each outcome points at exactly one earlier decision.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A model response comes back through the gateway, made with a workspace key, naming an allowlisted model.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 6: Backlog ────────────────────────────────────────── -->
+<h2 id="backlog">Step 6 &mdash; Clear the deferred checks</h2>
+
+<p>Five earlier chapters recorded verifications they could not run. They can all run now, and they should be run together while the first call is fresh.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.1 &mdash; Work the backlog</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>From</th><th>Check</th><th>Passes when</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Chapter 3</td><td>The secret reference resolves</td><td>The call in step 5 succeeded using a referenced credential rather than a pasted one.</td></tr>
+        <tr><td>Chapter 5</td><td>The request logging mode behaves</td><td>In Full Logging the log entry shows prompt and response. In Metrics Only it shows tokens, latency and cost with no content.</td></tr>
+        <tr><td>Chapter 5</td><td>The default config applies</td><td>A call made with no config reference behaves as the config attached to the key specifies.</td></tr>
+        <tr><td>Chapter 6</td><td>A guardrail fires</td><td>A request designed to fail returns <code>200</code>, <code>246</code> or <code>446</code> according to its async and deny settings, and a passing request succeeds.</td></tr>
+        <tr><td>Chapter 6</td><td>Redaction works</td><td>A prompt containing a test value is stored with the replacement text rather than the original.</td></tr>
+        <tr><td>Chapter 7</td><td>The partner check fires</td><td>The gateway log shows the verdict and the partner console shows the reason.</td></tr>
+        <tr><td>Chapter 8</td><td>Workspace guardrails apply</td><td>A request in that workspace is evaluated by its guardrails as well as the organization baseline.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">Run the passing case for every one of them</div>
+      <p>Each of these has a failing case that is easy to produce and a passing case that is easy to skip. A guardrail that blocks everything, a redaction pattern that matches everything, an allowlist that permits nothing: all three look like working controls until normal traffic arrives.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every row passes, in both directions. Anything that does not points at a specific earlier chapter rather than at the gateway.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.2 &mdash; Attach the default config now that it can exist</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Chapter 5 decided the policy and could not write the config, because a config needs a provider to route to. That is now resolved.</p>
+    <ol>
+      <li>Create the config, naming the integration slug as its provider and the guardrail IDs from chapter 6 under <code>input_guardrails</code> and <code>output_guardrails</code>.</li>
+      <li>Attach it to the workspace API keys from chapter 8 as their default config.</li>
+      <li>Repeat the step 5 call with no config named by the caller.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">This is what makes the governance hold</div>
+      <p>With a default config on the key and saved-only mode from chapter 4 enabled, the caller cannot route around the policy: they cannot supply their own config, and the one they get is yours. Neither half achieves that alone.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A request naming no config is still subject to the retries, guardrails and routing the config specifies.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Governance ─────────────────────────────────────────────── -->
+<h2 id="governance">Workspace-created integrations</h2>
+
+<p>Workspace admins can create integrations for their own workspace. Those appear on the <strong>Workspace-Created</strong> tab, giving you visibility and an audit trail over credentials you did not provision.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Check this tab before declaring the deployment governed</div>
+  <p>A team that wanted a model you had not approved may already have connected the provider themselves, with its own credential, outside your allowlist and your pricing. The integration is visible here and nowhere in your Connected view. Review it on the same schedule you review workspace membership.</p>
+</div>
+
+<p>If workspace-created integrations are not wanted at all, the integration write permissions on the Security tab from <a href="security-access-control.html">chapter 4</a> are where that is turned off.</p>
+
+<!-- ── Limits ─────────────────────────────────────────────────── -->
+<h2 id="limits">The three limit levels, in one place</h2>
+
+<p>Budgets and rate limits exist at three levels, configured in three places across three chapters. This is the consolidated view.</p>
+
+<table>
+  <thead>
+    <tr><th>Level</th><th>Set in</th><th>Scope</th><th>Chapter</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>API key</td><td>The key's own settings</td><td>One credential</td><td>5</td></tr>
+    <tr><td>Workspace</td><td>Workspace Control, Budget Allocation tab</td><td>Every key in the workspace, rejected together</td><td>8</td></tr>
+    <tr><td>Integration, per workspace</td><td>Workspace Provisioning, Edit Budget and Rate Limits</td><td>All use of that integration in that workspace, cascading to every provider from it</td><td>9</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Pick one level per control</div>
+  <p>Setting all three produces overlapping ceilings and no clear answer to which one stopped a request. A workable default: integration limits for provider spend, workspace limits for team fairness, and key limits only where one application needs a cap its neighbors do not.</p>
+</div>
+
+<!-- ── Next ───────────────────────────────────────────────────── -->
+<h2 id="next">Next chapter</h2>
+
+<p>Chapter 10 covers the MCP gateway: the registry, internal and external servers, authentication and authorization, guardrails, rate limits, and circuit breakers. It is in preparation, and the <a href="index.html">configuration hub</a> tracks the remaining chapters.</p>
+
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>
