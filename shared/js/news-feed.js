@@ -39,6 +39,13 @@ var NEWS_ITEMS = [
   {
     badge: "New",
     date: "2026-11-13",
+    title: "The agent gateway, and the skill controls that do not exist yet",
+    href: "guides/ai-gateway/configuration/agent-gateway.html",
+    tags: "Chapter 11 of the configuration set, The agent catalog and the Agent Registry are one surface under two names, Agents are reached at /agent/{slug} not the MCP /m/{slug}/mcp path, The Agent Gateway toggle and the agents.invoke scope are two separate switches and both are needed, Fetching the agent card is the validation step so never save past a failed fetch, Backend 1.16.1 applies SSRF protection rejecting private IPs metadata hosts and URL fragments, An agent on a private network cannot be registered and needs a public endpoint instead, Skill control is organization-wide so two teams needing different skills means registering the agent twice, Per-user access and per-workspace skill control are announced but not shipped, Chapter 10's three access levels have no equivalent here yet"
+  },
+  {
+    badge: "New",
+    date: "2026-11-13",
     title: "The MCP gateway, and the two authentication layers people conflate",
     href: "guides/ai-gateway/configuration/mcp-gateway.html",
     tags: "Chapter 10 of the configuration set, Gateway auth and upstream auth are independent so a public server still needs a gateway identity, The slug becomes the connection URL and changing it breaks every client config, STDIO servers must be exposed over HTTP before they can be registered, GitHub and others lack dynamic client registration so the OAuth app is created by hand against a fixed callback URL, Unsigned claims headers are a trust assertion not proof and need the server to have no other ingress, Auto-provisioning for new workspaces is a standing decision not a convenience, Disabled tools are hidden from listings not merely refused, A workspace key without MCP Invoke fails on the first tool call rather than at connection, Rate limits need gateway 2.18.0 and backend 1.24.0 or they are accepted and never enforced, api_key conditions never match OAuth flows so those callers pass unlimited, PII detection and content moderation are llm target only and have no MCP equivalent, Circuit breakers are announced but not shipped"
