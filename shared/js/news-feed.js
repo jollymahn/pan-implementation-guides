@@ -38,6 +38,13 @@ var NEWS_VISIBLE_COUNT = 6;
 var NEWS_ITEMS = [
   {
     badge: "New",
+    date: "2026-11-13",
+    title: "The MCP gateway, and the two authentication layers people conflate",
+    href: "guides/ai-gateway/configuration/mcp-gateway.html",
+    tags: "Chapter 10 of the configuration set, Gateway auth and upstream auth are independent so a public server still needs a gateway identity, The slug becomes the connection URL and changing it breaks every client config, STDIO servers must be exposed over HTTP before they can be registered, GitHub and others lack dynamic client registration so the OAuth app is created by hand against a fixed callback URL, Unsigned claims headers are a trust assertion not proof and need the server to have no other ingress, Auto-provisioning for new workspaces is a standing decision not a convenience, Disabled tools are hidden from listings not merely refused, A workspace key without MCP Invoke fails on the first tool call rather than at connection, Rate limits need gateway 2.18.0 and backend 1.24.0 or they are accepted and never enforced, api_key conditions never match OAuth flows so those callers pass unlimited, PII detection and content moderation are llm target only and have no MCP equivalent, Circuit breakers are announced but not shipped"
+  },
+  {
+    badge: "New",
     date: "2026-11-12",
     title: "Integrations, the model catalog, and the first call that proves it all",
     href: "guides/ai-gateway/configuration/integrations.html",

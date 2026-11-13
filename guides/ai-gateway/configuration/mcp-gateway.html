@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>MCP Gateway | AI Gateway Configuration | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#concept" data-section="concept">Client, gateway, server</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configure</div>
+    <a href="#register" data-section="register">1. Add the server</a>
+    <a href="#upstream" data-section="upstream">2. Upstream authentication</a>
+    <a href="#identity" data-section="identity">3. Identity forwarding</a>
+    <a href="#access" data-section="access">4. Provision access</a>
+    <a href="#capabilities" data-section="capabilities">5. Decide which tools exist</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Prove it works</div>
+    <a href="#connect" data-section="connect">6. The first tool call</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Govern</div>
+    <a href="#ratelimits" data-section="ratelimits">7. Rate limits</a>
+    <a href="#guardrails" data-section="guardrails">8. Guardrails</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#circuitbreakers" data-section="circuitbreakers">Circuit breakers</a>
+    <a href="#levels" data-section="levels">The three access levels</a>
+    <a href="#next" data-section="next">Next chapter</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Configuration</a>
+  <span class="sep">|</span>
+  MCP Gateway
+</div>
+
+<h1>MCP Gateway</h1>
+<p class="subtitle">Chapter 10 of 13. Putting MCP servers behind one authenticated endpoint, deciding which teams and which tools they reach, and governing the calls that result</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">Configuration Hub</a>
+  <a href="integrations.html" class="cloud-link">Previous: Integrations</a>
+  <a href="workspaces.html" class="cloud-link">Workspaces</a>
+</div>
+
+<!-- ── Concept ────────────────────────────────────────────────── -->
+<h2 id="concept">Client, gateway, server</h2>
+
+<p>Connected directly, every agent needs its own credentials and its own configuration for every MCP server it touches. Ten agents and six servers is sixty credential decisions, and no record of which agent called what.</p>
+
+<p>The MCP gateway sits between them as a proxy. Clients authenticate once to the AI Gateway. The gateway checks whether that identity may reach the requested server and tool, injects the credential the upstream server expects, proxies the call, and logs it.</p>
+
+<p>Two authentication layers do that work, and they are independent of each other.</p>
+
+<table>
+  <thead>
+    <tr><th>Layer</th><th>Who proves what</th><th>Options</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Gateway</td><td>The client proves its identity to the AI Gateway</td><td>API key, AI Gateway OAuth 2.1 with PKCE, or an external IdP such as Okta, Entra ID or Auth0</td></tr>
+    <tr><td>Upstream</td><td>The AI Gateway proves its identity to the MCP server</td><td>None, OAuth 2.1, Client Credentials, or Headers</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Users never see the upstream credential</div>
+  <p>A developer holds a gateway API key or an OAuth session. The token for GitHub, Slack or your internal API is held by the gateway and injected at call time. Revoking a person's access is a gateway change, not a credential rotation, and that is the whole reason to centralize the registry rather than let each team wire its own servers.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">A public server still needs gateway authentication</div>
+  <p>The two layers are genuinely separate. A server whose upstream auth type is <strong>None</strong> is open at the far end, but reaching it through the gateway still requires a valid gateway identity. Setting upstream auth to None does not make the server anonymous to your organization, and it does not exempt the calls from logging, access control or guardrails.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul>
+  <li>Chapters 1 to 9 complete, with at least one workspace holding an API key</li>
+  <li><strong>Org Admin</strong> or <strong>Org Owner</strong> to add servers to the registry and provision workspaces</li>
+  <li><strong>Workspace Manager</strong> or <strong>Workspace Admin</strong> to control which users inside a workspace reach a server</li>
+  <li>Each server reachable over HTTP, speaking MCP over Streamable HTTP transport</li>
+  <li>For rate limits, gateway 2.18.0 or higher and backend 1.24.0 or higher</li>
+</ul>
+
+<div class="callout callout-note">
+  <div class="callout-title">STDIO servers need an HTTP front door first</div>
+  <p>The gateway proxies remote servers over HTTP. A local STDIO server cannot be registered as it stands: expose it as an HTTP endpoint, then register that endpoint. This is the most common reason a server that works on a laptop cannot be added to the registry.</p>
+</div>
+
+<!-- ── Step 1: Register ───────────────────────────────────────── -->
+<h2 id="register">Step 1 &mdash; Add the server to the registry</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 &mdash; Open the registry</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to <strong>MCP Registry</strong> in the organization settings sidebar.</li>
+      <li>Click <strong>Add MCP Server</strong>.</li>
+    </ol>
+    <p>The registry is the organization-wide catalog. Everything a workspace can see later has to exist here first.</p>
+    <!-- screenshot-pending: aigw-cfg-mcp-registry-list.png | MCP Registry list page with the Add MCP Server button, one or two generic servers listed -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The add server form is open. Nothing has been created yet.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 &mdash; Describe the server</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th>Field</th><th>What to enter</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Name</td><td>The display name teams will see, such as Internal Documentation</td></tr>
+        <tr><td>Short Description</td><td>One line on what the server is for. Developers browsing the workspace MCP page read this before anything else.</td></tr>
+        <tr><td>Slug</td><td>The URL identifier, such as <code>internal-docs</code></td></tr>
+        <tr><td>Server URL</td><td>The server's own MCP endpoint</td></tr>
+        <tr><td>Server Type</td><td>Http</td></tr>
+        <tr><td>Auth Type</td><td>How the gateway authenticates to this server. Step 2 covers the choice.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">The slug becomes part of every client configuration</div>
+      <p>The connection URL is built from it as <code>https://aigw.portkey.ai/m/{slug}/mcp</code>, and that string gets pasted into every developer's client config. Changing it later means every client breaks until each one is edited. Choose it as deliberately as a hostname.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every field is populated and the slug is the one you intend to live with.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.3 &mdash; Test the connection, then save</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Click <strong>Test Connection</strong>.</li>
+      <li>When the test succeeds, click <strong>Add Server</strong>.</li>
+    </ol>
+    <p>Testing before saving is worth the extra click. A server saved with an unreachable URL looks identical in the list to one that works, and the difference only surfaces when a developer's first tool call fails.</p>
+    <!-- screenshot-pending: aigw-cfg-mcp-add-server.png | The Add MCP Server form with all fields populated with generic values and the Test Connection button visible -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The server appears in the registry list. Open it and the <strong>Overview</strong> tab reports a health score, uptime and average response time rather than an error.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 2: Upstream auth ──────────────────────────────────── -->
+<h2 id="upstream">Step 2 &mdash; Authenticate the gateway to the server</h2>
+
+<p>This is the upstream layer from the table above. It answers one question: what does this particular MCP server want to see before it will accept a call?</p>
+
+<table>
+  <thead>
+    <tr><th>Auth Type</th><th>Use when</th><th>Token scope</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>None</td><td>Public servers that require no credential</td><td>Not applicable</td></tr>
+    <tr><td>OAuth 2.1</td><td>Services holding user-specific data, such as Linear, GitHub or Slack</td><td>Per user. One person's access is separate from another's.</td></tr>
+    <tr><td>Client Credentials</td><td>Service accounts and shared resources</td><td>Shared across all users</td></tr>
+    <tr><td>Headers</td><td>Servers using a static API key or token</td><td>Shared across all users</td></tr>
+  </tbody>
+</table>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.1 &mdash; OAuth servers that support dynamic client registration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Many MCP servers implement OAuth 2.1 with Dynamic Client Registration. For these there is nothing to prepare.</p>
+    <ol>
+      <li>Select <strong>OAuth 2.1</strong> as the auth type.</li>
+      <li>Save the server.</li>
+    </ol>
+    <p>The gateway registers itself as an OAuth client automatically. The first time a user calls a tool, the gateway returns an authorization URL, the user completes consent, and the gateway stores and refreshes that user's token from then on.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The server's <strong>Overview</strong> tab shows the auth type as OAuth and a grant type. No client ID was required from you.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.2 &mdash; OAuth servers that need an app created by hand</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Some services, GitHub among them, do not support dynamic client registration. These need an OAuth app created on the service side first.</p>
+    <ol>
+      <li>Create an OAuth App in the service's own developer settings.</li>
+      <li>Set its callback URL to <code>https://aigw.portkey.ai/m/oauth/upstream-callback</code>.</li>
+      <li>In the gateway, open the server's <strong>Advanced Configuration</strong>.</li>
+      <li>Enter the <code>client_id</code>, <code>client_secret</code> and <code>redirect_uri</code> from the app you just created.</li>
+      <li>Save.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">The callback URL is fixed</div>
+      <p>It is the gateway's own endpoint, identical for every server you register this way. A mistyped callback produces a consent screen that completes and then fails on redirect, which reads like a credential problem and is not.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Trigger the OAuth flow once as a test user. Consent completes and returns you to the gateway rather than to an error page.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>2.3 &mdash; Static tokens with Headers</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Select <strong>Headers</strong> as the auth type.</li>
+      <li>Enter the header name and the token value the server expects.</li>
+      <li>Where the token already exists as a secret reference from <a href="secret-references.html">chapter 3</a>, use the reference rather than pasting the value.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Header auth is shared, so logs are the only attribution</div>
+      <p>Every user of this server presents the same upstream token, which means the upstream service cannot tell your users apart. If that server needs to know who is calling, either use per-user OAuth or forward identity explicitly with step 3. Gateway logs still attribute each call correctly, but the upstream server's own logs will not.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The credential is stored and the server's Overview tab reports the auth type as Headers.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 3: Identity forwarding ────────────────────────────── -->
+<h2 id="identity">Step 3 &mdash; Forward user identity to internal servers</h2>
+
+<p>Skip this step for third-party servers. It applies when the server is yours and needs to know which person is behind a call, which is the usual case for anything that enforces its own per-user authorization.</p>
+
+<p>Configure it under the server's <strong>Advanced Configuration</strong>. Three methods are available, and they trade verification strength against implementation effort.</p>
+
+<table>
+  <thead>
+    <tr><th>Method</th><th>What the server receives</th><th>Choose when</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>jwt_header</code></td><td>A JWT signed by the gateway, carrying the claims you list</td><td>The server must be able to prove the identity was not forged</td></tr>
+    <tr><td><code>claims_header</code></td><td>The same claims as plain JSON, unsigned</td><td>The server sits in a private network and trusts the gateway already</td></tr>
+    <tr><td><code>bearer</code></td><td>The original token, unchanged</td><td>The server validates tokens from the same IdP the user authenticated against</td></tr>
+  </tbody>
+</table>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.1 &mdash; Signed JWT, the verifiable option</span>
+  </div>
+  <div class="collapsible-body">
+    <pre><code>{
+  "user_identity_forwarding": {
+    "method": "jwt_header",
+    "include_claims": ["sub", "email", "workspace_id"],
+    "header_name": "X-User-JWT"
+  }
+}</code></pre>
+    <p>Your server verifies the signature against the gateway's public keys, published at:</p>
+    <pre><code>GET https://aigw.portkey.ai/m/.well-known/jwks.json</code></pre>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Call a tool and have the server log the header it received. The JWT is present, and verifying it against the JWKS endpoint succeeds rather than merely parsing.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>3.2 &mdash; Plain claims, the simple option</span>
+  </div>
+  <div class="collapsible-body">
+    <pre><code>{
+  "user_identity_forwarding": {
+    "method": "claims_header",
+    "include_claims": ["sub", "email", "workspace_id"],
+    "header_name": "X-User-Claims"
+  }
+}</code></pre>
+    <div class="callout callout-warning">
+      <div class="callout-title">Unsigned claims are a trust assertion, not proof</div>
+      <p>Anything that can reach your server directly can set this header itself. That is acceptable only where the server is unreachable except through the gateway. If the server has any other ingress path, use <code>jwt_header</code> instead, because a header a caller can forge is not an authorization control.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The server receives the claims and, separately, you have confirmed it cannot be reached except through the gateway.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 4: Access ─────────────────────────────────────────── -->
+<h2 id="access">Step 4 &mdash; Provision access</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.1 &mdash; Choose the workspaces, at the organization level</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Click <strong>MCP Registry</strong> in the sidebar.</li>
+      <li>Click the server.</li>
+      <li>Open the <strong>Access Control</strong> tab.</li>
+      <li>Toggle on each workspace that should reach this server.</li>
+    </ol>
+    <p>The tab also offers <strong>Automatically provision this integration for new workspaces</strong>, which includes every workspace created from then on.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Auto-provisioning is a standing decision, not a convenience</div>
+      <p>Enabled, it means a workspace created next quarter reaches this server on its first day, without anyone revisiting the question. That is right for a general-purpose documentation server and wrong for anything touching production or customer data. Decide per server rather than setting it once as a default.</p>
+    </div>
+    <!-- screenshot-pending: aigw-cfg-mcp-access-control.png | MCP Registry server detail, Access Control tab showing workspace toggles and the auto-provision setting, workspace names generic -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The intended workspaces are enabled and no others. Count them against your intended list rather than scanning for the ones you remember enabling.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>4.2 &mdash; Choose the users, at the workspace level</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Granting a workspace access does not mean every member of it should have access. This second level is set by a Workspace Manager or Workspace Admin.</p>
+    <ol>
+      <li>Go to the <strong>MCP</strong> page in the workspace sidebar.</li>
+      <li>Click the server.</li>
+      <li>Use the <strong>User Access</strong> tab to toggle individual users.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A user you did not enable cannot see the server on their own MCP page.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 5: Capabilities ───────────────────────────────────── -->
+<h2 id="capabilities">Step 5 &mdash; Decide which tools exist</h2>
+
+<p>A server exposes tools, resources and prompts. Reaching the server is not the same decision as being allowed to call everything on it, and the <strong>Capabilities</strong> tab is where the difference is set.</p>
+
+<ol>
+  <li>Open the server and select the <strong>Capabilities</strong> tab.</li>
+  <li>Toggle individual tools, or use <strong>Enable All</strong> and <strong>Disable All</strong> for bulk changes.</li>
+</ol>
+
+<table>
+  <thead>
+    <tr><th>Set at</th><th>By</th><th>Scope</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>MCP Registry &rarr; server &rarr; Capabilities</td><td>Org Admins and Owners</td><td>Organization-wide</td></tr>
+    <tr><td>MCP &rarr; server &rarr; Capabilities</td><td>Workspace Managers and Admins</td><td>That workspace only</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Disabled tools are hidden, not merely refused</div>
+  <p>A disabled capability does not appear in tool listings, so an agent never learns it exists and will not plan around it. Called directly by something that knew the name already, it returns an error. That combination is what makes this usable for blocking destructive operations rather than only discouraging them.</p>
+</div>
+
+<!-- screenshot-pending: aigw-cfg-mcp-capabilities.png | Server detail Capabilities tab with a tool list, several tools toggled off, Enable All and Disable All visible -->
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>List the tools from a connected client. The disabled ones are absent from the response, not merely greyed out in the console.</p>
+</div>
+
+<!-- ── Step 6: Connect ────────────────────────────────────────── -->
+<h2 id="connect">Step 6 &mdash; Make the first tool call</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.1 &mdash; Copy the connection URL</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Open the <strong>MCP</strong> page in the workspace sidebar.</li>
+      <li>Copy the connection URL for the server.</li>
+    </ol>
+    <p>It follows the slug chosen in step 1.2:</p>
+    <pre><code>https://aigw.portkey.ai/m/{server-slug}/mcp</code></pre>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The URL contains the slug you intended. If the server is absent from this page, access was not provisioned in step 4.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.2 &mdash; Option A, OAuth with no credential in the file</span>
+  </div>
+  <div class="collapsible-body">
+    <pre><code>{
+  "mcpServers": {
+    "internal-docs": {
+      "url": "https://aigw.portkey.ai/m/internal-docs/mcp"
+    }
+  }
+}</code></pre>
+    <p>On first use the client prompts for authentication through OAuth 2.1 with PKCE. The session is stored and refreshed after that. This is the right default for people working interactively in Claude Desktop, Claude Code, Cursor or VS Code, because there is no key to create, rotate or leak.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The client prompts once, then lists the server's enabled tools.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>6.3 &mdash; Option B, an API key for non-interactive callers</span>
+  </div>
+  <div class="collapsible-body">
+    <pre><code>{
+  "mcpServers": {
+    "internal-docs": {
+      "url": "https://aigw.portkey.ai/m/internal-docs/mcp",
+      "headers": {
+        "Authorization": "Bearer &lt;API_KEY&gt;"
+      }
+    }
+  }
+}</code></pre>
+    <p>Use a workspace user API key. Pipelines, backend services and scheduled agents cannot complete an interactive OAuth flow, so this is their path.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">The key needs MCP Invoke permission explicitly</div>
+      <p>A workspace key that works perfectly for model calls will be refused here if <strong>MCP Invoke</strong> was not enabled on it. The failure arrives as an authorization error on the first tool call rather than at connection time, which sends people looking at the server configuration instead of the key. Check the key before debugging anything else.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Call one tool and confirm two things: the client receives the result, and the call appears in <strong>Logs</strong> attributed to the right user, workspace and tool.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 7: Rate limits ────────────────────────────────────── -->
+<h2 id="ratelimits">Step 7 &mdash; Rate limit the tool calls</h2>
+
+<div class="callout callout-note">
+  <div class="callout-title">Version floor</div>
+  <p>MCP rate limits require gateway 2.18.0 or higher and backend 1.24.0 or higher. Below those versions the policy is accepted and silently never enforced, so confirm the version before relying on a limit you have configured.</p>
+</div>
+
+<p>MCP rate limits run on the same policy engine as the model rate limits from earlier chapters, distinguished by a <code>target</code> of <code>mcp_tools</code>. Existing model policies are unaffected, and the two sets do not interact.</p>
+
+<p>Policies are workspace-scoped and limit either request count or token consumption, per minute, hour, day or week.</p>
+
+<table>
+  <thead>
+    <tr><th>Key</th><th>Matches on</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>api_key</code></td><td>A specific API key ID</td></tr>
+    <tr><td><code>workspace_id</code></td><td>A workspace</td></tr>
+    <tr><td><code>mcp_server</code></td><td>A server slug</td></tr>
+    <tr><td><code>mcp_tool</code></td><td>An individual tool name</td></tr>
+    <tr><td><code>metadata.*</code></td><td>Any request metadata key, such as <code>metadata._user</code></td></tr>
+  </tbody>
+</table>
+
+<p>Conditions decide which requests a policy covers and combine with AND. Group-by keys decide how the counter is bucketed, so grouping by user gives each person their own allowance rather than a shared pool.</p>
+
+<pre><code>{
+  "name": "Per-user MCP rate limit",
+  "target": "mcp_tools",
+  "type": "requests",
+  "unit": "rpm",
+  "value": 50,
+  "conditions": [
+    { "key": "metadata._user", "value": "*" }
+  ],
+  "group_by": [
+    { "key": "metadata._user" }
+  ],
+  "status": "active"
+}</code></pre>
+
+<div class="callout callout-warning">
+  <div class="callout-title">api_key does not exist in OAuth flows</div>
+  <p>Requests authenticated through OAuth or an external IdP carry no API key, so a policy conditioned on <code>api_key</code> never matches them and they pass unlimited. If any of your users connect the way step 6.2 describes, condition on <code>mcp_server</code>, <code>mcp_tool</code> or <code>metadata.*</code> instead. This is the most common way an MCP rate limit appears configured and turns out to cover nobody.</p>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Exceed the limit deliberately with a test caller. The request is rejected with a rate limit error, and a caller in a different group-by bucket is still served.</p>
+</div>
+
+<!-- ── Step 8: Guardrails ─────────────────────────────────────── -->
+<h2 id="guardrails">Step 8 &mdash; Guardrail the tool inputs and outputs</h2>
+
+<p>Tool arguments can carry sensitive data outward and tool results can bring confidential data back. Guardrails intercept <code>tools/call</code> at either end, again using <code>target: "mcp_tools"</code> to stay separate from the model guardrails in <a href="guardrails.html">chapter 6</a>.</p>
+
+<table>
+  <thead>
+    <tr><th><code>run_on</code></th><th>Inspects</th><th>Runs</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>input</code></td><td>The arguments sent to the tool</td><td>Before the tool executes</td></tr>
+    <tr><td><code>output</code></td><td>The result the tool returned</td><td>After the tool executes</td></tr>
+  </tbody>
+</table>
+
+<p>Set both with <code>["input", "output"]</code>. Guardrails apply at the workspace level as a default for every server, or at the server level for a specific one. Where both exist, the server-level guardrail runs in addition to the workspace default rather than replacing it.</p>
+
+<p>Checks available for MCP tool calls include regex match and replace, contains, ends with, webhook, JSON schema, JSON keys, sentence, word and character counts, contains code, valid URLs, case checks, not null, and the required metadata key checks.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The model-side checks are not available here</div>
+  <p>PII detection, content moderation, language detection and the third-party provider checks apply to <code>llm</code> targets only. They cannot be mapped to <code>mcp_tools</code>. A guardrail strategy that relies on PII detection for model traffic therefore has no equivalent on the MCP path, and the nearest substitute is a regex check or a webhook to your own service. Plan for that gap rather than discovering it after a tool starts returning records.</p>
+</div>
+
+<p>By default a mapping covers every tool on the server. Pass <code>mcp_integration_capability_ids</code> to narrow it to specific tools.</p>
+
+<!-- screenshot-pending: aigw-cfg-mcp-guardrail-mapping.png | An MCP guardrail mapped to a server showing the run_on selection for input and output -->
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Call a tool with an argument the guardrail should stop. The call is refused at the input stage, before the upstream server is reached, and the refusal is visible in the logs.</p>
+</div>
+
+<!-- ── Circuit breakers ───────────────────────────────────────── -->
+<h2 id="circuitbreakers">Circuit breakers</h2>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Not yet available</div>
+  <p>Circuit breakers for MCP servers are announced but not shipped. There is no configuration to apply, and nothing in this chapter depends on them. Early access is handled through Palo Alto Networks support.</p>
+</div>
+
+<p>The published intent is automatic detection of unhealthy upstream servers by failure rate and response time, fast failure instead of waiting on a timeout, periodic recovery checks, configurable per-server thresholds, and circuit state visible in the dashboard as closed, open or half-open.</p>
+
+<p>Until it ships, an unhealthy upstream server fails per request. If a server's reliability is a live concern, the Overview tab's health score and average response time are the available signal, and they are observed rather than enforced.</p>
+
+<!-- ── Levels ─────────────────────────────────────────────────── -->
+<h2 id="levels">The three access levels</h2>
+
+<p>Access to an MCP tool is decided three times, and the model is subtractive. Each level can only remove what the level above granted, so no level can widen access beyond its parent.</p>
+
+<table>
+  <thead>
+    <tr><th>Level</th><th>Set in</th><th>Decides</th><th>Role needed</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Organization</td><td>MCP Registry</td><td>Which servers exist at all</td><td>Org Admin or Owner</td></tr>
+    <tr><td>Workspace</td><td>Access Control tab</td><td>Which teams reach a server</td><td>Org Admin or Owner</td></tr>
+    <tr><td>User</td><td>User Access tab</td><td>Which people in a team reach it</td><td>Workspace Manager or Admin</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Troubleshoot downward, in that order</div>
+  <p>When a developer cannot see a server they expect, the question is which level removed it, and checking in order settles it in three looks. Capabilities sit underneath all three: a user with full access to a server still cannot call a tool disabled in step 5.</p>
+</div>
+
+<!-- ── Next ───────────────────────────────────────────────────── -->
+<h2 id="next">Next chapter</h2>
+
+<p>Chapter 11 covers the agent gateway: the agent registry, agent servers and the agent catalog. It is in preparation, and the <a href="index.html">configuration hub</a> tracks the remaining chapters.</p>
+
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>
