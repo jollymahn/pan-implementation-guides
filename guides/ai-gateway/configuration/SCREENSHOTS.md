@@ -109,10 +109,37 @@ running the rest of the configuration, or they are gone:
 Existing captures in `aigw-screenshots/` already cover the integrations page,
 integration creation and the model tab. Check those before taking new ones.
 
+## Chapter 10 — MCP gateway
+
+| File | What to capture |
+|---|---|
+| `aigw-cfg-mcp-registry-list.png` | MCP Registry list page with the Add MCP Server button, one or two generic servers listed. |
+| `aigw-cfg-mcp-add-server.png` | The Add MCP Server form, all fields populated with generic values, Test Connection visible. |
+| `aigw-cfg-mcp-access-control.png` | Server detail, Access Control tab, workspace toggles and the auto-provision setting, workspace names generic. |
+| `aigw-cfg-mcp-capabilities.png` | Server detail, Capabilities tab, several tools toggled off, Enable All and Disable All visible. |
+| `aigw-cfg-mcp-guardrail-mapping.png` | An MCP guardrail mapped to a server, showing the run_on selection for input and output. |
+
+## Chapter 11 — Agent gateway
+
+| File | What to capture |
+|---|---|
+| `aigw-cfg-agent-registry.png` | Agent Registry list page with the add agent control and one generic agent registered. |
+| `aigw-cfg-agent-card-fetch.png` | The agent form after a successful Fetch Agent Card, showing the discovered transport and authentication schemes. |
+| `aigw-cfg-agent-skills.png` | A registered agent's skills list with several enabled and several disabled. |
+
+## Chapter 12 — Routing and reliability
+
+| File | What to capture |
+|---|---|
+| `aigw-cfg-configs-create.png` | The Configs page with the Create button and one saved config listed, generic names. |
+
+Chapter 12 is mostly JSON rather than console work, so it carries one capture
+rather than a set. The config editor itself is the only panel worth showing.
+
 ## Not yet listed
 
-Chapters 10 to 13 are in preparation. Their capture points are added here as each
-chapter is drafted.
+Chapter 13 is in preparation. Its capture points are added here as the chapter is
+drafted.
 
 ## Playwright notes
 

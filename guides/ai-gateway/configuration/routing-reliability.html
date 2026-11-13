@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Routing and Reliability | AI Gateway Configuration | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#concept" data-section="concept">One object, three strategies</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Configure</div>
+    <a href="#create" data-section="create">1. Create and attach a config</a>
+    <a href="#retries" data-section="retries">2. Retries</a>
+    <a href="#fallbacks" data-section="fallbacks">3. Fallbacks</a>
+    <a href="#loadbalance" data-section="loadbalance">4. Load balancing and canary</a>
+    <a href="#conditional" data-section="conditional">5. Conditional routing</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Protect and accelerate</div>
+    <a href="#circuitbreakers" data-section="circuitbreakers">6. Circuit breakers</a>
+    <a href="#caching" data-section="caching">7. Caching</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#composing" data-section="composing">Composing strategies</a>
+    <a href="#order" data-section="order">What runs when</a>
+    <a href="#next" data-section="next">Next chapter</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Configuration</a>
+  <span class="sep">|</span>
+  Routing and Reliability
+</div>
+
+<h1>Routing and Reliability</h1>
+<p class="subtitle">Chapter 12 of 13. The config object, and the retries, fallbacks, load balancing, conditional routing, circuit breakers and caching that live inside it</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">Configuration Hub</a>
+  <a href="agent-gateway.html" class="cloud-link">Previous: Agent Gateway</a>
+  <a href="integrations.html" class="cloud-link">Integrations</a>
+</div>
+
+<!-- ── Concept ────────────────────────────────────────────────── -->
+<h2 id="concept">One object, three strategies</h2>
+
+<p>Everything in this chapter is one thing: a JSON config object, created once and referenced by ID. There is no separate fallback feature and no separate load balancer. There is a config, and the config has a strategy.</p>
+
+<p>Three strategy modes exist, and they are mutually exclusive at any single level of the object.</p>
+
+<table>
+  <thead>
+    <tr><th>Mode</th><th>Picks a target by</th><th>Use for</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>fallback</code></td><td>Order. First target, then the next on failure.</td><td>Surviving a provider outage</td></tr>
+    <tr><td><code>loadbalance</code></td><td>Weight. A relative share of traffic each.</td><td>Spreading load, pooling rate limits, canary testing</td></tr>
+    <tr><td><code>conditional</code></td><td>A rule evaluated against the request.</td><td>Routing by user plan, region, or request parameter</td></tr>
+  </tbody>
+</table>
+
+<p>Retries, circuit breakers and caching are not modes. They are settings that sit alongside a strategy and modify how it behaves.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Strategies nest, which is where the real designs come from</div>
+  <p>Any target inside a strategy can itself be another strategy. A fallback whose primary target is a load balancer survives single-endpoint failures inside the cluster and only fails over on a full outage. A conditional router whose branches are fallback chains keeps EU traffic on EU infrastructure even while failing over. Reach for nesting once the flat version stops expressing what you mean.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul>
+  <li>Chapters 1 to 11 complete, with at least two providers in the model catalog from <a href="integrations.html">chapter 9</a></li>
+  <li>A second provider or a second API key for the same provider, since most of this chapter needs somewhere to route to</li>
+  <li>For semantic caching, a vector database</li>
+</ul>
+
+<div class="callout callout-note">
+  <div class="callout-title">Provider slugs come from chapter 9</div>
+  <p>Targets are written as <code>@provider-slug</code> or <code>@provider-slug/model-name</code>, and the slug is the one set on the integration. A config referencing a slug that does not exist fails at request time rather than when saved, so have the catalog open while writing one.</p>
+</div>
+
+<!-- ── Step 1: Create ─────────────────────────────────────────── -->
+<h2 id="create">Step 1 &mdash; Create and attach a config</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.1 &mdash; Create the config</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to the <strong>Configs</strong> page in Strata Cloud Manager.</li>
+      <li>Click <strong>Create</strong>.</li>
+      <li>Write the config JSON. Start with a single retry block if you have nothing else in mind, because it is useful on its own.</li>
+      <li>Save, and note the Config ID.</li>
+    </ol>
+    <pre><code>{
+  "retry": { "attempts": 3 },
+  "override_params": { "model": "@openai-prod/gpt-4o" }
+}</code></pre>
+    <!-- screenshot-pending: aigw-cfg-configs-create.png | The Configs page with the Create button and one saved config listed, generic names -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The config is saved and has an ID. Nothing is using it yet.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.2 &mdash; Attach it per request</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Send the ID in the <code>x-portkey-config</code> header, either as a client default or on individual requests.</p>
+    <pre><code>curl https://aigw.portkey.ai/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-portkey-api-key: $API_KEY" \
+  -H "x-portkey-config: $CONFIG_ID" \
+  -d '{
+    "model": "@openai-prod/gpt-4o",
+    "messages": [{ "role": "user", "content": "Hello" }]
+  }'</code></pre>
+    <div class="callout callout-note">
+      <div class="callout-title">A request-level config replaces the client default, it does not merge with it</div>
+      <p>Where a client sets a default config and an individual request also names one, the request wins outright for that call. Nothing from the default survives into it. A config that appears to lose half its settings on certain calls is usually this.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The call succeeds, and the log entry for it shows the Config ID.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>1.3 &mdash; Or attach it to an API key as a default</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A config attached to a key applies to every request made with that key, with no header and no application change. This is the governance path, and it is the mechanism <a href="integrations.html">chapter 9</a> relies on.</p>
+    <ol>
+      <li>Open <strong>API Keys</strong> and edit the key.</li>
+      <li>Set the default config.</li>
+      <li>Save.</li>
+    </ol>
+    <p>Three cases make this the right choice rather than the header:</p>
+    <ul>
+      <li>Clients that cannot send custom headers at all, such as Open WebUI and LibreChat</li>
+      <li>Organization-wide policy that must not depend on application code being changed</li>
+      <li>Shared routing and caching rules across every application using one key</li>
+    </ul>
+    <div class="callout callout-warning">
+      <div class="callout-title">A default config is not an enforced config on its own</div>
+      <p>A caller who sends their own <code>x-portkey-config</code> header replaces yours for that request. Pairing the default with the saved-only config restriction from <a href="security-access-control.html">chapter 4</a> is what makes it binding. Chapter 9 sets this out as the combination that makes governance hold, and neither half achieves it alone.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A request sending no config header is still subject to the config's behavior.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 2: Retries ────────────────────────────────────────── -->
+<h2 id="retries">Step 2 &mdash; Retries</h2>
+
+<p>The cheapest reliability win here, and the only one that needs no second provider. Up to five attempts, with exponential backoff.</p>
+
+<pre><code>{
+  "retry": { "attempts": 3, "on_status_codes": [429, 503] },
+  "override_params": { "model": "@openai-prod/gpt-4o" }
+}</code></pre>
+
+<table>
+  <thead>
+    <tr><th>Attempt</th><th>Wait</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Initial</td><td>Immediate</td></tr>
+    <tr><td>1st retry</td><td>1 second</td></tr>
+    <tr><td>2nd retry</td><td>2 seconds</td></tr>
+    <tr><td>3rd retry</td><td>4 seconds</td></tr>
+    <tr><td>4th retry</td><td>8 seconds</td></tr>
+    <tr><td>5th retry</td><td>16 seconds</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title">on_status_codes replaces the defaults rather than adding to them</div>
+  <p>The default retry codes are 429, 500, 502, 503, 504 and 529. Setting <code>on_status_codes</code> to <code>[408]</code> means retrying on 408 <em>and nothing else</em>, silently dropping the five defaults. If you want to add a code, list the defaults alongside it.</p>
+</div>
+
+<p>Setting <code>use_retry_after_headers</code> makes the gateway honour the provider's own <code>retry-after</code> headers instead of the backoff table, falling back to the table when the provider sends none.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Cumulative retry wait is capped at 60 seconds</div>
+  <p>The cap applies across the whole request, not per attempt. A first retry waiting 20 seconds followed by a provider asking for 50 more exceeds it, and the request fails rather than waiting. Any single <code>Retry-After</code> above 60 seconds fails immediately. On a provider that returns long backoff under load, retries therefore stop helping at exactly the moment the provider is most congested, and a fallback is the better answer.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Retries are one log entry, not several</div>
+  <p>Attempts are not logged individually and the response times are summed, so a slow entry may be four quick failures and a success. Read <code>x-portkey-retry-attempt-count</code> on the response to tell them apart: <code>-1</code> means every retry was exhausted and the request failed, <code>0</code> means no retries were configured, and any positive number is the attempt that succeeded.</p>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Send a request that provokes a retryable code and confirm <code>x-portkey-retry-attempt-count</code> is greater than zero on the response.</p>
+</div>
+
+<!-- ── Step 3: Fallbacks ──────────────────────────────────────── -->
+<h2 id="fallbacks">Step 3 &mdash; Fallbacks</h2>
+
+<p>A prioritized list. The gateway tries the first target, and moves down the list on failure.</p>
+
+<pre><code>{
+  "strategy": { "mode": "fallback", "on_status_codes": [429, 503] },
+  "targets": [
+    { "override_params": { "model": "@openai-prod/gpt-4o" } },
+    { "override_params": { "model": "@anthropic-prod/claude-3-5-sonnet-20241022" } }
+  ]
+}</code></pre>
+
+<p>By default a fallback triggers on any non-2xx response. Narrowing it with <code>on_status_codes</code> is usually right: a 400 caused by a malformed request will fail identically on every target, and falling through the whole chain to discover that costs latency and money for no benefit.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">One request can bill against several providers</div>
+  <p>Each target in a chain that gets tried is a real call. Latency and price differ per target, so a fallback that looks free in testing shows up in the cost analytics the first time the primary has a bad hour. Check that every model in the chain is actually acceptable for the use case, not merely available, because a request silently answered by a weaker model is worse than a failed one in some applications.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Tracing a chain in the logs</div>
+  <p>Filter by <strong>Config ID</strong> to see every request using the config, and by <strong>Trace ID</strong> to see all the attempts belonging to one original request. The second is the one that shows the chain.</p>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Force a failure on the primary, by revoking its credential or pointing it at a model it cannot serve, and confirm the response arrives from the second target with both attempts under one Trace ID.</p>
+</div>
+
+<!-- ── Step 4: Load balancing ─────────────────────────────────── -->
+<h2 id="loadbalance">Step 4 &mdash; Load balancing and canary testing</h2>
+
+<p>Weights, not order. Each target takes a relative share of the traffic.</p>
+
+<pre><code>{
+  "strategy": { "mode": "loadbalance" },
+  "targets": [
+    { "provider": "@openai-prod", "weight": 0.7 },
+    { "provider": "@azure-prod", "weight": 0.3 }
+  ]
+}</code></pre>
+
+<table>
+  <thead>
+    <tr><th>Pattern</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Between providers</td><td>Spread across providers, with the model taken from the request</td></tr>
+    <tr><td>Multiple API keys</td><td>Several keys for one provider, pooling their separate rate limits</td></tr>
+    <tr><td>Cost optimization</td><td>Most traffic to a cheaper model, a reserved share to the premium one</td></tr>
+    <tr><td>Gradual migration</td><td>A small weight on a new model, increased as confidence grows</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Canary testing is this, with a small weight</div>
+  <p>There is no separate canary feature. Putting 5 percent on a new model and 95 percent on the incumbent is a canary test, and the analytics from <a href="index.html">chapter 13</a> are what turn it into a decision. Treating it as its own mechanism leads people to look for a feature that does not exist.</p>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Send enough requests to exceed the smallest weight several times over, then group the logs by model. The distribution should approach the weights. A handful of requests proves nothing, because the split is probabilistic rather than a strict rota.</p>
+</div>
+
+<!-- ── Step 5: Conditional ────────────────────────────────────── -->
+<h2 id="conditional">Step 5 &mdash; Conditional routing</h2>
+
+<p>A rule evaluated against each request decides the target. Both <code>conditions</code> and <code>default</code> are required.</p>
+
+<pre><code>{
+  "strategy": {
+    "mode": "conditional",
+    "conditions": [
+      { "query": { "metadata.user_plan": { "$eq": "paid" } }, "then": "premium" }
+    ],
+    "default": "standard"
+  },
+  "targets": [
+    { "name": "premium",  "override_params": { "model": "@openai-prod/gpt-4o" } },
+    { "name": "standard", "override_params": { "model": "@openai-prod/gpt-4o-mini" } }
+  ]
+}</code></pre>
+
+<p>Three things can be matched against, and each query key has exactly two segments.</p>
+
+<table>
+  <thead>
+    <tr><th>Path</th><th>Matches</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>metadata.&lt;key&gt;</code></td><td>Custom key-value pairs sent with the request</td></tr>
+    <tr><td><code>params.&lt;key&gt;</code></td><td>Any parameter in the request body, such as <code>model</code> or <code>temperature</code></td></tr>
+    <tr><td><code>url.pathname</code></td><td>The request path, for routing a whole route such as <code>/v1/embeddings</code></td></tr>
+  </tbody>
+</table>
+
+<p>Operators are <code>$eq</code>, <code>$ne</code>, <code>$in</code>, <code>$nin</code>, <code>$regex</code>, <code>$gt</code>, <code>$gte</code>, <code>$lt</code> and <code>$lte</code>, combined with <code>$and</code> or <code>$or</code>.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Nested keys are not supported, and the failure is silent</div>
+  <p>Only two-segment keys work. <code>metadata.user_plan</code> is valid; <code>metadata.features.new_model_enabled</code> is not. Values must be primitives. A nested key does not raise an error, it simply never matches, so every request quietly takes the <code>default</code> target and the routing appears to be ignored rather than misconfigured.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">An invalid regex evaluates to false</div>
+  <p><code>$regex</code> uses JavaScript regular expressions with no flags, so matching is case-sensitive. A pattern that fails to compile does not error either: the condition is simply false. Between this and the nested-key rule, a conditional config that always falls through to its default is the characteristic failure of this strategy. Test each branch by sending a request you know should match it.</p>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Send one request per branch, each carrying metadata that should select it, plus one that should match nothing. Confirm in the logs that all three reached different targets, including the default.</p>
+</div>
+
+<!-- ── Step 6: Circuit breakers ───────────────────────────────── -->
+<h2 id="circuitbreakers">Step 6 &mdash; Circuit breakers</h2>
+
+<p>Retries and fallbacks both react per request. A circuit breaker remembers, taking a failing target out of rotation so later requests do not pay the timeout at all.</p>
+
+<pre><code>{
+  "strategy": {
+    "mode": "fallback",
+    "cb_config": {
+      "failure_threshold_percentage": 20,
+      "minimum_requests": 10,
+      "cooldown_interval": 60000,
+      "failure_status_codes": [401, 429, 500]
+    }
+  },
+  "targets": [
+    { "override_params": { "model": "@openai-prod/gpt-4o" } },
+    { "override_params": { "model": "@anthropic-prod/claude-3-5-sonnet-20241022" } }
+  ]
+}</code></pre>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>failure_threshold</code></td><td>Failure count that opens the circuit</td></tr>
+    <tr><td><code>failure_threshold_percentage</code></td><td>Failure rate that opens it, as an alternative</td></tr>
+    <tr><td><code>minimum_requests</code></td><td>Requests needed before a rate is judged at all</td></tr>
+    <tr><td><code>cooldown_interval</code></td><td>Milliseconds before retrying the target. Minimum 30 seconds.</td></tr>
+    <tr><td><code>failure_status_codes</code></td><td>Which codes count as failures. Defaults to above 500.</td></tr>
+  </tbody>
+</table>
+
+<p>The circuit opens when the count or the rate is exceeded, and closes automatically once the cooldown passes. Strategies inherit <code>cb_config</code> from their parent, and targets inherit from their strategy, so one block at the top covers a nested design.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Conditional strategies are not evaluated by the circuit breaker</div>
+  <p>A <code>conditional</code> mode strategy is skipped entirely. Putting <code>cb_config</code> on one has no effect, and a design that routes conditionally to several providers has no breaker protection at that level however it is written. Place the breaker on <code>fallback</code> or <code>loadbalance</code> strategies nested inside the conditional branches instead.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">When every target is open, the breaker is bypassed</div>
+  <p>Rather than failing all requests, the gateway ignores the breaker and tries anyway. This is deliberate, and it means a total provider outage looks like no protection at all: latency returns to full timeouts on every request. The breaker buys you nothing in exactly the scenario people imagine buying it for, and what helps there is a fallback to a different provider family.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Not the same as the MCP circuit breakers in chapter 10</div>
+  <p>Circuit breakers for MCP servers are announced and not shipped. These, for model routing, are available now. Same name, two features, different states.</p>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Drive a target past its threshold and confirm later requests skip it without waiting, then confirm it is used again after the cooldown elapses.</p>
+</div>
+
+<!-- ── Step 7: Caching ────────────────────────────────────────── -->
+<h2 id="caching">Step 7 &mdash; Caching</h2>
+
+<pre><code>{ "cache": { "mode": "semantic", "max_age": 60 } }</code></pre>
+
+<table>
+  <thead>
+    <tr><th>Mode</th><th>Matches</th><th>Available on</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>simple</code></td><td>An exact match on the request</td><td>All routes, including image generation</td></tr>
+    <tr><td><code>semantic</code></td><td>Requests with similar meaning, by cosine similarity</td><td><code>/chat/completions</code> and <code>/completions</code> only</td></tr>
+  </tbody>
+</table>
+
+<p>Simple cache hits when the entire request body matches a stored entry, along with the metadata and cache namespace if used, and the entry is still inside <code>max_age</code>. One changed character anywhere in the body is a miss.</p>
+
+<p>Semantic cache is a superset: the gateway checks for an exact match first and only runs a similarity search on a miss. The default similarity threshold is 0.95, and it works on requests under 8,191 tokens with four messages or fewer.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Semantic cache ignores the system prompt</div>
+  <p>Similarity is judged on the user text. Changing the system prompt does not change the cache key, so two requests with the same question and deliberately different system instructions can return the same cached answer. Where the system prompt is what distinguishes two use cases, separate them with <code>x-portkey-cache-namespace</code> or use simple mode, because semantic caching will otherwise merge them.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Two headers that change caching behavior</div>
+  <p><code>x-portkey-cache-force-refresh: true</code> forces a miss and refreshes the entry, which is the way to test a change without waiting out the TTL. Separately, caching does not work at all when <code>x-portkey-debug: "false"</code> is sent, which is an easy thing to have set globally in a client and then spend an afternoon wondering why nothing caches.</p>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Send one request twice and confirm the second is markedly faster and its log entry shows a cache hit. For semantic mode, send a reworded version of the same question and confirm it also hits.</p>
+</div>
+
+<!-- ── Composing ──────────────────────────────────────────────── -->
+<h2 id="composing">Composing strategies</h2>
+
+<p>Targets are fully composable. Any strategy can nest inside any other, which is how the patterns worth deploying are actually built.</p>
+
+<table>
+  <thead>
+    <tr><th>Shape</th><th>Behavior</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Fallback over load balancers</td><td>Endpoint failures stay inside the cluster. Only a full outage triggers the cross-provider backup.</td></tr>
+    <tr><td>Fallback into a conditional router</td><td>The backup is chosen by request context, so EU traffic stays on EU infrastructure during failover</td></tr>
+    <tr><td>Load balancer of fallback chains</td><td>Each slot has its own independent backup, so one model family failing does not pull in another's</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Build these one layer at a time</div>
+  <p>Each layer is individually testable and the combined object is not. Get the inner strategy behaving correctly on its own, then wrap it, rather than writing three levels and trying to work out which one swallowed a request.</p>
+</div>
+
+<!-- ── Order ──────────────────────────────────────────────────── -->
+<h2 id="order">What runs when</h2>
+
+<p>Several controls can act on one request, and knowing the order explains most surprising behavior.</p>
+
+<ul>
+  <li>A <strong>cache hit</strong> returns before any provider is called, so no strategy, retry or breaker runs at all</li>
+  <li>The <strong>strategy</strong> selects a target, by order, weight or condition</li>
+  <li>The <strong>circuit breaker</strong> removes targets it currently considers unhealthy, except under a conditional strategy and except when all of them are open</li>
+  <li><strong>Retries</strong> apply to the attempt against the selected target</li>
+  <li><strong>Fallback</strong> moves to the next target once that target is exhausted</li>
+</ul>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Retries multiply against fallback targets</div>
+  <p>Three retries on each of three fallback targets is nine possible upstream calls for one client request, each with its own backoff. The worst case is slower and more expensive than either setting suggests on its own, and it is bounded by the 60-second cumulative retry cap rather than by anything in the fallback configuration. Keep retry counts low where a fallback chain is long.</p>
+</div>
+
+<!-- ── Next ───────────────────────────────────────────────────── -->
+<h2 id="next">Next chapter</h2>
+
+<p>Chapter 13 covers observability: logs and log export, analytics, filters, traces, metadata, feedback, cost management and OpenTelemetry. It is in preparation, and the <a href="index.html">configuration hub</a> tracks the remaining chapters.</p>
+
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

@@ -39,6 +39,13 @@ var NEWS_ITEMS = [
   {
     badge: "New",
     date: "2026-11-13",
+    title: "Routing and reliability, and the configs that quietly fall through to default",
+    href: "guides/ai-gateway/configuration/routing-reliability.html",
+    tags: "Chapter 12 of the configuration set, Everything is one config object with three mutually exclusive strategy modes, A request-level config replaces the client default rather than merging with it, on_status_codes replaces the default retry codes instead of adding to them, Cumulative retry wait is capped at 60 seconds so retries stop helping when a provider is most congested, Retries are one log entry not several so read x-portkey-retry-attempt-count, Canary testing is load balancing with a small weight and not a separate feature, Conditional routing only supports two-segment keys and a nested key never matches silently, An invalid regex evaluates to false rather than erroring, Circuit breakers skip conditional strategies entirely, When every target is open the circuit breaker is bypassed, Semantic cache ignores the system prompt so two use cases can merge, x-portkey-debug false disables caching altogether, Retries multiply against fallback targets"
+  },
+  {
+    badge: "New",
+    date: "2026-11-13",
     title: "The agent gateway, and the skill controls that do not exist yet",
     href: "guides/ai-gateway/configuration/agent-gateway.html",
     tags: "Chapter 11 of the configuration set, The agent catalog and the Agent Registry are one surface under two names, Agents are reached at /agent/{slug} not the MCP /m/{slug}/mcp path, The Agent Gateway toggle and the agents.invoke scope are two separate switches and both are needed, Fetching the agent card is the validation step so never save past a failed fetch, Backend 1.16.1 applies SSRF protection rejecting private IPs metadata hosts and URL fragments, An agent on a private network cannot be registered and needs a public endpoint instead, Skill control is organization-wide so two teams needing different skills means registering the agent twice, Per-user access and per-workspace skill control are announced but not shipped, Chapter 10's three access levels have no equivalent here yet"
