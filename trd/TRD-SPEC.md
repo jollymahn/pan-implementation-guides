@@ -693,26 +693,28 @@ This section specifies the `/new-trd` skill and the `trd-author` agent that it s
 | VM-Series GCP | `vm-series-gcp` | `network-intercept` | VPC / Firewall Set | VPCs, interfaces, routing |
 | GlobalProtect | `globalprotect` | `red-teaming` | GP Component | Gateway, portal, auth method, split tunnel |
 
-New products not in this list: ask the user for the Part C repeat unit and closest analog before proceeding.
+New products not in this list: resolve the Part C repeat unit and closest analog from supplied facts; ask for any missing choice before proceeding.
 
 ### 10.2 Skill Interface: `/new-trd`
 
 **Invocation:** `/new-trd [product-slug]`
 
-**Intake questions (in this order):**
+**Required intake fields:**
 
-1. **Product** — match to §10.1. If the user typed a slug as an argument, confirm it. If not in the registry, ask: (a) what entity does Part C repeat for, and (b) which existing TRD is structurally closest.
+Reuse facts supplied in the request or conversation. Inspect the registry and ask only for material missing or conflicting inputs; the list is not a mandatory interview order.
+
+1. **Product** — match to §10.1. If the user supplied a slug, verify its registry match without asking again. If not in the registry, resolve: (a) what entity does Part C repeat for, and (b) which existing TRD is structurally closest.
 2. **Source documents** — does the user have an existing workbook, TRD draft, or reference doc? Collect path(s) or note "none".
 3. **Deployment model** — one sentence describing the topology or design model (e.g., "Centralized GWLB with TGW", "SaaS-only API intercept", "HuggingFace with S3 fallback"). Narrows which conditional sections activate.
-4. **Audience** — consultant's working copy (consultant notes visible) or customer-facing export (notes hidden via `body.customer-view`).
+4. **Audience** — consultant's working copy (consultant notes visible) or customer-facing export (consultant notes omitted from customer HTML).
 
-Batch questions 3 and 4 together. Skip question 2 if source docs were described in the original request.
+Batch independent unanswered fields. Skip every field already resolved, including product, source documents, deployment model and audience.
 
 **Pre-flight before spawning agent:**
 
-1. Confirm `workspace/TRD/<product-slug>/` exists; create if not.
-2. Check if `workspace/TRD/<product-slug>/trd-<product-slug>.html` exists. If yes, stop and ask before overwriting.
-3. Identify the analog TRD path from the registry.
+1. Resolve the user-authorized CustomerWorking or write workspace outside this public checkout and pass its absolute path as `workspace_root`. Ask for the location if it is not supplied. Resolve symlinks before reading customer sources or creating files; keep customer inputs outside the repository and all working files, outputs and build artifacts inside the approved external workspace.
+2. Confirm `<workspace_root>/TRD/<product-slug>/` stays within that workspace; create it if absent. Check whether `trd-<product-slug>.html` already exists there. If yes, stop and ask before overwriting.
+3. Identify and verify the analog TRD in the authorized external workspace. If it is missing, verify the red-teaming fallback and pass that actual slug. Stop if neither exists.
 
 **Agent invocation:** spawn `trd-author` with a `<trd_spec>` block (see §10.3).
 
@@ -724,29 +726,30 @@ The `trd-author` agent is spawned with a `<trd_spec>` block containing:
 
 | Key | Description | Example |
 |---|---|---|
+| `workspace_root` | Resolved user-authorized directory outside the public checkout | `/absolute/path/to/CustomerWorking/example` |
 | `product_slug` | Short slug from §10.1 | `cloud-ngfw` |
 | `product_name` | Full human-readable name | `Cloud NGFW for AWS` |
 | `analog_slug` | Closest analog TRD slug | `network-intercept` |
 | `part_c_repeat_unit` | Entity that Part C repeats for | `VPC` |
 | `deployment_model` | One-sentence topology description from intake | `Centralized GWLB with TGW` |
 | `audience` | `consultant` or `customer` | `consultant` |
-| `source_docs` | List of paths to source documents | `["workspace/TRD/TRD-source-docs/workbook.xlsx"]` |
-| `output_path` | Target HTML file | `workspace/TRD/cloud-ngfw/trd-cloud-ngfw.html` |
-| `docx_consultant` | Consultant docx output path | `workspace/TRD/cloud-ngfw/trd-cloud-ngfw-consultant.docx` |
-| `docx_customer` | Customer docx output path | `workspace/TRD/cloud-ngfw/trd-cloud-ngfw-customer.docx` |
+| `source_docs` | User-authorized source paths outside the public checkout | `["<workspace_root>/TRD/TRD-source-docs/workbook.xlsx"]` |
+| `output_path` | Target HTML file inside the external workspace | `<workspace_root>/TRD/cloud-ngfw/trd-cloud-ngfw.html` |
+| `docx_consultant` | Consultant docx output path | `<workspace_root>/TRD/cloud-ngfw/trd-cloud-ngfw-consultant.docx` |
+| `docx_customer` | Customer docx output path | `<workspace_root>/TRD/cloud-ngfw/trd-cloud-ngfw-customer.docx` |
 
 ### 10.4 Agent Sequence
 
-1. Read `workspace/TRD/TRD-SPEC.md` in full.
+1. Read the canonical `docs/trd/TRD-SPEC.md` in full. Recheck the external-workspace boundary from §10.2 before reading customer inputs or writing artifacts.
 2. Read the analog TRD HTML as structural baseline.
 3. Research the product in `pan-docs-reference/docs/` and any provided `source_docs`.
 4. Draft the full TRD HTML to `output_path` following §§3–6 and §9.
-5. Run `python3 workspace/TRD/build_trds.py` for docx output (read the script first to confirm invocation).
+5. Read `<workspace_root>/TRD/build_trds.py` to confirm invocation and all input, temporary and output paths. Run it with `uv run build_trds.py` from `<workspace_root>/TRD` only if its changes stay in the approved external workspace and requested product scope; otherwise stop and report the limitation.
 6. Report: section count, question count (total, required, conditional), consultant notes count, assumptions, open questions.
 
 ### 10.5 Data Boundary
 
-- **Never write customer-specific data** (real names, emails, endpoints, credentials) to `docs/trd/` — that path is committed to the public repo. All working TRDs live in `workspace/TRD/<product-slug>/` which is gitignored.
+- **Never write customer-specific data** (real names, emails, endpoints, credentials) anywhere inside this public checkout, including gitignored directories. Keep source documents at authorized external locations and all working TRDs, scratch files and generated artifacts under `<workspace_root>/TRD/`. Resolve symlinks and reject paths that cross the boundary.
 - Template TRDs with fake/example data may be promoted to `docs/trd/` by the user after review.
 - Every question must trace to a guide configuration step (Essential) or a significant branching decision (Important). Questions that fail this test go to Day-2 or are removed.
 - Unknown product behavior is marked `[VERIFY: <question>]` — never invented.
