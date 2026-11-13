@@ -136,10 +136,18 @@ integration creation and the model tab. Check those before taking new ones.
 Chapter 12 is mostly JSON rather than console work, so it carries one capture
 rather than a set. The config editor itself is the only panel worth showing.
 
-## Not yet listed
+## Chapter 13 — Observability
 
-Chapter 13 is in preparation. Its capture points are added here as the chapter is
-drafted.
+| File | What to capture |
+|---|---|
+| `aigw-cfg-logs-status.png` | The Logs page showing the Status column with cache, retry, fallback and loadbalance states visible, user emails masked. |
+
+Chapter 13 is mostly reading surfaces that need real traffic to look like
+anything. Capture this one on a tenant that has served requests through a config
+carrying a cache and a retry, or the Status column shows only disabled states.
+
+All thirteen chapters are now listed. Any new capture point must be added here at
+the same time as its `screenshot-pending` marker.
 
 ## Playwright notes
 

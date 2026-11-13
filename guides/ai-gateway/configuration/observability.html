@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Observability | AI Gateway Configuration | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#concept" data-section="concept">Metadata is the hinge</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Instrument</div>
+    <a href="#metadata" data-section="metadata">1. Send metadata</a>
+    <a href="#traces" data-section="traces">2. Trace multi-step work</a>
+    <a href="#feedback" data-section="feedback">3. Collect feedback</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Read</div>
+    <a href="#logs" data-section="logs">4. The logs</a>
+    <a href="#filters" data-section="filters">5. Filters</a>
+    <a href="#analytics" data-section="analytics">6. Analytics</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Get the data out</div>
+    <a href="#export" data-section="export">7. Log export</a>
+    <a href="#otel" data-section="otel">8. OpenTelemetry</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#cost" data-section="cost">Cost and pricing data</a>
+    <a href="#blindspots" data-section="blindspots">What it will not tell you</a>
+    <a href="#next" data-section="next">End of the set</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Configuration</a>
+  <span class="sep">|</span>
+  Observability
+</div>
+
+<h1>Observability</h1>
+<p class="subtitle">Chapter 13 of 13. Metadata, traces and feedback going in, then logs, analytics, export and OpenTelemetry coming out</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">Configuration Hub</a>
+  <a href="routing-reliability.html" class="cloud-link">Previous: Routing and Reliability</a>
+  <a href="organization-properties.html" class="cloud-link">Organization Properties</a>
+</div>
+
+<!-- ── Concept ────────────────────────────────────────────────── -->
+<h2 id="concept">Metadata is the hinge</h2>
+
+<p>Every other chapter configured something the gateway does. This one is about what it records, and it divides cleanly in two: what you put in at request time, and what you can read afterwards.</p>
+
+<p>The division matters because the first half gates the second.</p>
+
+<table>
+  <thead>
+    <tr><th>Sent with the request</th><th>Makes possible afterwards</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Metadata</td><td>Filtering, grouped analytics, cost attribution by team or feature, and the conditional routing in <a href="routing-reliability.html">chapter 12</a></td></tr>
+    <tr><td>Trace ID</td><td>Seeing a multi-step workflow as one thing rather than scattered calls</td></tr>
+    <tr><td>Feedback, after the fact</td><td>Quality analytics, which no amount of latency and cost data substitutes for</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title">None of it can be added retroactively</div>
+  <p>A request logged without metadata is logged without metadata forever. The analytics dashboards can group by any key you sent and by nothing you did not, so the question "what is the marketing team spending" is answerable only if marketing's requests carried an identifier at the time they were made. Decide the metadata scheme before traffic starts, because the alternative is a quarter of logs you cannot break down.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul>
+  <li>Chapters 1 to 12 complete, with live traffic through the gateway</li>
+  <li>An agreed set of metadata keys, which is a conversation with whoever will ask the reporting questions</li>
+  <li>For log export on self-hosted enterprise, the Data Service enabled</li>
+  <li>For OpenTelemetry ingest, a Server key</li>
+</ul>
+
+<!-- ── Step 1: Metadata ───────────────────────────────────────── -->
+<h2 id="metadata">Step 1 &mdash; Send metadata</h2>
+
+<p>Metadata travels in the <code>x-portkey-metadata</code> header as a JSON object.</p>
+
+<pre><code>curl https://aigw.portkey.ai/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H 'x-portkey-metadata: {"_user":"user-123","environment":"prod","feature":"chat-assist"}' \
+  -d '{ "model": "@openai-prod/gpt-4o", "messages": [{"role":"user","content":"Hello"}] }'</code></pre>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Every value must be a string of 128 characters or fewer</div>
+  <p>Not a number, not a boolean, not a nested object. There is no limit on how many keys you send, but a value that is not a string is the usual reason metadata appears to be dropped. Cast request IDs and numeric tenant IDs to strings before sending them.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">_user is the one key with behavior attached</div>
+  <p>It powers the user analytics described in step 6. If your request body already carries OpenAI's <code>user</code> field, the gateway copies it into <code>_user</code> automatically, and an explicit <code>_user</code> in metadata wins where both exist. Everything else is a plain string you choose, so agree on <code>environment</code>, <code>team</code> and <code>feature</code> spellings now rather than discovering three variants of "production" in the dashboards later.</p>
+</div>
+
+<p>Two mechanisms exist for not relying on every caller to remember. On self-hosted deployments with gateway 2.5.0 or higher, <code>HEADERS_TO_METADATA</code> injects named request headers into metadata automatically, matching header names case-insensitively.</p>
+
+<pre><code>HEADERS_TO_METADATA=x-request-id,x-caller-service,x-environment</code></pre>
+
+<p>Separately, metadata can be defined at the API key and workspace levels, not only per request, and required keys can be enforced through the API key metadata schema from <a href="organization-properties.html">chapter 5</a>. Enforcement is the only version of this that survives contact with a team under deadline.</p>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Send a request with metadata, open its log entry, and confirm the keys appear. Then filter the logs by one of them and confirm the request comes back.</p>
+</div>
+
+<!-- ── Step 2: Traces ─────────────────────────────────────────── -->
+<h2 id="traces">Step 2 &mdash; Trace multi-step work</h2>
+
+<p>A trace groups related calls into one chronological view. For a single question and answer it adds little. For an agent making eight calls to finish one task, it is the difference between a readable record and eight unrelated rows.</p>
+
+<p>The model is OpenTelemetry's. Spans form a tree, children point at parents, and parentless spans become roots.</p>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>Python</th><th>Required</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>traceId</code></td><td><code>trace_id</code></td><td>Yes</td></tr>
+    <tr><td><code>spanId</code></td><td><code>span_id</code></td><td>No</td></tr>
+    <tr><td><code>spanName</code></td><td><code>span_name</code></td><td>No</td></tr>
+    <tr><td><code>parentSpanId</code></td><td><code>parent_span_id</code></td><td>No</td></tr>
+  </tbody>
+</table>
+
+<p>The gateway returns a trace ID on every request in the <code>x-portkey-trace-id</code> response header whether you sent one or not, which is what step 3 needs.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Already running OpenTelemetry? Send the standard headers</div>
+  <p>The gateway accepts W3C Trace Context, so an instrumented application can pass <code>traceparent</code> and <code>baggage</code> rather than gateway-specific headers. The trace ID and parent span are extracted from <code>traceparent</code>, a span ID is generated for the gateway's own span, and the span name is set to the method and path. Where both forms are present, the gateway-specific headers win, which is worth knowing before you spend an afternoon wondering why your <code>traceparent</code> is being ignored.</p>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Send two requests sharing a trace ID and confirm the Traces view shows them as one trace with two spans, not two traces.</p>
+</div>
+
+<!-- ── Step 3: Feedback ───────────────────────────────────────── -->
+<h2 id="feedback">Step 3 &mdash; Collect feedback</h2>
+
+<p>Cost and latency are measured for you. Whether the answer was any good is not, and feedback is the only input that carries it.</p>
+
+<pre><code>curl --location 'https://aigw.portkey.ai/v1/feedback' \
+  --header 'Authorization: Bearer $API_KEY' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "trace_id": "YOUR_TRACE_ID",
+    "value": -10,
+    "weight": 0.5,
+    "metadata": { "text": "title was irrelevant", "_user": "fef653" }
+  }'</code></pre>
+
+<table>
+  <thead>
+    <tr><th>Key</th><th>Required</th><th>Accepts</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>trace_id</code></td><td>Yes</td><td>The trace the feedback attaches to</td></tr>
+    <tr><td><code>value</code></td><td>Yes</td><td>An integer from -10 to 10</td></tr>
+    <tr><td><code>weight</code></td><td>No</td><td>A float from 0 to 1, default 1.0</td></tr>
+    <tr><td><code>metadata</code></td><td>No</td><td>Any JSON. <code>_user</code>, <code>_organisation</code>, <code>_prompt</code> and <code>_environment</code> are indexed by default.</td></tr>
+  </tbody>
+</table>
+
+<p>Weight exists for collecting several signals on one trace. An explicit thumbs-down from a user and an automated quality check should not count equally, and weighting is how you say so.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Feedback can also be added by hand from a log</div>
+  <p>Reviewers working through the Logs page can attach feedback to individual entries without any API call. It lands in the same analytics as the API route, which makes a manual review pass a usable way to seed quality data before any instrumentation exists.</p>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Post feedback against a known trace ID and confirm it appears on the feedback analytics for that request.</p>
+</div>
+
+<!-- ── Step 4: Logs ───────────────────────────────────────────── -->
+<h2 id="logs">Step 4 &mdash; The logs</h2>
+
+<p>A chronological list of every request, with timestamp, type, model, tokens, thinking tokens and cost. Clicking an entry opens the full raw request and response. Each log has its own URL, so a confusing one can be pasted to a colleague directly.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">The Status column is where chapter 12 gets verified</div>
+  <p>Every strategy you configured reports its actual state here, per request. This is the answer to "is the cache even on", and it is faster than reasoning about the config.</p>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Feature</th><th>Inactive</th><th>Active states</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Cache</td><td>Cache Disabled</td><td>Cache Miss, Cache Refreshed, Cache Hit, Cache Semantic Hit</td></tr>
+    <tr><td>Retry</td><td>Retry Not Triggered</td><td>Retry Success on N Tries, Retry Failed</td></tr>
+    <tr><td>Fallback</td><td>Fallback Disabled</td><td>Fallback Active</td></tr>
+    <tr><td>Loadbalance</td><td>Loadbalancer Disabled</td><td>Loadbalancer Active</td></tr>
+  </tbody>
+</table>
+
+<p>Config and prompt IDs appear in the log detail and are clickable, taking you to the config or the prompt playground. The <strong>Replay</strong> button reruns a request in a fresh playground, which is the quickest route from a bad response to a fixed one.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Replay is unavailable in three cases</div>
+  <p>The endpoint is something other than <code>/chat/completions</code>, <code>/completions</code> or <code>/embeddings</code>; the provider used has since been archived; or the request came from a prompt template invoked inside a config target. A greyed-out Replay button is one of these three rather than a fault.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">DO NOT TRACK, and the caching side effect from chapter 12</div>
+  <p>Sending <code>x-portkey-debug: false</code> processes the request without logging its content. Tokens, cost and latency are still recorded; the request and response bodies are not. That is the right control for genuinely sensitive traffic, and it is also the explanation for the caching behavior flagged in chapter 12: caching does not work on a request that is not being tracked. If a client sets <code>debug: false</code> globally, it has silently turned off both.</p>
+</div>
+
+<!-- screenshot-pending: aigw-cfg-logs-status.png | The Logs page showing the Status column with cache, retry, fallback and loadbalance states visible, user emails masked -->
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Send one request through a config carrying a cache and a retry, then find it in the logs and read both states off the Status column.</p>
+</div>
+
+<!-- ── Step 5: Filters ────────────────────────────────────────── -->
+<h2 id="filters">Step 5 &mdash; Filters</h2>
+
+<p>Logs and analytics share one filter set. The dimensions worth knowing are model, provider, cost, tokens, status, metadata, average weighted feedback, config ID, trace ID, API key, prompt ID, cache status, workspace and time range.</p>
+
+<p>Which of them you see depends on your role, so a filter a colleague describes may genuinely not be on your screen.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Saved filters are shared and anyone can change them</div>
+  <p>A saved filter is visible to every member of the organization, and any of them can edit, rename or delete it. That makes them good for standardizing a team's views and bad for anything you depend on being stable without telling people. Name them so their purpose is obvious, because an unexplained saved filter is the sort of thing somebody tidies away.</p>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Filter the logs by a metadata key from step 1, save the filter, reload the page and apply it from the saved list.</p>
+</div>
+
+<!-- ── Step 6: Analytics ──────────────────────────────────────── -->
+<h2 id="analytics">Step 6 &mdash; Analytics</h2>
+
+<table>
+  <thead>
+    <tr><th>Tab</th><th>Answers</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Overview</td><td>Cost, tokens, mean latency, request volume, top models. The starting point.</td></tr>
+    <tr><td>Users</td><td>Activity by <code>_user</code>. See the warning below about who that means.</td></tr>
+    <tr><td>Errors</td><td>Error rates, and how many requests the routing strategies rescued</td></tr>
+    <tr><td>Cache</td><td>Latency improvement and cost saved by caching</td></tr>
+    <tr><td>Feedback</td><td>Whatever step 3 collected</td></tr>
+    <tr><td>Summary</td><td>Group by any dimension, including any metadata key</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The Users tab means your application's end users, not your staff</div>
+  <p>It is built from the <code>_user</code> metadata key and OpenAI's <code>user</code> field, which identify whoever is using the application you built. The gateway does not provide analytics on usage by individual members of your own organization. Anyone opening this tab expecting to see which colleague is spending the budget will misread it, and the numbers will look plausible while answering a different question.</p>
+</div>
+
+<p>The Summary tab is the one that repays the metadata discipline from step 1. Grouping by any key gives total requests, total cost, average latency, success rate, average tokens and last seen for each value, which is how questions like "which feature costs the most" and "which model has the worst success rate" get answered without an export.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">The Errors tab quantifies chapter 12</div>
+  <p>It reports how many requests were rescued by retries, fallbacks and load balancing. That number is the return on the reliability work, and it is the figure worth putting in front of whoever asked whether the routing complexity was justified.</p>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Open Summary, group by a metadata key you have been sending, and confirm each value shows a sensible request count and cost.</p>
+</div>
+
+<!-- ── Step 7: Export ─────────────────────────────────────────── -->
+<h2 id="export">Step 7 &mdash; Log export</h2>
+
+<ol>
+  <li>Open <strong>Exports</strong> in the sidebar.</li>
+  <li>Click <strong>Request Data</strong>.</li>
+  <li>Set the time range, a log limit or custom offset, and the fields to include.</li>
+  <li>Click <strong>Request Export</strong>.</li>
+</ol>
+
+<p>Selectable fields include the log and trace IDs, timestamp, full request and response payloads, provider and model, request, response and total tokens, cost and currency, response time and status code.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Self-hosted enterprise needs the Data Service enabled</div>
+  <p>Without it the export feature is unavailable. This is a deployment-time dependency rather than a setting on this page, so if Exports is missing or inert, that is the thing to check first.</p>
+</div>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Export a narrow time range, open the file, and confirm the rows match what the logs show for that window.</p>
+</div>
+
+<!-- ── Step 8: OTel ───────────────────────────────────────────── -->
+<h2 id="otel">Step 8 &mdash; OpenTelemetry</h2>
+
+<p>Everything so far observes requests that went through the gateway. OpenTelemetry ingest reverses the direction: the gateway becomes a backend for telemetry from the rest of your stack, so application, service and database spans sit alongside the LLM calls they triggered.</p>
+
+<pre><code>OTEL_EXPORTER_OTLP_ENDPOINT="https://aigw.portkey.ai/v1/otel"
+OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer YOUR_API_KEY"</code></pre>
+
+<div class="callout callout-warning">
+  <div class="callout-title">It must be a Server key</div>
+  <p>A workspace user key will not authenticate the OTLP exporter. Since exporters typically fail quietly and simply drop spans, the symptom is no data rather than an error, and the key type is the first thing to check.</p>
+</div>
+
+<p>Any OTel-compatible source works, which includes the instrumentation already present in tools like the Vercel AI SDK, LlamaIndex, OpenLLMetry and Logfire. Correlation with gateway traffic comes free when the application propagates the same trace IDs as step 2.</p>
+
+<div class="callout callout-success">
+  <div class="callout-title">Verification</div>
+  <p>Emit one span from an instrumented service and find it in the Traces view alongside the LLM call it wrapped.</p>
+</div>
+
+<!-- ── Cost ───────────────────────────────────────────────────── -->
+<h2 id="cost">Cost and pricing data</h2>
+
+<p>Costs are computed from a central pricing file covering every provider and model the gateway prices, applied to input and output tokens per request. How current that file is depends on the deployment.</p>
+
+<table>
+  <thead>
+    <tr><th>Deployment</th><th>Pricing updates</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>SaaS</td><td>Instant, fully managed</td></tr>
+    <tr><td>Hybrid</td><td>Automatic every 24 hours, needs gateway 1.12 or higher</td></tr>
+    <tr><td>Air-gapped</td><td>Legacy, not offered to new customers. Customer-managed, automatic only with outbound access.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Pricing is cached for 24 hours</div>
+  <p>A provider's price change will not appear in your cost figures immediately, and on hybrid deployments below gateway 1.12 it will not appear until someone updates the file by hand. Reconcile against the provider's own billing before treating gateway cost figures as authoritative for chargeback.</p>
+</div>
+
+<!-- ── Blind spots ────────────────────────────────────────────── -->
+<h2 id="blindspots">What it will not tell you</h2>
+
+<p>Four limits are worth knowing before anyone builds a process on top of these dashboards.</p>
+
+<table>
+  <thead>
+    <tr><th>Limit</th><th>Consequence</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Metadata cannot be backfilled</td><td>Any breakdown you did not instrument for is unavailable for all past traffic</td></tr>
+    <tr><td>Retry attempts are not logged individually</td><td>One entry per request with response times summed. Read <code>x-portkey-retry-attempt-count</code> to see the attempts.</td></tr>
+    <tr><td>The Users tab is end users only</td><td>No analytics on usage by members of your own organization</td></tr>
+    <tr><td><code>debug: false</code> omits content</td><td>Deliberate, but it removes the request and response bodies that make a log worth opening, and disables caching with it</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Next ───────────────────────────────────────────────────── -->
+<h2 id="next">End of the set</h2>
+
+<p>That completes the thirteen chapters. The <a href="index.html">configuration hub</a> holds the full sequence in dependency order, which is also the order to revisit it in when something downstream behaves unexpectedly.</p>
+
+<p>Two chapters are worth rereading once traffic is real rather than synthetic. <a href="routing-reliability.html">Chapter 12</a> reads differently when the Errors tab is showing you what the strategies actually rescued, and <a href="security-access-control.html">chapter 4</a> reads differently once the logs show who has been calling what.</p>
+
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

@@ -39,6 +39,13 @@ var NEWS_ITEMS = [
   {
     badge: "New",
     date: "2026-11-13",
+    title: "Observability completes the AI Gateway configuration set, all thirteen chapters",
+    href: "guides/ai-gateway/configuration/observability.html",
+    tags: "Chapter 13 of the configuration set and the last one, Metadata cannot be backfilled so any breakdown you did not instrument for is gone for all past traffic, Metadata values must be strings of 128 characters or fewer, The _user key is auto-populated from OpenAI's user field and an explicit _user wins, The Logs Status column is where chapter 12's cache retry fallback and loadbalance states get verified per request, Replay is unavailable for non-chat endpoints archived providers and prompt templates inside a config target, x-portkey-debug false is DO NOT TRACK and disables caching as a side effect, Saved filters are org-wide and any member can edit or delete them, The Analytics Users tab tracks your application's end users not your own staff, Feedback takes an integer from -10 to 10 with an optional weight, OpenTelemetry ingest needs a Server key and fails silently with the wrong type, Pricing data is cached 24 hours so reconcile against provider billing for chargeback"
+  },
+  {
+    badge: "New",
+    date: "2026-11-13",
     title: "Routing and reliability, and the configs that quietly fall through to default",
     href: "guides/ai-gateway/configuration/routing-reliability.html",
     tags: "Chapter 12 of the configuration set, Everything is one config object with three mutually exclusive strategy modes, A request-level config replaces the client default rather than merging with it, on_status_codes replaces the default retry codes instead of adding to them, Cumulative retry wait is capped at 60 seconds so retries stop helping when a provider is most congested, Retries are one log entry not several so read x-portkey-retry-attempt-count, Canary testing is load balancing with a small weight and not a separate feature, Conditional routing only supports two-segment keys and a nested key never matches silently, An invalid regex evaluates to false rather than erroring, Circuit breakers skip conditional strategies entirely, When every target is open the circuit breaker is bypassed, Semantic cache ignores the system prompt so two use cases can merge, x-portkey-debug false disables caching altogether, Retries multiply against fallback targets"
