@@ -184,6 +184,34 @@
           "item": "Entra ID administrator is attending, if any target is in Copilot Studio"
         },
         {
+          "group": "Per target: fitment",
+          "item": "Confirmed whether the target accepts free-form text, or only templated input with variable slots"
+        },
+        {
+          "group": "Per target: fitment",
+          "item": "Confirmed whether it holds a conversation across turns, or answers one request at a time"
+        },
+        {
+          "group": "Per target: fitment",
+          "item": "Confirmed whether it calls tools or ingests content from outside the organization"
+        },
+        {
+          "group": "Per target: fitment",
+          "item": "Scan types that apply decided — Attack Library, Agent, or Custom Prompt Sets only"
+        },
+        {
+          "group": "Per target: fitment",
+          "item": "Subcategories that cannot apply to this target identified and written down"
+        },
+        {
+          "group": "Per target: fitment",
+          "item": "Agreed that the attack success rate will be reported across applicable subcategories, not all 28"
+        },
+        {
+          "group": "Per target: fitment",
+          "item": "If the target is narrow: checked whether the agent or model behind it is separately reachable"
+        },
+        {
           "group": "Per target: what it is",
           "item": "Target name agreed"
         },
