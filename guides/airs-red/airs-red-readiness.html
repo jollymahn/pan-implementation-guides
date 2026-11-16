@@ -366,6 +366,73 @@
   </tbody>
 </table>
 
+<h3>2.5 &mdash; What a scan will do to your target</h3>
+
+<p>A scan is sustained automated load, not a handful of probes. An Attack Library run sends hundreds of prompts over roughly five hours. Whoever operates the target needs to know that before the window is agreed, and the numbers below are what they will ask for.</p>
+
+<table>
+  <thead><tr><th style="width:32%">Have ready</th><th>Why it is needed</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>A rate limit the target can actually sustain</td>
+      <td>Collected in <a href="#have-ready">section 2.2</a>. Treat it as a floor rather than a formality: <strong>20 requests per minute is the documented minimum</strong>, and below 10 the scan cannot finish in a reasonable window and returns incomplete results. A wrong figure here is the single most common cause of a failed run.</td>
+    </tr>
+    <tr>
+      <td>A tokens-per-minute limit, if the target enforces one separately</td>
+      <td>A separate constraint from requests per minute, and easy to miss. <strong>20,000 TPM is the documented minimum</strong>, and below 10,000 the target throttles even when the request rate is fine. Attack payloads are verbose, more so when a full system prompt is replayed in every request body.</td>
+    </tr>
+    <tr>
+      <td>Confirmation the target answers within 110 seconds</td>
+      <td>The default request timeout. A target that thinks for longer than this on hard prompts will have those attempts recorded as errors rather than as answers, which understates coverage.</td>
+    </tr>
+    <tr>
+      <td>An agreed scanning window of at least five hours</td>
+      <td>Plan on five hours for an Attack Library scan whatever the rate limit says. Tell whoever watches dashboards or on-call alerts for this system, so sustained traffic is not mistaken for an incident.</td>
+    </tr>
+    <tr>
+      <td>A test environment rather than production, wherever possible</td>
+      <td>Strongly recommended for any target, and close to essential for an Agent target. An agent with tool access can take real actions when an attack succeeds, and a successful attack is the point of the exercise.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Every request the scanner sends carries an <code>x-airs-red-teaming-trace-id</code> header. Give it to whoever runs the target's logging, and scan traffic can be told apart from real users for the whole window.</p>
+
+<h4>How much of it arrives at once</h4>
+
+<p>The two scan types pace themselves differently, and only one of them gives you a dial.</p>
+
+<table>
+  <thead><tr><th style="width:26%">Scan type</th><th>Concurrency</th><th style="width:22%">Typical duration</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Attack Library (<code>STATIC</code>)</td>
+      <td>No concurrency parameter is exposed. Prompts are sent one after another, paced by the rate limit you declared. Duration also moves with the categories selected and with how quickly the target answers.</td>
+      <td>About 5 hours, 500+ scenarios</td>
+    </tr>
+    <tr>
+      <td>Agent (<code>DYNAMIC</code>)</td>
+      <td><code>stream_breadth</code>, default 6 and maximum 20, is the number of parallel conversations per goal, and is therefore the in-flight concurrency. <code>stream_depth</code>, default 10 and maximum 20, is the number of turns within each stream, so it changes the total request count rather than the rate.</td>
+      <td>Varies with goals, breadth and depth</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">stream_breadth is the dial to turn down, and it multiplies per goal</div>
+  <p>Both parameters are applied per attack goal, so three goals at the default breadth of six means eighteen conversations in flight, not six. When a target cannot take the load, reduce <code>stream_breadth</code> first. Reducing <code>stream_depth</code> shortens each conversation and weakens multi-turn attacks without easing the rate at all.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">A RATE_LIMIT scan error means the target's limit was reached</div>
+  <p>It is not a fault in the scanner. There are two remedies and they apply in this order: reduce the scan's concurrency, and correct the rate limit recorded against the target if the figure given in section 2.2 was optimistic. Capturing the throttling response in <a href="#have-ready">section 2.4</a> is what lets a scan back off gracefully instead of failing outright.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Plan on five hours, and treat the rate limit as what prevents failure</div>
+  <p>The published guidance gives roughly five hours for an Attack Library scan, and separately notes that at 20 requests per minute such a scan amounts to around 6,000 requests. What is not documented is whether declaring a rate limit well above the minimum shortens the run. Size the window at five hours regardless, and treat the rate limit as the number that decides whether the scan completes rather than the number that decides how long it takes.</p>
+</div>
+
 <h2 id="start-now">3. Start these now</h2>
 
 <p>Everything in this section has a lead time. None of it can be resolved during the session.</p>
@@ -475,6 +542,12 @@
   <li>Protocol confirmed, and anything other than HTTPS with JSON flagged</li>
   <li>Rate limit in requests per minute recorded</li>
   <li>Stateful or stateless conversation handling confirmed</li>
+  <li>Rate limit confirmed at 20 requests per minute or above, not merely estimated</li>
+  <li>Tokens-per-minute limit recorded if enforced separately, 20,000 or above</li>
+  <li>Target confirmed to answer inside the 110 second request timeout</li>
+  <li>Scanning window of at least five hours agreed, and whoever monitors the target told</li>
+  <li>Test environment used, or a deliberate decision taken to scan production</li>
+  <li>For Agent scans: <code>stream_breadth</code> agreed, remembering it applies per goal</li>
 </ul>
 
 <div class="checklist-section">Per target: captured data</div>

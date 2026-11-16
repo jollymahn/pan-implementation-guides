@@ -123,6 +123,41 @@
           "group": "2.4 — How the target behaves when it refuses",
           "item": "The HTTP status code and body returned when the endpoint throttles",
           "detail": "Usually 429, but not always. Supplied, throttling is recognized and the scan backs off. Not supplied, the scan fails."
+        },
+        {
+          "group": "2.5 — What a scan will do to your target",
+          "item": "A rate limit the target can actually sustain",
+          "detail": "Collected in section 2.2. Treat it as a floor rather than a formality: 20 requests per minute is the documented minimum, and below 10 the scan cannot finish in a reasonable window and returns incomplete results. A wrong figure here is the single most common cause of a failed run."
+        },
+        {
+          "group": "2.5 — What a scan will do to your target",
+          "item": "A tokens-per-minute limit, if the target enforces one separately",
+          "detail": "A separate constraint from requests per minute, and easy to miss. 20,000 TPM is the documented minimum, and below 10,000 the target throttles even when the request rate is fine. Attack payloads are verbose, more so when a full system prompt is replayed in every request body."
+        },
+        {
+          "group": "2.5 — What a scan will do to your target",
+          "item": "Confirmation the target answers within 110 seconds",
+          "detail": "The default request timeout. A target that thinks for longer than this on hard prompts will have those attempts recorded as errors rather than as answers, which understates coverage."
+        },
+        {
+          "group": "2.5 — What a scan will do to your target",
+          "item": "An agreed scanning window of at least five hours",
+          "detail": "Plan on five hours for an Attack Library scan whatever the rate limit says. Tell whoever watches dashboards or on-call alerts for this system, so sustained traffic is not mistaken for an incident."
+        },
+        {
+          "group": "2.5 — What a scan will do to your target",
+          "item": "A test environment rather than production, wherever possible",
+          "detail": "Strongly recommended for any target, and close to essential for an Agent target. An agent with tool access can take real actions when an attack succeeds, and a successful attack is the point of the exercise."
+        },
+        {
+          "group": "2.5 — What a scan will do to your target",
+          "item": "Attack Library (STATIC)",
+          "detail": "No concurrency parameter is exposed. Prompts are sent one after another, paced by the rate limit you declared. Duration also moves with the categories selected and with how quickly the target answers.  |  About 5 hours, 500+ scenarios"
+        },
+        {
+          "group": "2.5 — What a scan will do to your target",
+          "item": "Agent (DYNAMIC)",
+          "detail": "stream_breadth, default 6 and maximum 20, is the number of parallel conversations per goal, and is therefore the in-flight concurrency. stream_depth, default 10 and maximum 20, is the number of turns within each stream, so it changes the total request count rather than the rate.  |  Varies with goals, breadth and depth"
         }
       ],
       "lead": [
@@ -262,6 +297,30 @@
         {
           "group": "Per target: how it is reached",
           "item": "Stateful or stateless conversation handling confirmed"
+        },
+        {
+          "group": "Per target: how it is reached",
+          "item": "Rate limit confirmed at 20 requests per minute or above, not merely estimated"
+        },
+        {
+          "group": "Per target: how it is reached",
+          "item": "Tokens-per-minute limit recorded if enforced separately, 20,000 or above"
+        },
+        {
+          "group": "Per target: how it is reached",
+          "item": "Target confirmed to answer inside the 110 second request timeout"
+        },
+        {
+          "group": "Per target: how it is reached",
+          "item": "Scanning window of at least five hours agreed, and whoever monitors the target told"
+        },
+        {
+          "group": "Per target: how it is reached",
+          "item": "Test environment used, or a deliberate decision taken to scan production"
+        },
+        {
+          "group": "Per target: how it is reached",
+          "item": "For Agent scans: stream_breadth agreed, remembering it applies per goal"
         },
         {
           "group": "Per target: captured data",
