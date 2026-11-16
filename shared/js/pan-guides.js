@@ -579,63 +579,97 @@ document.addEventListener('click', (e) => {
 // group is a reading order rather than a list, say so in the markup by making
 // the prerequisite the parent, as AI Gateway does with Hybrid Infrastructure.
 const GLOBAL_NAV_GROUPS = [
+  // AIRS is the parent of every pillar, AI Gateway included. Before this, AI
+  // Gateway sat beside AIRS as a peer group, which read as a separate product.
+  //
+  // The five pillars are the PILLARS block of docs/shared/js/airs-engagement-model.js
+  // verbatim, so the rail and the engagement planner cannot drift. That file also
+  // tags Kubernetes and Microperimeter group:'elective', which is why they are
+  // sub-items of Network Intercept rather than pillars of their own.
+  //
+  // Pillar order is deliberate and is NOT alphabetical: it runs in the order the
+  // product owner asked for, AI Gateway first. Do not sort it.
   { section: 'AI Security' },
-  { id: 'ai-gateway', label: 'AI Gateway', links: [
-    { t: 'Overview', h: 'guides/ai-gateway/index.html' },
-    { t: 'Agent Identity with Entra ID', h: 'guides/ai-gateway/agent-identity-entra.html' },
-    { t: 'Client Applications', h: 'guides/ai-gateway/ai-gateway-client-apps.html' },
-    { t: 'Connectivity Reference', h: 'guides/ai-gateway/connectivity.html' },
-    { t: 'Core Deployment', h: 'guides/ai-gateway/ai-gateway-deployment.html' },
-    { t: 'Customer Readiness', h: 'guides/ai-gateway/ai-gateway-readiness.html' },
-    { t: 'Fault Tolerance', h: 'guides/ai-gateway/hybrid-fault-tolerance.html' },
-    { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html' },
-    { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html' },
-    { t: 'Model Provider Prerequisites', h: 'guides/ai-gateway/ai-gateway-model-prerequisites.html' },
-    { t: 'Scaling and Upgrading', h: 'guides/ai-gateway/hybrid-scaling-and-upgrade.html' },
-    { t: 'Streaming, Caching, and A2A', h: 'guides/ai-gateway/streaming-caching-a2a.html' },
-    { label: 'Hybrid Data Plane' },
-    // Hybrid Infrastructure carries the sizing and prerequisites both container
-    // paths depend on, so it is their parent here rather than a third sibling.
-    // That was implicit in the old order and would have been lost to sorting.
-    { t: 'Hybrid Infrastructure', h: 'guides/ai-gateway/hybrid-infrastructure.html' },
-    { t: 'ECS and Container Apps', h: 'guides/ai-gateway/serverless-deployment.html', sub: true },
-    { t: 'EKS, AKS, and GKE', h: 'guides/ai-gateway/kubernetes-deployment.html', sub: true },
+  { id: 'airs', label: 'AIRS', links: [
+    { t: 'AI Overview', h: 'guides/airs/index.html' },
+    { t: 'Engagement Planner', h: 'guides/airs-planner/index.html' },
+
+    { pillar: 'AI Gateway', id: 'p-ai-gateway', links: [
+      { t: 'Overview', h: 'guides/ai-gateway/index.html' },
+      { t: 'Customer Readiness', h: 'guides/ai-gateway/ai-gateway-readiness.html' },
+      { t: 'Core Deployment', h: 'guides/ai-gateway/ai-gateway-deployment.html' },
+      // Hybrid Infrastructure carries the sizing and prerequisites both container
+      // paths depend on, so it is their parent rather than a third sibling.
+      { t: 'Deploy-Hybrid Infrastructure', h: 'guides/ai-gateway/hybrid-infrastructure.html', sub: true },
+      { t: 'Hybrid-ECS and Container Apps', h: 'guides/ai-gateway/serverless-deployment.html', sub2: true },
+      { t: 'Hybrid-EKS, AKS, and GKE', h: 'guides/ai-gateway/kubernetes-deployment.html', sub2: true },
+      { t: 'Deploy-Fault Tolerance', h: 'guides/ai-gateway/hybrid-fault-tolerance.html', sub: true },
+      { t: 'Deploy-Scaling and Upgrading', h: 'guides/ai-gateway/hybrid-scaling-and-upgrade.html', sub: true },
+      // Hub only. The 13 configuration chapters are deliberately not listed:
+      // the set is slated for rework, and the hub carries them in dependency
+      // order with descriptions, which beats a flat list of thirteen rows.
+      { t: 'Configuration', h: 'guides/ai-gateway/configuration/index.html' },
+      { t: 'Client Applications', h: 'guides/ai-gateway/ai-gateway-client-apps.html' },
+      { t: 'Model Provider Prerequisites', h: 'guides/ai-gateway/ai-gateway-model-prerequisites.html' },
+      { t: 'Connectivity Reference', h: 'guides/ai-gateway/connectivity.html' },
+      { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html' },
+      { t: 'Agent Identity with Entra ID', h: 'guides/ai-gateway/agent-identity-entra.html' },
+      { t: 'Streaming, Caching, and A2A', h: 'guides/ai-gateway/streaming-caching-a2a.html' },
+      { t: 'LLM API Key Management', h: 'guides/ai-gateway/llm-api-key-management.html' },
+    ]},
+
+    { pillar: 'API Intercept', id: 'p-api-intercept', links: [
+      { t: 'API Intercept', h: 'guides/airs/airs-api-intercept.html' },
+      { t: 'Readiness: API Intercept', h: 'guides/airs/airs-api-intercept-readiness.html' },
+    ]},
+
+    { pillar: 'Network Intercept', id: 'p-network-intercept', links: [
+      { t: 'Network Intercept', h: 'guides/airs/airs-network-intercept.html' },
+      // Electives, not peers: the K8s guide opens by calling itself a bolt-on to
+      // the Network Intercept core guide, and Microperimeter lists its Phase 4 as
+      // a prerequisite. They sit directly under it so the indent names the parent.
+      { t: 'NetInt-Kubernetes and Containers', h: 'guides/airs/airs-k8s-protection.html', sub: true },
+      { t: 'NetInt-Microperimeter', h: 'guides/airs/airs-microperimeter.html', sub: true },
+      // Not a pillar: the firewall-build substrate Phase 4 depends on.
+      { t: 'Cloud Deployment', h: 'guides/airs/airs-cloud-deployment.html' },
+      { t: 'Connectivity Diagrams', h: 'guides/airs/airs-connectivity-diagrams.html' },
+      { t: 'Connectivity Validator', h: 'guides/airs/airs-connectivity-validator.html' },
+    ]},
+
+    { pillar: 'Red Teaming', id: 'p-red-teaming', links: [
+      { t: 'Red Teaming', h: 'guides/airs-red/airs-red-teaming.html' },
+      { t: 'Readiness: Red Teaming', h: 'guides/airs-red/airs-red-readiness.html' },
+      // Kept fully qualified: an unqualified "Flow Diagrams" already exists in
+      // the AI Gateway pillar, and both live inside this one AIRS group.
+      { t: 'Red Teaming Flow Diagrams', h: 'guides/airs-red/diagrams/flow-diagrams-review.html' },
+    ]},
+
+    { pillar: 'Model Security', id: 'p-model-security', links: [
+      { t: 'Model Security', h: 'guides/airs-model/airs-model-security.html' },
+      { t: 'Readiness: Model Scanning', h: 'guides/airs-model/airs-model-readiness.html' },
+    ]},
   ]},
-  // Apigee and Azure APIM arrived last and were appended after TrueFoundry,
-  // where nobody scanning the list finds them. Hence the checker.
-  { id: 'ai-integrations', label: 'AI Integrations', links: [
+
+  // Split by which product the integration targets, because the two are
+  // configured differently. Every guide here currently drives the Runtime API or
+  // is an editor hook; an AI Gateway Integrations group joins this band when the
+  // first such guide lands, rather than shipping now as an empty group.
+  { section: 'AI Integrations' },
+  { id: 'int-api', label: 'API Integrations', links: [
     { t: 'Overview', h: 'guides/airs-integrations/index.html' },
     { t: 'Apigee', h: 'guides/airs-integrations/apigee.html' },
     { t: 'Azure APIM', h: 'guides/airs-integrations/azure-apim.html' },
-    { t: 'Claude Code', h: 'guides/airs-integrations/claude-code.html' },
-    { t: 'Codex CLI', h: 'guides/airs-integrations/codex-cli.html' },
     { t: 'GitHub Actions', h: 'guides/airs-integrations/github-actions.html' },
-    { t: 'IDE Assistants', h: 'guides/airs-integrations/ide-assistants.html' },
     { t: 'Jenkins', h: 'guides/airs-integrations/jenkins.html' },
     { t: 'Kong', h: 'guides/airs-integrations/kong.html' },
     { t: 'LiteLLM', h: 'guides/airs-integrations/litellm.html' },
     { t: 'n8n', h: 'guides/airs-integrations/n8n.html' },
     { t: 'TrueFoundry', h: 'guides/airs-integrations/truefoundry.html' },
   ]},
-  // "AI Overview", not "Overview": three of the four groups in this section
-  // had an entry called Overview, and this is the one that introduces AI
-  // Security as a whole. It is also the section overview on the landing page.
-  { id: 'airs', label: 'AIRS', links: [
-    { t: 'AI Overview', h: 'guides/airs/index.html' },
-    { t: 'API Intercept', h: 'guides/airs/airs-api-intercept.html' },
-    { t: 'Cloud Deploy', h: 'guides/airs/airs-cloud-deployment.html' },
-    { t: 'Connectivity Diagrams', h: 'guides/airs/airs-connectivity-diagrams.html' },
-    { t: 'Connectivity Validator', h: 'guides/airs/airs-connectivity-validator.html' },
-    { t: 'Engagement Planner', h: 'guides/airs-planner/index.html' },
-    { t: 'Kubernetes', h: 'guides/airs/airs-k8s-protection.html' },
-    { t: 'Microperimeter', h: 'guides/airs/airs-microperimeter.html' },
-    { t: 'Model Security', h: 'guides/airs-model/airs-model-security.html' },
-    { t: 'Network Intercept', h: 'guides/airs/airs-network-intercept.html' },
-    { t: 'Readiness: API Intercept', h: 'guides/airs/airs-api-intercept-readiness.html' },
-    { t: 'Readiness: Model Scanning', h: 'guides/airs-model/airs-model-readiness.html' },
-    { t: 'Readiness: Red Teaming', h: 'guides/airs-red/airs-red-readiness.html' },
-    { t: 'Red Teaming', h: 'guides/airs-red/airs-red-teaming.html' },
-    { t: 'Red Teaming Flow Diagrams', h: 'guides/airs-red/diagrams/flow-diagrams-review.html' },
+  { id: 'int-hooks', label: 'Hooks', links: [
+    { t: 'Claude Code', h: 'guides/airs-integrations/claude-code.html' },
+    { t: 'Codex CLI', h: 'guides/airs-integrations/codex-cli.html' },
+    { t: 'IDE Assistants', h: 'guides/airs-integrations/ide-assistants.html' },
   ]},
 
   { section: 'Network Security' },
@@ -730,14 +764,47 @@ function initGlobalNav() {
     return new URL(basePath + '/' + h, window.location.href).href.split('?')[0].split('#')[0];
   }
 
+  // An entry inside a group is one of three things: a text divider, a pillar
+  // holding its own links, or a link. Walking them needs one recursion rather
+  // than a flat filter, and every consumer below shares it.
+  function eachLink(entry, fn, pillar) {
+    if (entry.label) return;
+    if (entry.pillar) {
+      entry.links.forEach(function(child) { eachLink(child, fn, entry); });
+      return;
+    }
+    fn(entry, pillar);
+  }
+
+  function countLinks(entries) {
+    var n = 0;
+    entries.forEach(function(entry) { eachLink(entry, function() { n += 1; }); });
+    return n;
+  }
+
+  // Both the group and, where there is one, the pillar holding the current page
+  // have to open on arrival. Finding only the group would leave the reader in a
+  // group whose pillars are all shut, with no sign which one they are inside.
   var activeGroupId = null;
+  var activePillarId = null;
   GLOBAL_NAV_GROUPS.forEach(function(group) {
     if (group.section) return;
-    group.links.forEach(function(link) {
-      if (link.label) return;
-      if (resolve(link.h) === currentHref) activeGroupId = group.id;
+    group.links.forEach(function(entry) {
+      eachLink(entry, function(link, pillar) {
+        if (resolve(link.h) !== currentHref) return;
+        activeGroupId = group.id;
+        if (pillar) activePillarId = pillar.id;
+      });
     });
   });
+
+  function linkHtml(link) {
+    var href = basePath + '/' + link.h;
+    var isActive = resolve(link.h) === currentHref;
+    var depth = link.sub2 ? 'gnav-sub2' : (link.sub ? 'gnav-sub' : '');
+    var cls = (depth + (isActive ? ' active' : '')).trim();
+    return '<a href="' + href + '"' + (cls ? ' class="' + cls + '"' : '') + '>' + link.t + '</a>';
+  }
 
   var html = '<div class="gnav-home"><a href="' + basePath + '/index.html">&#8962; Home</a></div>';
 
@@ -755,23 +822,34 @@ function initGlobalNav() {
       ? savedState !== 'closed'
       : savedState === 'open';
 
-    var count = group.links.filter(function(link) { return !link.label; }).length;
-
     html += '<div class="gnav-group' + (isOpen ? ' open' : '') + '" data-gnav-id="' + group.id + '">';
     html += '<button type="button" class="gnav-group-header" aria-expanded="' + isOpen + '">';
     html += '<span class="gnav-chevron" aria-hidden="true">&#9658;</span> ' + group.label;
-    html += '<span class="gnav-count">' + count + '</span>';
+    html += '<span class="gnav-count">' + countLinks(group.links) + '</span>';
     html += '</button>';
     html += '<div class="gnav-group-body">';
-    group.links.forEach(function(link) {
-      if (link.label) {
-        html += '<span class="gnav-label">' + link.label + '</span>';
+    group.links.forEach(function(entry) {
+      if (entry.label) {
+        html += '<span class="gnav-label">' + entry.label + '</span>';
         return;
       }
-      var href = basePath + '/' + link.h;
-      var isActive = resolve(link.h) === currentHref;
-      var cls = (link.sub ? 'gnav-sub' : '') + (isActive ? ' active' : '');
-      html += '<a href="' + href + '"' + (cls ? ' class="' + cls.trim() + '"' : '') + '>' + link.t + '</a>';
+      if (entry.pillar) {
+        // Pillars carry their own open state, on the same rules as a group.
+        var pSaved = localStorage.getItem('gnav-' + entry.id);
+        var pOpen = entry.id === activePillarId
+          ? pSaved !== 'closed'
+          : pSaved === 'open';
+        html += '<div class="gnav-pillar' + (pOpen ? ' open' : '') + '" data-gnav-id="' + entry.id + '">';
+        html += '<button type="button" class="gnav-pillar-header" aria-expanded="' + pOpen + '">';
+        html += '<span class="gnav-chevron" aria-hidden="true">&#9658;</span> ' + entry.pillar;
+        html += '<span class="gnav-count">' + countLinks(entry.links) + '</span>';
+        html += '</button>';
+        html += '<div class="gnav-pillar-body">';
+        entry.links.forEach(function(link) { html += linkHtml(link); });
+        html += '</div></div>';
+        return;
+      }
+      html += linkHtml(entry);
     });
     html += '</div></div>';
   });
@@ -780,13 +858,14 @@ function initGlobalNav() {
 
   // Headers are buttons, so Enter and Space arrive here as clicks and the
   // focus ring comes for free. They used to be divs, which left every group
-  // unopenable without a mouse.
-  nav.querySelectorAll('.gnav-group-header').forEach(function(header) {
+  // unopenable without a mouse. Groups and pillars share this handler: both
+  // keep their open state on the parent element under a data-gnav-id.
+  nav.querySelectorAll('.gnav-group-header, .gnav-pillar-header').forEach(function(header) {
     header.addEventListener('click', function() {
-      var group = header.parentElement;
-      var isOpen = group.classList.toggle('open');
+      var box = header.parentElement;
+      var isOpen = box.classList.toggle('open');
       header.setAttribute('aria-expanded', String(isOpen));
-      localStorage.setItem('gnav-' + group.dataset.gnavId, isOpen ? 'open' : 'closed');
+      localStorage.setItem('gnav-' + box.dataset.gnavId, isOpen ? 'open' : 'closed');
     });
   });
 

@@ -74,6 +74,8 @@ var CATALOG_SECTIONS = [
     blurb: 'Prisma AIRS: securing LLM prompts, model artefacts, agent traffic, and the platforms your AI workloads already run on.',
     overview: { t: 'AI Overview', h: 'guides/airs/index.html',
                 note: 'How API Intercept, Network Intercept, and Model Security divide the work' } },
+  { id: 'ai-integrations',    label: 'AI Integrations',
+    blurb: 'Putting AIRS in front of the platforms and tooling your AI workloads already run on, split by which product the integration drives.' },
   { id: 'network-security',   label: 'Network Security',
     blurb: 'Firewall deployment across the public clouds, the managed Cloud NGFW service, remote access, and branch hardware.' },
   { id: 'platform-identity',  label: 'Platform & Identity',
@@ -147,7 +149,7 @@ var CATALOG = [
   },
 
   {
-    id: 'ai-integrations', section: 'AI Security', accent: 'card-ai',
+    id: 'ai-integrations', section: 'AI Integrations', accent: 'card-ai',
     badge: 'Prisma AIRS',
     title: 'AIRS Integrations',
     blurb: 'AIRS runtime scanning inside the platforms your AI workloads already run on.',

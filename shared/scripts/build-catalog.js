@@ -268,21 +268,34 @@ function rewrite(file, rel) {
  * the order the page actually shows.
  */
 const SECTION_CARD_ORDER = {
-  'AI Security': ['AIRS Platform', 'AI Gateway', 'AIRS Integrations']
+  'AI Security': ['AIRS Platform', 'AI Gateway']
 };
 
 /**
- * Sections run alphabetically, with one exception. Labs holds training material
- * you run in your own environment, not a guide to a deployment, so it sits
- * after the four guide sections rather than second, where the alphabet puts it.
+ * Sections run alphabetically, with two exceptions.
+ *
+ * Labs holds training material you run in your own environment, not a guide to
+ * a deployment, so it sits after the four guide sections rather than second,
+ * where the alphabet puts it.
+ *
+ * AI Integrations follows AI Security rather than preceding it. An integration
+ * is what you reach for once you have picked a pillar, so alphabetical order
+ * would put the accessories in front of the product.
  */
 const SECTION_PINNED_LAST = ['Labs'];
+const SECTION_PINNED_AFTER = { 'AI Integrations': 'AI Security' };
+
+/** Sorting on the anchor plus a low byte lands the section immediately after it. */
+function sectionKey(s) {
+  var anchor = SECTION_PINNED_AFTER[s];
+  return anchor ? anchor + '\u0001' : s;
+}
 
 function bySection(a, b) {
   const pa = SECTION_PINNED_LAST.indexOf(a);
   const pb = SECTION_PINNED_LAST.indexOf(b);
   if (pa !== pb) return (pa < 0 ? -1 : pa) - (pb < 0 ? -1 : pb);
-  return a.localeCompare(b, 'en');
+  return sectionKey(a).localeCompare(sectionKey(b), 'en');
 }
 
 /** A group's overview link leads the group, wherever its title falls. */

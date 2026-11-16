@@ -37,6 +37,13 @@ var NEWS_VISIBLE_COUNT = 6;
 
 var NEWS_ITEMS = [
   {
+    badge: "Updated",
+    date: "2026-11-16",
+    title: "AIRS now holds every pillar in the left rail, AI Gateway included",
+    href: "guides/airs/index.html",
+    tags: "Navigation reorganization, AI Gateway was a separate top-level group and is now the first AIRS pillar, Five pillars each expand and collapse on their own so the AIRS group is not 31 rows at once, Kubernetes and Microperimeter are electives under Network Intercept rather than peers of it, Cloud Deployment sits under Network Intercept because it is the substrate Phase 4 depends on, The AI Gateway configuration hub reaches the rail for the first time, Integrations split into their own band by which product they drive, API Integrations and Hooks today with AI Gateway Integrations to follow, Child entries carry a parent prefix so a label still reads correctly in search results, Every one of the 91 existing links is preserved"
+  },
+  {
     badge: "New",
     date: "2026-11-13",
     title: "Observability completes the AI Gateway configuration set, all thirteen chapters",
