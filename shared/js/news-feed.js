@@ -37,6 +37,48 @@ var NEWS_VISIBLE_COUNT = 6;
 
 var NEWS_ITEMS = [
   {
+    badge: "New",
+    date: "2026-11-18",
+    title: "Identity and client configuration: the half the provider guides do not cover",
+    href: "guides/ai-gateway/integrations/identity-and-clients.html",
+    tags: "Two credentials cross every request and the provider guides only document one of them, The model provider sees one principal per integration however many people are behind it, Attribution and budgets and revocation all live inside the gateway and stop at its egress, Three attribution levels, a Service workspace key attributes to the workspace and a User key to a named member and a validated JWT to the user, The three values an application changes, base URL and gateway key and the at-slug model reference, The OpenAI SDK wants slash v1 and the Anthropic SDK does not because it adds its own path, One integration credential is one provider-side rate limit bucket and gateway limits divide that ceiling rather than raising it, A personal provider key is a test credential and not a design"
+  },
+  {
+    badge: "New",
+    date: "2026-11-18",
+    title: "OpenAI integration, all three authentication paths",
+    href: "guides/ai-gateway/integrations/openai.html",
+    tags: "API Key and OAuth Client Credentials and Workload Identity Federation, Every form captured from a live tenant, Federation set up against Entra ID and Okta with a tab for each, The Entra subject trap, use the service principal object ID from Enterprise applications and not the app registration object ID, OpenAI rejects the exchange when more than one mapping matches, Streaming returns no usage data without stream_options include_usage so tokens and cost log as zero and budgets never see the spend, Organization ID and Project ID change cost attribution"
+  },
+  {
+    badge: "New",
+    date: "2026-11-18",
+    title: "Anthropic integration, and the two settings that silently reject a correct federation",
+    href: "guides/ai-gateway/integrations/anthropic.html",
+    tags: "Two authentication types only and no OAuth Client Credentials option unlike OpenAI, Federation uses a JWT bearer grant and a federation rule rather than a token exchange and a mapping, Max JWT lifetime must be 5400 or higher for Entra because Entra tokens last up to 90 minutes, JTI replay protection must be disabled for Okta because the gateway reuses its cached token, Both failures return the same unhelpful subject token rejected message, Do not add slash v1 to the base URL because the Anthropic SDK adds its own path, Claude Code sends a bare model name and needs the x-portkey-provider header"
+  },
+  {
+    badge: "New",
+    date: "2026-11-18",
+    title: "Azure OpenAI integration, four modes and the deployment naming that decides the first call",
+    href: "guides/ai-gateway/integrations/azure-openai.html",
+    tags: "Azure Authentication Mode with four options, Default and Managed and Azure Entra and Workload Identity, Default is the API key path, Managed and Workload Identity both require a self-hosted gateway on Azure, Azure Workload Identity is Azure AD workload identity with a client ID and tenant ID and is not the OpenAI style token exchange, The Foundation Model block holds the deployment entries and their API versions on the main form, A deployment name is not a model name and the caller sends the deployment, Grant Cognitive Services OpenAI User and not Contributor or Owner, The streaming zero-token bug applies here too because Azure OpenAI is OpenAI compatible"
+  },
+  {
+    badge: "New",
+    date: "2026-11-18",
+    title: "Azure Foundry integration, and why one integration describes one deployment",
+    href: "guides/ai-gateway/integrations/azure-foundry.html",
+    tags: "Closes an information gap the prerequisites page carried since it was written, Same four mode control as Azure OpenAI with the same credential fields, The endpoint is where they differ, a full Azure Target URI rather than a resource name, One optional deployment name and one API version for the whole integration with no model picker, A customer running several Foundry deployments needs several integrations or callers that name the deployment, Azure Foundry is a different tile from Azure OpenAI and neither is Microsoft Copilot Studio"
+  },
+  {
+    badge: "New",
+    date: "2026-11-18",
+    title: "Bedrock integration, five authentication types including one that stores nothing",
+    href: "guides/ai-gateway/integrations/bedrock.html",
+    tags: "AWS Auth Type with five options, AWS Access Key and AWS Assumed Role and AWS Service Role and API Key and OAuth Client Credentials, AWS Service Role takes no credential field at all and uses the role of the compute the gateway runs on so it needs a self-hosted gateway, The hosted gateway principal ARN is published so assumed role is viable on a hosted gateway, The prerequisites page previously advised against it and is corrected, The permission policy and the trust policy and the external ID, STS session tags attribute cost per application while sharing one role and need gateway 2.19.0 or higher, The model reference needs the cross-region prefix"
+  },
+  {
     badge: "Updated",
     date: "2026-11-16",
     title: "AIRS now holds every pillar in the left rail, AI Gateway included",

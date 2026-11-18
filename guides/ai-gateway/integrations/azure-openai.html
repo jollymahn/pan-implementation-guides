@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Azure OpenAI Integration | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#scope" data-section="scope">What this covers</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+    <a href="#choose" data-section="choose">Choose a path</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Authentication paths</div>
+    <a href="#api-key" data-section="api-key">Default (API key)</a>
+    <a href="#service-principal" data-section="service-principal">Azure Entra (service principal)</a>
+    <a href="#managed-identity" data-section="managed-identity">Managed (managed identity)</a>
+    <a href="#workload-identity" data-section="workload-identity">Workload Identity</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Finish</div>
+    <a href="#provision" data-section="provision">Provision and allowlist</a>
+    <a href="#first-call" data-section="first-call">First model call</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#gaps" data-section="gaps">Not yet verified</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Provider Integrations</a>
+  <span class="sep">|</span>
+  Azure OpenAI
+</div>
+
+<div class="article">
+
+<h1>Azure OpenAI Integration</h1>
+<p class="subtitle">Connecting the gateway to an Azure OpenAI resource: the resource name and the deployment entries, the four authentication modes and the two a hosted gateway cannot use, the role assignment on the Azure side, and a verified first call</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">All Provider Integrations</a>
+  <a href="identity-and-clients.html" class="cloud-link">Identity and Clients</a>
+  <a href="openai.html" class="cloud-link">OpenAI</a>
+  <a href="anthropic.html" class="cloud-link">Anthropic</a>
+  <a href="azure-openai.html" class="cloud-link">Azure OpenAI</a>
+  <a href="azure-foundry.html" class="cloud-link">Azure Foundry</a>
+  <a href="bedrock.html" class="cloud-link">AWS Bedrock</a>
+</div>
+
+<!-- ── Scope ──────────────────────────────────────────────────── -->
+<h2 id="scope">What this covers</h2>
+
+<p>Azure OpenAI serves models from a resource inside the customer's own Azure subscription. The gateway does not call a shared provider endpoint for this tile. It calls <code>https://&lt;resource-name&gt;.openai.azure.com</code>, names a deployment the customer created, and pins an API version. That changes what the integration asks for and it changes what has to be true in Azure before the integration works at all.</p>
+
+<p>This page covers the Azure side and the provider-specific half of the wizard: the resource name, the deployment entries, the four authentication modes, and the role assignment that grants the credential permission to run inference. Steps 3 and 4 of the wizard are the same for every provider and belong to <a href="../configuration/integrations.html">configuration chapter 9</a>.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:28%">What Azure OpenAI asks for</th><th>Why the other provider tiles have no equivalent</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Resource name</td><td>The endpoint host is per-customer. OpenAI and Anthropic each have one global endpoint, so neither asks.</td></tr>
+    <tr><td>One entry per deployment</td><td>A model becomes callable in Azure only once it is deployed and named. The gateway mirrors that list rather than discovering it.</td></tr>
+    <tr><td>An API version per deployment</td><td>Azure OpenAI versions its REST surface with an <code>api-version</code> query parameter. The value is part of the request, not a property of the model.</td></tr>
+    <tr><td>A role assignment on the resource</td><td>Entra ID and managed identity credentials carry no permission of their own. Authentication and authorization are separate in Azure, and the role supplies the second one.</td></tr>
+    <tr><td>Deployment names in the model reference</td><td>Callers address <code>@&lt;slug&gt;/&lt;deployment-name&gt;</code>. Every other tile in this set takes a model name.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Where the field labels on this page come from</div>
+  <p>Every Azure OpenAI field label, placeholder and field order quoted here was read from the Add LLM Integration wizard in a tenant on 2026-11-17, with all four authentication modes selected in turn. Four details on the form were not opened and stay unresolved, and the <a href="#gaps">open items</a> at the foot of the page name them. Everything else is what the console shows.</p>
+</div>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Azure OpenAI, Azure Foundry and Copilot Studio are three different products</div>
+  <p><strong>Azure OpenAI</strong> and <strong>Azure Foundry</strong> are separate tiles in the provider catalog with separate configurations. A customer who says "Azure AI" has not said which one. Azure Foundry exposes one API across a range of foundation models and its field list is not covered here or on the <a href="../ai-gateway-model-prerequisites.html#azure-foundry">model prerequisites page</a>.</p>
+  <p>Neither tile is <strong>Microsoft Copilot Studio</strong>. Copilot Studio is a different product on a different runtime, and no configuration transfers between it and either Azure tile.</p>
+</div>
+
+<p><em>Azure OpenAI and Azure Foundry sit next to each other in step 1 of the wizard:</em></p>
+<img src="../aigw-screenshots/aigw-int-provider-picker.png" alt="The Select the LLM Provider step of the Add LLM Integration wizard, showing a searchable table headed Total Available Providers (82). The Azure OpenAI row reads Azure OpenAI provides SOTA models deployed on MS Azure, and the Azure Foundry row directly beneath it reads Azure AI exposes API to communicate with diverse set of foundational models. Other visible rows are Open AI, Anthropic, Google, Bedrock, Bedrock Mantle, Claude Platform on AWS, Vertex AI, X AI and Meta AI. A four-step rail on the left shows Select A Provider, Integration Details, Workspace Provisioning and Model Provisioning." loading="lazy">
+
+<div class="callout callout-note">
+  <div class="callout-title">Where the rest of the material lives</div>
+  <p><a href="../configuration/integrations.html">Configuration chapter 9</a> owns the provider-agnostic flow: the three tabs, the slug convention, the model allowlist, workspace provisioning, and budget and rate limits. <a href="../ai-gateway-model-prerequisites.html#azure-openai">Section 6 of the model prerequisites page</a> is the shorter pre-engagement checklist for the same provider. <a href="../configuration/secret-references.html">Configuration chapter 3</a> covers pointing a credential field at Azure Key Vault instead of pasting a value.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<figure class="diagram">
+  <img src="../diagrams/aigw-azure-openai.svg" alt="Architecture of the AI Gateway fronting Azure OpenAI. The application sends a gateway key and a model reference naming a deployment rather than a model. The gateway checks the deployment is provisioned, applies budget and guardrails, then attaches the credential for the selected authentication mode before calling the Azure OpenAI resource endpoint. Panels cover the four Azure Authentication Mode cards and which two require a self-hosted gateway on Azure, the Cognitive Services OpenAI User role assignment, the Foundation Model block where deployment entries and API versions live, the deployment name against model name trap, and the two meters that run at once." loading="lazy">
+  <figcaption>The Azure OpenAI path, the four authentication modes, and the deployment naming that decides whether the first call succeeds.</figcaption>
+</figure>
+
+<h2 id="prerequisites">Prerequisites</h2>
+
+<p>Four things have to be known before the wizard is opened. Three of them come from Azure and one of them decides which authentication paths are available at all.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1 &mdash; Record the resource name</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The resource name is the first label of the endpoint host. For an endpoint of <code>https://contoso-eastus-aoai.openai.azure.com</code> the resource name is <code>contoso-eastus-aoai</code>. The integration takes the label on its own.</p>
+    <ol>
+      <li>Open the Azure OpenAI resource in the Azure portal.</li>
+      <li>Go to <strong>Resource Management</strong> &gt; <strong>Keys and Endpoint</strong> and read the <strong>Endpoint</strong> value.</li>
+      <li>Take the first label of the host and write it down.</li>
+    </ol>
+    <p>The same value comes from the Azure CLI:</p>
+    <div class="code-block">
+      <pre><code>az cognitiveservices account show \
+  --name "&lt;RESOURCE_NAME&gt;" \
+  --resource-group "&lt;RESOURCE_GROUP&gt;" \
+  --query "properties.endpoint" -o tsv</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">The whole URL is the most common wrong value</div>
+      <p>Pasting <code>https://contoso-eastus-aoai.openai.azure.com/</code> into a field that wants <code>contoso-eastus-aoai</code> produces a host the gateway cannot resolve, and the failure surfaces at the first call rather than at save time. Record the label, and record the full endpoint separately so the two never get confused.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The recorded value contains no scheme, no dots and no trailing slash, and appending <code>.openai.azure.com</code> to it reproduces the host shown on the <strong>Keys and Endpoint</strong> pane exactly.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2 &mdash; List every deployment and its API version</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The integration carries one entry per deployment, each with a deployment name and an API version, with one entry marked as the default. Build that list before the session, because the deployment names are chosen by whoever deployed the models and they are rarely the model names.</p>
+    <ol>
+      <li>Open the Azure OpenAI resource and go to its model deployments list, or run the command below.</li>
+      <li>Record the <strong>deployment name</strong> of each deployment the gateway should expose.</li>
+      <li>For each one, record the <code>api-version</code> value the customer's existing applications already send to that deployment.</li>
+      <li>Mark one deployment as the default.</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>az cognitiveservices account deployment list \
+  --name "&lt;RESOURCE_NAME&gt;" \
+  --resource-group "&lt;RESOURCE_GROUP&gt;" \
+  --query "[].{deployment:name, model:properties.model.name, version:properties.model.version}" \
+  -o table</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">A deployment name is not a model name</div>
+      <p>In Azure the model gets a name when it is deployed, and that name is what every caller sends. A resource can hold a deployment called <code>chat-prod</code> running <code>gpt-4o</code> and another called <code>chat-canary</code> running the same model at a different version. The gateway inherits this: the model reference is <code>@&lt;slug&gt;/&lt;deployment-name&gt;</code>, so a caller that sends <code>gpt-4o</code> gets a model-not-found error even though the model exists.</p>
+      <p>Write down the deployment names. Record the model names beside them for context, and never substitute one for the other.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Match the API version the applications already use</div>
+      <p>The <code>api-version</code> query parameter selects a version of the Azure OpenAI REST surface, and features such as structured outputs and tool calling appear at different versions. Setting a version the applications have not been tested against changes request handling for every caller on that deployment at once. Take the value from a working application request, not from a release note.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The list names every deployment the customer wants exposed, each row carries both a deployment name and an <code>api-version</code> value, exactly one row is marked default, and every <code>api-version</code> value was read from a request an application makes today.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3 &mdash; Establish which gateway the integration runs on</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This answer decides whether two of the four modes exist for this customer. Ask it before offering any of them.</p>
+    <table>
+      <thead>
+        <tr><th style="width:30%">Gateway</th><th>Modes available</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>SaaS gateway</td><td><code>Default</code> and <code>Azure Entra</code>. <code>Managed</code> and <code>Workload Identity</code> both need the gateway to run on Azure compute, so neither is available.</td></tr>
+        <tr><td>Hybrid data plane running on Azure</td><td>All four.</td></tr>
+        <tr><td>Hybrid data plane running anywhere else</td><td><code>Default</code> and <code>Azure Entra</code>. The other two are unavailable for the same reason.</td></tr>
+      </tbody>
+    </table>
+    <p>Check the Strata Cloud Manager gateway list. The <strong>Total Gateways</strong> count on the AI Gateway page counts Hybrid data planes only, so a tenant with no Hybrid data plane reads zero there and is a SaaS deployment.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You can name the gateway this integration will run on, and for a Hybrid data plane you can name the Azure compute it runs on. An answer of "both" means the integration has to work on the SaaS gateway too, which rules out <code>Managed</code> and <code>Workload Identity</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4 &mdash; Line up the Azure permissions the session needs</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two separate Azure permissions are needed, and they usually sit with two different people. A session that has one and not the other stalls halfway through.</p>
+    <table>
+      <thead>
+        <tr><th style="width:34%">To do this</th><th>Someone needs</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Read the resource key</td><td>Permission to read keys on the Azure OpenAI resource. Needed for the <code>Default</code> mode only.</td></tr>
+        <tr><td>Register an application in Entra ID</td><td>The Application Developer role, or an Entra tenant that permits users to register applications. Needed for the <code>Azure Entra</code> mode only.</td></tr>
+        <tr><td>Create a user-assigned managed identity</td><td>Write permission in the resource group holding the identity. Needed for the <code>Managed</code> and <code>Workload Identity</code> modes.</td></tr>
+        <tr><td>Add a federated credential to that identity</td><td>Write permission on the managed identity itself. Needed for the <code>Workload Identity</code> mode only.</td></tr>
+        <tr><td>Assign a role on the Azure OpenAI resource</td><td>Owner or User Access Administrator on the resource or its scope. Needed for every mode except <code>Default</code>.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">Role assignment is the one that gets forgotten</div>
+      <p>Creating an app registration is a directory operation and assigning a role is a subscription operation. An engineer who can do the first frequently cannot do the second, and the integration saves cleanly either way. The gap shows up only when the first call returns an authorization failure.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>For the path chosen in the next section, you can name the person in the room who holds each permission in its row, or you have a change request raised for the one nobody holds.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Choose ─────────────────────────────────────────────────── -->
+<h2 id="choose">Choose a path</h2>
+
+<p>Azure OpenAI does not use the three-card <strong>Authentication Type</strong> control that the OpenAI tile uses. It has its own control named <strong>Azure Authentication Mode</strong>, with four options in this order: <code>Default</code>, <code>Managed</code>, <code>Azure Entra</code> and <code>Workload Identity</code>. The control sits directly below <strong>Slug</strong>, and no parent control sits above it. An <strong>Azure Resource Name</strong> field follows the mode-specific fields in every mode, and the <a href="#api-key"><strong>Foundation Model</strong> block</a> follows that.</p>
+
+<p><em>The mode control, with <code>Managed</code> selected:</em></p>
+<img src="../aigw-screenshots/aigw-int-azure-openai-auth-managed.png" alt="Step 2 of the Add LLM Integration wizard, Basic Integration Details, with the Azure OpenAI tile header reading Azure OpenAI provides SOTA models deployed on MS Azure. The form shows Name with a required marker, Short Description (Optional), Slug, then the Azure Authentication Mode control rendered as four radio cards reading Default, Managed, Azure Entra and Workload Identity, with Managed selected. Below the control a single field labeled Azure Managed ClientID (optional) with the placeholder Enter Managed ClientID, then Azure Resource Name with the placeholder Enter Azure Resource Name, then a Foundation Model block holding Deployment Name, Alias Name and API Version, and a collapsed Advanced Options section at the foot. A four-step rail on the left shows Select A Provider complete and Integration Details active." loading="lazy">
+
+<div class="callout callout-danger">
+  <div class="callout-title">The vendor documentation is wrong about federation here</div>
+  <p>The product documentation states that Workload Identity Federation is supported for OpenAI and Anthropic only. The tile offers a <code>Workload Identity</code> mode, so do not tell a customer that Azure OpenAI cannot federate. That mode asks for a client ID and a tenant ID, and it is <a href="#workload-identity">Azure AD workload identity</a> rather than the token-exchange federation the OpenAI tile performs.</p>
+</div>
+
+<table>
+  <thead>
+    <tr><th style="width:20%">Mode</th><th style="width:26%">What the gateway stores</th><th style="width:26%">What Azure needs</th><th>Rotation and revocation</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="#api-key"><code>Default</code></a></td>
+      <td>One of the resource's two keys, or a reference to it in a vault</td>
+      <td>Nothing beyond the resource itself. The key carries inference permission on its own.</td>
+      <td>Regenerate the key in the portal, which breaks every other consumer of that key at the same moment. Revoke by regenerating.</td>
+    </tr>
+    <tr>
+      <td><a href="#service-principal"><code>Azure Entra</code></a></td>
+      <td>A tenant ID, a client ID and a client secret</td>
+      <td>An app registration, and a <code>Cognitive Services OpenAI User</code> role assignment on the resource</td>
+      <td>Rotate the client secret in Entra on the expiry you set. Revoke by removing the role assignment, which takes effect without touching the gateway.</td>
+    </tr>
+    <tr>
+      <td><a href="#managed-identity"><code>Managed</code></a></td>
+      <td>Nothing. A client ID only, and only when the identity is user-assigned. The field is <strong>Azure Managed ClientID (optional)</strong>, which confirms it is omitted for a system-assigned identity.</td>
+      <td>A managed identity on the Azure compute the gateway runs on, and a <code>Cognitive Services OpenAI User</code> role assignment on the resource</td>
+      <td>No secret exists, so nothing rotates. Revoke by removing the role assignment.</td>
+    </tr>
+    <tr>
+      <td><a href="#workload-identity"><code>Workload Identity</code></a></td>
+      <td>A client ID and a tenant ID. No secret.</td>
+      <td>A user-assigned managed identity carrying a federated credential for the gateway's workload, and a <code>Cognitive Services OpenAI User</code> role assignment on the resource</td>
+      <td>No secret exists, so nothing rotates. Revoke by deleting the federated credential or removing the role assignment.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Two of the four modes work only for a self-hosted gateway running on Azure</div>
+  <p>A managed identity belongs to the Azure compute resource it is attached to. It is issued by the Azure instance metadata endpoint to code running on that virtual machine, scale set, container app or AKS node. The SaaS gateway does not run on the customer's Azure compute, so there is no identity for it to present and no way to attach one. <code>Workload Identity</code> rests on the same requirement by a different mechanism: the gateway's workload has to present a token Azure AD already trusts, which again means the gateway runs inside the customer's Azure estate.</p>
+  <p>This is the most common wrong promise in an Azure engagement, because "keyless with managed identity" reads as a property of Azure OpenAI rather than a property of where the gateway runs. A SaaS customer who wants no stored provider key gets the <a href="#service-principal"><code>Azure Entra</code> mode</a>, which still stores a client secret, or moves to a <a href="../kubernetes-deployment.html">Hybrid data plane on Azure</a>. Settle this in <a href="#prerequisites">Step 3</a>, before any option is named out loud.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">The API key path remains a defensible choice</div>
+  <p>The resource key reaches a reasonable position when it lives in Azure Key Vault and the integration resolves it by reference, as <a href="../configuration/secret-references.html">configuration chapter 3</a> describes. Its real weakness is shared blast radius: the resource has two keys for the whole resource, so regenerating one to rotate the gateway's credential also cuts off every application still holding it. Where the customer already shares that key widely, the <code>Azure Entra</code> mode gives the gateway a credential it can rotate alone.</p>
+</div>
+
+<!-- ── Default ────────────────────────────────────────────────── -->
+<h2 id="api-key">Default mode, an API key</h2>
+
+<p><code>Default</code> is the first card on the <strong>Azure Authentication Mode</strong> control and it is the API key path. Selecting it exposes one credential field, <strong>API Key</strong>, with the placeholder <code>Enter API Key</code>. This is the fastest route and the one to use for a first connection that proves the resource name and the deployment names are right before identity is added on top.</p>
+
+<p>The three steps that follow Step A1 are shared. Every other mode on this page enters the wizard the same way, fills in the same <strong>Azure Resource Name</strong> and <strong>Foundation Model</strong> fields, and differs only in what the mode control exposes above them.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step A1 &mdash; Copy a key from the Azure OpenAI resource</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The resource carries two keys, and both grant the same access. Taking the second one leaves the first untouched for the applications already using it, which makes a later rotation possible without a simultaneous cutover.</p>
+    <ol>
+      <li>Open the Azure OpenAI resource in the Azure portal.</li>
+      <li>Go to <strong>Resource Management</strong> &gt; <strong>Keys and Endpoint</strong>.</li>
+      <li>Copy <strong>KEY 2</strong> if it is unused, and record which key was taken.</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>az cognitiveservices account keys list \
+  --name "&lt;RESOURCE_NAME&gt;" \
+  --resource-group "&lt;RESOURCE_GROUP&gt;" \
+  --query "key2" -o tsv</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Put the key in a vault now rather than later</div>
+      <p>Store the key in Azure Key Vault and create the secret reference described in <a href="../configuration/secret-references.html">configuration chapter 3</a> before creating the integration. Converting a pasted key to a reference afterwards means editing the integration again, and the pasted copy has already been typed into a browser in the meantime.</p>
+    </div>
+    <!-- screenshot-pending: aigw-int-azure-openai-portal-keys.png | The Keys and Endpoint pane of an Azure OpenAI resource showing the endpoint host and the two key fields, with the key values hidden rather than revealed, and the resource name, subscription ID and tenant ID masked -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The key is in the vault or on the clipboard, you can state which of the two resource keys it is, and the resource name recorded in <a href="#prerequisites">Step 1</a> matches the endpoint shown on the same pane.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step A2 &mdash; Select Azure OpenAI and set the name and slug</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to <strong>AI Security</strong> &gt; <strong>AI Gateway</strong> &gt; <strong>Integrations</strong> &gt; <strong>LLM Integrations</strong>, and confirm the workspace selector at the top left shows the workspace you intend to configure.</li>
+      <li>Click <strong>Add LLM Integration</strong>.</li>
+      <li>On <strong>Select A Provider</strong>, choose <strong>Azure OpenAI</strong>. Read the row description to be certain it is not the <strong>Azure Foundry</strong> row directly beneath it.</li>
+      <li>Click <strong>Next: Set Details</strong>.</li>
+      <li>Set <strong>Name</strong> to something a human reads, such as <code>Azure OpenAI Production</code>.</li>
+      <li>Set <strong>Slug</strong> following the convention in <a href="../configuration/integrations.html#create">configuration chapter 9</a>: provider and environment, lowercase, hyphenated. For example <code>azure-openai-prod</code>.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">The slug ends up in application code</div>
+      <p>Callers name the integration by slug in every request, so changing it later means changing every application that sends it. Fix the convention across all of the customer's integrations before naming this one.</p>
+    </div>
+    <p><em>The provider row selected, with Azure Foundry on the line below it:</em></p>
+    <img src="../aigw-screenshots/aigw-int-azure-openai-provider-selected.png" alt="Step 1 of the Add LLM Integration wizard, headed Select the LLM Provider, with a searchable table reading Total Available Providers (82). The Azure OpenAI radio button is selected and its row reads Azure OpenAI provides SOTA models deployed on MS Azure. The Azure Foundry row immediately below it is unselected and reads Azure AI exposes API to communicate with diverse set of foundational models. Open AI, Anthropic and Google sit above, and Bedrock, Bedrock Mantle, Claude Platform on AWS, Vertex AI, X AI, Meta AI and Fireworks AI below. The left rail shows Select A Provider active, with Integration Details, Workspace Provisioning and Model Provisioning still to come." loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Integration Details step is open, the provider shown is Azure OpenAI rather than Azure Foundry, and the slug matches a convention that is written down and applies to the customer's other integrations.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step A3 &mdash; Enter the resource name and the Foundation Model entries</span>
+  </div>
+  <div class="collapsible-body">
+    <p>These are the fields that make the Azure OpenAI tile different from every other provider in this set, and they sit in the same place in every mode. <strong>Azure Resource Name</strong> follows whatever credential fields the mode exposes, and the <strong>Foundation Model</strong> block follows that. Both are on the main form. This tile has no <strong>Optional Fields</strong> section, so nothing here is hidden behind a collapsed control.</p>
+    <ol>
+      <li>Enter the resource name recorded in <a href="#prerequisites">Step 1</a> into <strong>Azure Resource Name</strong>, as the bare label. The placeholder reads <code>Enter Azure Resource Name</code>.</li>
+      <li>In the <strong>Foundation Model</strong> block, fill in the first entry from the <a href="#prerequisites">Step 2</a> list, then click <strong>Save</strong> on that entry.</li>
+      <li>Click <strong>+ Add Model</strong> in the block header and repeat for each remaining deployment.</li>
+      <li>Leave <strong>Make it default model</strong> checked on exactly one entry and clear it on the others.</li>
+    </ol>
+    <p>Each entry carries four controls, in this order:</p>
+    <table>
+      <thead>
+        <tr><th style="width:24%">Control</th><th style="width:20%">Placeholder or default</th><th>What to enter</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Deployment Name</td><td><code>Type here...</code></td><td>The deployment name from <a href="#prerequisites">Step 2</a>, exactly as Azure spells it. This is the string callers send.</td></tr>
+        <tr><td>Alias Name</td><td><code>Type here...</code></td><td>Unverified. Leave it empty until its behavior is confirmed.</td></tr>
+        <tr><td>API Version</td><td><code>v1</code>, with an <strong>Edit</strong> affordance beside it</td><td>Click <strong>Edit</strong> and set the <code>api-version</code> value the customer's applications already send to that deployment.</td></tr>
+        <tr><td>Foundation Model</td><td><code>Select Azure Foundation Model</code></td><td>The underlying model the deployment runs, picked from the dropdown.</td></tr>
+      </tbody>
+    </table>
+    <p>A <strong>Make it default model</strong> checkbox sits at the foot of the entry, checked by default, with <strong>Discard</strong> and <strong>Save</strong> buttons on the same row. The header also offers <strong>+ From Target URI</strong>, which builds an entry from a full Azure endpoint URL instead of its parts.</p>
+    <p><em>The Foundation Model block, with the two collapsed sections that follow it:</em></p>
+    <img src="../aigw-screenshots/aigw-int-azure-openai-foundation-model.png" alt="The Foundation Model block on the Azure OpenAI integration details form. Its header reads Foundation Model on the left and offers two header controls on the right, a greyed + Add Model and a blue + From Target URI, with an information icon. One empty entry card sits below, carrying Deployment Name with the placeholder Type here, Alias Name with the same placeholder and an information icon, and API Version showing a greyed v1 with an Edit link. Beneath those a Foundation Model dropdown reads Select Azure Foundation Model. At the foot of the card a checked checkbox reads Make it default model, with Discard and Save buttons to its right. Below the card sit a collapsed Advanced Options section and a Pricing Adjustments row whose toggle is off." loading="lazy">
+    <div class="callout callout-warning">
+      <div class="callout-title">Not verified in a tenant</div>
+      <p><strong>Alias Name</strong> appears on every entry and no published source describes it. A friendly name a caller could send instead of the deployment name would soften the trap below, and that reading is a guess rather than observed behavior. Leave the field empty, and keep the deployment name as the thing applications send, until someone confirms what the alias does.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every deployment from the Step 2 list appears as one saved entry, each carries the <code>api-version</code> value taken from a working application request, and exactly one entry has <strong>Make it default model</strong> checked.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step A4 &mdash; Supply the key and save</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>On the <strong>Azure Authentication Mode</strong> control, select <strong>Default</strong>. It is the leftmost card and the one selected when the form opens.</li>
+      <li>Enter the key from Step A1 in the <strong>API Key</strong> field, which carries the placeholder <code>Enter API Key</code>. Where the field offers a <strong>Secret Ref</strong> toggle, use it and select the Azure Key Vault reference created in <a href="../configuration/secret-references.html">configuration chapter 3</a> rather than pasting the value.</li>
+      <li>Click <strong>Next: Choose Workspace</strong> and continue to <a href="#provision">workspace and model provisioning</a>.</li>
+    </ol>
+    <p><em>The form with <code>Default</code> selected:</em></p>
+    <img src="../aigw-screenshots/aigw-int-azure-openai-auth-default.png" alt="Step 2 of the Add LLM Integration wizard for Azure OpenAI with the Azure Authentication Mode control set to Default, the leftmost of four cards reading Default, Managed, Azure Entra and Workload Identity. A single credential field labeled API Key sits below the control with the placeholder Enter API Key, followed by Azure Resource Name with the placeholder Enter Azure Resource Name, then the Foundation Model block holding Deployment Name, Alias Name, API Version and a Select Azure Foundation Model dropdown, and a collapsed Advanced Options section. Name, Short Description (Optional) and Slug sit above the mode control, all empty. No Secret Ref toggle is visible on the API Key field." loading="lazy">
+    <div class="callout callout-note">
+      <div class="callout-title">Saving proves nothing about the credential</div>
+      <p>The wizard accepts a wrong key, a wrong resource name and a deployment that does not exist, all without complaint. Every one of them surfaces for the first time at <a href="#first-call">the first model call</a>. Reach that call in the same session.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Not verified in a tenant</div>
+      <p>No <strong>Secret Ref</strong> toggle is visible beside the <strong>API Key</strong> field in the captured form. <a href="../configuration/integrations.html">Configuration chapter 9</a> states that credential fields carry one, so either it renders once the field has focus or this tile handles credentials differently. Check the field in front of you before telling a customer the key can live in a vault.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration saves and appears on the <strong>Connected</strong> tab of the Integrations page with the slug set in Step A2.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Azure Entra ────────────────────────────────────────────── -->
+<h2 id="service-principal">Azure Entra mode, a service principal</h2>
+
+<p><code>Azure Entra</code> is the third card on the <strong>Azure Authentication Mode</strong> control. The gateway holds a client ID and a client secret for an Entra application, exchanges them for a token, and calls the resource with that token. Nothing about the resource's own keys is involved, so rotating the gateway's credential does not disturb any other consumer, and withdrawing access is a role assignment change rather than a key regeneration.</p>
+
+<p>This mode works on the SaaS gateway and on a Hybrid data plane anywhere. It needs work on two Azure surfaces: a registration in the directory, and a role assignment on the subscription.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step S1 &mdash; Register the application in Microsoft Entra ID</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Register one application for this integration rather than reusing an existing one. A shared registration means the role assignment that grants Azure OpenAI access also lands on everything else using that application, and removing the gateway's access later removes theirs.</p>
+    <ol>
+      <li>In the Azure portal, go to <strong>Microsoft Entra ID</strong> &gt; <strong>App registrations</strong> &gt; <strong>New registration</strong>.</li>
+      <li>Set a name that identifies the consumer and the environment, such as <code>aigw-azure-openai-prod</code>.</li>
+      <li>Leave the supported account types at single tenant and leave the redirect URI empty. The gateway uses the client credentials flow, which has no redirect.</li>
+      <li>Click <strong>Register</strong>.</li>
+      <li>On the <strong>Overview</strong> page, copy the <strong>Application (client) ID</strong> and the <strong>Directory (tenant) ID</strong>.</li>
+    </ol>
+    <p>The equivalent from the Azure CLI, which creates the application and its service principal together:</p>
+    <div class="code-block">
+      <pre><code>az ad sp create-for-rbac \
+  --name "aigw-azure-openai-prod" \
+  --skip-assignment
+
+az account show --query tenantId -o tsv</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">The registration and the service principal are two objects</div>
+      <p>An app registration creates a directory object and a separate service principal object in the tenant, and they have different object IDs. The role assignment in Step S3 targets the service principal, which the portal lists under <strong>Enterprise applications</strong>. Using the app registration object ID there produces an assignment that resolves to nothing.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The application appears under <strong>App registrations</strong> and under <strong>Enterprise applications</strong>, and you have recorded both the Application (client) ID and the Directory (tenant) ID.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step S2 &mdash; Create a client secret and record its expiry</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the registration, go to <strong>Certificates &amp; secrets</strong> &gt; <strong>Client secrets</strong> &gt; <strong>New client secret</strong>.</li>
+      <li>Set a description naming the consumer, and an expiry that matches the customer's rotation policy rather than the longest option offered.</li>
+      <li>Copy the <strong>Value</strong> immediately. Azure shows it once and never again.</li>
+      <li>Store it in Azure Key Vault and create the secret reference described in <a href="../configuration/secret-references.html">configuration chapter 3</a>.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">A client secret expires, and the integration will not warn you</div>
+      <p>The expiry is a date in Entra that nothing in Strata Cloud Manager can see. On that date every call through this integration begins failing authentication, and the gateway reports an OAuth error rather than an expiry. Record the date in whatever the customer uses to track certificate and credential renewals before leaving this step, and record who owns the renewal.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The secret value is in the vault, the expiry date is recorded in the customer's renewal tracker with a named owner, and the <strong>Client secrets</strong> list shows exactly one secret for this registration.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step S3 &mdash; Assign Cognitive Services OpenAI User on the resource</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The client ID and secret authenticate the gateway to Entra. They grant no access to anything. The role assignment is what authorizes inference calls against this specific resource, and without it the credential is valid and useless.</p>
+    <ol>
+      <li>Open the Azure OpenAI resource in the Azure portal.</li>
+      <li>Go to <strong>Access control (IAM)</strong> &gt; <strong>Add</strong> &gt; <strong>Add role assignment</strong>.</li>
+      <li>Select the <strong>Cognitive Services OpenAI User</strong> role.</li>
+      <li>Assign access to <strong>User, group, or service principal</strong>, and select the service principal created in Step S1.</li>
+      <li>Review and assign.</li>
+    </ol>
+    <p>The equivalent from the Azure CLI, resolving the service principal object ID from the application client ID:</p>
+    <div class="code-block">
+      <pre><code>SP_OBJECT_ID=$(az ad sp show \
+  --id "&lt;APPLICATION_CLIENT_ID&gt;" \
+  --query id -o tsv)
+
+AOAI_RESOURCE_ID=$(az cognitiveservices account show \
+  --name "&lt;RESOURCE_NAME&gt;" \
+  --resource-group "&lt;RESOURCE_GROUP&gt;" \
+  --query id -o tsv)
+
+az role assignment create \
+  --role "Cognitive Services OpenAI User" \
+  --assignee-object-id "$SP_OBJECT_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --scope "$AOAI_RESOURCE_ID"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Cognitive Services OpenAI User, not Contributor and not Owner</div>
+      <p><code>Cognitive Services OpenAI User</code> permits inference calls against the resource with an Entra token. It does not permit reading the resource keys, creating or deleting deployments, or changing the resource. That boundary is the point of using identity here at all.</p>
+      <p>Contributor and Owner both include the ability to read the resource keys. Granting either turns a credential that can only run inference into a credential that can extract the long-lived key the <a href="#api-key">API key path</a> uses, which is the exact exposure this path was chosen to avoid. Owner adds the ability to grant that access to others. Neither role fixes a failing call: a 403 after this step means the scope or the principal is wrong, and widening the role hides the mistake rather than fixing it.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Role assignments take time to apply</div>
+      <p>An Azure role assignment is not always effective the instant the portal confirms it. A call made immediately afterwards can still return an authorization failure. Wait, then retry, before investigating the assignment itself.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The assignment is listed at the resource scope with the principal from Step S1:</p>
+      <div class="code-block">
+        <pre><code>az role assignment list \
+  --scope "$AOAI_RESOURCE_ID" \
+  --query "[?roleDefinitionName=='Cognitive Services OpenAI User'].{Principal:principalName, Scope:scope}" \
+  -o table</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p>The scope column ends in the Azure OpenAI resource name. A scope that stops at the resource group or the subscription grants more than this integration needs.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step S4 &mdash; Enter the Entra values in the wizard</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create the integration as in <a href="#api-key">Step A2</a>, then select <strong>Azure Entra</strong> on the <strong>Azure Authentication Mode</strong> control. The mode exposes a checkbox and three fields, in this order, above the shared <strong>Azure Resource Name</strong> and <strong>Foundation Model</strong> fields from <a href="#api-key">Step A3</a>.</p>
+    <table>
+      <thead>
+        <tr><th style="width:26%">Control</th><th style="width:22%">Placeholder</th><th>Where the value comes from</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Use Entra Federated Authentication</td>
+          <td>A checkbox, unchecked when the form opens</td>
+          <td>Leave it unchecked for the client secret flow these steps build. Its effect on the rest of the form is unverified, as the callout below records.</td>
+        </tr>
+        <tr>
+          <td>Azure Entra ClientID</td>
+          <td><code>Enter Entra ClientID</code></td>
+          <td>App registration <strong>Overview</strong>, as <strong>Application (client) ID</strong>. A GUID, and the application ID rather than the service principal object ID used in Step S3.</td>
+        </tr>
+        <tr>
+          <td>Azure Entra Secret</td>
+          <td><code>Enter Entra Client Secret</code></td>
+          <td>The secret value from Step S2. Supply it by vault reference where the field offers one.</td>
+        </tr>
+        <tr>
+          <td>Azure Entra Tenant ID</td>
+          <td><code>Enter Entra Tenant ID</code></td>
+          <td>App registration <strong>Overview</strong>, as <strong>Directory (tenant) ID</strong>, or <code>az account show --query tenantId</code>. A GUID identifying the directory rather than the subscription.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Enter the resource name and the deployment entries as in <a href="#api-key">Step A3</a>, then click <strong>Next: Choose Workspace</strong>.</p>
+    <p><em>The form with <code>Azure Entra</code> selected:</em></p>
+    <img src="../aigw-screenshots/aigw-int-azure-openai-auth-entra.png" alt="Step 2 of the Add LLM Integration wizard for Azure OpenAI with the Azure Authentication Mode control set to Azure Entra, the third of four cards. Immediately below the control an unchecked checkbox reads Use Entra Federated Authentication. Three empty fields follow it in order: Azure Entra ClientID with the placeholder Enter Entra ClientID, Azure Entra Secret with the placeholder Enter Entra Client Secret, and Azure Entra Tenant ID with the placeholder Enter Entra Tenant ID. Azure Resource Name follows with the placeholder Enter Azure Resource Name, then the top of the Foundation Model block showing Deployment Name, Alias Name and API Version. Name, Short Description (Optional) and Slug sit above the mode control, all empty." loading="lazy">
+    <div class="callout callout-warning">
+      <div class="callout-title">Not verified in a tenant</div>
+      <p>The <strong>Use Entra Federated Authentication</strong> checkbox was seen on the form and never ticked, so what it changes is unknown. It may hide the secret field and switch the mode to a certificate or federated credential flow, and it may do something else entirely. Leave it unchecked for the client secret flow in these steps, and record what happens if the customer wants it on.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration saves and appears on the <strong>Connected</strong> tab. The credential itself is still unproven at this point, and <a href="#first-call">the first model call</a> is what tests it.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Managed ────────────────────────────────────────────────── -->
+<h2 id="managed-identity">Managed mode, a managed identity</h2>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Read this before offering the mode to a customer</div>
+  <p>A managed identity is attached to an Azure compute resource and is presented by code running on that resource. The gateway can use one only when the gateway itself runs on Azure compute that has one, which means a Hybrid data plane on an Azure virtual machine, scale set, container app or AKS cluster. The SaaS gateway runs outside the customer's subscription, so this mode does not exist for it under any configuration.</p>
+  <p>Where the customer runs the SaaS gateway and the requirement is no stored provider key, the <a href="#service-principal"><code>Azure Entra</code> mode</a> is the available answer. It removes the resource key and replaces it with a client secret, which is a smaller improvement than the customer may have been promised. Say so plainly rather than at the first call.</p>
+</div>
+
+<p>Where the gateway does run on Azure, this mode stores no secret at all. Azure issues the token to the compute resource, the role assignment authorizes it against the Azure OpenAI resource, and there is nothing to rotate and nothing to expire.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step M1 &mdash; Confirm the gateway runs on Azure compute with an identity</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two facts have to hold together. The gateway has to be a Hybrid data plane, and the Azure compute hosting it has to carry a managed identity the gateway process can use.</p>
+    <ol>
+      <li>Confirm in Strata Cloud Manager that the integration will be used by a Hybrid data plane, using the check in <a href="#prerequisites">Step 3</a>.</li>
+      <li>Identify the Azure compute it runs on: a virtual machine, a scale set, a container app, or an AKS cluster.</li>
+      <li>For AKS, confirm the gateway workload has an identity through workload identity. The <a href="../kubernetes-deployment.html#identity">identity section of the Kubernetes deployment guide</a> covers building that for the Azure Kubernetes Service path.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You can name the Azure compute resource the gateway runs on and the managed identity attached to it, and that identity is the one the gateway process already uses to reach its cache or log store.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step M2 &mdash; Identify the identity and its client ID</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Azure has two kinds. A <strong>system-assigned</strong> identity is created with the compute resource and dies with it, and the gateway finds it without being told. A <strong>user-assigned</strong> identity is its own resource that can be attached to several compute resources, and a host carrying more than one of them needs to be told which to use, by client ID.</p>
+    <p>For a user-assigned identity, read both IDs:</p>
+    <div class="code-block">
+      <pre><code>az identity show \
+  --name "&lt;IDENTITY_NAME&gt;" \
+  --resource-group "&lt;RESOURCE_GROUP&gt;" \
+  --query "{clientId:clientId, principalId:principalId}" -o table</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>For a system-assigned identity on a virtual machine, read the principal ID:</p>
+    <div class="code-block">
+      <pre><code>az vm identity show \
+  --name "&lt;VM_NAME&gt;" \
+  --resource-group "&lt;RESOURCE_GROUP&gt;" \
+  --query principalId -o tsv</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Two IDs, two uses</div>
+      <p>The <strong>principal ID</strong> is the service principal object ID, and it is what the role assignment in Step M3 targets. The <strong>client ID</strong> is what the gateway is given when it has to pick between several user-assigned identities on one host. Swapping them produces a role assignment on an object that does not exist, or a gateway asking for an identity Azure does not recognize.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You have the principal ID for Step M3, and for a user-assigned identity you also have its client ID. For a system-assigned identity no client ID is needed.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step M3 &mdash; Assign Cognitive Services OpenAI User to the identity</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The role assignment is identical to the one the <code>Azure Entra</code> mode uses, and it carries the same least privilege reasoning. The identity authenticates by itself; the role is what lets it run inference against this resource.</p>
+    <div class="code-block">
+      <pre><code>AOAI_RESOURCE_ID=$(az cognitiveservices account show \
+  --name "&lt;RESOURCE_NAME&gt;" \
+  --resource-group "&lt;RESOURCE_GROUP&gt;" \
+  --query id -o tsv)
+
+az role assignment create \
+  --role "Cognitive Services OpenAI User" \
+  --assignee-object-id "&lt;IDENTITY_PRINCIPAL_ID&gt;" \
+  --assignee-principal-type ServicePrincipal \
+  --scope "$AOAI_RESOURCE_ID"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Cognitive Services OpenAI User, not Contributor and not Owner</div>
+      <p>A managed identity on shared compute is reachable by anything running on that host. Granting it Contributor gives every workload on the host the ability to read the resource keys and change deployments, and Owner adds the ability to hand that out further. Scope the assignment to the Azure OpenAI resource, and keep the role at <code>Cognitive Services OpenAI User</code>.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">A managed identity that already has roles on other resources</div>
+      <p>Reusing the identity the gateway already uses for its cache and log store is reasonable, and it means this role assignment joins others on the same principal. Check what else is assigned before adding to it, because a principal that has accumulated broad roles elsewhere carries them into the Azure OpenAI call path: <code>az role assignment list --assignee &lt;IDENTITY_PRINCIPAL_ID&gt; --all -o table</code>.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>az role assignment list --scope "$AOAI_RESOURCE_ID" -o table</code> lists the identity against <code>Cognitive Services OpenAI User</code>, and the scope column ends in the Azure OpenAI resource name rather than the resource group.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step M4 &mdash; Select Managed in the wizard</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create the integration as in <a href="#api-key">Step A2</a>, then select <strong>Managed</strong> on the <strong>Azure Authentication Mode</strong> control. The mode exposes one field, <strong>Azure Managed ClientID (optional)</strong>, with the placeholder <code>Enter Managed ClientID</code>. The <a href="#choose">mode control screenshot</a> shows the whole form in this mode.</p>
+    <table>
+      <thead>
+        <tr><th style="width:28%">Identity type</th><th>What the integration needs</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>System-assigned</td><td>Nothing. Leave <strong>Azure Managed ClientID (optional)</strong> empty. The gateway asks the Azure instance metadata endpoint for a token and gets the host's identity.</td></tr>
+        <tr><td>User-assigned</td><td>The client ID from Step M2, so the gateway asks for the right one of several.</td></tr>
+      </tbody>
+    </table>
+    <p>Enter the resource name and the deployment entries as in <a href="#api-key">Step A3</a>, then click <strong>Next: Choose Workspace</strong>.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">The word optional in the label is the confirmation</div>
+      <p>The console marks the client ID field optional, which matches the Azure behavior: a host with one identity needs no disambiguation and a host with several does. Fill it in whenever the host carries more than one identity, including a host that has both a system-assigned identity and the user-assigned one this integration should use.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration saves with no secret entered anywhere, and the only field the mode exposed was <strong>Azure Managed ClientID (optional)</strong>. A form asking for a secret means the <code>Azure Entra</code> card is selected rather than <code>Managed</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Workload Identity ──────────────────────────────────────── -->
+<h2 id="workload-identity">Workload Identity mode, a federated credential</h2>
+
+<p><code>Workload Identity</code> is the fourth card on the <strong>Azure Authentication Mode</strong> control. It exposes two fields, <strong>Azure Workload ClientID</strong> and <strong>Azure Workload Tenant ID</strong>, and no secret.</p>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Azure AD workload identity, a different mechanism from the OpenAI token exchange</div>
+  <p>A reader who has configured <a href="openai.html#wif">Workload Identity Federation on the OpenAI tile</a> arrives expecting a token endpoint, a client secret, an Identity Provider ID and a Service Account ID. None of those fields exist here. The Azure OpenAI mode asks for a client ID and a tenant ID, which are the two identifiers of an Azure user-assigned managed identity, so the credential is <strong>Azure AD workload identity</strong>: the gateway's workload presents a token its own platform issued, Azure AD trades it for an Azure AD token under a federated credential, and the role assignment on the resource authorizes the call.</p>
+  <p>Nothing about an external identity provider is involved, so neither the OpenAI federation steps nor the <a href="anthropic.html#wif">Anthropic ones</a> transfer. The two things this mode does need, an issuer the gateway's workload can prove and a federated credential that trusts it, are both Azure-side objects created in the steps below.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The gateway still has to run inside the customer's Azure estate</div>
+  <p>A federated credential trusts a specific issuer and subject, which in practice means a Kubernetes service account on a cluster whose OIDC issuer Azure AD can reach. The SaaS gateway presents no such token, so this mode is self-hosted in practice for the same reason <a href="#managed-identity"><code>Managed</code></a> is. Settle the deployment model in <a href="#prerequisites">Step 3</a> before offering either.</p>
+</div>
+
+<p>Choosing between the two keyless modes comes down to the host. <code>Managed</code> reads a token from the Azure instance metadata endpoint, which a virtual machine, scale set or container app exposes directly. <code>Workload Identity</code> suits an AKS pod, where the metadata endpoint is not the identity boundary and each workload gets its own service account token instead.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step W1 &mdash; Create a user-assigned managed identity</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The federated credential attaches to a user-assigned managed identity, so the identity comes first. Create one for this integration rather than reusing a shared identity, because the role assignment in Step W3 lands on everything that identity is attached to.</p>
+    <div class="code-block">
+      <pre><code>az identity create \
+  --name "aigw-azure-openai-prod" \
+  --resource-group "&lt;RESOURCE_GROUP&gt;" \
+  --location "&lt;LOCATION&gt;"
+
+az identity show \
+  --name "aigw-azure-openai-prod" \
+  --resource-group "&lt;RESOURCE_GROUP&gt;" \
+  --query "{clientId:clientId, principalId:principalId, tenantId:tenantId}" -o table</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Record all three values. The <strong>client ID</strong> and the <strong>tenant ID</strong> go into the wizard in Step W4. The <strong>principal ID</strong> is what the role assignment in Step W3 targets, and it is a different GUID from the client ID.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The command prints three distinct GUIDs, and the identity appears in the Azure portal under <strong>Managed Identities</strong> in the chosen resource group.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step W2 &mdash; Add a federated credential for the gateway workload</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The federated credential tells Azure AD which external token it should accept in place of a secret. It names three things: the issuer that signs the token, the subject inside the token, and the audience the token is addressed to.</p>
+    <ol>
+      <li>Read the OIDC issuer URL of the cluster the gateway runs on. For AKS, <code>az aks show --name "&lt;CLUSTER&gt;" --resource-group "&lt;RESOURCE_GROUP&gt;" --query "oidcIssuerProfile.issuerUrl" -o tsv</code> returns it, and the cluster needs the OIDC issuer and workload identity features enabled first.</li>
+      <li>Read the namespace and service account name the gateway pods run under.</li>
+      <li>Create the credential on the identity from Step W1.</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>az identity federated-credential create \
+  --name "aigw-gateway" \
+  --identity-name "aigw-azure-openai-prod" \
+  --resource-group "&lt;RESOURCE_GROUP&gt;" \
+  --issuer "&lt;OIDC_ISSUER_URL&gt;" \
+  --subject "system:serviceaccount:&lt;NAMESPACE&gt;:&lt;SERVICE_ACCOUNT&gt;" \
+  --audience "api://AzureADTokenExchange"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">The subject string is matched exactly</div>
+      <p>Azure AD compares the <code>sub</code> claim character for character and supports no wildcards. A credential written for <code>system:serviceaccount:portkey:default</code> rejects a pod running as <code>system:serviceaccount:portkeyai:gateway</code>, and the failure reads as an authentication error rather than a mismatch. Read the namespace and service account from the running deployment rather than from the Helm values file.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Pods also need the workload identity label</div>
+      <p>On AKS the service account carries the annotation <code>azure.workload.identity/client-id</code> naming the identity from Step W1, and the pod template carries the label <code>azure.workload.identity/use: "true"</code>. Without both, the projected token is never mounted and the gateway falls back to whatever other credential it can find. The <a href="../kubernetes-deployment.html#identity">identity section of the Kubernetes deployment guide</a> covers the gateway's own chart values.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>az identity federated-credential list --identity-name "aigw-azure-openai-prod" --resource-group "&lt;RESOURCE_GROUP&gt;" -o table</code> lists one credential whose issuer matches the cluster OIDC issuer URL and whose subject matches the namespace and service account the gateway pods actually run under.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step W3 &mdash; Assign Cognitive Services OpenAI User to the identity</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The federated credential proves who the workload is. It grants no access to anything. The role assignment is what authorizes inference against this resource, and it targets the identity's principal ID from Step W1.</p>
+    <div class="code-block">
+      <pre><code>AOAI_RESOURCE_ID=$(az cognitiveservices account show \
+  --name "&lt;RESOURCE_NAME&gt;" \
+  --resource-group "&lt;RESOURCE_GROUP&gt;" \
+  --query id -o tsv)
+
+az role assignment create \
+  --role "Cognitive Services OpenAI User" \
+  --assignee-object-id "&lt;IDENTITY_PRINCIPAL_ID&gt;" \
+  --assignee-principal-type ServicePrincipal \
+  --scope "$AOAI_RESOURCE_ID"</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Cognitive Services OpenAI User, not Contributor and not Owner</div>
+      <p><code>Cognitive Services OpenAI User</code> permits inference calls against the resource and nothing else. Contributor and Owner both include the ability to read the resource keys, which hands a keyless credential the long-lived key this mode was chosen to remove, and Owner adds the ability to grant that to others. A 403 after this step means the principal or the scope is wrong, and widening the role hides the mistake instead of fixing it.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>az role assignment list --scope "$AOAI_RESOURCE_ID" -o table</code> lists the identity against <code>Cognitive Services OpenAI User</code>, and the scope column ends in the Azure OpenAI resource name rather than the resource group.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step W4 &mdash; Select Workload Identity in the wizard</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create the integration as in <a href="#api-key">Step A2</a>, then select <strong>Workload Identity</strong> on the <strong>Azure Authentication Mode</strong> control. The mode exposes two fields and no credential field.</p>
+    <table>
+      <thead>
+        <tr><th style="width:30%">Field</th><th style="width:26%">Placeholder</th><th>What to enter</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Azure Workload ClientID</td><td><code>Enter Workload ClientID</code></td><td>The <code>clientId</code> of the managed identity from Step W1, not its principal ID.</td></tr>
+        <tr><td>Azure Workload Tenant ID</td><td><code>Enter Workload Tenant ID</code></td><td>The <code>tenantId</code> from Step W1, which is the directory holding the identity.</td></tr>
+      </tbody>
+    </table>
+    <p>Enter the resource name and the deployment entries as in <a href="#api-key">Step A3</a>, then click <strong>Next: Choose Workspace</strong>.</p>
+    <p><em>The form with <code>Workload Identity</code> selected:</em></p>
+    <img src="../aigw-screenshots/aigw-int-azure-openai-auth-workload-identity.png" alt="Step 2 of the Add LLM Integration wizard for Azure OpenAI with the Azure Authentication Mode control set to Workload Identity, the rightmost of four cards reading Default, Managed, Azure Entra and Workload Identity. Two empty fields follow the control: Azure Workload ClientID with the placeholder Enter Workload ClientID, and Azure Workload Tenant ID with the placeholder Enter Workload Tenant ID. No secret field, token endpoint field or identity provider field appears anywhere on the form. Azure Resource Name follows with the placeholder Enter Azure Resource Name, then the Foundation Model block holding Deployment Name, Alias Name, API Version, a Select Azure Foundation Model dropdown and a checked Make it default model checkbox with Discard and Save buttons." loading="lazy">
+    <div class="callout callout-warning">
+      <div class="callout-title">Not verified in a tenant</div>
+      <p>The two fields and the absence of any secret field were read from the console. How the gateway obtains the workload token was not captured, so the issuer, subject and audience in Step W2 follow the standard Azure AD workload identity contract rather than an observed gateway request. Confirm the service account the gateway pods run under before creating the federated credential, and expect to adjust the subject string if the first call fails authentication.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration saves with two GUIDs entered and no secret anywhere on the form, and it appears on the <strong>Connected</strong> tab with the slug from Step A2. <a href="#first-call">The first model call</a> is what tests the federated credential.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Provision ──────────────────────────────────────────────── -->
+<h2 id="provision">Provision the integration and set the model allowlist</h2>
+
+<p>Steps 3 and 4 of the wizard behave the same for every provider, and <a href="../configuration/integrations.html">configuration chapter 9</a> covers them in full: which workspaces receive the integration, the budget and rate limit on each, and the allowlist that decides which models exist. One part of step 4 reads differently for Azure OpenAI, and it is the part that breaks first calls.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step P1 &mdash; Provision the integration to workspaces</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>On <strong>Workspace Provisioning</strong>, select the workspaces that should reach this Azure OpenAI resource.</li>
+      <li>Set a budget and a rate limit on each, following <a href="../configuration/integrations.html#workspaces">configuration chapter 9</a>.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Budget and rate limits cannot be edited once set</div>
+      <p>Chapter 9 records the minimums as $1 of cost and 100 tokens, and a rate limit of 0 disables the provider entirely. Decide the figures before entering them.</p>
+    </div>
+    <!-- screenshot-pending: aigw-int-workspace-provisioning.png | Step 3 of the wizard showing workspace selection with budget and rate limit fields, workspace names and tenant ID masked -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each selected workspace shows a budget and a rate limit, and the workspace the first call will be made from is on the list.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step P2 &mdash; Allowlist the deployments, not the models</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The allowlist is set on the integration and nowhere else, and it applies to every workspace the integration reaches. For Azure OpenAI the entries are the deployment names recorded in <a href="#prerequisites">Step 2</a>, because the deployment name is what a caller sends.</p>
+    <ol>
+      <li>On <strong>Model Provisioning</strong>, choose <strong>Allow Specific Models</strong> rather than <strong>Allow All Models</strong>.</li>
+      <li>Add one entry for each deployment that should be callable.</li>
+      <li>Count the entries against the Step 2 list.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Allow All behaves differently here</div>
+      <p>For a provider with a global catalog, <strong>Allow All Models</strong> admits models the provider releases in future. For Azure OpenAI the callable set is whatever the customer has deployed, so the same setting admits any deployment created on that resource later, by anyone with Contributor on it. Both are a cost control question and the allowlist is the answer to it.</p>
+    </div>
+    <!-- screenshot-pending: aigw-int-azure-openai-model-provisioning.png | Step 4 of the wizard listing the Azure OpenAI deployment entries as allowlisted models, deployment names left visible but resource name and tenant ID masked -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The allowlist entry count matches the Step 2 deployment count, and every entry is a deployment name rather than a model name such as <code>gpt-4o</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── First call ─────────────────────────────────────────────── -->
+<!-- shared:begin id="aigw-int-model-provisioning"
+     vars='{"providerName": "Azure OpenAI"}' -->
+<!-- Generated by sync-shared-content.js from docs/shared/snippets/aigw-int-model-provisioning.html. Do not edit between the markers; edit the snippet and re-run the script. -->
+<p>Step 4 of the wizard decides which models this integration exposes. The header reads <strong>Select Models to Provision</strong>, and the count beside <strong>Models</strong> is everything Azure OpenAI publishes through the gateway. A tenant capture showed 389. Workspaces see only what is enabled here, so this list is the allowlist.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Enable the approved models</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Use <strong>Search...</strong> to find each approved model by name.</li>
+      <li>Set the toggle on each model card to on. The toggle sits in the top right of the card.</li>
+      <li>Leave every other model off.</li>
+    </ol>
+    <p><strong>Select All</strong> and <strong>Deselect All</strong> sit above the list. On a list of several hundred models, start from <strong>Deselect All</strong> and add what was approved, rather than starting from everything and removing what was not.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">The expensive models are enabled by the same click as the cheap ones</div>
+      <p>Nothing in this list distinguishes a model that costs cents from one that costs dollars for the same prompt. Budgets and rate limits are set per workspace in step 3, so they cap spend without capping which model spends it. The allowlist is the only control that decides that, and it is set here and nowhere else.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every approved model shows an enabled toggle, and the count of enabled models matches the list the customer approved.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Decide what happens to models released later</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Below the model list is a toggle reading <strong>Automatically enable new models from this provider</strong>, described as making new models from the provider available on this integration. It is off by default.</p>
+    <p>Leaving it off means a model released next month is unavailable until someone enables it. Turning it on means that model is callable the day it ships, under the budgets already in place, with no review.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Off suits a governed tenant, on suits a lab</div>
+      <p>An organization that approves models through a review process wants this off, because the toggle quietly bypasses that process. A team that wants the newest model the day it lands wants it on. Record which was chosen and why, because the setting is invisible until an unexpected model appears in the logs.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The toggle reflects a decision somebody made, rather than the default nobody looked at.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Set per-model pricing, where the published rate is wrong</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each model card carries a <strong>Set Pricing</strong> button. It opens a drawer titled <strong>Update Base Model</strong> on the right of the page.</p>
+    <p>The drawer opens with <strong>Add custom pricing for this model?</strong> switched off, explained as using default public model pricing from the base model when nothing is specified, with fine tuned models using public fine tuned model pricing. Leave it off and the gateway costs the model at the published public rate.</p>
+    <p>Switch it on and the drawer accepts:</p>
+    <table>
+      <thead>
+        <tr><th style="width:26%">Field</th><th>What it takes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Input Cost</td><td>The rate charged for input tokens.</td></tr>
+        <tr><td>Output Cost</td><td>The rate charged for output tokens.</td></tr>
+        <tr><td>Cache Pricing</td><td>A JSON object with a <code>price</code> under <code>cache_write_input_token</code> and under <code>cache_read_input_token</code>. The field is prefilled with an example showing <code>3.75</code> and <code>0.3</code>.</td></tr>
+        <tr><td>Pricing Adjustments</td><td>A separate toggle, off by default, alongside the cost fields.</td></tr>
+        <tr><td>Custom Host (Optional)</td><td>An endpoint to route this model to, instead of the provider default. The placeholder reads <code>https://your-custom-endpoint.com</code>.</td></tr>
+        <tr><td>Custom Headers (Optional)</td><td>Header and value pairs, added with <strong>+ Add Header</strong> and removed with the bin icon beside each row.</td></tr>
+      </tbody>
+    </table>
+    <p>Close the drawer with <strong>Apply</strong>, or with <strong>Cancel</strong> to discard it.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Custom pricing changes the reported cost, not the invoice</div>
+      <p>These figures drive what the gateway reports in analytics and what it counts against a budget. The provider still bills its own rate. Entering a negotiated rate here makes internal reporting match the contract; entering a wrong number makes every budget and every cost report wrong in the same direction, and nothing in the console flags the discrepancy.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Custom Host and Custom Headers are per model</div>
+      <p>Both sit on the individual model rather than the integration, so two models under one integration can route to different upstreams and send different headers. A model-level header overrides an integration-level header of the same name.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each model that needed a negotiated rate shows custom pricing applied, and every model left alone still reports the public rate. A later test call produces a cost figure consistent with the rate entered here.</p>
+    </div>
+  </div>
+</div>
+
+<p><em>Step 4 with the Update Base Model drawer open on one model:</em></p>
+<img src="../aigw-screenshots/aigw-int-model-provisioning-pricing.png" alt="The Model Provisioning step of the Add LLM Integration wizard. The left pane is headed Select Models to Provision and shows a searchable list headed Models (389), with Select All and Deselect All links above cards for individual models, each card carrying a Set Pricing button and an enable toggle. Below the list a toggle reads Automatically enable new models from this provider, switched off. A drawer on the right titled Update Base Model shows an Add custom pricing for this model question switched off, then Input Cost, Output Cost, a Cache Pricing JSON box containing cache_write_input_token and cache_read_input_token prices, a Pricing Adjustments toggle, a Custom Host field and a Custom Headers field with an Add Header link. Cancel and Apply buttons sit at the bottom, and a Create Integration button sits at the bottom of the page behind the drawer." loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Create the integration</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Click <strong>Create Integration</strong> at the bottom of the page.</li>
+    </ol>
+    <p>This is the first point at which the gateway stores anything. Everything before it was a form.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration appears on the <strong>Connected</strong> tab of the Integrations page, carrying the name and slug you set in step 2. Saving proves the form was accepted. It does not prove the credential works, which is what the first model call tests.</p>
+    </div>
+  </div>
+</div>
+<!-- shared:end -->
+
+<h2 id="first-call">Make the first model call</h2>
+
+<p>One request exercises the resource name, the deployment entry, the API version, the credential, the role assignment, the allowlist and the workspace key together. Everything configured so far has been untested until this point, and on the identity paths the role assignment has had no opportunity to fail yet.</p>
+
+<p>Two values are needed. The gateway base URL is the address the gateway was given at deployment, and the <a href="../ai-gateway-client-apps.html">client applications guide</a> covers where applications get it. The API key is a workspace key from the gateway, not the Azure key.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step F1 &mdash; Call a deployment with curl</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Name the deployment in the <code>model</code> field, prefixed with the integration slug. The example uses the slug <code>azure-openai-prod</code> and a deployment named <code>chat-prod</code>.</p>
+    <div class="code-block">
+      <pre><code>export GATEWAY_BASE_URL="https://&lt;your-gateway-address&gt;"
+export PORTKEY_API_KEY="&lt;workspace-api-key&gt;"
+
+curl "$GATEWAY_BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $PORTKEY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "@azure-openai-prod/chat-prod",
+    "messages": [{"role": "user", "content": "Reply with the single word ready."}]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Read the result against this table before changing any configuration. Each outcome points at one earlier decision.</p>
+    <table>
+      <thead>
+        <tr><th style="width:36%">Outcome</th><th>What it means</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>A model response</td><td>The resource, the deployment, the API version, the credential and the role assignment all work.</td></tr>
+        <tr><td>Model not found or not permitted</td><td>The <code>model</code> value names a model rather than a deployment, or the deployment is missing from the allowlist in Step P2, or the integration is not provisioned to this workspace.</td></tr>
+        <tr><td>Authentication rejected at the gateway</td><td>The workspace API key is wrong or lacks the completions permission. This failure happens before Azure is contacted.</td></tr>
+        <tr><td>Azure returns 401</td><td>In <code>Default</code> mode, the key is wrong or belongs to a different resource. In <code>Azure Entra</code> mode, the client ID, secret or tenant ID is wrong, or the secret has expired. In the two keyless modes, the identity or the federated credential is wrong.</td></tr>
+        <tr><td>Azure returns 403</td><td>The credential authenticated and has no permission. The <code>Cognitive Services OpenAI User</code> assignment is missing, is scoped to the wrong resource, or targets the wrong principal object.</td></tr>
+        <tr><td>Azure returns 404</td><td>The resource name is wrong, or the deployment name does not exist on that resource.</td></tr>
+        <tr><td>Azure rejects the API version</td><td>The <code>api-version</code> on the deployment entry is not one this resource accepts.</td></tr>
+        <tr><td>HTTP <code>446</code></td><td>A guardrail denied the request. The integration is working and the content failed a check.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A model response comes back, made with a workspace key, naming <code>@&lt;slug&gt;/&lt;deployment-name&gt;</code>. The request appears in the gateway logs with a non-zero token count and a non-zero cost.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step F2 &mdash; Call the same deployment from the OpenAI Python SDK</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Azure OpenAI reaches the gateway through the OpenAI SDK rather than the Azure OpenAI SDK, because the application now talks to the gateway and the gateway talks to Azure. The application sends no resource name, no API version and no Azure credential.</p>
+    <div class="code-block">
+      <pre><code>import os
+from openai import OpenAI
+
+client = OpenAI(
+    base_url=f"{os.environ['GATEWAY_BASE_URL']}/v1",
+    api_key=os.environ["PORTKEY_API_KEY"],
+)
+
+response = client.chat.completions.create(
+    model="@azure-openai-prod/chat-prod",
+    messages=[{"role": "user", "content": "Reply with the single word ready."}],
+)
+
+print(response.choices[0].message.content)
+print(response.usage)</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>An application migrating off a direct Azure OpenAI connection changes three values: the base URL becomes the gateway address with <code>/v1</code>, the API key becomes the workspace key, and the model becomes <code>@&lt;slug&gt;/&lt;deployment-name&gt;</code>. The request body and the response body do not change.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Clients that send a bare model name</div>
+      <p>Some clients cannot put a slug in the model field and send the deployment name on its own. Those clients need the header <code>x-portkey-provider: @&lt;slug&gt;</code> as a fourth value. The <a href="../ai-gateway-client-apps.html">client applications guide</a> lists which ones.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The script prints the model's reply and a usage object carrying prompt and completion token counts. A usage object of <code>None</code> means the response arrived without usage data, which <a href="#first-call">Step F3</a> addresses.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step F3 &mdash; Confirm a streaming call still records tokens</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Azure OpenAI is OpenAI-compatible, which means it inherits the streaming behavior that silently zeroes out cost tracking. With <code>stream: true</code> and nothing else, the provider sends no usage data, the gateway records zero tokens and zero cost, and the budget set in Step P1 never sees the money. The calls succeed, the dashboards look healthy, and the spend is invisible.</p>
+    <p>The caller has to send <code>stream_options: {"include_usage": true}</code> alongside <code>stream: true</code>.</p>
+    <div class="code-block">
+      <pre><code>curl "$GATEWAY_BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $PORTKEY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -N \
+  -d '{
+    "model": "@azure-openai-prod/chat-prod",
+    "stream": true,
+    "stream_options": {"include_usage": true},
+    "messages": [{"role": "user", "content": "Name three cities."}]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="code-block">
+      <pre><code>stream = client.chat.completions.create(
+    model="@azure-openai-prod/chat-prod",
+    messages=[{"role": "user", "content": "Name three cities."}],
+    stream=True,
+    stream_options={"include_usage": True},
+)
+
+for chunk in stream:
+    if chunk.usage is not None:
+        print(chunk.usage)</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">This is an application change, not a gateway setting</div>
+      <p>No switch in the integration fixes it. Every application that streams has to send the option, so the list of applications built during the engagement is also the list of code changes this requires. Raise it with the application owners at the same time as the three connection values, because a customer who finds out later has already lost the cost record for everything streamed in between.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The final chunk of the stream carries a <code>usage</code> object with non-zero token counts, and the request appears in the gateway logs with a non-zero cost rather than zero.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Troubleshooting ────────────────────────────────────────── -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>The call returns a model-not-found error and the model exists in Azure</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The request named the model rather than the deployment. Azure OpenAI addresses a deployment, and the deployment name is whatever the person who deployed the model chose.</p>
+    <ol>
+      <li>Read the <code>model</code> value the caller sent. A value of <code>@azure-openai-prod/gpt-4o</code> is a model name and fails even when <code>gpt-4o</code> is deployed.</li>
+      <li>Compare it against the deployment list from <a href="#prerequisites">Step 2</a>.</li>
+      <li>Check the allowlist from <a href="#provision">Step P2</a> contains that deployment.</li>
+      <li>Check the integration is provisioned to the workspace the key belongs to.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The same call with the deployment name substituted returns a model response, and the deployment appears in the allowlist.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Azure returns 403 and the credential is correct</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A 403 after a successful authentication is a role assignment problem. The credential proved who it is and holds no permission to run inference on this resource. Three causes account for most of them.</p>
+    <table>
+      <thead>
+        <tr><th style="width:34%">Cause</th><th>Check</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Assignment targets the wrong object</td><td>The role was assigned to the app registration object ID instead of the service principal object ID. Re-read it with <code>az ad sp show --id &lt;client-id&gt; --query id -o tsv</code> and compare.</td></tr>
+        <tr><td>Assignment is on the wrong scope</td><td>The scope string must end in the Azure OpenAI resource. An assignment on a different resource in the same group looks correct in a list view.</td></tr>
+        <tr><td>Assignment has not applied yet</td><td>Wait and retry before changing anything. Azure role assignments are not always effective the moment the portal confirms them.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-danger">
+      <div class="callout-title">Do not widen the role to clear a 403</div>
+      <p>Assigning Contributor makes the call succeed and gives the credential the ability to read the resource keys and change deployments. The original problem is still there, now hidden behind a permission the integration was supposed to avoid. Fix the principal or the scope.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p><code>az role assignment list --scope "$AOAI_RESOURCE_ID" -o table</code> shows one <code>Cognitive Services OpenAI User</code> row for the expected principal, and the call from <a href="#first-call">Step F1</a> returns a model response.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Azure returns 401 on an integration that worked yesterday</span>
+  </div>
+  <div class="collapsible-body">
+    <p>In <code>Azure Entra</code> mode the usual cause is an expired client secret. Entra sets an expiry when the secret is created and nothing in Strata Cloud Manager reports it approaching.</p>
+    <ol>
+      <li>Open the app registration and check <strong>Certificates &amp; secrets</strong> for the expiry date of the secret in use.</li>
+      <li>Create a new secret, store it in the vault, and update the vault secret the integration references.</li>
+      <li>Delete the expired secret so the next engineer does not read its expiry as current.</li>
+      <li>Record the new expiry in the customer's renewal tracker.</li>
+    </ol>
+    <p>In <code>Default</code> mode, check whether the resource key was regenerated. Regenerating a key invalidates it everywhere at once, and the gateway is one of several consumers that will have stopped at the same moment.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The call from <a href="#first-call">Step F1</a> returns a model response, and the renewal tracker holds the new expiry date with a named owner.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>The managed identity option does not work, or is not offered</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Confirm the deployment model first. A SaaS gateway cannot use a managed identity, and no configuration on either side changes that.</p>
+    <ol>
+      <li>Check the gateway the integration is used by, using <a href="#prerequisites">Step 3</a>.</li>
+      <li>For a Hybrid data plane, confirm the identity is attached to the compute hosting the gateway rather than to a different resource in the same group.</li>
+      <li>For a host carrying several user-assigned identities, confirm the client ID supplied in <a href="#managed-identity">Step M4</a> is the client ID and not the principal ID.</li>
+      <li>For AKS, confirm the workload identity binding reaches the gateway's service account, following the <a href="../kubernetes-deployment.html#identity">identity section of the Kubernetes deployment guide</a>. An AKS gateway usually belongs in the <a href="#workload-identity"><code>Workload Identity</code> mode</a> instead, where the subject string in Step W2 has to match the running service account exactly.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Either the call from <a href="#first-call">Step F1</a> returns a model response with no secret stored anywhere, or the customer has been told the mode is unavailable on a SaaS gateway and the <a href="#service-principal"><code>Azure Entra</code> mode</a> has been agreed instead.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Calls succeed and every cost figure reads zero</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The callers are streaming without <code>stream_options</code>. The gateway records what the provider sends, and a streamed OpenAI-compatible response carries no usage data unless the caller asks for it.</p>
+    <ol>
+      <li>Check a zero-cost request in the gateway logs for <code>stream: true</code> in its body.</li>
+      <li>Reproduce it with <a href="#first-call">Step F3</a>, first without the option and then with it.</li>
+      <li>Give the application owners the one-line change and the list of applications that stream.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">The historical records cannot be recovered</div>
+      <p>Requests already recorded at zero tokens stay at zero. The budget consumed nothing for them and the cost reporting for that period understates the spend permanently. Compare the Azure resource's own billing for the period against the gateway's figure so the customer knows the size of the gap.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A streamed call now records a non-zero token count and a non-zero cost in the gateway logs, and the gateway's daily cost figure tracks the Azure resource's own billing.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>One deployment works and another returns an error</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The deployment entries carry an API version each, so one wrong value affects one deployment. A feature such as structured output or tool calling that works on one deployment and fails on another is the same cause.</p>
+    <ol>
+      <li>Compare the <code>api-version</code> on the failing entry against the version a working application sends to that deployment.</li>
+      <li>Check the deployment name for a typo. A near-miss name returns a 404 from Azure rather than a validation error from the gateway.</li>
+      <li>Check the deployment still exists on the resource with <code>az cognitiveservices account deployment list</code>. A deployment deleted in Azure leaves a working entry in the integration.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each deployment in the allowlist returns a model response to the call in <a href="#first-call">Step F1</a> with its own name substituted.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Gaps ───────────────────────────────────────────────────── -->
+<h2 id="gaps">Not yet verified in a tenant</h2>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Not verified in a tenant</div>
+  <p>The Azure OpenAI details form was captured in a tenant on 2026-11-17 with each of the four authentication modes selected in turn, so the field labels, placeholders and field order on this page are observed rather than inferred. Four details were not opened and stay unresolved. Resolve each one by working the form in the customer's tenant and recording what it does.</p>
+</div>
+
+<ul>
+  <li><strong>The contents of Advanced Options</strong> &mdash; the section is collapsed in every capture, for every provider. Whatever the Portkey documentation calls <strong>Endpoint Type</strong>, with its Public and Private values, is a candidate for what sits inside, because the field appears nowhere else on the form.</li>
+  <li><strong>What Alias Name does</strong> &mdash; the field is on every Foundation Model entry and no published source mentions it. Set one, then call the integration with the alias in place of the deployment name and record whether the call resolves.</li>
+  <li><strong>What Use Entra Federated Authentication changes</strong> &mdash; the checkbox is unchecked by default in the <code>Azure Entra</code> mode and was never ticked. Tick it and record which fields appear, disappear or change their placeholder.</li>
+  <li><strong>Secret Ref is absent on this tenant</strong> &mdash; no Secret Ref control appeared on any credential field, and the admin panel had no Secret References area. Secret references need gateway 2.2.4 or higher, so confirm the version on the customer tenant rather than assuming either way.</li>
+</ul>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

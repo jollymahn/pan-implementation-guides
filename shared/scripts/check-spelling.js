@@ -245,7 +245,13 @@ function scanFile(absPath) {
   // Direction 2: a product term that has been Americanised.
   for (const p of ALLOWED_PHRASES) {
     if (p.reverse === false || !inScope(p, rel)) continue;
-    const re = new RegExp(escapeRe(p.us), 'gi');
+    /* Word-bounded, so a vendor identifier that merely contains the US form is
+     * not reported. Portkey's own parameter is organisation_id, and the same
+     * Admin API body carries anthropic_organization_id for Anthropic's
+     * organization. An unbounded match flags the second as a misspelling of the
+     * first. Underscore is a word character, so the boundaries separate them
+     * while still catching a bare organization_id or ORGANIZATION_ID. */
+    const re = new RegExp(`\\b${escapeRe(p.us)}\\b`, 'gi');
     let n;
     while ((n = re.exec(raw)) !== null) {
       hits.push({

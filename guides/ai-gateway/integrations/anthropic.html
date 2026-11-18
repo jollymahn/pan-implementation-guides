@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Anthropic Integration | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#scope" data-section="scope">What this covers</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+    <a href="#choose" data-section="choose">Choose a path</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Authentication paths</div>
+    <a href="#api-key" data-section="api-key">API key</a>
+    <a href="#wif" data-section="wif">Workload Identity Federation</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Finish</div>
+    <a href="#provision" data-section="provision">Provision and allowlist</a>
+    <a href="#first-call" data-section="first-call">First model call</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#gaps" data-section="gaps">Not yet verified</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Provider Integrations</a>
+  <span class="sep">|</span>
+  Anthropic
+</div>
+
+<div class="article">
+
+<h1>Anthropic Integration</h1>
+<p class="subtitle">Connecting the gateway to Anthropic: the Claude Console API key and the federation path through a federation issuer and a federation rule, including the two Anthropic settings that reject an otherwise correct configuration</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">All Provider Integrations</a>
+  <a href="identity-and-clients.html" class="cloud-link">Identity and Clients</a>
+  <a href="openai.html" class="cloud-link">OpenAI</a>
+  <a href="anthropic.html" class="cloud-link">Anthropic</a>
+  <a href="azure-openai.html" class="cloud-link">Azure OpenAI</a>
+  <a href="azure-foundry.html" class="cloud-link">Azure Foundry</a>
+  <a href="bedrock.html" class="cloud-link">AWS Bedrock</a>
+</div>
+
+<!-- ── Scope ──────────────────────────────────────────────────── -->
+<h2 id="scope">What this covers</h2>
+
+<p>This page takes Anthropic through the Add LLM Integration wizard and out the other side to a verified model call. It covers the credential each authentication path needs, where that credential comes from on the Anthropic side, what the gateway asks for, and the two client-side details that decide whether the first Anthropic request succeeds.</p>
+
+<p>Anthropic's federation path differs from OpenAI's in both shape and failure mode. OpenAI exchanges a subject token against a Workload Identity Provider and a service account mapping. Anthropic presents a JWT bearer assertion against a federation issuer and a federation rule, and two settings on the Anthropic side reject a configuration that is correct everywhere else. Most of this page is that path.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Relationship to the configuration chapter set</div>
+  <p><a href="../configuration/integrations.html">Chapter 9 of the configuration set</a> owns everything that is the same for every provider: the three tabs on the Integrations page, the slug convention, the model allowlist, workspace provisioning, and budget and rate limits. Read it once. This page covers only what is specific to Anthropic, and hands the reader back to chapter 9 at steps 3 and 4 of the wizard.</p>
+  <p>The <a href="../ai-gateway-model-prerequisites.html#anthropic">model provider prerequisites page</a> is the pre-engagement checklist for what to ask the customer to collect. This page is the session itself.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Where the wizard detail comes from</div>
+  <p>Strata Cloud Manager was captured for Anthropic on 2026-11-17, so the control name, the two authentication options and every field label on this page are read from the product. The Claude Console steps and the Admin API field names come from Anthropic and Portkey documentation and were not captured. <a href="#gaps">Not yet verified in a tenant</a> lists what is still open.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<figure class="diagram">
+  <img src="../diagrams/aigw-anthropic.svg" alt="Architecture of the AI Gateway fronting Anthropic. The application sends a base URL with no slash v1, a gateway key and an at-slug model reference. The gateway authenticates the key, resolves the slug, checks the allowlist, budget and guardrails, then strips the gateway key and attaches the Anthropic credential before calling the Anthropic messages endpoint. A panel shows the two credential choices, an API key or Workload Identity Federation which stores no Anthropic key at all. Further panels cover the two Anthropic settings that reject a correct federation configuration, the maximum JWT lifetime for Entra and JTI replay protection for Okta, the distinction between the Anthropic API and Claude.ai, and the two meters that run at once." loading="lazy">
+  <figcaption>The Anthropic path end to end, with the two credential choices and the two federation settings that silently reject a correct configuration.</figcaption>
+</figure>
+
+<h2 id="prerequisites">Prerequisites</h2>
+
+<p>Two sets of prerequisites apply: what the gateway needs before any integration can be created, and what Anthropic needs for the path you chose.</p>
+
+<ul>
+  <li><strong>Gateway side</strong> &mdash; an AI Gateway organization in Strata Cloud Manager, an administrator who can create organization-level integrations, at least one workspace holding an API key, and the list of models each team is approved to use. <a href="../configuration/integrations.html#prerequisites">Chapter 9 prerequisites</a> has the full list.</li>
+  <li><strong>Vault, if you use one</strong> &mdash; a secret reference created in <a href="../configuration/secret-references.html">configuration chapter 3</a>, so the credential field can point at your vault instead of storing the value in the gateway.</li>
+  <li><strong>Anthropic side</strong> &mdash; the table below, by path.</li>
+</ul>
+
+<table>
+  <thead>
+    <tr><th style="width:24%">Path</th><th>Anthropic side</th><th style="width:34%">Your side</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>API key</td>
+      <td>A user who can create an API key in the Claude Console for the organization and workspace the gateway should use.</td>
+      <td>Somewhere to hold the key. A vault reference is preferable to pasting the value.</td>
+    </tr>
+    <tr>
+      <td>Workload Identity Federation</td>
+      <td>An Anthropic <strong>organization admin</strong>, a service account, a federation issuer, and a federation rule.</td>
+      <td>An OIDC identity provider that meets the four requirements below, plus a client application and secret inside it.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Federation needs an Anthropic organization admin in the room</div>
+  <p>Workload identity is configured in the Claude Console under organization administration, or through the <a href="https://platform.claude.com/docs/en/api/administration-api" target="_blank" rel="noopener">Anthropic Admin API</a>. A workspace member cannot create a federation issuer or a federation rule. Book the organization admin for the session, because the gateway fields cannot be filled until the federation rule exists and its ID has been copied out.</p>
+</div>
+
+<p>The identity provider used for federation has to meet four requirements, and an identity provider that fails any of them cannot be used for this path:</p>
+
+<ul>
+  <li>It supports the <code>client_credentials</code> grant with <code>client_secret_post</code>.</li>
+  <li>It returns a <strong>signed JWT</strong> access token rather than an opaque token.</li>
+  <li>It publishes OIDC discovery at <code>/.well-known/openid-configuration</code>.</li>
+  <li>It publishes a JWKS on a public HTTPS URL, or Anthropic accepts an uploaded or linked JWKS instead.</li>
+</ul>
+
+<!-- ── Choose ─────────────────────────────────────────────────── -->
+<h2 id="choose">Choose a path</h2>
+
+<p>The Anthropic tile offers two authentication paths and no others. Its <strong>Authentication Type</strong> control holds exactly two options, <strong>API Key</strong> and <strong>Workload Identity Federation</strong>, with API Key selected by default. The OpenAI tile's third option, <strong>OAuth Client Credentials</strong>, does not appear here, so a design that assumes plain client credentials against Anthropic has to move to federation. The choice between the two turns on what the gateway stores, what rotation costs, and how fast access can be withdrawn.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:22%">Path</th><th>What the gateway stores</th><th style="width:24%">Rotation</th><th style="width:22%">Revocation</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>API key</td>
+      <td>The Anthropic key, encrypted, or a reference to it in your vault.</td>
+      <td>Manual, on whatever schedule you enforce. A vault reference makes rotation a vault operation.</td>
+      <td>Delete the key in the Claude Console.</td>
+    </tr>
+    <tr>
+      <td>Workload Identity Federation</td>
+      <td>A client ID and secret for your own identity provider. No Anthropic key exists.</td>
+      <td>The Anthropic token is short-lived and refreshed automatically. Only the identity provider secret needs rotating.</td>
+      <td>Disable the federation rule. Cached tokens expire within 15 minutes.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">The API key path remains a defensible choice</div>
+  <p>Federation removes the stored Anthropic key, and it adds an identity provider, a federation issuer, a federation rule and a second token exchange to the list of things that can break. A customer without an existing OIDC identity provider will spend the first session building one. Where the key can live in a vault and rotate on a schedule, the API key path reaches a reasonable position with far less to maintain. The comparison across all four providers is on the <a href="index.html#decide">provider integrations hub</a>.</p>
+</div>
+
+<!-- ── API key ────────────────────────────────────────────────── -->
+<h2 id="api-key">API key</h2>
+
+<p>One key from the Claude Console, held in a vault where possible, pasted into the wizard where not. This is the shortest path to a working integration and the one most engagements start with.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.1 &mdash; Create the key in the Claude Console</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The key carries the organization and workspace it was created under, so create it where the spend should land rather than wherever the first admin happens to be working.</p>
+    <ol>
+      <li>Sign in to the Claude Console with an account that can create API keys for the target organization.</li>
+      <li>Switch to the workspace the gateway should use before creating the key.</li>
+      <li>Create an API key and give it a name that identifies the gateway, for example <code>prisma-airs-ai-gateway</code>.</li>
+      <li>Copy the value at the moment the console shows it.</li>
+    </ol>
+    <!-- screenshot-pending: aigw-int-anthropic-console-api-key.png | The Claude Console API keys page with the new key row, workspace name and key value masked, organization ID masked -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Claude Console lists the new key under the intended workspace, and the copied value is held somewhere you can paste from once, which is the vault entry in the next step or the wizard field in the step after it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.2 &mdash; Put the key in a vault first</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A referenced credential rotates in the vault with no change in the gateway. A pasted credential has to be re-entered on every integration that uses it at every rotation.</p>
+    <ol>
+      <li>Store the key in the vault backend configured in <a href="../configuration/secret-references.html">configuration chapter 3</a>.</li>
+      <li>Create or confirm the secret reference that points at it.</li>
+      <li>If the secret holds several values, note which key within it holds the Anthropic value, because the wizard asks for that separately.</li>
+    </ol>
+    <p>Skip this step only when no vault is in scope for the engagement. The credential field in the wizard accepts a pasted value as the alternative.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The secret reference appears in the gateway's reference picker. Resolution is not proven yet: that is the check chapter 3 defers, and the <a href="#first-call">first model call</a> is where it reports.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.3 &mdash; Create the integration in Strata Cloud Manager</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Go to <strong>AI Security</strong>, then <strong>AI Gateway</strong>, then <strong>Integrations</strong>, then <strong>LLM Integrations</strong>.</li>
+      <li>Confirm the workspace selector at the top left shows the workspace you intend to work in.</li>
+      <li>Click <strong>Add LLM Integration</strong>.</li>
+      <li>On <strong>Select A Provider</strong>, choose the <strong>Anthropic</strong> row, described as <code>Anthropic offers models for text generation like Claude &amp; more.</code></li>
+      <li>Click <strong>Next: Set Details</strong>.</li>
+      <li>Set <strong>Name</strong> to a human-readable label, for example <code>Anthropic Production</code>.</li>
+      <li>Set <strong>Slug</strong> to the convention you have already written down, for example <code>anthropic-prod</code>.</li>
+      <li>Leave <strong>Authentication Type</strong> on <strong>API Key</strong>, which is the selected card of the two the Anthropic tile offers.</li>
+      <li>Either switch the credential field to <strong>Secret Ref</strong> and select the reference from the previous step, or paste the key value.</li>
+      <li>Click <strong>Next: Choose Workspace</strong>.</li>
+    </ol>
+
+    <p><em>Step 1 should look like this, with the radio button on the Anthropic row filled in:</em></p>
+    <img src="../aigw-screenshots/aigw-int-anthropic-provider-selected.png" alt="Step 1 of the Add LLM Integration wizard, headed Select the LLM Provider. A searchable table reads Total Available Providers (82). The Anthropic row sits directly below Open AI, its radio button is selected, and its description reads Anthropic offers models for text generation like Claude and more. Rows below it are Google, Azure OpenAI, Azure Foundry, Bedrock, Bedrock Mantle, Claude Platform on AWS, Vertex AI, X AI, Meta AI and Fireworks AI. The numbered rail on the left shows Select A Provider, Integration Details, Workspace Provisioning and Model Provisioning, with step 1 active. A workspace selector at the top left reads Default Workspace." loading="lazy">
+
+    <p><em>Step 2 should look like this once API Key is selected:</em></p>
+    <img src="../aigw-screenshots/aigw-int-anthropic-auth-apikey.png" alt="Step 2 of the wizard, headed Basic Integration Details, with the Anthropic tile named at the top. The form shows Name marked required, Short Description (Optional) and Slug, all with the placeholder Enter. Below them the Authentication Type control holds two side-by-side radio cards, API Key and Workload Identity Federation, with API Key selected. A single API Key field follows, placeholder Enter API Key, with a Grab API Key link to the right of its label. Below that sit a collapsed Advanced Options section and a Pricing Adjustments toggle that is switched off. No Optional Fields section appears." loading="lazy">
+
+    <div class="callout callout-danger">
+      <div class="callout-title">The slug ends up in application code</div>
+      <p>Callers name the integration by slug, so it is effectively a public interface. Changing it later means changing every application and every configuration that references it. The convention that holds up is provider and environment, lowercase and hyphenated: <code>anthropic-prod</code>, <code>anthropic-dev</code>.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The wizard advances to <strong>Workspace Provisioning</strong> without a validation error on the credential field, and the slug matches the convention in use across the other integrations.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.4 &mdash; Record the two client details Anthropic callers need</span>
+  </div>
+  <div class="collapsible-body">
+    <p>These two apply to every Anthropic integration regardless of authentication path, and both of them break the first call rather than the configuration. Record them now, while the slug is in front of you, and hand them to whoever owns the calling application.</p>
+
+    <table>
+      <thead>
+        <tr><th style="width:22%">Detail</th><th>What to tell the application owner</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Base URL</td>
+          <td>Do <strong>not</strong> add <code>/v1</code> to the gateway address. The Anthropic SDK adds its own path, so an address ending in <code>/v1</code> produces a doubled path and the gateway answers <code>404</code>.</td>
+        </tr>
+        <tr>
+          <td>Provider header</td>
+          <td>A client that sends a bare model name needs <code>x-portkey-provider</code> set to <code>@&lt;integration-slug&gt;</code>. Claude Code is one such client. Without the header the gateway answers <code>400</code> and names <code>x-portkey-config</code> or <code>x-portkey-provider</code> in the response.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>A client that can name the model in full does not need the header, because the model reference <code>@&lt;slug&gt;/&lt;model-name&gt;</code> already identifies the integration. The <a href="../ai-gateway-client-apps.html#claude-code">client applications guide</a> covers Claude Code and the other tools in detail.</p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The gateway base URL you are handing out has no <code>/v1</code> suffix, and the application owner has either the <code>x-portkey-provider</code> header value or the full <code>@&lt;slug&gt;/&lt;model-name&gt;</code> reference written down.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── WIF ────────────────────────────────────────────────────── -->
+<h2 id="wif">Workload Identity Federation</h2>
+
+<p>Federation removes the stored Anthropic credential. Instead of holding a key, the gateway proves its identity to your identity provider, then presents that proof to Anthropic and receives a short-lived token for an Anthropic service account.</p>
+
+<p>The exchange is two hops, not one. Both hops have to be configured, and each one fails with its own error.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:10%">Hop</th><th style="width:28%">From the gateway to</th><th>What happens</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Your identity provider token endpoint</td>
+      <td>A <code>client_credentials</code> request returns a signed JWT access token for the gateway's client application.</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td><code>https://api.anthropic.com/v1/oauth/token</code></td>
+      <td>The gateway presents that JWT as an RFC 7523 JWT bearer <code>assertion</code>. Anthropic verifies the signature against the issuer's keys, matches <code>iss</code>, <code>aud</code> and <code>sub</code> against a federation rule, and returns an access token for the mapped service account.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Anthropic and OpenAI do not use the same grant</div>
+  <p>OpenAI uses RFC 8693 token exchange against <code>https://auth.openai.com/oauth/token</code>, and its provider-side objects are a Workload Identity Provider and a service account mapping, surfaced in the wizard as an Identity Provider ID and a Service Account ID. Anthropic uses the RFC 7523 JWT bearer grant, and its provider-side objects are a federation issuer and a federation rule, surfaced as a Federation Rule ID, an Organization ID, a Service Account ID and an optional Workspace ID. The identity provider work is shared between the two. Nothing after it is.</p>
+</div>
+
+<p>Both tokens are cached, and provider tokens are cached for no more than 15 minutes. That figure is also the revocation window: disabling the federation rule takes effect within 15 minutes.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>W.1 &mdash; Confirm the identity provider can issue the right kind of token</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Anthropic verifies a signature against keys it fetches from the issuer, so an identity provider that returns an opaque token or hides its discovery document cannot be used. Check this before building anything, because the alternative is discovering it after the federation rule is already written.</p>
+
+    <div class="code-block">
+      <pre><code>curl -s &lt;issuer-url&gt;/.well-known/openid-configuration \
+  | jq '{issuer, token_endpoint, jwks_uri, grant_types_supported}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <ol>
+      <li>Run the command against the issuer you intend to use.</li>
+      <li>Confirm <code>grant_types_supported</code> includes <code>client_credentials</code>.</li>
+      <li>Confirm <code>jwks_uri</code> is a public HTTPS URL that resolves from outside your network.</li>
+      <li>Note the <code>issuer</code> value exactly as printed. Anthropic matches on that string.</li>
+    </ol>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The discovery document returns JSON, <code>client_credentials</code> appears in <code>grant_types_supported</code>, and fetching the <code>jwks_uri</code> returns a key set.</p>
+    </div>
+  </div>
+</div>
+
+<p>The identity provider build differs between Microsoft Entra ID and Okta. Pick the tab for the customer's identity provider; the choice persists across this page and across the other provider guides in this set.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which tab applies</div>
+  <ul>
+    <li><strong>Microsoft Entra ID</strong> &mdash; two app registrations, one acting as the audience and one as the gateway's identity.</li>
+    <li><strong>Okta</strong> &mdash; a custom authorization server plus an API Services application.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="idp">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="entra">W.2A &middot; Microsoft Entra ID</button>
+    <button class="mgmt-tab" data-plane="okta">W.2B &middot; Okta</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="entra">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>W.2 &mdash; Register the two Entra applications</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Entra needs two app registrations for this pattern. The API app exists to be the audience of the token. The client app is the gateway's identity and holds the secret.</p>
+
+        <p>Create the API app:</p>
+        <ol>
+          <li>Register an application named <code>portkey-wif-api</code>.</li>
+          <li>Under <strong>Expose an API</strong>, set the Application ID URI to <code>api://&lt;api-app-client-id&gt;</code>.</li>
+          <li>Open the manifest and set <code>requestedAccessTokenVersion</code> to <code>2</code>. In the legacy manifest the same property is named <code>accessTokenAcceptedVersion</code>.</li>
+        </ol>
+
+        <p>Create the client app:</p>
+        <ol>
+          <li>Register a second application named <code>portkey-wif-client</code>.</li>
+          <li>Under <strong>Certificates &amp; secrets</strong>, create a client secret and copy the value.</li>
+          <li>Optionally add an app role on <code>portkey-wif-api</code> with Allowed member types set to <strong>Applications</strong>, grant it to <code>portkey-wif-client</code> under <strong>API permissions</strong>, then grant admin consent.</li>
+        </ol>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">Token version 2 is what makes the issuer stable</div>
+          <p>With <code>requestedAccessTokenVersion</code> set to <code>2</code>, Entra issues v2 tokens whose <code>iss</code> is <code>https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0</code>. That is the string registered as the Anthropic federation issuer. Leaving the default produces a different issuer and the federation rule never matches.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Both app registrations exist, <code>portkey-wif-api</code> shows an Application ID URI of <code>api://&lt;api-app-client-id&gt;</code>, its manifest shows <code>2</code>, and the client secret value is copied into the vault or the secret manager you are using.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>W.3 &mdash; Record the Entra values the gateway and Anthropic need</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Five values go into the gateway, and three claims go into the Anthropic federation rule. Write all eight down before moving on.</p>
+
+        <p>Gateway fields:</p>
+        <table>
+          <thead>
+            <tr><th style="width:26%">Gateway field</th><th>Entra value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Token Endpoint</td><td><code>https://login.microsoftonline.com/&lt;tenant-id&gt;/oauth2/v2.0/token</code></td></tr>
+            <tr><td>Client ID</td><td>Client ID of <code>portkey-wif-client</code></td></tr>
+            <tr><td>Client Secret</td><td>The secret value created in the previous step</td></tr>
+            <tr><td>Scope</td><td><code>api://&lt;api-app-client-id&gt;/.default</code></td></tr>
+            <tr><td>Audience</td><td>Leave empty. Entra does not need the <code>audience</code> form parameter.</td></tr>
+          </tbody>
+        </table>
+
+        <p>Resulting token claims, which the Anthropic side matches on:</p>
+        <table>
+          <thead>
+            <tr><th style="width:16%">Claim</th><th>Value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>iss</code></td><td><code>https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0</code></td></tr>
+            <tr><td><code>aud</code></td><td>Client ID of <code>portkey-wif-api</code>, a GUID</td></tr>
+            <tr><td><code>sub</code></td><td>Object ID of the <code>portkey-wif-client</code> <strong>service principal</strong></td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout callout-danger">
+          <div class="callout-title">The sub claim is the service principal object ID, not the app registration object ID</div>
+          <p>Find it under <strong>Enterprise applications</strong>, not under <strong>App registrations</strong>. The two objects have different object IDs, both are visible in the portal, and using the app registration value produces a federation rule that never matches a real token. This is the most common Entra mistake on this path, and <a href="#wif">W.4</a> is designed to catch it before the Anthropic configuration is written.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>All five gateway values and all three claim values are written down, and the <code>sub</code> value was copied from the Enterprise applications blade.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mgmt-panel" data-plane="okta">
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>W.2 &mdash; Create the Okta authorization server and the client application</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Client credentials with custom scopes require a custom authorization server. The Okta org authorization server does not support them, so an attempt to use it fails at the scope rather than at the credential.</p>
+
+        <p>Create or configure the authorization server:</p>
+        <ol>
+          <li>Go to <strong>Security</strong>, then <strong>API</strong>, then <strong>Authorization Servers</strong>.</li>
+          <li>Use the <code>default</code> server or create one named <code>portkey-wif</code>.</li>
+          <li>Set its Audience, for example <code>api://portkey-wif</code>.</li>
+          <li>Add a scope, for example <code>portkey.wif</code>.</li>
+          <li>Under <strong>Access Policies</strong>, add a policy assigned to the client application with a rule that allows the Client Credentials grant and that scope.</li>
+        </ol>
+
+        <p>Create the client application:</p>
+        <ol>
+          <li>Go to <strong>Applications</strong>, then <strong>Create App Integration</strong>, then <strong>API Services</strong>.</li>
+          <li>Name it <code>portkey-wif-client</code>.</li>
+          <li>Use client secret authentication so the application accepts <code>client_secret_post</code>, and copy the secret.</li>
+        </ol>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">The access policy is what grants the scope</div>
+          <p>An authorization server with the scope defined but no policy rule allowing it to the client application returns <code>invalid_scope</code> on the first token request. Assign the policy to the application explicitly rather than relying on a default rule.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The authorization server lists the scope, its access policy names <code>portkey-wif-client</code> and allows the Client Credentials grant, and the API Services application exists with its client secret copied into the vault or secret manager you are using.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>W.3 &mdash; Record the Okta values the gateway and Anthropic need</span>
+      </div>
+      <div class="collapsible-body">
+        <p>Five values go into the gateway, and three claims go into the Anthropic federation rule. Write all eight down before moving on.</p>
+
+        <p>Gateway fields:</p>
+        <table>
+          <thead>
+            <tr><th style="width:26%">Gateway field</th><th>Okta value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Token Endpoint</td><td><code>https://&lt;okta-domain&gt;/oauth2/&lt;auth-server-id&gt;/v1/token</code></td></tr>
+            <tr><td>Client ID</td><td>Client ID of <code>portkey-wif-client</code></td></tr>
+            <tr><td>Client Secret</td><td>The client secret created in the previous step</td></tr>
+            <tr><td>Scope</td><td><code>portkey.wif</code></td></tr>
+            <tr><td>Audience</td><td>Leave empty. The audience is carried by the authorization server.</td></tr>
+          </tbody>
+        </table>
+
+        <p>Resulting token claims, which the Anthropic side matches on:</p>
+        <table>
+          <thead>
+            <tr><th style="width:16%">Claim</th><th>Value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>iss</code></td><td><code>https://&lt;okta-domain&gt;/oauth2/&lt;auth-server-id&gt;</code></td></tr>
+            <tr><td><code>aud</code></td><td>The authorization server Audience, for example <code>api://portkey-wif</code></td></tr>
+            <tr><td><code>sub</code></td><td>Client ID of <code>portkey-wif-client</code></td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout callout-danger">
+          <div class="callout-title">Okta tokens carry a jti claim</div>
+          <p>Note this now and act on it in <a href="#wif">W.6</a>. Okta includes a <code>jti</code> in the access token, and Anthropic's replay protection rejects a second presentation of a token it has already seen. The gateway reuses its cached identity provider token, so the second exchange presents the same <code>jti</code> and is refused.</p>
+        </div>
+
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>All five gateway values and all three claim values are written down, and the <code>sub</code> value is the client ID of the API Services application rather than any user or group identifier.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>W.4 &mdash; Decode one real token before configuring Anthropic</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Anthropic federation rule matches on exact values. Reading <code>iss</code>, <code>aud</code> and <code>sub</code> out of a real token takes one command and removes the guesswork from every step that follows.</p>
+
+    <div class="code-block">
+      <pre><code>curl -s -X POST "&lt;token-endpoint&gt;" \
+  -d grant_type=client_credentials \
+  --data-urlencode client_id="&lt;client-id&gt;" \
+  --data-urlencode client_secret="&lt;client-secret&gt;" \
+  --data-urlencode scope="&lt;scope&gt;" \
+  | jq '.access_token | split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | . + ("=" * ((4 - length % 4) % 4)) | @base64d | fromjson | {iss, aud, sub, iat, exp}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>The JWT payload is unpadded base64url, which is why the filter pads it before decoding. Subtract <code>iat</code> from <code>exp</code> while the output is on screen: that number is the token lifetime, and it decides the value of the Anthropic max JWT lifetime setting in <a href="#wif">W.6</a>.</p>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Do not paste a production token into a JWT website</div>
+      <p>A token pasted into a third-party decoder has been handed to that site. Decode locally with the command above. The same applies to any token captured from a log during troubleshooting.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The command prints <code>iss</code>, <code>aud</code>, <code>sub</code>, <code>iat</code> and <code>exp</code>, and all three matched values are identical to what the previous step predicted. A <code>sub</code> that differs from the recorded value is the Entra service principal mistake, and correcting it here saves a failed exchange later.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>W.5 &mdash; Create the Anthropic service account</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The federation rule maps an incoming token to a service account, so the service account has to exist first. Work in the Claude Console as an organization admin, or through the <a href="https://platform.claude.com/docs/en/api/administration-api" target="_blank" rel="noopener">Anthropic Admin API</a>.</p>
+
+    <ol>
+      <li>Create a service account dedicated to this gateway integration.</li>
+      <li>Add it to the workspace the gateway should use.</li>
+      <li>Copy the <strong>Service Account ID</strong>.</li>
+    </ol>
+
+    <p>Use one service account per integration and per environment. A shared service account makes the Anthropic audit trail unable to distinguish which gateway integration made a call.</p>
+
+    <!-- screenshot-pending: aigw-int-anthropic-service-account.png | Claude Console service account detail with the Service Account ID visible, organization ID and ID value masked -->
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The service account appears in the intended workspace's member list, and its Service Account ID is written down with the values from W.3.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>W.6 &mdash; Register the federation issuer</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The federation issuer tells Anthropic which identity provider to trust and how to fetch its keys. Configure it under workload identity in the Claude Console, using the column for the identity provider in use.</p>
+
+    <table>
+      <thead>
+        <tr><th style="width:24%">Field</th><th style="width:38%">Microsoft Entra ID</th><th>Okta</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Issuer URL</td>
+          <td><code>https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0</code></td>
+          <td><code>https://&lt;okta-domain&gt;/oauth2/&lt;auth-server-id&gt;</code></td>
+        </tr>
+        <tr>
+          <td>JWKS</td>
+          <td>OIDC discovery</td>
+          <td>OIDC discovery</td>
+        </tr>
+        <tr>
+          <td>Max JWT lifetime</td>
+          <td><code>5400</code> or higher</td>
+          <td>Default (<code>3600</code>)</td>
+        </tr>
+        <tr>
+          <td>Check JTI (replay protection)</td>
+          <td>Not applicable: Entra tokens carry no <code>jti</code></td>
+          <td><strong>Disable</strong></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Max JWT lifetime must be 5400 or higher for Entra ID</div>
+      <p>Entra access tokens last 60 to 90 minutes. A max JWT lifetime left at the 3600 second default rejects any token whose <code>exp</code> minus <code>iat</code> exceeds one hour, which includes most Entra tokens. The configuration is otherwise correct, the error is a rejected subject token, and nothing in the message points at the lifetime. Set <code>5400</code> or higher, and compare it against the lifetime measured in <a href="#wif">W.4</a>.</p>
+    </div>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">JTI replay protection must be disabled for Okta issuers</div>
+      <p>The gateway reuses its cached identity provider token while that token is still valid, including when it refreshes the Anthropic token. Okta tokens carry a <code>jti</code>. With JTI checks enabled, Anthropic treats the second exchange as a replay and refuses it, so the integration works once and then fails. Disable the JTI check on an Okta issuer. The protection it provides is replaced by the short Anthropic token lifetime and by the exact subject match on the rule.</p>
+    </div>
+
+    <!-- screenshot-pending: aigw-int-anthropic-federation-issuer.png | Claude Console federation issuer form showing Issuer URL, JWKS source, max JWT lifetime and the JTI check toggle, tenant ID and organization ID masked -->
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The issuer saves with an Issuer URL byte-for-byte identical to the <code>iss</code> claim printed in W.4, with max JWT lifetime at <code>5400</code> or higher on Entra, and with the JTI check off on Okta.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>W.7 &mdash; Create the federation rule</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The rule is the match. It names which token claims are accepted and which service account the resulting access token belongs to.</p>
+
+    <table>
+      <thead>
+        <tr><th style="width:26%">Field</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Issuer</td><td>The federation issuer created in the previous step.</td></tr>
+        <tr><td>Match &mdash; subject</td><td>The exact <code>sub</code> value. Entra: the service principal object ID. Okta: the client ID of <code>portkey-wif-client</code>.</td></tr>
+        <tr><td>Match &mdash; audience</td><td>The <code>aud</code> value from the token.</td></tr>
+        <tr><td>OAuth scope</td><td><code>workspace:inference</code></td></tr>
+        <tr><td>Target</td><td>The service account created in W.5.</td></tr>
+        <tr><td>Workspaces</td><td>One workspace, or all workspaces.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Match the subject exactly</div>
+      <p>No wildcard and no prefix match. An exact subject is what keeps the rule bound to the one client application built for this integration, and it is the control that makes a disabled rule a complete revocation.</p>
+    </div>
+
+    <!-- screenshot-pending: aigw-int-anthropic-federation-rule.png | Claude Console federation rule form showing issuer, subject match, audience match, OAuth scope, target service account and workspace selection, all ID values masked -->
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The rule saves, is enabled, and its subject and audience are copy-pastes of the values W.4 printed rather than values retyped from the identity provider console.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>W.8 &mdash; Collect the four Anthropic identifiers</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Four values cross from the Claude Console into the gateway. Three of them are always needed and one is conditional.</p>
+
+    <table>
+      <thead>
+        <tr><th style="width:26%">Value</th><th style="width:16%">Required</th><th>Where it comes from</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Federation Rule ID</td><td>Yes</td><td>The rule created in W.7.</td></tr>
+        <tr><td>Organization ID</td><td>Yes</td><td>Claude Console organization settings.</td></tr>
+        <tr><td>Service Account ID</td><td>Yes</td><td>The service account created in W.5.</td></tr>
+        <tr><td>Workspace ID</td><td>Conditional</td><td>Required only when the federation rule spans more than one workspace, which makes the target workspace ambiguous.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Three identifiers are written down, plus the Workspace ID if the rule was scoped to all workspaces. A rule scoped to a single workspace needs no Workspace ID.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>W.9 &mdash; Fill in the gateway fields</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Return to the Add LLM Integration wizard, select the <strong>Anthropic</strong> provider, and set <strong>Authentication Type</strong> to <strong>Workload Identity Federation</strong>. The fields appear directly under that control, in the order below. The first five are the identity provider group, which carries the same labels as the OpenAI tile. The rest are Anthropic's own, and the wizard prefixes their placeholders with the provider name.</p>
+
+    <table>
+      <thead>
+        <tr><th style="width:22%">Field</th><th style="width:26%">Placeholder</th><th style="width:12%">Required</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Token Endpoint</td><td><code>https://auth.example.com/oauth2/token</code></td><td>Yes</td><td>From W.3.</td></tr>
+        <tr><td>Client ID</td><td><code>Enter Client ID</code></td><td>Yes</td><td>From W.3.</td></tr>
+        <tr><td>Client Secret</td><td><code>Enter Client Secret</code></td><td>Yes</td><td>From W.3. Use the <strong>Secret Ref</strong> toggle where a vault is in scope.</td></tr>
+        <tr><td>Scope (optional)</td><td><code>e.g. api://&lt;app-id&gt;/.default</code></td><td>No</td><td>Sent as the <code>scope</code> form parameter. Entra: <code>api://&lt;api-app-client-id&gt;/.default</code>. Okta: <code>portkey.wif</code>.</td></tr>
+        <tr><td>Audience (optional)</td><td><code>Enter Audience</code></td><td>No</td><td>Sent as the <code>audience</code> form parameter. Leave empty for Entra and Okta. Auth0 is an identity provider that requires it.</td></tr>
+        <tr><td>Federation Rule ID</td><td><code>Enter Anthropic Federation Rule ID</code></td><td>Yes</td><td>From W.8.</td></tr>
+        <tr><td>Organization ID</td><td><code>Enter Anthropic Organization ID</code></td><td>Yes</td><td>From W.8.</td></tr>
+      </tbody>
+    </table>
+
+    <p>Two more fields sit below the bottom of the captured screen, so their labels and placeholders come from the Admin API field list rather than from the tenant. Scroll the form to the end and fill them in: <strong>Service Account ID</strong>, which the Admin API names <code>anthropic_service_account_id</code> and requires, and <strong>Workspace ID</strong>, which it names <code>anthropic_workspace_id</code> and requires only when the federation rule spans more than one workspace. Both values were collected in W.8.</p>
+
+    <p>No Anthropic API key is entered on this path, and none exists. A wizard that still asks for a key value is evidence the API Key card is selected rather than Workload Identity Federation.</p>
+
+    <p><em>Step 2 should look like this once Workload Identity Federation is selected:</em></p>
+    <img src="../aigw-screenshots/aigw-int-anthropic-auth-wif.png" alt="Step 2 of the wizard for Anthropic with the Workload Identity Federation card selected and the API Key card unselected. Name, Short Description (Optional) and Slug sit above the Authentication Type control, all empty. Below the control the form lists seven fields in order: Token Endpoint showing an example token endpoint URL, Client ID, Client Secret, Scope (optional) showing an Entra-shaped example scope, Audience (optional), Federation Rule ID with the placeholder Enter Anthropic Federation Rule ID, and Organization ID with the placeholder Enter Anthropic Organization ID. The form continues past the bottom edge of the capture." loading="lazy">
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Not verified in a tenant</div>
+      <p>The capture ends at <strong>Organization ID</strong>. What follows it on the real form, including the Service Account ID and Workspace ID fields and whether an <strong>Optional Fields</strong> section appears on this path, is taken from documentation and from the other provider tiles. Scroll to the end of the form during the session and correct this page.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration saves with no credential field populated. Saving proves only that the fields validate: the exchange itself is first attempted at the <a href="#first-call">first model call</a>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>W.10 &mdash; Create the same integration through the Admin API</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Admin API accepts the same configuration, which is the path to use when the integration is built by automation rather than by hand. Set <code>provider_auth_type</code> to <code>wif</code> inside <code>configurations</code>, and send no <code>key</code>: a federated integration has no provider API key.</p>
+
+    <div class="code-block">
+      <pre><code>{
+  "name": "Anthropic (WIF)",
+  "ai_provider_id": "&lt;anthropic-provider-id&gt;",
+  "configurations": {
+    "provider_auth_type": "wif",
+    "wif_identity_source": "configuredIdp",
+    "oauth_token_endpoint": "https://login.microsoftonline.com/&lt;tenant-id&gt;/oauth2/v2.0/token",
+    "oauth_client_id": "&lt;client-id&gt;",
+    "oauth_client_secret": "&lt;client-secret&gt;",
+    "oauth_scope": "api://&lt;api-app-client-id&gt;/.default",
+    "anthropic_federation_rule_id": "&lt;federation-rule-id&gt;",
+    "anthropic_organization_id": "&lt;organization-id&gt;",
+    "anthropic_service_account_id": "&lt;service-account-id&gt;"
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>Add <code>anthropic_workspace_id</code> when the federation rule spans multiple workspaces. <code>wif_identity_source</code> defaults to <code>configuredIdp</code>, which is the only supported value, so sending it is optional and sending anything else fails.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Not verified in a tenant</div>
+      <p>The <code>ai_provider_id</code> string for Anthropic is not recorded in any source read for this page. The captured example for OpenAI uses <code>open-ai</code>. Read the value from an existing Anthropic integration through the API before relying on a guess.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The API returns the created integration, and the Connected tab in Strata Cloud Manager shows it with the slug and authentication type you sent.</p>
+    </div>
+  </div>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Hardening the federation path</div>
+  <ul>
+    <li>A dedicated identity provider client application and a dedicated Anthropic service account per integration and per environment.</li>
+    <li>An exact <code>sub</code> match on the federation rule. No wildcard and no prefix.</li>
+    <li>The rule's OAuth scope limited to <code>workspace:inference</code> rather than anything broader.</li>
+    <li>The identity provider client secret held in a secret reference and rotated on a schedule.</li>
+    <li>For immediate revocation, disable the federation rule. Cached tokens expire within 15 minutes.</li>
+  </ul>
+</div>
+
+<!-- ── Provision ──────────────────────────────────────────────── -->
+<h2 id="provision">Provision the integration and set the model allowlist</h2>
+
+<p>Steps 3 and 4 of the wizard are the same for every provider, so they belong to <a href="../configuration/integrations.html">configuration chapter 9</a> rather than to this page. What follows is the Anthropic-specific part of those two steps.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>P.1 &mdash; Finish the wizard</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>On <strong>Workspace Provisioning</strong>, select the workspaces that should receive the integration, and set each workspace's budget and rate limits. Minimums are $1 for cost and 100 tokens.</li>
+      <li>On <strong>Model Provisioning</strong>, enable only the Claude models the customer has approved. Workspaces see nothing that is not enabled here.</li>
+      <li>Save the integration.</li>
+      <li>Record the model reference form the applications will use: <code>@&lt;slug&gt;/&lt;model-name&gt;</code>.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Budget and rate limits cannot be edited after they are set</div>
+      <p>Decide the numbers before saving. A rate limit of <code>0</code> disables the provider for that workspace, which is a deliberate way to stage an integration but an unwelcome surprise when it was a typo.</p>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">The allowlist is where Claude model access is decided</div>
+      <p>A workspace asking for a newly released Claude model is asking for a change to this integration, not to their workspace. Chapter 9 covers the governance of that request and the workspace-created integrations path that bypasses it.</p>
+    </div>
+
+    <!-- screenshot-pending: aigw-int-anthropic-model-provisioning.png | Step 4 Model Provisioning for an Anthropic integration showing the Claude model list with selections, tenant ID and organization ID masked -->
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration appears on the <strong>Connected</strong> tab, each intended workspace is listed against it with the limits you set, and the enabled model list matches what the customer approved.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── First call ─────────────────────────────────────────────── -->
+<!-- shared:begin id="aigw-int-model-provisioning"
+     vars='{"providerName": "Anthropic"}' -->
+<!-- Generated by sync-shared-content.js from docs/shared/snippets/aigw-int-model-provisioning.html. Do not edit between the markers; edit the snippet and re-run the script. -->
+<p>Step 4 of the wizard decides which models this integration exposes. The header reads <strong>Select Models to Provision</strong>, and the count beside <strong>Models</strong> is everything Anthropic publishes through the gateway. A tenant capture showed 389. Workspaces see only what is enabled here, so this list is the allowlist.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Enable the approved models</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Use <strong>Search...</strong> to find each approved model by name.</li>
+      <li>Set the toggle on each model card to on. The toggle sits in the top right of the card.</li>
+      <li>Leave every other model off.</li>
+    </ol>
+    <p><strong>Select All</strong> and <strong>Deselect All</strong> sit above the list. On a list of several hundred models, start from <strong>Deselect All</strong> and add what was approved, rather than starting from everything and removing what was not.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">The expensive models are enabled by the same click as the cheap ones</div>
+      <p>Nothing in this list distinguishes a model that costs cents from one that costs dollars for the same prompt. Budgets and rate limits are set per workspace in step 3, so they cap spend without capping which model spends it. The allowlist is the only control that decides that, and it is set here and nowhere else.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every approved model shows an enabled toggle, and the count of enabled models matches the list the customer approved.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Decide what happens to models released later</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Below the model list is a toggle reading <strong>Automatically enable new models from this provider</strong>, described as making new models from the provider available on this integration. It is off by default.</p>
+    <p>Leaving it off means a model released next month is unavailable until someone enables it. Turning it on means that model is callable the day it ships, under the budgets already in place, with no review.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Off suits a governed tenant, on suits a lab</div>
+      <p>An organization that approves models through a review process wants this off, because the toggle quietly bypasses that process. A team that wants the newest model the day it lands wants it on. Record which was chosen and why, because the setting is invisible until an unexpected model appears in the logs.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The toggle reflects a decision somebody made, rather than the default nobody looked at.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Set per-model pricing, where the published rate is wrong</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each model card carries a <strong>Set Pricing</strong> button. It opens a drawer titled <strong>Update Base Model</strong> on the right of the page.</p>
+    <p>The drawer opens with <strong>Add custom pricing for this model?</strong> switched off, explained as using default public model pricing from the base model when nothing is specified, with fine tuned models using public fine tuned model pricing. Leave it off and the gateway costs the model at the published public rate.</p>
+    <p>Switch it on and the drawer accepts:</p>
+    <table>
+      <thead>
+        <tr><th style="width:26%">Field</th><th>What it takes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Input Cost</td><td>The rate charged for input tokens.</td></tr>
+        <tr><td>Output Cost</td><td>The rate charged for output tokens.</td></tr>
+        <tr><td>Cache Pricing</td><td>A JSON object with a <code>price</code> under <code>cache_write_input_token</code> and under <code>cache_read_input_token</code>. The field is prefilled with an example showing <code>3.75</code> and <code>0.3</code>.</td></tr>
+        <tr><td>Pricing Adjustments</td><td>A separate toggle, off by default, alongside the cost fields.</td></tr>
+        <tr><td>Custom Host (Optional)</td><td>An endpoint to route this model to, instead of the provider default. The placeholder reads <code>https://your-custom-endpoint.com</code>.</td></tr>
+        <tr><td>Custom Headers (Optional)</td><td>Header and value pairs, added with <strong>+ Add Header</strong> and removed with the bin icon beside each row.</td></tr>
+      </tbody>
+    </table>
+    <p>Close the drawer with <strong>Apply</strong>, or with <strong>Cancel</strong> to discard it.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Custom pricing changes the reported cost, not the invoice</div>
+      <p>These figures drive what the gateway reports in analytics and what it counts against a budget. The provider still bills its own rate. Entering a negotiated rate here makes internal reporting match the contract; entering a wrong number makes every budget and every cost report wrong in the same direction, and nothing in the console flags the discrepancy.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Custom Host and Custom Headers are per model</div>
+      <p>Both sit on the individual model rather than the integration, so two models under one integration can route to different upstreams and send different headers. A model-level header overrides an integration-level header of the same name.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each model that needed a negotiated rate shows custom pricing applied, and every model left alone still reports the public rate. A later test call produces a cost figure consistent with the rate entered here.</p>
+    </div>
+  </div>
+</div>
+
+<p><em>Step 4 with the Update Base Model drawer open on one model:</em></p>
+<img src="../aigw-screenshots/aigw-int-model-provisioning-pricing.png" alt="The Model Provisioning step of the Add LLM Integration wizard. The left pane is headed Select Models to Provision and shows a searchable list headed Models (389), with Select All and Deselect All links above cards for individual models, each card carrying a Set Pricing button and an enable toggle. Below the list a toggle reads Automatically enable new models from this provider, switched off. A drawer on the right titled Update Base Model shows an Add custom pricing for this model question switched off, then Input Cost, Output Cost, a Cache Pricing JSON box containing cache_write_input_token and cache_read_input_token prices, a Pricing Adjustments toggle, a Custom Host field and a Custom Headers field with an Add Header link. Cancel and Apply buttons sit at the bottom, and a Create Integration button sits at the bottom of the page behind the drawer." loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Create the integration</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Click <strong>Create Integration</strong> at the bottom of the page.</li>
+    </ol>
+    <p>This is the first point at which the gateway stores anything. Everything before it was a form.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration appears on the <strong>Connected</strong> tab of the Integrations page, carrying the name and slug you set in step 2. Saving proves the form was accepted. It does not prove the credential works, which is what the first model call tests.</p>
+    </div>
+  </div>
+</div>
+<!-- shared:end -->
+
+<h2 id="first-call">Make the first model call</h2>
+
+<p>Everything so far is configuration that could not be tested. One request exercises the whole path: the workspace key, the credential or the two-hop exchange, the allowlist, and the guardrails. On the federation path this is also the first moment the identity provider and Anthropic actually talk to each other.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>F.1 &mdash; Send one request with curl</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Use a workspace API key, not an organization key, and name the model with the full reference so no provider header is needed.</p>
+
+    <div class="code-block">
+      <pre><code>curl &lt;gateway-base-url&gt;/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-portkey-api-key: $AIGW_API_KEY" \
+  -d '{
+        "model": "@&lt;slug&gt;/&lt;model-name&gt;",
+        "messages": [{"role": "user", "content": "Reply with the word ready."}]
+      }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>The gateway also accepts the Anthropic protocol at <code>POST /v1/messages</code>, which is what the Anthropic SDK and Claude Code send. The request body is the provider's own body and the gateway does not change it.</p>
+
+    <p>Read the result against this table before changing anything:</p>
+    <table>
+      <thead>
+        <tr><th style="width:36%">Outcome</th><th>Means</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>A model response</td><td>The whole path works, federation included.</td></tr>
+        <tr><td>Authentication rejected at the gateway</td><td>The workspace key is wrong, or it lacks the completions permission.</td></tr>
+        <tr><td>Gateway error fetching the secret</td><td>The secret reference path or the vault permission is wrong. This is the chapter 3 check finally reporting.</td></tr>
+        <tr><td>Provider rejects the credential</td><td>On the API key path, the secret resolved but holds the wrong value. On the federation path, see <a href="#troubleshooting">Troubleshooting</a>.</td></tr>
+        <tr><td>Model not found or not permitted</td><td>The model is not on the allowlist, or the integration is not provisioned to this workspace.</td></tr>
+        <tr><td>HTTP <code>446</code></td><td>A guardrail denied the request. The integration is working.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A Claude response comes back through the gateway, made with a workspace key, naming an allowlisted model, and the request appears in the gateway log in Strata Cloud Manager with a token count against it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>F.2 &mdash; Call it from the Anthropic SDK</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Anthropic Python SDK needs version 0.20 or later, which is where a configurable base URL arrived. Confirm the minimum against the release notes of the version the customer uses rather than quoting it as a product statement.</p>
+
+    <div class="code-block">
+      <pre><code>from anthropic import Anthropic
+
+client = Anthropic(
+    base_url="&lt;gateway-base-url&gt;",   # no /v1
+    api_key="&lt;gateway-api-key&gt;",
+)
+
+message = client.messages.create(
+    model="@&lt;slug&gt;/&lt;model-name&gt;",
+    max_tokens=64,
+    messages=[{"role": "user", "content": "Reply with the word ready."}],
+)
+
+print(message.content[0].text)</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">The base URL has no /v1 and the model name is not bare</div>
+      <p>The SDK appends its own path, so <code>/v1</code> on the base URL produces a doubled path and a <code>404</code>. The model reference <code>@&lt;slug&gt;/&lt;model-name&gt;</code> tells the gateway which integration to use; a bare model name needs the <code>x-portkey-provider</code> header instead. Claude Code sends a bare name, which is why the <a href="../ai-gateway-client-apps.html#claude-code">client applications guide</a> sets that header through <code>ANTHROPIC_CUSTOM_HEADERS</code>.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The script prints the model's reply, and the gateway log shows a second request against the same integration.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Troubleshooting ────────────────────────────────────────── -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The caller sees only the OAuth error code</div>
+  <p>On the federation path the gateway returns the standard OAuth error, such as <code>invalid_client</code>. The full identity provider or Anthropic response stays in the gateway logs and never reaches the caller. Debugging this from the client side is working blind by design, so read the gateway log rather than inferring from the status code.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>T.1 &mdash; The first call fails</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th style="width:30%">Symptom</th><th style="width:34%">Cause</th><th>Fix</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>HTTP <code>404</code> from the gateway</td>
+          <td>The base URL ends in <code>/v1</code> and the SDK added its own path.</td>
+          <td>Remove <code>/v1</code> from the base URL.</td>
+        </tr>
+        <tr>
+          <td>HTTP <code>400</code> naming <code>x-portkey-config</code> or <code>x-portkey-provider</code></td>
+          <td>The client sent a bare model name.</td>
+          <td>Set <code>x-portkey-provider</code> to <code>@&lt;integration-slug&gt;</code>, or send the full <code>@&lt;slug&gt;/&lt;model-name&gt;</code> reference.</td>
+        </tr>
+        <tr>
+          <td>Model not found or not permitted</td>
+          <td>The model is off the allowlist, or the integration was never provisioned to this workspace.</td>
+          <td>Enable the model on the integration, or provision the integration to the workspace.</td>
+        </tr>
+        <tr>
+          <td>HTTP <code>446</code></td>
+          <td>A guardrail denied the request.</td>
+          <td>Nothing on this page. The integration is working and a policy stopped the content.</td>
+        </tr>
+        <tr>
+          <td>Gateway error fetching the secret</td>
+          <td>The secret reference path or the vault permission is wrong.</td>
+          <td>Correct the reference in <a href="../configuration/secret-references.html">chapter 3</a> and retry.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The retried request returns a Claude response, and the gateway log shows the request with a token count rather than an error.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>T.2 &mdash; The first hop fails at the identity provider</span>
+  </div>
+  <div class="collapsible-body">
+    <p>These errors happen before Anthropic is ever contacted. The command in <a href="#wif">W.4</a> reproduces the same request from your workstation, which is the fastest way to confirm a fix.</p>
+
+    <table>
+      <thead>
+        <tr><th style="width:40%">Error</th><th style="width:26%">Cause</th><th>Fix</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>OAuth token acquisition failed: invalid client credentials</code></td>
+          <td>The identity provider rejected the client ID or the secret.</td>
+          <td>Check the secret value and its expiry. In Okta, confirm the application allows <code>client_secret_post</code>.</td>
+        </tr>
+        <tr>
+          <td><code>OAuth token endpoint returned 400 (invalid_scope)</code></td>
+          <td>The scope is not allowed for this client.</td>
+          <td>Entra: use <code>api://&lt;api-app-client-id&gt;/.default</code>. Okta: add the scope to the access policy rule.</td>
+        </tr>
+        <tr>
+          <td><code>WIF config incomplete: ... required</code></td>
+          <td>A required field is empty.</td>
+          <td>Fill in every required field from the W.9 table, including the Anthropic group.</td>
+        </tr>
+        <tr>
+          <td><code>Invalid or unsafe URL</code></td>
+          <td>The token endpoint is private or uses HTTP.</td>
+          <td>Use the public HTTPS endpoint, or add the host to the gateway's egress allowlist.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The W.4 command returns a token and prints its claims, which proves the first hop works independently of anything on the Anthropic side.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>T.3 &mdash; Anthropic rejects a token that looks correct</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The error is <code>Anthropic WIF token exchange failed: subject token rejected</code>. It means the JWT reached Anthropic and no federation rule accepted it. Work the four causes in this order, because the last two produce exactly the same message as the first two.</p>
+
+    <ol>
+      <li><strong>Issuer mismatch.</strong> Compare the federation issuer URL against the <code>iss</code> claim from W.4, character for character. On Entra, a missing <code>/v2.0</code> suffix means <code>requestedAccessTokenVersion</code> was never set to <code>2</code>.</li>
+      <li><strong>Subject or audience mismatch.</strong> Compare the rule's subject and audience against the <code>sub</code> and <code>aud</code> claims from W.4. On Entra, a subject taken from the app registration rather than the Enterprise applications service principal is the usual cause.</li>
+      <li><strong>Max JWT lifetime, on Entra.</strong> Subtract <code>iat</code> from <code>exp</code>. A value above the issuer's max JWT lifetime is rejected with no mention of the lifetime. Set the issuer to <code>5400</code> or higher.</li>
+      <li><strong>JTI replay protection, on Okta.</strong> An integration that works on the first call and fails afterwards is this. Disable the JTI check on the issuer.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Allow 15 minutes before concluding that a fix failed</div>
+      <p>Tokens are cached for up to 15 minutes. A corrected rule or issuer can take that long to take effect, and the same window applies in reverse when disabling a rule to revoke access.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A repeated request returns a Claude response, and a second request sent several minutes later also succeeds, which is what distinguishes a fixed configuration from the JTI failure mode.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Gaps ───────────────────────────────────────────────────── -->
+<h2 id="gaps">Not yet verified in a tenant</h2>
+
+<p>Both Anthropic authentication paths were captured in a live tenant on 2026-11-17, and the pages of this set no longer disagree with the product on the control, the options or the visible field labels. Four items are still open. Confirm each one during the next tenant session and correct this page.</p>
+
+<ul>
+  <li>What follows <strong>Organization ID</strong> on the federation form. The capture ends there, so the Service Account ID and Workspace ID fields in W.9 are documented rather than seen.</li>
+  <li>The contents of <strong>Advanced Options</strong>. The section is collapsed in both captures and was never expanded.</li>
+  <li>Whether an <strong>Optional Fields</strong> section exists on this tile. The API Key capture shows <strong>Advanced Options</strong> and <strong>Pricing Adjustments</strong> and nothing else, which matches the Azure OpenAI and Bedrock tiles and differs from OpenAI. The federation form runs past the bottom of its capture, so one could sit below the fold there.</li>
+  <li>What the <strong>Grab API Key</strong> link beside the API Key field does. Whether it deep-links to the Claude Console or opens a secret picker is unknown.</li>
+</ul>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

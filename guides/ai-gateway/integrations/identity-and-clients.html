@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Identity and Client Configuration | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#scope" data-section="scope">What this covers</a>
+    </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">The two sides</div>
+    <a href="#two-credentials" data-section="two-credentials">Two credentials</a>
+    <a href="#provider-view" data-section="provider-view">What the provider sees</a>
+    <a href="#reaching-gateway" data-section="reaching-gateway">How a user reaches the gateway</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Client side</div>
+    <a href="#client-config" data-section="client-config">Client configuration</a>
+    <a href="#at-scale" data-section="at-scale">Hundreds of users</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#gaps" data-section="gaps">Not yet verified</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Provider Integrations</a>
+  <span class="sep">|</span>
+  Identity and Clients
+</div>
+
+<div class="article">
+
+<h1>Identity and Client Configuration</h1>
+<p class="subtitle">The credential an application presents to the gateway, the credential the gateway presents to the model provider, and what each side can see about the people behind a request</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">All Provider Integrations</a>
+  <a href="identity-and-clients.html" class="cloud-link">Identity and Clients</a>
+  <a href="openai.html" class="cloud-link">OpenAI</a>
+  <a href="anthropic.html" class="cloud-link">Anthropic</a>
+  <a href="azure-openai.html" class="cloud-link">Azure OpenAI</a>
+  <a href="azure-foundry.html" class="cloud-link">Azure Foundry</a>
+  <a href="bedrock.html" class="cloud-link">AWS Bedrock</a>
+</div>
+
+<!-- ── Scope ──────────────────────────────────────────────────── -->
+<h2 id="scope">What this covers</h2>
+
+<p>The five provider guides in this set document one half of the path. They cover how the gateway authenticates to OpenAI, Anthropic, Azure OpenAI, Azure Foundry or Bedrock, and they stop at the point where that credential works. They say nothing about the credential a calling application presents to the gateway, nothing about how several hundred people are told apart once their traffic shares one provider credential, and nothing about what the provider records against any of them.</p>
+
+<p>This page covers the other half and the limits that follow from it. Read it before a design conversation about cost allocation, access revocation or rate limits, because the answer to all three depends on which side of the gateway an identity lives on.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:52%">Question a customer asks</th><th>Answered in</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Which credential does the application hold once it points at the gateway?</td><td><a href="#client-config">Client configuration</a></td></tr>
+    <tr><td>Can OpenAI tell which of our employees sent a request?</td><td><a href="#provider-view">What the provider actually sees</a></td></tr>
+    <tr><td>How do we bill a model spend back to a team?</td><td><a href="#provider-view">What the provider actually sees</a> and <a href="#at-scale">Hundreds of users</a></td></tr>
+    <tr><td>Someone left the company. What do we revoke, and where?</td><td><a href="#at-scale">Hundreds of users</a></td></tr>
+    <tr><td>Three hundred developers sit behind one provider key. Do we hit a rate limit?</td><td><a href="#at-scale">Hundreds of users</a></td></tr>
+    <tr><td>Why does the log show a workspace where a person was expected?</td><td><a href="#reaching-gateway">How a user reaches the gateway</a></td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Where the procedures live</div>
+  <p>Procedures live elsewhere and are not repeated here. Workspace API keys are <a href="../configuration/workspaces.html#keys">configuration chapter 8</a>. JWT validation and the two key types are <a href="../configuration/authentication-identity.html#jwt">configuration chapter 2</a>. The per-tool matrix of which clients can be routed is the <a href="../ai-gateway-client-apps.html">client applications guide</a>. The provider credential itself is the <a href="index.html">provider integration guide</a> for that provider.</p>
+</div>
+
+<!-- ── Two credentials ────────────────────────────────────────── -->
+<h2 id="two-credentials">Two credentials</h2>
+
+<p>Every request through the gateway crosses two authentication boundaries, and the two credentials are unrelated to each other. The application never holds the provider credential, and the provider never receives the application's credential.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:16%">&nbsp;</th><th style="width:42%">Upstream, gateway to provider</th><th>Downstream, client to gateway</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Credential</td>
+      <td>The integration credential configured in step 2 of the wizard: an API key, an OAuth client secret, a role ARN or a federated identity</td>
+      <td>A workspace API key, or a JWT from your identity provider</td>
+    </tr>
+    <tr>
+      <td>Held by</td>
+      <td>The gateway, encrypted at rest</td>
+      <td>The calling application</td>
+    </tr>
+    <tr>
+      <td>Scope</td>
+      <td>One per integration, shared by every workspace the integration is provisioned to</td>
+      <td>One workspace</td>
+    </tr>
+    <tr>
+      <td>Governs</td>
+      <td>Provider access and provider-side spend</td>
+      <td>Caller identity, budgets, rate limits, guardrails and logging</td>
+    </tr>
+    <tr>
+      <td>Configured in</td>
+      <td>The <a href="index.html">provider integration guides</a></td>
+      <td><a href="../configuration/authentication-identity.html#api-keys">Configuration chapter 2</a> and <a href="../configuration/workspaces.html#keys">chapter 8</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<figure class="diagram">
+  <img src="../diagrams/aigw-key-flow.svg" alt="Flow showing the two keys in play on one request. The application holds only the gateway key and sends it with the integration slug. The gateway authenticates that key, then strips it and attaches the provider credential it holds, which the application never sees. The provider credential originates at the gateway and terminates at the provider." loading="lazy">
+  <figcaption>Two keys, one request. The application holds the gateway key; the provider key never leaves the gateway.</figcaption>
+</figure>
+
+<p>One request crosses both boundaries in this order:</p>
+
+<ol>
+  <li>The application sends the request to the gateway base URL, presenting a workspace API key in the <code>x-portkey-api-key</code> header, or a JWT in that header or in <code>Authorization: Bearer</code>.</li>
+  <li>The gateway validates that credential, resolves it to a workspace, and resolves it to an individual user where the credential carries enough to do so.</li>
+  <li>The gateway reads the slug from the model reference, or from the <code>x-portkey-provider</code> header, and selects the integration it names.</li>
+  <li>The gateway applies the budget, the rate limit, the model allowlist and the guardrails that belong to that workspace and that integration. Every one of those decisions uses the downstream identity.</li>
+  <li>The gateway authenticates to the provider with the integration credential. The caller's credential goes no further.</li>
+  <li>The provider authorizes the integration credential, serves the request, and records the call against the principal that credential represents.</li>
+  <li>The response returns through the gateway, which writes a log entry carrying the downstream identity, the token counts and the cost.</li>
+</ol>
+
+<div class="callout callout-note">
+  <div class="callout-title">The gateway log is the only place both identities exist</div>
+  <p>Step 5 terminates one authentication and originates another. The caller's identity stops at the gateway and the provider's view starts there, so the gateway log entry is the single record that holds the person, the workspace, the integration and the model together. Every per-user figure a customer wants comes out of <a href="../configuration/observability.html#logs">that log</a> or it does not exist.</p>
+</div>
+
+<!-- ── Provider view ──────────────────────────────────────────── -->
+<h2 id="provider-view">What the provider actually sees</h2>
+
+<p><strong>A model provider sees one principal per integration, however many people sit behind it.</strong> Per-user attribution happens inside the gateway and does not reach the provider. Three separate pieces of the product confirm this rather than imply it.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:30%">Evidence</th><th>What it shows</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>The federation mappings</td>
+      <td>The <a href="openai.html#wif">OpenAI workload identity mapping</a> resolves to a single service account, and the <a href="anthropic.html#wif">Anthropic federation rule</a> targets a single service account. One service account is the identity the provider authorizes, whoever triggered the call.</td>
+    </tr>
+    <tr>
+      <td>The Entra agent identity flow</td>
+      <td>The <a href="../agent-identity-entra.html#limits">agent identity guide</a> states that the agent's token never leaves the gateway and that egress to the provider happens on a different credential. Identity resolves through claim precedence inside the gateway and is then dropped.</td>
+    </tr>
+    <tr>
+      <td>Bedrock STS session tags</td>
+      <td>The <a href="bedrock.html#assumed-role">session tag feature</a> exists because AWS cannot otherwise distinguish callers sharing one assumed role. Its documented purpose is attributing cost while sharing a single role, which is a statement that the role alone tells AWS nothing about the caller.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Three consequences follow, and each one is worth saying to a customer before the integration is built:</p>
+
+<ul>
+  <li><strong>Invoicing</strong> &mdash; the provider bill carries one line per integration. It cannot be broken down by person, by team or by application on the provider side.</li>
+  <li><strong>Chargeback</strong> &mdash; per-user and per-team cost figures come from gateway data only. <a href="../configuration/observability.html#cost">Configuration chapter 13</a> covers where those figures come from and how they are calculated.</li>
+  <li><strong>Revocation</strong> &mdash; removing one person's access happens at the gateway. Deleting the provider credential revokes everybody at once, because everybody is using it.</li>
+</ul>
+
+<div class="callout callout-warning">
+  <div class="callout-title">A personal provider key is a testing shortcut</div>
+  <p>Nothing stops an engineer pasting a personal OpenAI or Anthropic key into an integration, and the integration works immediately. Three things break when that configuration reaches production.</p>
+  <ol>
+    <li>The organization's model traffic is bound to one individual's account, and it stops when that person leaves.</li>
+    <li>The provider's rate and spend limits for the whole organization become that individual's limits.</li>
+    <li>Provider-side cost records attribute the entire organization's usage to one person.</li>
+  </ol>
+  <p>Both providers offer service-account constructs, and those are what the federation mappings target. Use one of those for anything beyond a first smoke test.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Bedrock session tags are the one exception</div>
+  <p>STS session tags are the single case in this set where identity from the gateway side reaches the provider side. The tags carry applications, teams and environments rather than people, so they separate a bill between four product teams and they still cannot name an individual. They also need gateway <code>2.19.0</code> or higher and the environment variable <code>AWS_BEDROCK_STS_SESSION_TAGS_ENABLED</code> set to <code>true</code> on the gateway container, which makes them self-hosted in practice. The <a href="bedrock.html#assumed-role">Bedrock guide</a> has the full requirement list and the trust policy both halves need.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Not verified in a tenant</div>
+  <p>The OpenAI API accepts a <code>user</code> field in the request body for abuse monitoring, and it is the one field that could carry a per-caller identifier to a provider. Whether the gateway forwards it unchanged, drops it, or overwrites it with something of its own is undocumented in every source this site holds, and it was not tested.</p>
+  <p>Put the question to the product team before a design depends on either answer. If the gateway forwards the field, it is the only per-user signal that reaches a provider, and a customer with an abuse-investigation requirement will want to know that.</p>
+</div>
+
+<!-- ── Reaching the gateway ───────────────────────────────────── -->
+<h2 id="reaching-gateway">How a user reaches the gateway</h2>
+
+<p>The credential an application presents decides how precisely the gateway can attribute what that application does. Two mechanisms exist, and they differ in granularity rather than in strength.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:22%">Mechanism</th><th style="width:38%">Attributes to</th><th>Requires</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Workspace API key</td>
+      <td>The workspace. Every application sharing the key is indistinguishable in the logs.</td>
+      <td>A workspace and a key issued in it. <a href="../configuration/workspaces.html#keys">Configuration chapter 8</a>.</td>
+    </tr>
+    <tr>
+      <td>JWT with validated claims</td>
+      <td>The individual user, by the first claim present in the order <code>email_id</code>, then <code>sub</code>, then <code>uid</code>, matched against workspace membership.</td>
+      <td>JWKS registered on the organization, directory-provisioned users, and gateway <code>2.21.0</code> or higher for email-based attribution. <a href="../configuration/authentication-identity.html#jwt">Configuration chapter 2</a> and the <a href="../agent-identity-entra.html">agent identity guide</a>.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>A token that carries only <code>sub</code> reports a subject identifier where a customer expects an address, because the precedence takes the first claim that is present and stops there. Decode a real token before promising per-user reporting.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">A workspace key can still be issued to a person</div>
+  <p><a href="../configuration/workspaces.html#keys">Chapter 8</a> issues workspace keys on two tabs. A <strong>Service</strong> key is tied to nobody and is what applications and automated processes receive. A <strong>User</strong> key is tied to a named workspace member and attributes to that person in logs and analytics without any token work. A user key is the shortest route to per-person attribution for a small number of named consumers; a JWT is the route that scales to a directory.</p>
+
+<p><em>The two tabs are where that choice is made:</em></p>
+<img src="../aigw-screenshots/aigw-int-security-keys.png" alt="The Security Keys page at AI Security, AI Gateway, Security Keys, scoped by the workspace selector above the breadcrumb. A Gateway API Keys tab contains two sub-tabs labeled Service and User, with Service selected. The table headings read Key Name, Key, Status, Created By, Last Updated and Type. The workspace in the capture has no keys yet, so the empty state reads No Gateway API Keys Created with a Create New button." loading="lazy">
+
+<div class="callout callout-warning">
+  <div class="callout-title">The tab you create the key on is the attribution decision</div>
+  <p>Both tabs issue a working key and the application code is identical either way, so the choice is invisible once the key is in use. It is not invisible in the logs, and it cannot be changed afterwards: moving a consumer from a Service key to a User key means issuing a new key and redeploying whatever holds it. Decide the tab before issuing the first key for a workspace.</p>
+</div>
+</div>
+
+<p>Chapter 2 records two key types for the organization, and the distinction between them matters more than it first appears.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:24%">Key type</th><th style="width:38%">Scope</th><th>Issued to</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Admin API key</td><td>The whole organization, reaching across every workspace</td><td>Administrative automation only</td></tr>
+    <tr><td>Workspace API key</td><td>One workspace</td><td>Applications and services. This is what application teams receive.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Never hand an admin key to an application</div>
+  <p>An admin key carries organization-wide scope including user management, guardrail changes and key rotation, and it can target any workspace by naming it. An application that only calls a model needs a workspace key. An admin key in an application configuration file is an organization-wide credential sitting in a deployment pipeline.</p>
+</div>
+
+<!-- ── Client configuration ───────────────────────────────────── -->
+<h2 id="client-config">Client configuration</h2>
+
+<p>An application connects to the gateway when three values change. The request body does not change, the response body does not change, and no agent gets installed. <a href="../ai-gateway-model-prerequisites.html#three-values">Section 1 of the model provider prerequisites</a> is the source of this table.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:20%">Value</th><th style="width:34%">Set it to</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Base URL</strong></td><td>The gateway address</td><td>The request goes to the gateway rather than to the provider.</td></tr>
+    <tr><td><strong>API key</strong></td><td>The workspace API key</td><td>The gateway authenticates the application. The application holds no provider key.</td></tr>
+    <tr><td><strong>Model reference</strong></td><td><code>@&lt;slug&gt;/&lt;model-name&gt;</code></td><td>The slug names the integration the gateway should use.</td></tr>
+    <tr><td><strong>Provider header</strong></td><td><code>x-portkey-provider: @&lt;slug&gt;</code></td><td>Only for clients that send a bare model name and cannot put the slug in the model field. Claude Code is one.</td></tr>
+  </tbody>
+</table>
+
+<p>The <a href="../ai-gateway-client-apps.html#summary">client applications guide</a> lists which tools need the fourth value, and which three products cannot be routed at all.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The two SDKs disagree about /v1</div>
+  <p>The OpenAI SDK wants the base URL <strong>with</strong> <code>/v1</code> on the end. The Anthropic SDK wants it <strong>without</strong>, because the SDK appends its own path. Getting this wrong produces a doubled path and an HTTP <code>404</code> from the gateway, which reads like an outage and is a one-character configuration error.</p>
+</div>
+
+<p>The OpenAI SDK, with the slug in the model field:</p>
+
+<div class="code-block">
+  <pre><code>from openai import OpenAI
+
+client = OpenAI(
+    base_url="&lt;gateway-base-url&gt;/v1",    # with /v1
+    api_key="&lt;workspace-api-key&gt;",
+)
+
+response = client.chat.completions.create(
+    model="@openai-prod/gpt-4.1",
+    messages=[{"role": "user", "content": "Reply with the single word ready."}],
+)
+
+print(response.choices[0].message.content)</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p>The Anthropic SDK, same three values and a different base URL:</p>
+
+<div class="code-block">
+  <pre><code>from anthropic import Anthropic
+
+client = Anthropic(
+    base_url="&lt;gateway-base-url&gt;",       # no /v1
+    api_key="&lt;workspace-api-key&gt;",
+)
+
+message = client.messages.create(
+    model="@anthropic-prod/claude-sonnet-4-20250514",
+    max_tokens=64,
+    messages=[{"role": "user", "content": "Reply with the single word ready."}],
+)
+
+print(message.content[0].text)</code></pre>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+</div>
+
+<p>Neither example sends a provider key, and neither one needs the provider header, because the model reference carries the slug. A client that cannot send a prefixed model name sends the header instead, as the <a href="../ai-gateway-client-apps.html#claude-code">Claude Code section</a> shows.</p>
+
+<!-- ── At scale ───────────────────────────────────────────────── -->
+<figure class="diagram">
+  <img src="../diagrams/aigw-attribution-billing.svg" alt="Diagram tracing where every cost figure and group breakdown originates, showing that each one resolves back to the gateway API key the request arrived on, rather than to anything the model provider records." loading="lazy">
+  <figcaption>Every cost figure and group breakdown traces back to the gateway key the request arrived on.</figcaption>
+</figure>
+
+<h2 id="at-scale">Hundreds of users</h2>
+
+<p>A customer with three hundred developers asks three questions in a row: who holds the keys, what happens when someone leaves, and whether one provider credential survives that volume. The first two are gateway questions. The third is a provider question that the gateway cannot answer on the customer's behalf.</p>
+
+<h3 id="leavers">Key issuance and leavers</h3>
+
+<p>Workspace keys are issued per workspace by whoever administers that workspace, following <a href="../configuration/workspaces.html#keys">chapter 8</a>. A Service key belongs to nobody, so the departure of the engineer who created it changes nothing about the key and it keeps working until somebody rotates it. <a href="../configuration/authentication-identity.html#api-keys">Chapter 2</a> asks for a key inventory recording the interval and the holder of every key for exactly this reason: rotation needs a known blast radius, and a leaver is the moment that inventory earns its cost. Per-user access through JWT behaves differently, because the identity provider stops issuing tokens for a deprovisioned user and the gateway has nothing to revoke.</p>
+
+<h3 id="quota">The provider-side quota</h3>
+
+<p>Every workspace provisioned to an integration shares that integration's single provider credential, so every one of them shares whatever rate limit the provider applies to that credential. Gateway rate limits divide that ceiling between workspaces, and they cannot raise it. Routing an entire organization through one credential concentrates all of its traffic into one provider-side bucket, and when that bucket is exhausted the provider throttles the traffic independently of whether any gateway limit was reached.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Not verified in a tenant</div>
+  <p>The mechanism above is sourced. Three things about it are not, and none of them should be stated to a customer as fact.</p>
+  <ul>
+    <li><strong>Tier numbers</strong> &mdash; the specific request and token limits each provider applies at each tier were not checked against any provider account. Read them from the customer's own provider console.</li>
+    <li><strong>The error surfaced</strong> &mdash; what the gateway returns to the caller when the provider throttles, rather than when a gateway limit is reached, was not observed.</li>
+    <li><strong>Retry behavior</strong> &mdash; whether the gateway retries a provider throttle or passes it straight through was not tested. Retries and fallbacks are configurable per <a href="../configuration/routing-reliability.html#retries">configuration chapter 12</a>, so the answer most likely depends on the config object attached to the request, and that was not confirmed either.</li>
+  </ul>
+</div>
+
+<h3 id="split">Separate integrations where the quota matters</h3>
+
+<p>One integration per environment, or one per business unit, gives each of them its own provider credential and therefore its own provider-side bucket. That split also matches the slug convention <a href="../configuration/integrations.html">chapter 9</a> recommends, where the slug names the provider and the environment in lowercase with hyphens, as in <code>openai-prod</code> and <code>bedrock-prod</code>. The slug ends up in application code, so deciding the split before the first integration is created costs nothing and changing it afterwards means a code change in every caller.</p>
+
+<p>Where one key genuinely has to serve several logical callers, request metadata splits them in the gateway's own reporting. An application sends <code>x-portkey-metadata</code> with keys such as application, team and environment, and <a href="../configuration/observability.html#metadata">chapter 13</a> filters and groups on them. Agree the key names before any application sends them, because three teams sending three spellings of the same concept produce three dimensions that do not add up.</p>
+
+<!-- ── Troubleshooting ────────────────────────────────────────── -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<p>Five confusions follow predictably from the two-credential model. Each one looks like a gateway fault and each one is a client configuration error or a misread log.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>The application sends a provider key &mdash; authentication fails at the gateway</span>
+  </div>
+  <div class="collapsible-body">
+    <p>An application team that already held an OpenAI or Anthropic key frequently keeps it in place and changes only the base URL. The gateway authenticates the credential it receives against its own keys, so a provider key is an unknown credential and the request stops before any integration is reached.</p>
+    <ol>
+      <li>Read the gateway log for the failing request. Authentication rejected at the gateway, with no integration and no model named, points at the credential rather than at the integration.</li>
+      <li>Check what the application actually sends. A value beginning with a provider's own key prefix is the provider key.</li>
+      <li>Replace it with a workspace API key from <a href="../configuration/workspaces.html#keys">chapter 8</a>.</li>
+      <li>Remove the provider key from the application configuration and from the secret store that fed it, so the application cannot reach the provider directly any more.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The same request returns a completion, and the gateway log entry names the integration and the model with a token count against it. Confirm the old provider key is gone by checking that the application fails if it is pointed back at the provider address.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A bare model name with no provider header &mdash; HTTP 400</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The gateway needs to know which integration to use. The slug normally arrives inside the model reference, so a client that sends a bare model name has given the gateway nothing to route on and the gateway answers <code>400</code> naming the headers it will accept instead.</p>
+    <ol>
+      <li>Check whether the client can send a prefixed model name. If it can, set the model to <code>@&lt;slug&gt;/&lt;model-name&gt;</code> and stop here.</li>
+      <li>If it cannot, add the header <code>x-portkey-provider: @&lt;slug&gt;</code> to every request the client sends.</li>
+      <li>For Claude Code, set that header through <code>ANTHROPIC_CUSTOM_HEADERS</code> as the <a href="../ai-gateway-client-apps.html#claude-code">client applications guide</a> describes.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The request returns a completion, and the gateway log shows it against the integration the slug names. A second <code>400</code> mentioning <code>x-portkey-config</code> or <code>x-portkey-provider</code> means the header is not reaching the gateway, so check the client is sending custom headers at all.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>The wrong /v1 on the base URL &mdash; HTTP 404</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A <code>404</code> from the gateway on an otherwise correct configuration is almost always a doubled or a missing path segment. The two SDKs expect opposite base URLs, so a team that copied a working OpenAI configuration into an Anthropic client inherits the wrong one.</p>
+    <table>
+      <thead>
+        <tr><th style="width:34%">Client</th><th style="width:30%">Base URL ends with</th><th>Because</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>OpenAI SDK, Cursor, Codex CLI</td><td><code>/v1</code></td><td>The client sends the path after <code>/v1</code> and expects the base to include it.</td></tr>
+        <tr><td>Anthropic SDK, Claude Code</td><td>No <code>/v1</code></td><td>The client appends its own <code>/v1/messages</code> path.</td></tr>
+        <tr><td>Raw <code>curl</code></td><td>Whatever the full URL needs</td><td>Nothing is appended, so the request line carries the complete path.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The request returns a completion rather than a <code>404</code>, and the request appears in the gateway log. A request that produces no log entry at all never reached the gateway, which makes it a network or an address problem rather than a path problem.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>The log names a workspace where a person was expected</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This is the attribution model working as designed rather than a logging fault. A Service workspace key is tied to nobody, so every request made with it attributes to the workspace and the applications sharing that key cannot be told apart.</p>
+    <table>
+      <thead>
+        <tr><th style="width:40%">What the log shows</th><th>What the caller is holding</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>A workspace and no user</td><td>A Service workspace key.</td></tr>
+        <tr><td>A named workspace member</td><td>A User workspace key, or a JWT whose <code>email_id</code> matched a member.</td></tr>
+        <tr><td>A subject identifier instead of an address</td><td>A JWT carrying <code>sub</code> but no <code>email_id</code>. The precedence took the first claim present.</td></tr>
+        <tr><td>Whatever the application chose</td><td>Any credential plus <code>x-portkey-metadata</code> carrying a caller value.</td></tr>
+      </tbody>
+    </table>
+    <p>Choose the credential that produces the attribution the customer asked for, and change the client to send it. No logging setting recovers an identity the request never carried.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After the client changes credential, a new request logs the identity the customer expects. Older entries keep the old attribution, because the log records what each request carried at the time.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A throttle from the provider that reads like a gateway throttle</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two different ceilings can stop the same request. The gateway rate limit belongs to the workspace and is visible in the console. The provider rate limit belongs to the integration credential, applies to every workspace behind it at once, and is invisible from the gateway.</p>
+    <ol>
+      <li>Read the workspace rate limit configured in <a href="../configuration/integrations.html#limits">chapter 9</a> and compare it against the request rate at the time of the failure.</li>
+      <li>If the workspace was below its configured limit, the ceiling that was reached is not the gateway's.</li>
+      <li>Check whether other workspaces provisioned to the same integration were busy in the same window. They share the credential and therefore the provider bucket.</li>
+      <li>Confirm the quota in the customer's provider console, which is the only place the provider-side number is visible.</li>
+      <li>Where the concentration is the problem, split the traffic across separate integrations as described in <a href="#at-scale">Hundreds of users</a>.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Not verified in a tenant</div>
+      <p>The exact error the gateway surfaces for a provider throttle was not observed, and whether the gateway retries it or passes it through was not tested. Do not match on an error string taken from this page, because this page does not print one.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The failing window correlates with either the workspace rate limit or the combined traffic of every workspace on the integration, and you can say which. A failure that correlates with neither is a different fault and belongs in the provider guide's troubleshooting section.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Gaps ───────────────────────────────────────────────────── -->
+<h2 id="gaps">Not yet verified in a tenant</h2>
+
+<p>The two-credential model itself is sourced from the product documentation, the published configuration chapters and tenant screenshots. These specific behaviors were not observed, and each one is flagged where it appears above.</p>
+
+<ul>
+  <li><strong>The OpenAI <code>user</code> parameter</strong> &mdash; whether the gateway forwards, drops or overwrites it is undocumented. It is the only field that could carry a per-caller identifier to a provider.</li>
+  <li><strong>Provider tier numbers</strong> &mdash; no provider's rate or token limits were read from a provider account. Take them from the customer's console.</li>
+  <li><strong>The provider throttle error</strong> &mdash; what the gateway returns to a caller when the provider throttles, as distinct from when a gateway limit is reached.</li>
+  <li><strong>Retry behavior on a provider throttle</strong> &mdash; whether the gateway retries or passes it through. Retries and fallbacks are configurable per <a href="../configuration/routing-reliability.html#retries">chapter 12</a>, so the answer probably depends on the config object, and that was not confirmed.</li>
+  <li><strong>Leaver handling for a User workspace key</strong> &mdash; whether removing a member from a workspace invalidates a User key issued to them, or leaves it working until it is deleted.</li>
+</ul>
+
+<p>Open items about the integration forms themselves are listed on the <a href="index.html#gaps">provider integrations hub</a>.</p>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

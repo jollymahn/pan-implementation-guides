@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>AWS Bedrock Integration | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#scope" data-section="scope">What this covers</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+    <a href="#choose" data-section="choose">Choose a path</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Authentication paths</div>
+    <a href="#access-key" data-section="access-key">AWS access key</a>
+    <a href="#assumed-role" data-section="assumed-role">AWS assumed role</a>
+    <a href="#service-role" data-section="service-role">AWS service role</a>
+    <a href="#bedrock-api-key" data-section="bedrock-api-key">Bedrock API key</a>
+    <a href="#oauth" data-section="oauth">OAuth client credentials</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Finish</div>
+    <a href="#provision" data-section="provision">Provision and allowlist</a>
+    <a href="#first-call" data-section="first-call">First model call</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#gaps" data-section="gaps">Not yet verified</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Provider Integrations</a>
+  <span class="sep">|</span>
+  AWS Bedrock
+</div>
+
+<div class="article">
+
+<h1>AWS Bedrock Integration</h1>
+<p class="subtitle">Connecting the gateway to Amazon Bedrock through any of the five modes on the AWS Auth Type control, with the IAM permission policy, the trust policy and its published principal ARN, the credential-free service role path, STS session tags for cost attribution, and a verified first call</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">All Provider Integrations</a>
+  <a href="identity-and-clients.html" class="cloud-link">Identity and Clients</a>
+  <a href="openai.html" class="cloud-link">OpenAI</a>
+  <a href="anthropic.html" class="cloud-link">Anthropic</a>
+  <a href="azure-openai.html" class="cloud-link">Azure OpenAI</a>
+  <a href="azure-foundry.html" class="cloud-link">Azure Foundry</a>
+  <a href="bedrock.html" class="cloud-link">AWS Bedrock</a>
+</div>
+
+<!-- ── Scope ──────────────────────────────────────────────────── -->
+<h2 id="scope">What this covers</h2>
+
+<p>AWS identity controls access to Amazon Bedrock, so most of the credentials the gateway can hold for it are AWS credentials, and the work splits across two consoles: the AWS console, where an IAM policy and either a role or a key are created, and Strata Cloud Manager, where the integration is created. This page covers the Bedrock tile end to end, one section per authentication mode, through to a model response returned by the gateway.</p>
+
+<p>The Bedrock tile carries a control labeled <code>AWS Auth Type</code> with five modes: <code>AWS Access Key</code>, <code>AWS Assumed Role</code>, <code>AWS Service Role</code>, <code>API Key</code> and <code>OAuth Client Credentials</code>. This page takes them in that order, which is the order the control lists them in. Every mode ends with the same <code>AWS Region</code> field, every mode needs the same Bedrock invoke permissions on whichever AWS identity ends up making the call, and every mode addresses models by the full Bedrock model ID including the cross-region prefix.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Field labels on this page were read from the tenant</div>
+  <p>The five <code>AWS Auth Type</code> modes and the fields under each one were captured in a live Strata Cloud Manager tenant on 2026-11-17, and the screenshots appear inline in each section below. Where a field label here differs from the product documentation, the label here is the one on the screen. The AWS-side procedure comes from the Portkey assumed-role documentation and from the published <a href="../ai-gateway-model-prerequisites.html#bedrock">model provider prerequisites</a>. The <a href="#gaps">Not yet verified in a tenant</a> section lists what the captures did not settle.</p>
+</div>
+
+<p><em>Step 1 of the wizard, with the Bedrock row visible among the provider tiles:</em></p>
+<img src="../aigw-screenshots/aigw-int-provider-picker.png" alt="The Select the LLM Provider step of the Add LLM Integration wizard, showing a searchable table headed Total Available Providers (82). Visible rows include Open AI, Anthropic, Google, Azure OpenAI, Azure Foundry, Bedrock, Bedrock Mantle, Claude Platform on AWS, Vertex AI, X AI and Meta AI. The Bedrock row reads Deploy Scalable, Reliable, and Secure Generative AI Applications Using Amazon Web Services. A four-step rail on the left shows Select A Provider, Integration Details, Workspace Provisioning and Model Provisioning." loading="lazy">
+
+<div class="callout callout-danger">
+  <div class="callout-title">Bedrock, Bedrock Mantle and Claude Platform on AWS are three different tiles</div>
+  <p>All three reach overlapping models on AWS, and each is configured differently. Bedrock is the native Bedrock runtime and is what this page covers. Bedrock Mantle exposes OpenAI-compatible endpoints on Bedrock, which matters to an application already written against the OpenAI SDK. Claude Platform on AWS reaches Claude through Anthropic-managed infrastructure. Confirm which product the customer bought before picking a tile, because the configuration does not transfer between them.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">What this page leaves to other pages</div>
+  <p><a href="../configuration/integrations.html">Configuration chapter 9</a> owns the provider-agnostic flow: the three tabs on the Integrations page, the slug convention, workspace provisioning, budgets and rate limits, and the model allowlist mechanics. Read it once and do not look for it repeated here. <a href="../configuration/secret-references.html">Configuration chapter 3</a> owns the vault reference that a secret access key can resolve from. The <a href="index.html">provider integrations hub</a> holds the authentication path matrix for all four providers.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<figure class="diagram">
+  <img src="../diagrams/aigw-bedrock.svg" alt="Architecture of the AI Gateway fronting Amazon Bedrock. The application holds no AWS credential. The gateway signs the Bedrock call with an IAM identity that only it holds, and the diagram traces the request from the application through the gateway checks to the Bedrock endpoint." loading="lazy">
+  <figcaption>The Bedrock path end to end. The application holds no AWS credential at any point.</figcaption>
+</figure>
+
+<h2 id="prerequisites">Prerequisites</h2>
+
+<p>Collect both lists before the session starts. The AWS list decides which authentication path is even available, and the gateway list decides what the wizard will accept.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Collect from AWS</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th style="width:30%">Item</th><th>Detail</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Account ID</td><td>The AWS account that holds the Bedrock models. The policy, the role and the key all live in this account.</td></tr>
+        <tr><td>Region</td><td>The region where the models are enabled, for example <code>us-east-1</code>. Every authentication path needs it, and a model enabled in one region is not callable in another.</td></tr>
+        <tr><td>Model IDs</td><td>The full Bedrock model ID of each model to provision, including the cross-region prefix, for example <code>us.anthropic.claude-3-7-sonnet-20250219-v1:0</code>.</td></tr>
+        <tr><td>Inference profiles, yes or no</td><td>Whether any of those models is called through an inference profile. The answer adds one action and two resource ARNs to the permission policy.</td></tr>
+        <tr><td>An IAM administrator</td><td>A person who can create a customer managed policy, create a role, and edit a trust policy in that account.</td></tr>
+        <tr><td>External ID, if the customer requires one</td><td>A string the customer's security standard mandates for cross-account role assumption. Decide this before the role is created rather than after.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every row has a written value. A region named as "wherever Bedrock is" and a model named as "Claude" are both unresolved; the model allowlist later in this page needs the exact string.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Collect from the gateway side</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th style="width:30%">Item</th><th>Detail</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Hosted or self-hosted</td><td>This decides two things on this page. The assumed-role trust policy names a different principal for each, and STS session tags need an environment variable on the gateway container, which in practice means self-hosted.</td></tr>
+        <tr><td>Gateway version</td><td>Session tags need <code>2.19.0</code> or higher. Skip the session-tag step below on anything older.</td></tr>
+        <tr><td>Strata Cloud Manager access</td><td>An administrator who can reach <strong>AI Security</strong>, then <strong>AI Gateway</strong>, then <strong>Integrations</strong>, and create an integration at the organization level.</td></tr>
+        <tr><td>A slug</td><td>Lowercase, hyphenated, provider and environment, for example <code>bedrock-prod</code>. The slug reaches application code and changing it later means changing every caller.</td></tr>
+        <tr><td>A workspace API key</td><td>Needed for the first call at the end of this page, not for creating the integration.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The hosted or self-hosted answer is confirmed against the deployment rather than assumed, and the slug is written down in a form that can be applied to every other integration the customer will create.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Choose ─────────────────────────────────────────────────── -->
+<h2 id="choose">Choose a path</h2>
+
+<p>The <code>AWS Auth Type</code> control sits directly below <code>Slug</code> on <strong>Integration Details</strong> and offers five modes. The table below lists them in the order the control renders them, which is also the order of the sections on this page. Of the four providers this set documents, Bedrock offers the most modes, and each of the other three names its control something else.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:18%">Mode</th><th style="width:24%">What AWS issues</th><th style="width:24%">What the gateway stores</th><th>Rotation and revocation</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="#access-key"><code>AWS Access Key</code></a></td>
+      <td>An access key ID and a secret access key on an IAM identity</td>
+      <td>Both values, encrypted, or a vault reference to the secret access key</td>
+      <td>Rotation is manual and on your schedule. Revocation means deactivating or deleting the key in IAM.</td>
+    </tr>
+    <tr>
+      <td><a href="#assumed-role"><code>AWS Assumed Role</code></a></td>
+      <td>Nothing. The gateway calls STS and receives temporary credentials.</td>
+      <td>A role ARN, the region, and an external ID when one is set. No long-lived secret exists.</td>
+      <td>There is no secret to rotate. Revocation means detaching the policy, editing the trust policy or deleting the role.</td>
+    </tr>
+    <tr>
+      <td><a href="#service-role"><code>AWS Service Role</code></a></td>
+      <td>Nothing. The gateway uses the IAM role already attached to the compute it runs on.</td>
+      <td>The region. The form has no credential field at all in this mode.</td>
+      <td>There is no secret to rotate. Revocation means detaching the Bedrock policy from the compute role.</td>
+    </tr>
+    <tr>
+      <td><a href="#bedrock-api-key"><code>API Key</code></a></td>
+      <td>An API key from the Bedrock console</td>
+      <td>The key, encrypted, or a vault reference to it</td>
+      <td>Rotation is manual. Revocation means deleting the key in the Bedrock console.</td>
+    </tr>
+    <tr>
+      <td><a href="#oauth"><code>OAuth Client Credentials</code></a></td>
+      <td>Undocumented. The AWS-side configuration for this mode is not described in any source behind this page.</td>
+      <td>A token endpoint, a client ID, a client secret, an optional scope, and the region.</td>
+      <td>Rotation means rotating the client secret at the identity provider.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><code>AWS Service Role</code> is the strongest mode on a self-hosted gateway, because it stores nothing and rotates nothing, and the gateway has to be running on AWS compute for it to work at all. <code>AWS Assumed Role</code> is the strongest mode on a hosted gateway, because it also stores no long-lived secret and the customer account keeps control of the role. <code>AWS Access Key</code> reaches a working integration fastest and is defensible when the key resolves from a vault and rotates on an enforced schedule. <code>API Key</code> and <code>OAuth Client Credentials</code> are the two least documented modes, and the second of them has no published AWS-side procedure.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Federation on Bedrock, corrected</div>
+  <p>The Portkey Workload Identity Federation documentation names OpenAI and Anthropic as the only providers that support federation. The Bedrock tile does carry an <code>OAuth Client Credentials</code> mode, captured in the tenant on 2026-11-17, so the documentation's limit does not hold. What the token endpoint should point at for a Bedrock integration is a separate question, and the <a href="#oauth">OAuth client credentials</a> section states plainly that it is unanswered. Two modes on this tile already avoid a stored long-lived secret without any identity provider, so a customer asking for secret-free Bedrock access has a verified answer today.</p>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The region is required in every mode</div>
+  <p><code>AWS Region</code> is the last field on the form in all five modes, and it is a separate value from the credential. It sits on the main form rather than inside a collapsed section, so a region left blank is visible on the page before the form is saved.</p>
+</div>
+
+<!-- ── Access key ─────────────────────────────────────────────── -->
+<h2 id="access-key">AWS access key</h2>
+
+<p>This path gives the gateway a long-lived IAM credential. Three steps build it: a permission policy, an identity holding that policy with a key pair issued against it, and the integration itself.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.1 &mdash; Create the Bedrock permission policy</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The same policy serves every mode that reaches Bedrock through an AWS identity, so the assumed-role and service-role sections reuse it. Create it once per account.</p>
+    <ol>
+      <li>In the AWS console open <strong>IAM</strong>, then <strong>Policies</strong>, then <strong>Create policy</strong>.</li>
+      <li>Switch the editor to <strong>JSON</strong> and paste the policy below.</li>
+      <li>Name it for its purpose, for example <code>AIGatewayBedrockInvoke</code>, and create it.</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockConsole",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": "*"
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Add the statement below only when a provisioned model is called through an inference profile. The gateway resolves the profile to its foundation model before sending the request, which is why the read action is needed.</p>
+    <div class="code-block">
+      <pre><code>{
+  "Sid": "BedrockInferenceProfiles",
+  "Effect": "Allow",
+  "Action": "bedrock:GetInferenceProfile",
+  "Resource": [
+    "arn:aws:bedrock:*:*:inference-profile/*",
+    "arn:aws:bedrock:*:*:application-inference-profile/*"
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Two sources disagree on the inference-profile action</div>
+      <p>The Portkey assumed-role documentation lists only the two invoke actions. The published <a href="../ai-gateway-model-prerequisites.html#bedrock">model provider prerequisites page</a> also lists <code>bedrock:GetInferenceProfile</code>. Both are right for their own case: the action is needed only when an inference profile is in the call path, and a cross-region model ID such as <code>us.anthropic.claude-3-7-sonnet-20250219-v1:0</code> is exactly that case. Include the statement unless you have confirmed that no provisioned model uses a profile.</p>
+    </div>
+    <p>The <code>Resource</code> value of <code>*</code> is what the source policy specifies. Narrowing it to the model ARNs that were provisioned is a reasonable hardening step, and it has to be redone every time a model is added to the allowlist.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The policy appears under <strong>Customer managed</strong> in the IAM policy list, and its JSON view shows the invoke actions. Nothing is attached to it yet.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.2 &mdash; Attach the policy to an identity and issue a key pair</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create a dedicated identity for this integration. A shared identity makes the CloudTrail record unreadable and makes revocation an outage for whatever else was using it.</p>
+    <ol>
+      <li>In <strong>IAM</strong>, create an identity whose only purpose is this integration, named for it, for example <code>aigw-bedrock-prod</code>.</li>
+      <li>Attach the <code>AIGatewayBedrockInvoke</code> policy from the previous step and nothing else.</li>
+      <li>Create an access key on that identity and record the access key ID and the secret access key.</li>
+      <li>Record where the rotation of this key is tracked, and the date it is next due.</li>
+    </ol>
+    <div class="callout callout-danger">
+      <div class="callout-title">The secret access key is shown once</div>
+      <p>AWS displays the secret access key at creation time only. Put it straight into the vault that <a href="../configuration/secret-references.html">configuration chapter 3</a> set up rather than into a clipboard, a chat message or a text file.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The identity lists exactly one attached policy and one active access key, and the secret access key is in the vault with a path you can read back.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A.3 &mdash; Create the integration with the access key pair</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In Strata Cloud Manager open <strong>AI Security</strong>, then <strong>AI Gateway</strong>, then <strong>Integrations</strong>, then <strong>LLM Integrations</strong>, then <strong>Add LLM Integration</strong>.</li>
+      <li>Select <strong>Bedrock</strong> on <strong>Select A Provider</strong> and continue to <strong>Integration Details</strong>.</li>
+      <li>Set <strong>Name</strong> and <strong>Slug</strong> from the prerequisites, for example <code>Bedrock Production</code> and <code>bedrock-prod</code>.</li>
+      <li>Select <code>AWS Access Key</code> on the <code>AWS Auth Type</code> control.</li>
+      <li>Paste the secret access key into <strong>AWS Secret Access Key</strong>, the first field below the control.</li>
+      <li>Paste the access key ID into <strong>AWS Access Key Id</strong>.</li>
+      <li>Enter the region into <strong>AWS Region</strong>, for example <code>us-east-1</code>.</li>
+      <li>Continue to <strong>Workspace Provisioning</strong> and follow <a href="#provision">Provision the integration and set the model allowlist</a>.</li>
+    </ol>
+    <!-- screenshot-pending: aigw-int-bedrock-provider-selected.png | Step 1 of the Add LLM Integration wizard with the Bedrock tile selected, tenant ID and workspace name masked -->
+    <p><em>Your screen should look like this:</em></p>
+    <img src="../aigw-screenshots/aigw-int-bedrock-auth-access-key.png" alt="Step 2 Integration Details of the Add LLM Integration wizard for the Bedrock provider, whose header reads Deploy Scalable, Reliable, and Secure Generative AI Applications Using Amazon Web Services. Above the authentication control are Name marked required, Short Description (Optional) and Slug, each with the placeholder Enter. A control labeled AWS Auth Type renders five radio cards on two rows: AWS Access Key, AWS Assumed Role and AWS Service Role on the first row, API Key and OAuth Client Credentials on the second. AWS Access Key is selected. Below it are three empty fields in order, AWS Secret Access Key, AWS Access Key Id and AWS Region, then a collapsed Advanced Options section and a Pricing Adjustments toggle switched off." loading="lazy">
+    <div class="callout callout-warning">
+      <div class="callout-title">The secret access key is ordered before the key ID</div>
+      <p>The form asks for <strong>AWS Secret Access Key</strong> first and <strong>AWS Access Key Id</strong> second, which is the reverse of the order the AWS console presents them in and the reverse of the order most runbooks record them in. Read the labels rather than filling the fields top to bottom from a copied pair.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Resolving the secret from the vault</div>
+      <p>Chapter 3 documents a <strong>Secret Ref</strong> toggle on provider-specific credential fields, including an AWS secret access key. No toggle is visible beside <strong>AWS Secret Access Key</strong> in the capture above. Check the field on your own tenant before telling a customer that the AWS secret can resolve from the vault the way an OpenAI key does.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration saves and appears on the <strong>Connected</strong> tab under the name you gave it. Saving proves the form accepted the values; it does not prove AWS accepts them, which the first call at the end of this page is what finally tests.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Assumed role ───────────────────────────────────────────── -->
+<h2 id="assumed-role">AWS assumed role</h2>
+
+<p>On this path the gateway holds no AWS secret. It calls STS with its own principal, assumes a role in the customer account, and receives temporary credentials for each request. The customer account keeps control of the role, so revoking access is an edit in IAM rather than a key deletion coordinated with the gateway.</p>
+
+<p>Four steps build it, and a fifth adds cost attribution. The permission policy is the same one as the access key path, so an account that already has <code>AIGatewayBedrockInvoke</code> starts at B.2.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>B.1 &mdash; Create the Bedrock permission policy</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This is the same policy as <a href="#access-key">A.1</a>, reproduced here so this path can be followed on its own.</p>
+    <ol>
+      <li>In the AWS console open <strong>IAM</strong>, then <strong>Policies</strong>, then <strong>Create policy</strong>.</li>
+      <li>Switch the editor to <strong>JSON</strong> and paste the policy below.</li>
+      <li>Name it <code>AIGatewayBedrockInvoke</code> and create it.</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockConsole",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": "*"
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Add <code>bedrock:GetInferenceProfile</code> on <code>arn:aws:bedrock:*:*:inference-profile/*</code> and <code>arn:aws:bedrock:*:*:application-inference-profile/*</code> when a provisioned model is called through an inference profile. A.1 above carries that statement and the reason for it.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The policy exists under <strong>Customer managed</strong> and its JSON view shows the invoke actions.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>B.2 &mdash; Create the role with trusted entity type AWS account</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The role is created with a placeholder trust relationship in this step and given its real one in B.3. The console asks for the trusted entity before it will create anything, so this order is forced by the console rather than chosen.</p>
+    <ol>
+      <li>In <strong>IAM</strong> open <strong>Roles</strong>, then <strong>Create role</strong>.</li>
+      <li>Set the trusted entity type to <strong>AWS account</strong>.</li>
+      <li>If the customer's standard requires an external ID, set one now and copy the value. It is needed again in B.3 and in B.4.</li>
+      <li>Attach the <code>AIGatewayBedrockInvoke</code> policy.</li>
+      <li>Name the role for the integration, for example <code>aigw-bedrock-prod</code>, and create it.</li>
+      <li>Copy the role ARN from the role summary.</li>
+    </ol>
+    <!-- screenshot-pending: aigw-int-bedrock-iam-role-trusted-entity.png | The IAM Create role page with trusted entity type AWS account selected and the external ID option visible, AWS account ID and external ID masked -->
+    <div class="callout callout-warning">
+      <div class="callout-title">An external ID is a decision, not a formality</div>
+      <p>The external ID is a shared string that the caller has to present alongside the assume-role request, and it guards against a confused-deputy case where another tenant of the same gateway knows your role ARN. Setting one costs one field in the integration. Adding one after the integration is live means editing the trust policy and the integration together, and calls fail in the window between the two edits.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The role exists, the <strong>Permissions</strong> tab lists <code>AIGatewayBedrockInvoke</code>, and the role ARN is recorded. The external ID, if one was set, is recorded alongside it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>B.3 &mdash; Set the trust policy to the gateway principal</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The trust policy names the principal allowed to assume the role. That principal is the gateway, and which gateway decides the ARN.</p>
+    <table>
+      <thead>
+        <tr><th style="width:28%">Deployment</th><th>Principal to trust</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Hosted gateway</td>
+          <td><code>arn:aws:iam::299329113195:role/portkey-app</code>, published by the vendor and the same for every customer of the hosted application.</td>
+        </tr>
+        <tr>
+          <td>Self-hosted Enterprise gateway</td>
+          <td>A different principal, documented in the Portkey helm repository at <code>charts/portkey-gateway/docs/Bedrock.md</code>. On a self-hosted gateway running in EKS this is the role the pods assume through their service account.</td>
+        </tr>
+      </tbody>
+    </table>
+    <ol>
+      <li>Open the role, then the <strong>Trust relationships</strong> tab, then <strong>Edit trust policy</strong>.</li>
+      <li>Replace the document with the block below, using the principal for your deployment.</li>
+      <li>Save the policy.</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::299329113195:role/portkey-app"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {}
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>With an external ID, replace the empty <code>Condition</code> with this one:</p>
+    <div class="code-block">
+      <pre><code>"Condition": {
+  "StringEquals": {
+    "sts:ExternalId": "&lt;your external ID&gt;"
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <!-- screenshot-pending: aigw-int-bedrock-trust-policy.png | The IAM Edit trust policy editor showing the saved document, the customer AWS account ID in the role ARN and the external ID masked -->
+    <div class="callout callout-note">
+      <div class="callout-title">Correction to the model provider prerequisites page</div>
+      <p>The published <a href="../ai-gateway-model-prerequisites.html#bedrock">model provider prerequisites page</a> states that the hosted gateway's principal belongs to Palo Alto Networks, that the guide does not have it, and that a hosted gateway therefore needs an access key or a Bedrock API key. That position is out of date. The principal is published as <code>arn:aws:iam::299329113195:role/portkey-app</code>, it is the vendor's account rather than the customer's, and the assumed-role path is available to a hosted gateway. Use this page for the assumed-role decision. The account number above is a published vendor value and is correct to copy verbatim.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <strong>Trust relationships</strong> tab shows one statement, allowing <code>sts:AssumeRole</code> for the principal that matches your deployment. The external ID appears in a <code>StringEquals</code> condition when one was set, and the condition is absent when one was not.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>B.4 &mdash; Create the integration with the role ARN</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In Strata Cloud Manager open <strong>AI Security</strong>, then <strong>AI Gateway</strong>, then <strong>Integrations</strong>, then <strong>LLM Integrations</strong>, then <strong>Add LLM Integration</strong>.</li>
+      <li>Select <strong>Bedrock</strong> and continue to <strong>Integration Details</strong>.</li>
+      <li>Set <strong>Name</strong> and <strong>Slug</strong>, for example <code>Bedrock Production</code> and <code>bedrock-prod</code>.</li>
+      <li>Select <code>AWS Assumed Role</code> on the <code>AWS Auth Type</code> control.</li>
+      <li>Paste the role ARN from B.2 into <strong>AWS Role ARN</strong>.</li>
+      <li>Paste the external ID from B.2 into <strong>AWS External Id (optional)</strong>. Leave the field empty when the trust policy has no external ID condition.</li>
+      <li>Enter the region into <strong>AWS Region</strong>.</li>
+      <li>Continue to <strong>Workspace Provisioning</strong> and follow <a href="#provision">Provision the integration and set the model allowlist</a>.</li>
+    </ol>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="../aigw-screenshots/aigw-int-bedrock-auth-assumed-role.png" alt="Step 2 Integration Details of the Add LLM Integration wizard for the Bedrock provider, with the AWS Auth Type control showing five radio cards and AWS Assumed Role selected. Three empty fields follow in order: AWS Role ARN with the placeholder Enter AWS Role ARN, AWS External Id (optional) with the placeholder Enter AWS External Id, and AWS Region with the placeholder Enter AWS Region. Below them sit a collapsed Advanced Options section and a Pricing Adjustments toggle switched off. No access key or secret field appears anywhere on the form." loading="lazy">
+    <div class="callout callout-warning">
+      <div class="callout-title">The external ID has to match on both sides</div>
+      <p>An external ID present in the trust policy and absent from the integration fails, and so does the reverse. The string is compared exactly, so a trailing space pasted from a ticket breaks it in a way that reads like a permissions problem.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration saves and appears on the <strong>Connected</strong> tab. The role ARN in the integration is character for character the one on the IAM role summary page.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>B.5 &mdash; Add STS session tags for cost attribution (optional)</span>
+  </div>
+  <div class="collapsible-body">
+    <p>One role shared by several applications produces one undifferentiated Bedrock bill and one undifferentiated CloudTrail record. Session tags fix that without a role per application: the gateway forwards request metadata to AWS as STS session tags, and the spend separates in Cost Explorer and in CloudTrail by application, team or environment.</p>
+
+    <table>
+      <thead>
+        <tr><th style="width:34%">Requirement</th><th>Detail</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Gateway version</td><td><code>2.19.0</code> or higher.</td></tr>
+        <tr><td>Environment variable</td><td><code>AWS_BEDROCK_STS_SESSION_TAGS_ENABLED</code> set to <code>true</code> on the gateway container.</td></tr>
+        <tr><td>Caller principal IAM policy</td><td>Must allow <code>sts:TagSession</code>.</td></tr>
+        <tr><td>Target role trust policy</td><td>Must also allow <code>sts:TagSession</code>, alongside <code>sts:AssumeRole</code>.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">The environment variable makes this self-hosted in practice</div>
+      <p>Setting an environment variable on the gateway container requires control of the container. A hosted gateway does not give the customer that control, and the caller-principal half of the <code>sts:TagSession</code> requirement lands on the vendor's principal rather than on anything the customer can edit. Confirm the deployment is self-hosted before promising session tags to a customer, because the promise is not recoverable from the AWS side alone.</p>
+    </div>
+
+    <ol>
+      <li>Confirm the gateway version is <code>2.19.0</code> or higher.</li>
+      <li>Set <code>AWS_BEDROCK_STS_SESSION_TAGS_ENABLED</code> to <code>true</code> on the gateway container and restart it.</li>
+      <li>Add <code>sts:TagSession</code> to the IAM policy of the principal that assumes the role.</li>
+      <li>Add <code>sts:TagSession</code> to the trust policy of the role from B.2, as shown below.</li>
+      <li>Send a request carrying metadata and confirm the tags arrive.</li>
+    </ol>
+
+    <p>The trust policy with both actions:</p>
+    <div class="code-block">
+      <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::299329113195:role/portkey-app"
+      },
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ],
+      "Condition": {}
+    }
+  ]
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p>The source documentation states the <code>sts:TagSession</code> requirement for both policies rather than printing a combined document. The block above is that requirement written out against the B.3 trust policy, so compare it against your own role before saving.</p>
+
+    <p>Any metadata on a request is forwarded as session tags. Pass it in the <code>metadata</code> field of the request body or in the <code>x-portkey-metadata</code> header:</p>
+    <div class="code-block">
+      <pre><code>curl '&lt;GATEWAY_BASE_URL&gt;/v1/chat/completions' \
+  -H "Content-Type: application/json" \
+  -H "x-portkey-api-key: $PORTKEY_API_KEY" \
+  -H "x-portkey-provider: $PROVIDER_SLUG" \
+  -H 'x-portkey-metadata: {"app": "chatbot", "team": "platform", "env": "prod"}' \
+  -d '{
+    "model": "anthropic.claude-sonnet-4-20250514-v1:0",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Agree the tag keys before any application sends them</div>
+      <p>The tag keys come from whatever metadata the caller sends, so three teams sending <code>app</code>, <code>application</code> and <code>service</code> produce three cost dimensions that do not add up. Publish the key list with the slug, and activate the keys as cost allocation tags in the AWS billing console so they appear in Cost Explorer.</p>
+    </div>
+
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A CloudTrail <code>AssumeRole</code> event for the role carries the tag keys and values that the request sent. A request sent without metadata still succeeds, which confirms that tagging is additive rather than mandatory.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Service role ───────────────────────────────────────────── -->
+<h2 id="service-role">AWS service role</h2>
+
+<p>Selecting <code>AWS Service Role</code> leaves one field on the form, and that field is <code>AWS Region</code>. The tile asks for no key, no secret, no role ARN and no external ID. The gateway authenticates to Bedrock as whatever IAM role the compute it runs on already carries: an EC2 instance profile, an ECS task role, or an EKS pod identity or IRSA service-account role. The AWS SDK inside the gateway picks that role up from the instance metadata service or the container credential endpoint without being told to.</p>
+
+<p>This is the AWS counterpart of the <a href="azure-openai.html#managed-identity">Azure <code>Managed</code> mode</a>, and it is the strongest Bedrock path available on a self-hosted gateway. Nothing is stored in the integration, so nothing can leak from it, and nothing has to rotate. All of the access control lives on the compute role in the customer's own account.</p>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Self-hosted only</div>
+  <p>This mode binds to the identity of the machine the gateway runs on. On a hosted gateway that machine belongs to the vendor and its role lives in the vendor's AWS account, so there is no role in the customer account for the customer to grant Bedrock on. Confirm the deployment is self-hosted on AWS before selecting this mode. A hosted gateway uses <a href="#assumed-role">AWS assumed role</a> instead, which reaches the same outcome of storing no long-lived secret.</p>
+</div>
+
+<p>Two steps build it. The permission policy is the same <code>AIGatewayBedrockInvoke</code> policy that <a href="#access-key">A.1</a> creates, including the conditional inference-profile statement, so an account that already has it starts by attaching it rather than writing it again.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>C.1 &mdash; Attach the Bedrock policy to the compute role</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Find the role the gateway process already runs under, then add Bedrock to it. A new role created here reaches nothing, because the gateway inherits whichever role its compute is already configured with and has no field in which to name a different one.</p>
+    <table>
+      <thead>
+        <tr><th style="width:30%">Where the gateway runs</th><th>The role to attach the policy to</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>EC2</td><td>The role inside the instance profile attached to the instance, shown on the instance summary under <strong>IAM Role</strong>.</td></tr>
+        <tr><td>ECS or Fargate</td><td>The <strong>task role</strong> in the task definition, which is a different role from the <strong>task execution role</strong>. The execution role pulls the image and writes logs; only the task role reaches Bedrock.</td></tr>
+        <tr><td>EKS</td><td>The role mapped to the gateway pod's service account, through either EKS Pod Identity or an IRSA trust policy.</td></tr>
+      </tbody>
+    </table>
+    <ol>
+      <li>Identify the role from the table above and record its ARN.</li>
+      <li>Create the <code>AIGatewayBedrockInvoke</code> policy if the account does not already have it. <a href="#access-key">A.1</a> carries the JSON and the conditional inference-profile statement.</li>
+      <li>In <strong>IAM</strong> open <strong>Roles</strong>, open that role, and attach <code>AIGatewayBedrockInvoke</code> under <strong>Permissions</strong>.</li>
+      <li>Confirm the models recorded in the prerequisites are enabled in the account and region this role will call, because a Bedrock model enabled in one region is not callable from another.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">Attaching Bedrock to the compute role widens whatever else runs there</div>
+      <p>Every process on that instance, task or pod inherits the role, so anything running beside the gateway can now call Bedrock and the charge lands on the customer's account. Run the gateway on compute dedicated to it, or record the shared access as an accepted risk. An EKS deployment avoids the question, because a role bound to the gateway's service account reaches only the gateway's own pods.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <strong>Permissions</strong> tab of the compute role lists <code>AIGatewayBedrockInvoke</code>. Running <code>aws sts get-caller-identity</code> from inside the gateway's own instance, task or pod returns that same role ARN, which proves the gateway's SDK will resolve to it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>C.2 &mdash; Create the integration with the service role</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The gateway side of this mode is one field.</p>
+    <ol>
+      <li>In Strata Cloud Manager open <strong>AI Security</strong>, then <strong>AI Gateway</strong>, then <strong>Integrations</strong>, then <strong>LLM Integrations</strong>, then <strong>Add LLM Integration</strong>.</li>
+      <li>Select <strong>Bedrock</strong> and continue to <strong>Integration Details</strong>.</li>
+      <li>Set <strong>Name</strong> and <strong>Slug</strong>, for example <code>Bedrock Production</code> and <code>bedrock-prod</code>.</li>
+      <li>Select <code>AWS Service Role</code> on the <code>AWS Auth Type</code> control.</li>
+      <li>Enter the region into <strong>AWS Region</strong>, which is now the only field below the control.</li>
+      <li>Continue to <strong>Workspace Provisioning</strong> and follow <a href="#provision">Provision the integration and set the model allowlist</a>.</li>
+    </ol>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="../aigw-screenshots/aigw-int-bedrock-auth-service-role.png" alt="Step 2 Integration Details of the Add LLM Integration wizard for the Bedrock provider, with the AWS Auth Type control showing five radio cards and AWS Service Role selected. A single field follows, AWS Region, with the placeholder Enter AWS Region. No credential field of any kind appears between the control and the region. Below the region sit a collapsed Advanced Options section and a Pricing Adjustments toggle switched off, and the form is visibly shorter than it is in the other four modes." loading="lazy">
+    <div class="callout callout-warning">
+      <div class="callout-title">A saved integration proves nothing in this mode</div>
+      <p>In the other modes the form at least holds a credential that can be checked by eye. Here the form holds a region and a name, so it saves whether or not the compute role exists, whether or not the policy is attached, and whether or not the gateway is running on AWS at all. The first call at the end of this page is the only test of this mode.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration saves and appears on the <strong>Connected</strong> tab. Reopening it shows <code>AWS Service Role</code> still selected and the region populated, with no credential field present.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bedrock API key ────────────────────────────────────────── -->
+<h2 id="bedrock-api-key">Bedrock API key</h2>
+
+<p>The mode is labeled <code>API Key</code> on the control, and the field below it is labeled <code>API Key</code> as well. Bedrock issues its own API key, which the gateway stores like any other provider key. This mode reaches a working integration with no IAM role and no key pair, and it stores a long-lived secret to do so.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The AWS side of this mode is thinly documented</div>
+  <p>The sources behind this page describe this mode in a single line: an API key from the Bedrock console, plus the region. The console navigation to generate the key, the key's expiry behavior, and the identity the key maps to are all unconfirmed here. Read the AWS Bedrock documentation for the key itself, and treat the two steps below as the gateway side only.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>D.1 &mdash; Generate the Bedrock API key</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In the AWS console open <strong>Amazon Bedrock</strong> in the region recorded in the prerequisites.</li>
+      <li>Generate an API key for this integration and copy the value.</li>
+      <li>Store the value in the vault from <a href="../configuration/secret-references.html">configuration chapter 3</a>.</li>
+      <li>Record the expiry, if the key has one, and where its rotation is tracked.</li>
+    </ol>
+    <p>The identity behind the key still needs <code>bedrock:InvokeModel</code> and <code>bedrock:InvokeModelWithResponseStream</code>, and <code>bedrock:GetInferenceProfile</code> when an inference profile is in the call path. The policy in <a href="#access-key">A.1</a> is that permission set.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The key is in the vault and the region it belongs to is recorded next to it. A Bedrock API key generated in one region does not serve another.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>D.2 &mdash; Create the integration with the Bedrock API key</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>In Strata Cloud Manager open <strong>AI Security</strong>, then <strong>AI Gateway</strong>, then <strong>Integrations</strong>, then <strong>LLM Integrations</strong>, then <strong>Add LLM Integration</strong>.</li>
+      <li>Select <strong>Bedrock</strong> and continue to <strong>Integration Details</strong>.</li>
+      <li>Set <strong>Name</strong> and <strong>Slug</strong>, for example <code>Bedrock Production</code> and <code>bedrock-prod</code>.</li>
+      <li>Select <code>API Key</code> on the <code>AWS Auth Type</code> control.</li>
+      <li>Supply the key from D.1 in the <strong>API Key</strong> field, using the vault reference in place of the value where the field offers one.</li>
+      <li>Enter the region into <strong>AWS Region</strong>.</li>
+      <li>Continue to <strong>Workspace Provisioning</strong> and follow <a href="#provision">Provision the integration and set the model allowlist</a>.</li>
+    </ol>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="../aigw-screenshots/aigw-int-bedrock-auth-api-key.png" alt="Step 2 Integration Details of the Add LLM Integration wizard for the Bedrock provider, with the AWS Auth Type control showing five radio cards and API Key selected on the second row. Two empty fields follow, API Key with the placeholder Enter API Key and AWS Region with the placeholder Enter AWS Region. The API Key label carries no Grab API Key link, unlike the equivalent field on the OpenAI tile. Below the fields sit a collapsed Advanced Options section and a Pricing Adjustments toggle switched off." loading="lazy">
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration saves and appears on the <strong>Connected</strong> tab, with <code>API Key</code> still selected and the region populated when the integration is reopened.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── OAuth ──────────────────────────────────────────────────── -->
+<h2 id="oauth">OAuth client credentials</h2>
+
+<p>The fifth card on the <code>AWS Auth Type</code> control is <code>OAuth Client Credentials</code>. Selecting it replaces the AWS credential fields with the same four OAuth fields that the OpenAI tile shows on its own OAuth path, followed by <code>AWS Region</code>. The gateway therefore requests a token from an identity provider the customer names, rather than holding an AWS credential.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Not verified in a tenant</div>
+  <p>The fields are verified and the screenshot below shows them. What is not verified is what the token endpoint should point at for a Bedrock integration, and no source behind this page describes an AWS-side procedure for this mode. The Portkey federation documentation covers OpenAI and Anthropic only, and names no AWS equivalent. Nothing on this page tells you which identity provider to register, which AWS resource to register it against, or what AWS does with the resulting token. Treat the four field descriptions below as an inventory of the form rather than as a procedure, and do not quote this mode to a customer as a supported design until the AWS side is confirmed with the vendor.</p>
+</div>
+
+<table>
+  <thead>
+    <tr><th style="width:26%">Field</th><th style="width:30%">Placeholder on the form</th><th>What it takes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>Token Endpoint</code></td><td><code>https://auth.example.com/oauth2/token</code></td><td>The identity provider endpoint the gateway posts a <code>client_credentials</code> request to. Which endpoint serves a Bedrock integration is the open question above.</td></tr>
+    <tr><td><code>Client ID</code></td><td><code>Enter Client ID</code></td><td>The client identifier the identity provider issued to the gateway.</td></tr>
+    <tr><td><code>Client Secret</code></td><td><code>Enter Client Secret</code></td><td>The secret paired with that client identifier. This is a long-lived secret, so this mode does store one.</td></tr>
+    <tr><td><code>Scope (optional)</code></td><td><code>e.g. api/read api/write</code></td><td>Sent as the <code>scope</code> form parameter. The generic placeholder matches the OpenAI tile's plain OAuth path rather than its federation path.</td></tr>
+  </tbody>
+</table>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>E.1 &mdash; Record the form and stop at the AWS boundary</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This step exists to document the mode accurately rather than to deploy it. Walk the form far enough to see the fields, then stop, because completing it needs an AWS-side answer this guide does not have.</p>
+    <ol>
+      <li>In Strata Cloud Manager open <strong>AI Security</strong>, then <strong>AI Gateway</strong>, then <strong>Integrations</strong>, then <strong>LLM Integrations</strong>, then <strong>Add LLM Integration</strong>.</li>
+      <li>Select <strong>Bedrock</strong> and continue to <strong>Integration Details</strong>.</li>
+      <li>Select <code>OAuth Client Credentials</code> on the <code>AWS Auth Type</code> control.</li>
+      <li>Compare the fields on screen against the table above and record any difference, because a difference means the tile changed after 2026-11-17.</li>
+      <li>Leave the wizard without saving, and raise the AWS-side question with the vendor before any customer design depends on this mode.</li>
+    </ol>
+    <p><em>Your screen should look like this:</em></p>
+    <img src="../aigw-screenshots/aigw-int-bedrock-auth-oauth.png" alt="Step 2 Integration Details of the Add LLM Integration wizard for the Bedrock provider, with the AWS Auth Type control showing five radio cards and OAuth Client Credentials selected on the second row. Five empty fields follow in order: Token Endpoint prefilled with the placeholder https://auth.example.com/oauth2/token, Client ID, Client Secret, Scope (optional) with the placeholder e.g. api/read api/write, and AWS Region. A collapsed Advanced Options section sits below them. No AWS role ARN, access key or secret access key field appears in this mode." loading="lazy">
+    <div class="callout callout-note">
+      <div class="callout-title">Deploy one of the verified modes instead</div>
+      <p>A customer asking for Bedrock access without a stored AWS key has two answers that are verified end to end on this page. A self-hosted gateway on AWS compute uses <a href="#service-role">AWS service role</a> and stores nothing at all. A hosted gateway uses <a href="#assumed-role">AWS assumed role</a> and stores only a role ARN. Both reach what this mode appears to promise, and both have a published AWS-side procedure.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The five fields on screen match the table above in both their labels and their order, and the wizard was left without a saved integration. The AWS-side question is written into the engagement notes with the vendor named as its owner.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Provision ──────────────────────────────────────────────── -->
+<h2 id="provision">Provision the integration and set the model allowlist</h2>
+
+<p>Steps 3 and 4 of the wizard are the same for every provider, and <a href="../configuration/integrations.html">configuration chapter 9</a> owns them: which workspaces receive the integration, the budget and rate limits attached to each, and the choice between allowing all models and building an allowlist. One part of step 4 is specific to Bedrock, and it is the part that breaks the first call.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>F.1 &mdash; Enter model IDs with the cross-region prefix</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Bedrock models are addressed by their full model ID rather than by a friendly name, and a cross-region inference profile carries a region prefix on the front of that ID. The allowlist entry and the model reference in application code both use the full string.</p>
+    <table>
+      <thead>
+        <tr><th style="width:38%">Where</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Model allowlist entry</td><td><code>us.anthropic.claude-3-7-sonnet-20250219-v1:0</code></td></tr>
+        <tr><td>Model reference from an application</td><td><code>@default-bedrock/us.anthropic.claude-3-7-sonnet-20250219-v1:0</code></td></tr>
+        <tr><td>Model reference with your own slug</td><td><code>@&lt;slug&gt;/&lt;full-bedrock-model-id&gt;</code></td></tr>
+      </tbody>
+    </table>
+    <ol>
+      <li>On <strong>Model Provisioning</strong>, choose <strong>Allow Specific Models</strong> rather than <strong>Allow All Models</strong>.</li>
+      <li>Add each model ID from the prerequisites, including the cross-region prefix where the model uses one.</li>
+      <li>Confirm that every model ID added here is enabled in the region supplied with the credential.</li>
+    </ol>
+    <!-- screenshot-pending: aigw-int-bedrock-model-provisioning.png | Step 4 Model Provisioning for a Bedrock integration with specific model IDs allowlisted, tenant and workspace names masked -->
+    <div class="callout callout-warning">
+      <div class="callout-title">A missing region prefix fails as a missing model</div>
+      <p>The ID <code>anthropic.claude-3-7-sonnet-20250219-v1:0</code> and the ID <code>us.anthropic.claude-3-7-sonnet-20250219-v1:0</code> are different strings, and only one of them matches what the account has enabled. The failure reads as a model not found rather than as a prefix problem, which sends people back to the credential instead of to this field.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The allowlist count matches the number of models that were approved, and each entry matches the model ID recorded in the prerequisites character for character.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── First call ─────────────────────────────────────────────── -->
+<!-- shared:begin id="aigw-int-model-provisioning"
+     vars='{"providerName": "Bedrock"}' -->
+<!-- Generated by sync-shared-content.js from docs/shared/snippets/aigw-int-model-provisioning.html. Do not edit between the markers; edit the snippet and re-run the script. -->
+<p>Step 4 of the wizard decides which models this integration exposes. The header reads <strong>Select Models to Provision</strong>, and the count beside <strong>Models</strong> is everything Bedrock publishes through the gateway. A tenant capture showed 389. Workspaces see only what is enabled here, so this list is the allowlist.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Enable the approved models</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Use <strong>Search...</strong> to find each approved model by name.</li>
+      <li>Set the toggle on each model card to on. The toggle sits in the top right of the card.</li>
+      <li>Leave every other model off.</li>
+    </ol>
+    <p><strong>Select All</strong> and <strong>Deselect All</strong> sit above the list. On a list of several hundred models, start from <strong>Deselect All</strong> and add what was approved, rather than starting from everything and removing what was not.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">The expensive models are enabled by the same click as the cheap ones</div>
+      <p>Nothing in this list distinguishes a model that costs cents from one that costs dollars for the same prompt. Budgets and rate limits are set per workspace in step 3, so they cap spend without capping which model spends it. The allowlist is the only control that decides that, and it is set here and nowhere else.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every approved model shows an enabled toggle, and the count of enabled models matches the list the customer approved.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Decide what happens to models released later</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Below the model list is a toggle reading <strong>Automatically enable new models from this provider</strong>, described as making new models from the provider available on this integration. It is off by default.</p>
+    <p>Leaving it off means a model released next month is unavailable until someone enables it. Turning it on means that model is callable the day it ships, under the budgets already in place, with no review.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Off suits a governed tenant, on suits a lab</div>
+      <p>An organization that approves models through a review process wants this off, because the toggle quietly bypasses that process. A team that wants the newest model the day it lands wants it on. Record which was chosen and why, because the setting is invisible until an unexpected model appears in the logs.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The toggle reflects a decision somebody made, rather than the default nobody looked at.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Set per-model pricing, where the published rate is wrong</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each model card carries a <strong>Set Pricing</strong> button. It opens a drawer titled <strong>Update Base Model</strong> on the right of the page.</p>
+    <p>The drawer opens with <strong>Add custom pricing for this model?</strong> switched off, explained as using default public model pricing from the base model when nothing is specified, with fine tuned models using public fine tuned model pricing. Leave it off and the gateway costs the model at the published public rate.</p>
+    <p>Switch it on and the drawer accepts:</p>
+    <table>
+      <thead>
+        <tr><th style="width:26%">Field</th><th>What it takes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Input Cost</td><td>The rate charged for input tokens.</td></tr>
+        <tr><td>Output Cost</td><td>The rate charged for output tokens.</td></tr>
+        <tr><td>Cache Pricing</td><td>A JSON object with a <code>price</code> under <code>cache_write_input_token</code> and under <code>cache_read_input_token</code>. The field is prefilled with an example showing <code>3.75</code> and <code>0.3</code>.</td></tr>
+        <tr><td>Pricing Adjustments</td><td>A separate toggle, off by default, alongside the cost fields.</td></tr>
+        <tr><td>Custom Host (Optional)</td><td>An endpoint to route this model to, instead of the provider default. The placeholder reads <code>https://your-custom-endpoint.com</code>.</td></tr>
+        <tr><td>Custom Headers (Optional)</td><td>Header and value pairs, added with <strong>+ Add Header</strong> and removed with the bin icon beside each row.</td></tr>
+      </tbody>
+    </table>
+    <p>Close the drawer with <strong>Apply</strong>, or with <strong>Cancel</strong> to discard it.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Custom pricing changes the reported cost, not the invoice</div>
+      <p>These figures drive what the gateway reports in analytics and what it counts against a budget. The provider still bills its own rate. Entering a negotiated rate here makes internal reporting match the contract; entering a wrong number makes every budget and every cost report wrong in the same direction, and nothing in the console flags the discrepancy.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Custom Host and Custom Headers are per model</div>
+      <p>Both sit on the individual model rather than the integration, so two models under one integration can route to different upstreams and send different headers. A model-level header overrides an integration-level header of the same name.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each model that needed a negotiated rate shows custom pricing applied, and every model left alone still reports the public rate. A later test call produces a cost figure consistent with the rate entered here.</p>
+    </div>
+  </div>
+</div>
+
+<p><em>Step 4 with the Update Base Model drawer open on one model:</em></p>
+<img src="../aigw-screenshots/aigw-int-model-provisioning-pricing.png" alt="The Model Provisioning step of the Add LLM Integration wizard. The left pane is headed Select Models to Provision and shows a searchable list headed Models (389), with Select All and Deselect All links above cards for individual models, each card carrying a Set Pricing button and an enable toggle. Below the list a toggle reads Automatically enable new models from this provider, switched off. A drawer on the right titled Update Base Model shows an Add custom pricing for this model question switched off, then Input Cost, Output Cost, a Cache Pricing JSON box containing cache_write_input_token and cache_read_input_token prices, a Pricing Adjustments toggle, a Custom Host field and a Custom Headers field with an Add Header link. Cancel and Apply buttons sit at the bottom, and a Create Integration button sits at the bottom of the page behind the drawer." loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Create the integration</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Click <strong>Create Integration</strong> at the bottom of the page.</li>
+    </ol>
+    <p>This is the first point at which the gateway stores anything. Everything before it was a form.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration appears on the <strong>Connected</strong> tab of the Integrations page, carrying the name and slug you set in step 2. Saving proves the form was accepted. It does not prove the credential works, which is what the first model call tests.</p>
+    </div>
+  </div>
+</div>
+<!-- shared:end -->
+
+<h2 id="first-call">Make the first model call</h2>
+
+<p>Nothing so far has been tested. One request exercises the credential, the region, the allowlist, the workspace provisioning and the model ID together. Run it before handing anything to an application team.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>G.1 &mdash; Send one request with curl</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Replace <code>&lt;GATEWAY_BASE_URL&gt;</code> with the scheme, host and port of the gateway, for example <code>https://gateway.internal.example.com</code>. <code>PORTKEY_API_KEY</code> is a workspace API key, and the application sends no AWS credential of any kind: the gateway holds it. Export the key first so it stays out of shell history.</p>
+    <div class="code-block">
+      <pre><code>read -s PORTKEY_API_KEY
+export PORTKEY_API_KEY
+
+curl '&lt;GATEWAY_BASE_URL&gt;/v1/chat/completions' \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $PORTKEY_API_KEY" \
+  -d '{
+    "model": "@default-bedrock/us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    "messages": [{"role": "user", "content": "Reply with the single word ready."}]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>A client that cannot put the slug in the model field sends a bare model ID and adds the header <code>x-portkey-provider: @&lt;slug&gt;</code> instead. The <a href="../ai-gateway-client-apps.html">client applications page</a> lists which tools need it.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A model response comes back through the gateway, and the request appears under <strong>AI Security</strong>, then <strong>AI Gateway</strong>, then <strong>Observability</strong>, on the <strong>Logs</strong> tab, attributed to the Bedrock integration. An error instead means the <a href="#troubleshooting">troubleshooting</a> table, which reads each failure back to the step that caused it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>G.2 &mdash; Send the same request from the OpenAI SDK</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The curl proves the gateway works. This proves an application needs only the three values that the <a href="../ai-gateway-model-prerequisites.html">model provider prerequisites page</a> names: the base URL, the gateway key and the model reference. No AWS SDK, no <code>boto3</code>, and no AWS credential chain appears in the client.</p>
+    <div class="code-block">
+      <pre><code>import os
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="&lt;GATEWAY_BASE_URL&gt;/v1",
+    api_key=os.environ["PORTKEY_API_KEY"],
+)
+
+response = client.chat.completions.create(
+    model="@default-bedrock/us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    messages=[{"role": "user", "content": "Reply with the single word ready."}],
+)
+
+print(response.choices[0].message.content)</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">An application using the AWS SDK today has more work than three values</div>
+      <p>A caller that sends a Bedrock native request through <code>boto3</code> is not reachable by changing three values, because the gateway accepts the OpenAI protocol and the Anthropic protocol rather than the Bedrock native one. That application either moves to one of those two protocols or looks at the Bedrock Mantle tile, which exposes OpenAI-compatible endpoints on Bedrock. Raise this early, because it is a development task rather than a configuration change.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The script prints the model's reply, and a second entry appears on the <strong>Logs</strong> tab for the same integration.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Troubleshooting ────────────────────────────────────────── -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<p>Each row reads a symptom back to the step that produced it. The error text the gateway returns for these cases has not been captured, so the symptoms below are described by behavior rather than by a quoted string.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:34%">Symptom</th><th style="width:33%">Likely cause</th><th>Where to fix it</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>The integration saves, and the first call returns an AWS access-denied error</td>
+      <td>The identity has no Bedrock invoke permission, or the policy was created and never attached</td>
+      <td>A.1 and A.2, B.1 and B.2, or C.1. Check the <strong>Permissions</strong> tab of the role or identity rather than the policy list.</td>
+    </tr>
+    <tr>
+      <td>The call fails and the error names the role rather than the model</td>
+      <td>The trust policy does not permit the gateway principal, or the external ID does not match on both sides</td>
+      <td>B.3 and B.4. Compare the principal against the hosted or self-hosted row, and compare the external ID string exactly.</td>
+    </tr>
+    <tr>
+      <td>The service role mode saves and the first call fails as though no credential was supplied</td>
+      <td>The gateway is not running on AWS compute, its role carries no Bedrock permission, or it resolved a different role from the one the policy was attached to</td>
+      <td>C.1. Run <code>aws sts get-caller-identity</code> from inside the gateway's own instance, task or pod and compare the returned ARN against the role that holds <code>AIGatewayBedrockInvoke</code>. On ECS, confirm the policy went to the task role rather than the task execution role.</td>
+    </tr>
+    <tr>
+      <td>The model is reported as not found or not permitted</td>
+      <td>The model ID is missing its cross-region prefix, is not on the allowlist, or the integration is not provisioned to the calling workspace</td>
+      <td>F.1 for the ID and the allowlist, <a href="../configuration/integrations.html">configuration chapter 9</a> for workspace provisioning.</td>
+    </tr>
+    <tr>
+      <td>The model exists in the account but the call fails for that model only</td>
+      <td>The model is enabled in a different region from the one supplied with the credential, or it resolves through an inference profile and <code>bedrock:GetInferenceProfile</code> is absent</td>
+      <td>The <strong>AWS Region</strong> value in A.3, B.4, C.2 or D.2, and the conditional statement in A.1.</td>
+    </tr>
+    <tr>
+      <td>The gateway reports that it cannot read the credential</td>
+      <td>The secret reference path or the vault permission is wrong</td>
+      <td><a href="../configuration/secret-references.html">Configuration chapter 3</a>. This is the chapter 3 check reporting for the first time.</td>
+    </tr>
+    <tr>
+      <td>Calls succeed and CloudTrail shows no session tags</td>
+      <td>The gateway is below <code>2.19.0</code>, the environment variable is unset, or <code>sts:TagSession</code> is missing from one of the two policies</td>
+      <td>B.5. Check both policies, because the requirement applies to the caller principal and the target role.</td>
+    </tr>
+    <tr>
+      <td>Cost in Cost Explorer does not break down by application</td>
+      <td>The tag keys are not activated as cost allocation tags, or callers are sending inconsistent keys</td>
+      <td>B.5 and the AWS billing console.</td>
+    </tr>
+    <tr>
+      <td>An application using <code>boto3</code> cannot reach the gateway at all</td>
+      <td>The application sends a Bedrock native request, which the gateway does not accept</td>
+      <td>G.2. The application moves to the OpenAI or Anthropic protocol, or the engagement evaluates the Bedrock Mantle tile.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ── Gaps ───────────────────────────────────────────────────── -->
+<h2 id="gaps">Not yet verified in a tenant</h2>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Not verified in a tenant</div>
+  <p>All five <code>AWS Auth Type</code> modes were captured on the Bedrock tile in a live tenant on 2026-11-17, so the control, the mode labels, the field labels, the field order and the position of <code>AWS Region</code> are settled and are no longer listed here. The items below are what the captures did not reach. Each one is a question to answer with the tenant open rather than a gap to fill with a guess. Record the answers and send them to whoever maintains this page.</p>
+</div>
+
+<ul>
+  <li><strong>The contents of Advanced Options</strong> &mdash; the section is present on all five Bedrock modes and was never expanded, for Bedrock or for any other provider. It is the only collapsed section on the tile, so anything the form accepts that is not listed on this page is inside it.</li>
+  <li><strong>The AWS side of the OAuth client credentials mode</strong> &mdash; which identity provider to register, what the token endpoint should point at, and what AWS accepts the resulting token for. No source behind this page describes any of it, and the <a href="#oauth">OAuth client credentials</a> section stops at the form for that reason.</li>
+  <li><strong>Whether an Optional Fields section exists on this tile</strong> &mdash; it does not appear in any of the five captures. The OpenAI tile has one and the Azure OpenAI tile does not, so its absence here is consistent with the pattern rather than with a missed scroll, and the Bedrock region living on the main form removes the reason it would be needed. Confirm on the tenant before recording the absence as permanent.</li>
+  <li><strong>Secret Ref is absent on this tenant</strong> &mdash; no Secret Ref control appeared on any credential field, and the admin panel had no Secret References area. Secret references need gateway 2.2.4 or higher, so confirm the version on the customer tenant rather than assuming either way.</li>
+  <li><strong>The Bedrock API key console path</strong> &mdash; how the key is generated, whether it expires, and which identity it maps to.</li>
+  <li><strong>The self-hosted principal ARN</strong> &mdash; the value in the Portkey helm repository at <code>charts/portkey-gateway/docs/Bedrock.md</code> has not been read into this page. It matters only to the assumed-role mode, because the service role mode needs no principal at all.</li>
+  <li><strong>Whether the service role mode reads a region from the instance</strong> &mdash; <code>AWS Region</code> is required on the form, so the question is whether a region set there overrides the compute's own region or is the only region the integration will ever use.</li>
+  <li><strong>The Endpoint Type field</strong> &mdash; documented as Public or Private, and not visible in any captured Bedrock screen.</li>
+  <li><strong>The gateway's error text</strong> &mdash; the troubleshooting table describes behavior because no Bedrock failure has been captured with its message.</li>
+</ul>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

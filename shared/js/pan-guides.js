@@ -611,6 +611,10 @@ const GLOBAL_NAV_GROUPS = [
       { t: 'Configuration', h: 'guides/ai-gateway/configuration/index.html' },
       { t: 'Client Applications', h: 'guides/ai-gateway/ai-gateway-client-apps.html' },
       { t: 'Model Provider Prerequisites', h: 'guides/ai-gateway/ai-gateway-model-prerequisites.html' },
+      // Hub only, for the same reason as the configuration set above: the four
+      // provider guides are carried on the hub with the auth-path matrix that
+      // explains which paths each provider actually offers.
+      { t: 'Provider Integrations', h: 'guides/ai-gateway/integrations/index.html' },
       { t: 'Connectivity Reference', h: 'guides/ai-gateway/connectivity.html' },
       { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html' },
       { t: 'Agent Identity with Entra ID', h: 'guides/ai-gateway/agent-identity-entra.html' },

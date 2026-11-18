@@ -441,27 +441,92 @@
         {
           "group": "2.1 — Provider credentials to have in hand",
           "item": "OpenAI",
-          "detail": "An API key, and the Organization ID if your account uses one."
+          "detail": "API Key  |  A platform API key. Optionally the Organization ID and Project ID, which direct cost to the right organization and project."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "OAuth Client Credentials",
+          "detail": "Token endpoint, client ID, client secret, and the scope your identity provider expects."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "Workload Identity Federation",
+          "detail": "The above, plus the OpenAI Identity Provider ID and Service Account ID from a workload identity provider and service account mapping you create in OpenAI first."
         },
         {
           "group": "2.1 — Provider credentials to have in hand",
           "item": "Anthropic",
-          "detail": "An API key."
+          "detail": "API Key  |  A key from the Anthropic console."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "Workload Identity Federation",
+          "detail": "Token endpoint, client ID, client secret, scope, audience, plus the Federation Rule ID, Organization ID and Service Account ID from a federation issuer and rule you create in the Claude Console first. Needs an Anthropic organization admin."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "Azure OpenAI",
+          "detail": "Default  |  An API key, plus the Azure resource name."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "Managed",
+          "detail": "Nothing to bring if the identity is system-assigned, or the client ID if it is user-assigned. Requires a self-hosted gateway on Azure."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "Azure Entra",
+          "detail": "Entra client ID, client secret and tenant ID for a service principal."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "Workload Identity",
+          "detail": "Workload client ID and tenant ID. Requires a self-hosted gateway on Azure."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "Azure OpenAI all modes",
+          "detail": "—  |  The resource name, every deployment name with its API version, and a Cognitive Services OpenAI User role assignment on the resource for the three identity modes. Bring deployment names, not model names."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "Azure Foundry",
+          "detail": "Same four modes  |  The same credential per mode, plus the full Azure Target URI, the API version, and the one deployment name this integration will serve."
         },
         {
           "group": "2.1 — Provider credentials to have in hand",
           "item": "Amazon Bedrock",
-          "detail": "Credentials for an identity scoped to model invocation only, plus the region, plus confirmation that the models you want are enabled in that region."
+          "detail": "AWS Access Key  |  Access key ID and secret access key."
         },
         {
           "group": "2.1 — Provider credentials to have in hand",
-          "item": "Azure AI Foundry",
-          "detail": "The resource endpoint, the deployment names, the API version, and whichever credential your resource is configured for."
+          "item": "AWS Assumed Role",
+          "detail": "The role ARN, and the external ID if you set one. The role trust policy must name the gateway principal."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "AWS Service Role",
+          "detail": "Nothing. The gateway uses the role of the compute it runs on, so this needs a self-hosted gateway."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "API Key",
+          "detail": "A Bedrock API key."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "OAuth Client Credentials",
+          "detail": "Token endpoint, client ID, client secret and scope. The AWS-side setup for this path is undocumented, so confirm it before committing to it."
+        },
+        {
+          "group": "2.1 — Provider credentials to have in hand",
+          "item": "Amazon Bedrock all types",
+          "detail": "—  |  The AWS region, confirmation that the models you want are enabled in that region, and an identity scoped to model invocation only."
         },
         {
           "group": "2.1 — Provider credentials to have in hand",
           "item": "Anything self-hosted",
-          "detail": "The endpoint, the credential, and which API dialect it speaks."
+          "detail": "—  |  The endpoint, the credential, and which API dialect it speaks."
         },
         {
           "group": "2.2 — The deployment model decision",

@@ -84,6 +84,28 @@ const EXEMPT = {
     'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
   'docs/guides/ai-gateway/configuration/mcp-gateway.html':
     'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
+  /* The provider integration pages are alternatives rather than a sequence: a
+   * customer connects the providers it actually uses, so per-page playbooks
+   * would produce five part-estimates of which any engagement spends two or
+   * three.
+   *
+   * An earlier version of this comment promised one playbook at the set's hub.
+   * That promise is withdrawn. Delivery planning for the AI Gateway is being
+   * built as an independent object covering gateway deployment overall, rather
+   * than as an artifact of this set, and it is waiting on a product-defined
+   * deployment path. Exempt here means not planned from these pages, not
+   * pending from these pages, so nothing in the repo is owed a playbook that
+   * no one has committed to writing. Revisit when that path is defined. */
+  'docs/guides/ai-gateway/integrations/openai.html':
+    'Provider integration pages are alternatives, not a sequence; AI Gateway delivery planning is a separate object awaiting a product-defined path',
+  'docs/guides/ai-gateway/integrations/anthropic.html':
+    'Provider integration pages are alternatives, not a sequence; AI Gateway delivery planning is a separate object awaiting a product-defined path',
+  'docs/guides/ai-gateway/integrations/azure-openai.html':
+    'Provider integration pages are alternatives, not a sequence; AI Gateway delivery planning is a separate object awaiting a product-defined path',
+  'docs/guides/ai-gateway/integrations/azure-foundry.html':
+    'Provider integration pages are alternatives, not a sequence; AI Gateway delivery planning is a separate object awaiting a product-defined path',
+  'docs/guides/ai-gateway/integrations/bedrock.html':
+    'Provider integration pages are alternatives, not a sequence; AI Gateway delivery planning is a separate object awaiting a product-defined path',
 };
 
 // ── Survey ───────────────────────────────────────────────────────────────────

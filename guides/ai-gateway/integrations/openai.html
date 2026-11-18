@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>OpenAI Integration | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#scope" data-section="scope">What this covers</a>
+    <a href="#prerequisites" data-section="prerequisites">Prerequisites</a>
+    <a href="#choose" data-section="choose">Choose a path</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Authentication paths</div>
+    <a href="#api-key" data-section="api-key">API key</a>
+    <a href="#oauth" data-section="oauth">OAuth client credentials</a>
+    <a href="#wif" data-section="wif">Workload Identity Federation</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Finish</div>
+    <a href="#provision" data-section="provision">Provision and allowlist</a>
+    <a href="#first-call" data-section="first-call">First model call</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a>
+    <a href="#gaps" data-section="gaps">Not yet verified</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">Provider Integrations</a>
+  <span class="sep">|</span>
+  OpenAI
+</div>
+
+<div class="article">
+
+<h1>OpenAI Integration</h1>
+<p class="subtitle">The OpenAI credential, all three authentication paths in the Add LLM Integration wizard, the identity provider and OpenAI console work that federation needs, and a first call that proves the connection</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">All Provider Integrations</a>
+  <a href="identity-and-clients.html" class="cloud-link">Identity and Clients</a>
+  <a href="openai.html" class="cloud-link">OpenAI</a>
+  <a href="anthropic.html" class="cloud-link">Anthropic</a>
+  <a href="azure-openai.html" class="cloud-link">Azure OpenAI</a>
+  <a href="azure-foundry.html" class="cloud-link">Azure Foundry</a>
+  <a href="bedrock.html" class="cloud-link">AWS Bedrock</a>
+</div>
+
+<!-- ── Scope ──────────────────────────────────────────────────── -->
+<h2 id="scope">What this covers</h2>
+
+<p>This page connects the AI Gateway to OpenAI, starting at the credential in the OpenAI platform and ending at a model call that returns a completion. OpenAI offers three authentication paths, and each one gets its own section with its own prerequisites, its own fields and its own failure modes.</p>
+
+<p>OpenAI is the only provider in this set captured in a live Strata Cloud Manager tenant. The screenshots here come from that capture on 2026-11-17, so the field names, the placeholders and the order of the controls match what the wizard renders rather than what a product page describes.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Steps 3 and 4 of the wizard live in the configuration set</div>
+  <p>The Add LLM Integration wizard has four steps. This page covers step 1, Select A Provider, and step 2, Integration Details, which is the only step whose content changes with the provider. Step 3, Workspace Provisioning, and step 4, Model Provisioning, are identical for every provider and belong to <a href="../configuration/integrations.html">configuration chapter 9</a>, together with the slug convention, the model allowlist, and budget and rate limits.</p>
+  <p>The <a href="../ai-gateway-model-prerequisites.html">model provider prerequisites page</a> lists what to ask the customer to collect before the session. This page is what happens during it.</p>
+</div>
+
+<!-- ── Prerequisites ──────────────────────────────────────────── -->
+<figure class="diagram">
+  <img src="../diagrams/aigw-openai.svg" alt="Architecture of the AI Gateway fronting the OpenAI platform. The application sends a base URL, a gateway key and an at-slug model reference. The gateway authenticates the key, resolves the slug, checks the model allowlist, budget and rate limits, applies guardrails, then strips the gateway key and attaches the integration OpenAI key before calling the OpenAI API endpoint. A panel notes that the OpenAI usage dashboard sees one key making every call, so per-team breakdown lives in gateway logs rather than OpenAI billing. Further panels cover the Strata Cloud Manager integration fields, the distinction between the OpenAI API and the ChatGPT app, and the two meters that run at once." loading="lazy">
+  <figcaption>The OpenAI path end to end, including the credential swap and what OpenAI can and cannot see.</figcaption>
+</figure>
+
+<h2 id="prerequisites">Prerequisites</h2>
+
+<p>Three of these apply whichever path you take. The rest depend on the path, and the federation path needs the most people in the room.</p>
+
+<ul>
+  <li><strong>Strata Cloud Manager access</strong> &mdash; an administrator who can create organization-level integrations. The integration write permissions are on the Security tab covered by <a href="../configuration/security-access-control.html">configuration chapter 4</a>.</li>
+  <li><strong>A workspace and a workspace API key</strong> &mdash; the key proves the integration works at the end of this page. <a href="../configuration/workspaces.html">Configuration chapter 8</a> creates it.</li>
+  <li><strong>A slug and a model list</strong> &mdash; decide the slug before you type it, because applications reference it. The model list determines the allowlist in step 4 of the wizard.</li>
+</ul>
+
+<table>
+  <thead>
+    <tr><th style="width:22%">Path</th><th style="width:39%">On the OpenAI side</th><th>On the identity provider side</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>API key</td>
+      <td>An OpenAI platform account that can create an API key in the project the gateway should bill. The Organization ID and the Project ID if you intend to set them.</td>
+      <td>Nothing.</td>
+    </tr>
+    <tr>
+      <td>OAuth client credentials</td>
+      <td>Nothing created in the OpenAI console on this path.</td>
+      <td>An OAuth 2.0 authorization server with a client credentials client: a token endpoint, a client ID, a client secret and a scope.</td>
+    </tr>
+    <tr>
+      <td>Workload Identity Federation</td>
+      <td>Permission to manage <strong>Workload Identity Providers</strong> in the OpenAI organization, plus the project and the service account the gateway should use. This permission is required for this path only.</td>
+      <td>An OIDC identity provider that issues signed JWT access tokens through the client credentials grant, and an administrator who can create applications in it.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title">The federation path needs two consoles and two owners</div>
+  <p>Workload Identity Federation touches the identity provider, the OpenAI organization and Strata Cloud Manager, and those three are rarely owned by the same person. Confirm before the session that someone present can create an app registration or an Okta authorization server, and that someone present holds the OpenAI organization permission named above. Without the second one the path stops at the provider step with nothing to show for the first hour.</p>
+</div>
+
+<!-- ── Choose ─────────────────────────────────────────────────── -->
+<h2 id="choose">Choose a path</h2>
+
+<p>The three paths differ in what the gateway stores, how much setup they take, and how fast access can be withdrawn. Those questions settle the choice more often than any preference about OAuth.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:20%">Path</th><th style="width:26%">What the gateway stores</th><th>Setup outside Strata Cloud Manager</th><th style="width:22%">Revocation</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>API key</td>
+      <td>The OpenAI platform key, encrypted, or a reference to it in your vault</td>
+      <td>One key created in the OpenAI platform</td>
+      <td>Delete the key in the OpenAI platform</td>
+    </tr>
+    <tr>
+      <td>OAuth client credentials</td>
+      <td>A client ID and client secret for a token endpoint you own</td>
+      <td>One client credentials client on an authorization server</td>
+      <td>Rotate or disable the client at the authorization server</td>
+    </tr>
+    <tr>
+      <td>Workload Identity Federation</td>
+      <td>A client ID and client secret for your own identity provider. No OpenAI key exists.</td>
+      <td>An identity provider application pair, an OpenAI Workload Identity Provider, and a service account mapping</td>
+      <td>Disable the mapping. Cached tokens expire within 15 minutes.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Choosing between the API key path and federation</div>
+  <p>Federation removes the stored provider key, and it adds an identity provider, a provider-side mapping and a second token exchange to the list of things that can break. A customer with an existing OIDC identity provider and a security standard that names federated identity should take that path. A customer whose key can sit in a vault and rotate on a schedule reaches a defensible position on the API key path with far less to run. Make the choice before you create the integration, because applications point at the slug and the authentication type is a property of the integration behind it.</p>
+</div>
+
+<h3 id="start-wizard">Start the wizard</h3>
+
+<p>The first two steps are the same on all three paths. Take them now, then continue in the section for the path you chose.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1 &mdash; Select Open AI in the provider picker</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The catalog is large and the tiles are not alphabetical, so search rather than scroll.</p>
+    <ol>
+      <li>Go to <strong>AI Security</strong> &rarr; <strong>AI Gateway</strong> &rarr; <strong>Integrations</strong> &rarr; <strong>LLM Integrations</strong>.</li>
+      <li>Confirm the workspace selector at the top left names the workspace you intend to work in.</li>
+      <li>Click <strong>Add LLM Integration</strong>.</li>
+      <li>Search for <code>Open AI</code> and select the row. The product spells the tile with a space.</li>
+      <li>Click <strong>Next: Set Details</strong>.</li>
+    </ol>
+    <p><em>The picker counted 82 providers in the tenant on 2026-11-17:</em></p>
+    <img src="../aigw-screenshots/aigw-int-provider-picker.png" alt="The Select the LLM Provider step of the Add LLM Integration wizard. A searchable table is headed Total Available Providers (82), with rows for Open AI, Anthropic, Google, Azure OpenAI, Azure Foundry, Bedrock, Bedrock Mantle, Claude Platform on AWS, Vertex AI, X AI and Meta AI, each carrying a one-line description. A four-step rail on the left lists Select A Provider, Integration Details, Workspace Provisioning and Model Provisioning." loading="lazy">
+    <p><em>With Open AI selected:</em></p>
+    <img src="../aigw-screenshots/aigw-int-openai-provider-selected.png" alt="The same provider step with the Open AI row selected and highlighted. Its description reads that it is the most popular set of models for text chat image and voice. The primary button at the bottom right now reads Next: Set Details." loading="lazy">
+    <div class="callout callout-warning">
+      <div class="callout-title">Several tiles reach OpenAI models and none of them is interchangeable</div>
+      <p>Azure OpenAI serves OpenAI models from an Azure resource and takes a different credential, different fields and a deployment name instead of a model name. Pick the <code>Open AI</code> tile only when the customer buys directly from OpenAI. The <a href="azure-openai.html">Azure OpenAI guide</a> covers the other case.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The wizard advances to <strong>Integration Details</strong> and the rail marks step 1 complete. The header names Open AI.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2 &mdash; Set the name, description and slug</span>
+  </div>
+  <div class="collapsible-body">
+    <p>These three fields sit above the Authentication Type control and do not change with the path.</p>
+    <table>
+      <thead>
+        <tr><th style="width:22%">Field</th><th style="width:14%">Required</th><th>What to enter</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Name</td><td>Yes</td><td>A human label, for example <code>OpenAI Production</code>. Shown in the integration list.</td></tr>
+        <tr><td>Short Description</td><td>No</td><td>What this integration is for, and which team owns the credential.</td></tr>
+        <tr><td>Slug</td><td>No</td><td>The identifier callers put in the model reference, for example <code>openai-prod</code>. Lowercase letters, digits and hyphens.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-danger">
+      <div class="callout-title">The slug ends up in application code</div>
+      <p>Every caller names the integration by slug, so changing it later means changing every application and every config that references it. <a href="../configuration/integrations.html">Configuration chapter 9</a> sets out the convention: provider and environment, lowercase and hyphenated, with no team name and no model name. Apply the same convention to the development integration you are about to create next.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The Name field holds a value, the Slug matches a convention you have written down, and the <strong>Authentication Type</strong> control below shows three cards with <strong>API Key</strong> selected by default.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── API key ────────────────────────────────────────────────── -->
+<h2 id="api-key">API key</h2>
+
+<p>The gateway stores one OpenAI platform key and uses it for every call made through this integration. The applications never see it. This is the default selection on the Authentication Type control and the shortest of the three paths.</p>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Streaming hides the token count, and the budget never sees the money</div>
+  <p>OpenAI sends no usage data when the caller sets <code>stream: true</code>. The gateway then records zero tokens and zero cost for that request, so budgets, rate limits and cost dashboards all read low while real spend continues. The caller must also send <code>stream_options: {include_usage: true}</code>.</p>
+  <p>This is a property of the OpenAI API rather than of the authentication path, so it applies to the OAuth and federation paths on this page as well, and to every OpenAI-compatible provider including <a href="azure-openai.html">Azure OpenAI</a>. Check it with the application team before the integration goes live, because the symptom is silence rather than an error.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step A.1 &mdash; Create the platform API key in OpenAI</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Create the key in the project the gateway should bill, and create it against an account that will outlast the engagement.</p>
+    <ol>
+      <li>Sign in to the OpenAI platform at <code>https://platform.openai.com</code>.</li>
+      <li>Select the organization and the project the gateway should use.</li>
+      <li>Create a new secret key and copy the value immediately. OpenAI shows it once.</li>
+      <li>Record the <strong>Organization ID</strong> and the <strong>Project ID</strong> alongside it if you intend to set them in the next step.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">A key tied to a leaving employee takes the integration with it</div>
+      <p>A platform key belongs to the account that created it. Create it from a service account or a shared owner account rather than from a consultant login, and hand the rotation schedule to the customer in the same session.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The key value is in your clipboard or your vault, and the OpenAI platform lists it under the correct project.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step A.2 &mdash; Enter the key in the wizard</span>
+  </div>
+  <div class="collapsible-body">
+    <p>With <strong>API Key</strong> selected, the control shows a single credential field.</p>
+    <ol>
+      <li>Leave <strong>API Key</strong> selected on the Authentication Type control.</li>
+      <li>Paste the key into the <code>Enter API Key</code> field.</li>
+      <li>If your tenant offers a <strong>Secret Ref</strong> control on this field, switch to it and select the reference instead, and supply a <strong>Secret Key</strong> when the reference holds several values. See the note below on availability.</li>
+    </ol>
+    <p><em>The Integration Details step with the API Key path selected:</em></p>
+    <img src="../aigw-screenshots/aigw-int-openai-auth-apikey.png" alt="The Integration Details step for Open AI. Name, Short Description and Slug fields sit above a three-card Authentication Type control reading API Key, OAuth Client Credentials and Workload Identity Federation, with API Key selected. Below it a single API Key field shows the placeholder Enter API Key and a Grab API Key link beside the label. Collapsed Optional Fields and Advanced Options sections follow, then a Pricing Adjustments toggle switched off." loading="lazy">
+    <div class="callout callout-warning">
+      <div class="callout-title">Secret Ref was not available on the tenant this page was captured from</div>
+      <p>No <strong>Secret Ref</strong> control appeared beside the API Key field on any provider tile, and the admin panel had no <strong>Secret References</strong> area. Secret references require gateway 2.2.4 or higher, and below that version the area is absent and integrations take literal credentials only. Confirm the version on the customer tenant before promising that provider keys will live in their vault.</p>
+      <p>Where the capability is present it is worth using, because a referenced credential rotates in the vault and the gateway picks up the new value with no change here. A pasted credential has to be re-entered on every integration that holds it, at every rotation, so record which integrations hold which key while you create them. <a href="../configuration/secret-references.html">Configuration chapter 3</a> creates the reference, and <a href="../llm-api-key-management.html">LLM API key management</a> covers building the vault.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Not verified in a tenant</div>
+      <p>A <strong>Grab API Key</strong> link sits to the right of the API Key label on this screen. Whether it deep-links to the OpenAI platform or opens a secret picker inside Strata Cloud Manager is unconfirmed, so do not demonstrate it to a customer without clicking it first in your own tenant.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The API Key field shows a masked value or a selected secret reference, and the <strong>Next: Choose Workspace</strong> button is active. The credential is not validated at this point: the first call in <a href="#first-call">Make the first model call</a> is what proves it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step A.3 &mdash; Set the Organization ID and Project ID for cost attribution</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Both fields are optional and both change where OpenAI records the cost of a call. Set them when the answer matters to the customer's billing, and skip them when the key already belongs to exactly one organization and one project.</p>
+    <table>
+      <thead>
+        <tr><th style="width:24%">Field</th><th style="width:16%">Required</th><th>What it changes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Organization ID</td><td>No</td><td>Sends the cost to a specific OpenAI organization. Set it when the owner of the key belongs to more than one organization, because the default organization on the account is not always the one the customer intends to bill.</td></tr>
+        <tr><td>Project ID</td><td>No</td><td>Keeps the cost records for one project inside that organization. Set it when the customer separates spend by project in the OpenAI platform.</td></tr>
+      </tbody>
+    </table>
+    <p>OpenAI spells its own field <code>Organization ID</code>. The gateway sends these two values as the <code>OpenAI-Organization</code> and <code>OpenAI-Project</code> headers on every request the integration makes.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Not verified in a tenant</div>
+      <p>The captured screen shows collapsed <strong>Optional Fields</strong> and <strong>Advanced Options</strong> sections that were not expanded. Organization ID and Project ID are expected to sit under Optional Fields, and that placement is unconfirmed. Expand both sections in your own tenant before you tell a customer where to type the values.</p>
+    </div>
+    <!-- screenshot-pending: aigw-int-openai-optional-fields.png | Step 2 with Optional Fields expanded for Open AI, confirming whether Organization ID and Project ID live there, organization ID value masked -->
+    <!-- screenshot-pending: aigw-int-openai-advanced-options.png | Step 2 with Advanced Options expanded for Open AI, tenant ID and any key value masked -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After the first call, the OpenAI platform shows the usage under the organization and project you named. A call that lands under a different project means the fields were left empty or the key belongs elsewhere.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── OAuth ──────────────────────────────────────────────────── -->
+<h2 id="oauth">OAuth client credentials</h2>
+
+<p>On this path the gateway holds no OpenAI key. It holds a client ID and a client secret for a token endpoint you own, requests an access token with the <code>client_credentials</code> grant, and uses that token on the call. The four fields are generic OAuth fields and none of them carries the OpenAI name, so the wizard itself marks this path as generic. The two provider-prefixed fields appear only on the federation card.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step B.1 &mdash; Collect the client credentials from the authorization server</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Every value on this path comes from the authorization server, not from the OpenAI console.</p>
+    <ol>
+      <li>Create a client credentials client on the authorization server, or identify an existing one that is dedicated to this integration.</li>
+      <li>Record the token endpoint, the client ID and the client secret.</li>
+      <li>Record the scope the client is allowed to request, if the server requires one.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">One client per integration and environment</div>
+      <p>A client shared between the production and development integrations cannot be rotated or disabled for one of them alone. Create a separate client for each, and name them so the mapping to the integration slug is obvious from the identity provider side.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A <code>client_credentials</code> request to the token endpoint with that client ID and secret returns an access token. The command in <a href="#wif-verify">Verify the token before configuring OpenAI</a> requests one and prints its claims.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step B.2 &mdash; Enter the client credentials in the wizard</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Select <strong>OAuth Client Credentials</strong> on the Authentication Type control. The API Key field is replaced by four fields.</li>
+      <li>Fill them in the order below.</li>
+    </ol>
+    <table>
+      <thead>
+        <tr><th style="width:22%">Field</th><th style="width:16%">Required</th><th style="width:28%">Placeholder</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Token Endpoint</td><td>Yes</td><td><code>https://auth.example.com/oauth2/token</code></td><td>The token endpoint of the authorization server, on public HTTPS.</td></tr>
+        <tr><td>Client ID</td><td>Yes</td><td><code>Enter Client ID</code></td><td>The client ID of the client credentials client.</td></tr>
+        <tr><td>Client Secret</td><td>Yes</td><td><code>Enter Client Secret</code></td><td>The client secret. This field also accepts a secret reference.</td></tr>
+        <tr><td>Scope</td><td>No</td><td><code>e.g. api/read api/write</code></td><td>Sent as the <code>scope</code> form parameter on the token request. Leave empty when the server does not require one.</td></tr>
+      </tbody>
+    </table>
+    <p><em>The same step with the OAuth path selected:</em></p>
+    <img src="../aigw-screenshots/aigw-int-openai-auth-oauth.png" alt="The Integration Details step with OAuth Client Credentials selected on the Authentication Type control. The single API Key field has been replaced by Token Endpoint, Client ID, Client Secret and an optional Scope field. The Token Endpoint placeholder reads https colon slash slash auth dot example dot com slash oauth2 slash token and the Scope placeholder reads e.g. api slash read api slash write. The collapsed Optional Fields and Advanced Options sections and the Pricing Adjustments toggle are unchanged from the API Key view." loading="lazy">
+    <div class="callout callout-warning">
+      <div class="callout-title">Not verified in a tenant</div>
+      <p>The three auth cards were captured from the tenant, and the fields above are what the OAuth card renders. What OpenAI accepts as a bearer token on this path, and whether a plain client credentials token reaches OpenAI without a Workload Identity Provider configured on the OpenAI side, is not established by any source this site holds. Where the requirement is federated identity against OpenAI, take the <a href="#wif">Workload Identity Federation</a> path, which is documented end to end and verified by screenshot.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All four fields are set and <strong>Next: Choose Workspace</strong> is active. A failure at the first call that names <code>invalid_client</code> or <code>invalid_scope</code> points at the authorization server rather than at the gateway: the <a href="#troubleshooting">troubleshooting</a> table decodes both.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── WIF ────────────────────────────────────────────────────── -->
+<h2 id="wif">Workload Identity Federation</h2>
+
+<p>On this path no OpenAI key exists anywhere. The gateway proves its identity to your identity provider, then presents that proof to OpenAI, and OpenAI issues a short-lived token for a service account it controls. The only long-lived secret in the chain belongs to you.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:10%">Hop</th><th style="width:30%">Request</th><th>Result</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>The gateway sends a <code>client_credentials</code> request to your identity provider token endpoint.</td><td>The identity provider returns a signed JWT access token for the gateway's client application.</td></tr>
+    <tr><td>2</td><td>The gateway exchanges that JWT with OpenAI at <code>https://auth.openai.com/oauth/token</code>, using the RFC 8693 token exchange grant with the JWT as the <code>subject_token</code>.</td><td>OpenAI verifies the signature against your published keys, checks <code>iss</code>, <code>aud</code> and <code>sub</code>, and issues a short-lived access token for the mapped service account.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">Both tokens are cached, and 15 minutes is the revocation window</div>
+  <p>Provider tokens are cached for no more than 15 minutes. Rotating the client secret invalidates the cache. Disabling the service account mapping on the OpenAI side takes effect within the same 15 minutes, which is the fastest revocation any path on this page offers.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step C.1 &mdash; Confirm the identity provider can issue what OpenAI will accept</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Four requirements decide whether this path is possible at all. Check them before anyone creates an application.</p>
+    <ul>
+      <li><strong>Client credentials grant</strong> &mdash; the provider must support it with <code>client_secret_post</code> client authentication.</li>
+      <li><strong>Signed JWT access token</strong> &mdash; an opaque token cannot be exchanged, because OpenAI verifies a signature and reads claims.</li>
+      <li><strong>OIDC discovery</strong> &mdash; the issuer must publish <code>/.well-known/openid-configuration</code>.</li>
+      <li><strong>Public JWKS</strong> &mdash; the signing keys must be reachable on a public HTTPS URL, or supplied to OpenAI as an uploaded or linked JWKS.</li>
+    </ul>
+    <p>Microsoft Entra ID and Okta both meet all four, and both are covered below. A provider that fails any of them rules out this path for OpenAI.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Fetching <code>&lt;issuer&gt;/.well-known/openid-configuration</code> from an ordinary internet host returns a document containing a <code>jwks_uri</code>, and that URL returns keys without authentication.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="wif-idp">Configure the identity provider</h3>
+
+<p>Pick the provider the customer runs. The choice persists across this page and the <a href="anthropic.html">Anthropic guide</a>, which uses the same two tabs.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Which tab applies</div>
+  <ul>
+    <li><strong>Microsoft Entra ID</strong> &mdash; two app registrations, one acting as the audience and one as the gateway's identity.</li>
+    <li><strong>Okta</strong> &mdash; a custom authorization server and an API Services application.</li>
+  </ul>
+</div>
+
+<div class="mgmt-tabs" data-tab-group="idp">
+  <div class="mgmt-tab-bar">
+    <button class="mgmt-tab active" data-plane="entra">Microsoft Entra ID</button>
+    <button class="mgmt-tab" data-plane="okta">Okta</button>
+  </div>
+
+  <div class="mgmt-panel active" data-plane="entra">
+
+    <p>Entra needs two app registrations. The API app exists to be the audience of the token. The client app is the identity the gateway presents.</p>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step C.2 &mdash; Create the API app registration</span>
+      </div>
+      <div class="collapsible-body">
+        <p>This registration is never signed in to. It supplies the <code>aud</code> claim that OpenAI matches on.</p>
+        <ol>
+          <li>In Entra ID, create an app registration named <code>portkey-wif-api</code>.</li>
+          <li>Under <strong>Expose an API</strong>, set the Application ID URI to <code>api://&lt;api-app-client-id&gt;</code>.</li>
+          <li>In the manifest, set <code>requestedAccessTokenVersion</code> to <code>2</code>. On the legacy manifest the property is <code>accessTokenAcceptedVersion</code>.</li>
+          <li>Optionally add an app role with <strong>Allowed member types</strong> set to Applications, for use in the next step.</li>
+        </ol>
+        <div class="callout callout-warning">
+          <div class="callout-title">Version 2 tokens are what make the issuer stable</div>
+          <p>With <code>requestedAccessTokenVersion</code> left at the default, Entra issues v1 tokens whose issuer differs from the v2 issuer URL you will register with OpenAI. The exchange then fails on an issuer mismatch that reads as a rejected subject token. Set the property before requesting any token.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The app registration overview shows an Application ID URI of <code>api://&lt;api-app-client-id&gt;</code>, and the manifest shows <code>2</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step C.3 &mdash; Create the client app registration and its secret</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Create a second app registration named <code>portkey-wif-client</code>.</li>
+          <li>Under <strong>Certificates &amp; secrets</strong>, create a client secret and copy the value immediately.</li>
+          <li>If you added an app role on the API app, grant it to this client under <strong>API permissions</strong>, then grant admin consent.</li>
+          <li>Record the client ID of both registrations and the directory tenant ID.</li>
+        </ol>
+        <p>These are the values the gateway fields take:</p>
+        <table>
+          <thead>
+            <tr><th style="width:26%">Gateway field</th><th>Entra value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Token Endpoint</td><td><code>https://login.microsoftonline.com/&lt;tenant-id&gt;/oauth2/v2.0/token</code></td></tr>
+            <tr><td>Client ID</td><td>Client ID of <code>portkey-wif-client</code></td></tr>
+            <tr><td>Client Secret</td><td>The secret value from this step</td></tr>
+            <tr><td>Scope</td><td><code>api://&lt;api-app-client-id&gt;/.default</code></td></tr>
+            <tr><td>Audience</td><td>Leave empty. Entra takes the audience from the scope.</td></tr>
+          </tbody>
+        </table>
+        <p>A token issued to that client carries these claims, and all three are needed on the OpenAI side:</p>
+        <table>
+          <thead>
+            <tr><th style="width:14%">Claim</th><th>Value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>iss</code></td><td><code>https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0</code></td></tr>
+            <tr><td><code>aud</code></td><td>Client ID of <code>portkey-wif-api</code>, a GUID</td></tr>
+            <tr><td><code>sub</code></td><td>Object ID of the <code>portkey-wif-client</code> <strong>service principal</strong></td></tr>
+          </tbody>
+        </table>
+        <div class="callout callout-danger">
+          <div class="callout-title">The sub claim is the service principal object ID, not the app registration object ID</div>
+          <p>Entra shows an object ID on the app registration blade and a different object ID on the service principal, and the service principal is the one in the token. Find it under <strong>Enterprise applications</strong>, not under <strong>App registrations</strong>. Using the app registration object ID produces a mapping that never matches, and the error says only that the subject token was rejected. This is the most common mistake on the Entra path, and <a href="#wif-verify">Step C.4</a> exists to catch it before the mapping is created.</p>
+        </div>
+        <div class="callout callout-warning">
+          <div class="callout-title">Entra access tokens last 60 to 90 minutes</div>
+          <p>That lifetime is well inside what OpenAI accepts. It matters on the Anthropic path, where the federation issuer carries a maximum JWT lifetime that has to be raised to accommodate it.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>Both registrations exist, the client secret value is recorded with its expiry date, and the service principal object ID from Enterprise applications is written down next to it.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /entra -->
+
+  <div class="mgmt-panel" data-plane="okta">
+
+    <p>Okta needs a custom authorization server and an API Services application. The org authorization server does not support client credentials with custom scopes, so a tenant that has only the org server has to create one.</p>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step C.2 &mdash; Create the custom authorization server</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Go to <strong>Security</strong> &rarr; <strong>API</strong> &rarr; <strong>Authorization Servers</strong>.</li>
+          <li>Use the <code>default</code> server or create one named <code>portkey-wif</code>.</li>
+          <li>Set its <strong>Audience</strong>, for example <code>api://portkey-wif</code>.</li>
+          <li>Add a scope, for example <code>portkey.wif</code>.</li>
+          <li>Under <strong>Access Policies</strong>, add a policy assigned to the client application with a rule that allows the Client Credentials grant and that scope.</li>
+          <li>Record the authorization server ID from its issuer URL.</li>
+        </ol>
+        <div class="callout callout-warning">
+          <div class="callout-title">The org authorization server will not work</div>
+          <p>Client credentials with a custom scope require a custom authorization server. Pointing the gateway at the org server returns a scope error at the first token request, and no amount of configuration on the OpenAI side changes that.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The authorization server lists the scope, and its access policy shows a rule whose allowed grant type includes Client Credentials.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header">
+        <span class="chevron">&#9654;</span>
+        <span>Step C.3 &mdash; Create the API Services application</span>
+      </div>
+      <div class="collapsible-body">
+        <ol>
+          <li>Go to <strong>Applications</strong> &rarr; <strong>Create App Integration</strong> &rarr; <strong>API Services</strong>.</li>
+          <li>Name it <code>portkey-wif-client</code>.</li>
+          <li>Set client authentication to client secret, which Okta sends as <code>client_secret_post</code>.</li>
+          <li>Copy the client ID and the client secret.</li>
+          <li>Assign the application to the access policy rule created in the previous step.</li>
+        </ol>
+        <p>These are the values the gateway fields take:</p>
+        <table>
+          <thead>
+            <tr><th style="width:26%">Gateway field</th><th>Okta value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Token Endpoint</td><td><code>https://&lt;okta-domain&gt;/oauth2/&lt;auth-server-id&gt;/v1/token</code></td></tr>
+            <tr><td>Client ID</td><td>Client ID of <code>portkey-wif-client</code></td></tr>
+            <tr><td>Client Secret</td><td>The client secret</td></tr>
+            <tr><td>Scope</td><td><code>portkey.wif</code></td></tr>
+            <tr><td>Audience</td><td>Leave empty. The authorization server sets the audience.</td></tr>
+          </tbody>
+        </table>
+        <p>A token issued by that server carries these claims:</p>
+        <table>
+          <thead>
+            <tr><th style="width:14%">Claim</th><th>Value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>iss</code></td><td><code>https://&lt;okta-domain&gt;/oauth2/&lt;auth-server-id&gt;</code></td></tr>
+            <tr><td><code>aud</code></td><td>The authorization server Audience, for example <code>api://portkey-wif</code></td></tr>
+            <tr><td><code>sub</code></td><td>Client ID of <code>portkey-wif-client</code></td></tr>
+          </tbody>
+        </table>
+        <div class="callout callout-note">
+          <div class="callout-title">On Okta the sub claim is the client ID</div>
+          <p>Okta puts the client ID in <code>sub</code> for a client credentials token, so the same value appears in two of the gateway fields and again in the OpenAI mapping. That is expected, and it is the one place where the Okta path is simpler than the Entra path.</p>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">Verification</div>
+          <p>The application exists as an API Services integration, the client secret is recorded, and the access policy rule names this application.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /okta -->
+</div><!-- /mgmt-tabs -->
+
+<h3 id="wif-verify">Verify the token before configuring OpenAI</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step C.4 &mdash; Request a token and read its claims</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The OpenAI side needs the exact <code>iss</code>, <code>aud</code> and <code>sub</code> values that a real token carries. Request one now and decode it locally, so the provider and the mapping are built from observed values rather than from the tables above.</p>
+    <div class="code-block">
+      <pre><code class="language-bash">curl -s -X POST "&lt;token-endpoint&gt;" \
+  -d grant_type=client_credentials \
+  --data-urlencode client_id="&lt;client-id&gt;" \
+  --data-urlencode client_secret="&lt;client-secret&gt;" \
+  --data-urlencode scope="&lt;scope&gt;" \
+  | jq '.access_token | split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | . + ("=" * ((4 - length % 4) % 4)) | @base64d | fromjson | {iss, aud, sub, iat, exp}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The JWT payload is unpadded base64url, which is why the filter re-pads it before decoding. Run this from a shell on a host you control.</p>
+    <div class="callout callout-danger">
+      <div class="callout-title">Never paste a production token into a JWT decoding website</div>
+      <p>A token pasted into a third-party decoder has been disclosed to that site. The command above does the same job locally. If the customer's security team is watching, run it in front of them.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The command prints five claims. On Entra, <code>iss</code> ends in <code>/v2.0</code> and <code>sub</code> matches the service principal object ID from Enterprise applications. On Okta, <code>iss</code> names the custom authorization server and <code>sub</code> matches the client ID. A failure here is an identity provider problem and nothing on the OpenAI side will fix it.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="wif-openai">Configure the OpenAI side</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step C.5 &mdash; Create the Workload Identity Provider in OpenAI</span>
+  </div>
+  <div class="collapsible-body">
+    <p>This registers your identity provider as an OIDC issuer OpenAI will trust. It needs the OpenAI organization permission to manage Workload Identity Providers.</p>
+    <ol>
+      <li>Go to <strong>Organization Settings</strong> &rarr; <strong>Security</strong> &rarr; <strong>Workload Identity Provider</strong> at <code>https://platform.openai.com/settings/organization/security/workload-identity-provider</code>.</li>
+      <li>Create an OIDC provider.</li>
+      <li>Set the two fields from the values the previous step printed.</li>
+      <li>Leave custom discovery and uploaded JWKS off.</li>
+    </ol>
+    <table>
+      <thead>
+        <tr><th style="width:22%">Field</th><th style="width:39%">Entra ID</th><th>Okta</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>OIDC Issuer URL</td><td><code>https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0</code></td><td><code>https://&lt;okta-domain&gt;/oauth2/&lt;auth-server-id&gt;</code></td></tr>
+        <tr><td>Audience</td><td>Client ID of <code>portkey-wif-api</code></td><td>The authorization server Audience</td></tr>
+      </tbody>
+    </table>
+    <p>With discovery left on, OpenAI fetches the signing keys from the issuer discovery document and picks up key rotation on its own.</p>
+    <!-- screenshot-pending: aigw-int-openai-wif-provider.png | The OpenAI Workload Identity Provider detail page with the OIDC issuer URL and audience set, organization ID and directory tenant ID masked -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The provider is listed in the OpenAI organization security settings and its issuer URL matches the <code>iss</code> claim character for character, including the trailing path segment.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step C.6 &mdash; Map the subject to a service account</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The provider establishes who signs the token. The mapping decides which service account that token becomes.</p>
+    <ol>
+      <li>Open the provider details page and add a service account mapping.</li>
+      <li>Fill the fields from the table below.</li>
+      <li>Save, and confirm that this is the only enabled mapping that matches this subject.</li>
+    </ol>
+    <table>
+      <thead>
+        <tr><th style="width:22%">Field</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Key</td><td><code>sub</code></td></tr>
+        <tr><td>Value</td><td>Entra: the service principal object ID. Okta: the client ID. Use the exact value printed in Step C.4.</td></tr>
+        <tr><td>Project</td><td>The OpenAI project the gateway should use.</td></tr>
+        <tr><td>Service account</td><td>Create one for this integration, or select an existing one.</td></tr>
+        <tr><td>Permissions</td><td>Optional. Restrict to what the gateway needs, for example model inference.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-danger">
+      <div class="callout-title">More than one enabled matching mapping makes OpenAI reject the exchange</div>
+      <p>OpenAI does not pick the best match or the first match. If two enabled mappings match the incoming token, the exchange fails. Use exact values with no wildcard and no prefix match, and disable any mapping left over from an earlier attempt before testing. A working configuration that stops working after a second mapping is added is this rule firing.</p>
+    </div>
+    <!-- screenshot-pending: aigw-int-openai-wif-mapping.png | The OpenAI service account mapping form with Key set to sub and an exact subject value, subject GUID and organization ID masked -->
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The provider details page lists exactly one enabled mapping for this subject, pointing at the service account and project you intend the gateway to use.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step C.7 &mdash; Copy out the Identity Provider ID and the Service Account ID</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two identifiers cross from the OpenAI console into the wizard, and they are the two fields the wizard labels with the provider name.</p>
+    <ol>
+      <li>Copy the <strong>Identity Provider ID</strong> from the Workload Identity Provider you created.</li>
+      <li>Copy the <strong>Service Account ID</strong> from the service account the mapping targets.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Further reading on attribute transformations</div>
+      <p>OpenAI's own developer documentation covers CEL attribute transformations and the JWKS options this page leaves at their defaults: <a href="https://developers.openai.com/api/docs/guides/workload-identity-federation" target="_blank" rel="noopener">Workload identity federation</a>. A mapping that has to match on something other than an exact <code>sub</code> is described there.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both identifiers are recorded and they come from the provider and service account created in the two previous steps, not from an older provider in the same organization.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="wif-gateway">Fill in the gateway fields</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step C.8 &mdash; Enter the federation fields in the wizard</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Select <strong>Workload Identity Federation</strong> on the Authentication Type control.</li>
+      <li>Fill the seven fields in the order the wizard renders them.</li>
+    </ol>
+    <table>
+      <thead>
+        <tr><th style="width:22%">Field</th><th style="width:14%">Required</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Token Endpoint</td><td>Yes</td><td>The identity provider token endpoint from Step C.3.</td></tr>
+        <tr><td>Client ID</td><td>Yes</td><td>The client application client ID.</td></tr>
+        <tr><td>Client Secret</td><td>Yes</td><td>The client secret. Use a secret reference and rotate it on a schedule.</td></tr>
+        <tr><td>Scope</td><td>No</td><td>Sent as the <code>scope</code> form parameter. Entra takes <code>api://&lt;app-id&gt;/.default</code>, which the placeholder shows. Okta takes the custom scope.</td></tr>
+        <tr><td>Audience</td><td>No</td><td>Sent as the <code>audience</code> form parameter. Leave empty for Entra and Okta. Set it only where the identity provider requires it, as Auth0 does.</td></tr>
+        <tr><td>Identity Provider ID</td><td>Yes</td><td>The OpenAI Workload Identity Provider ID from Step C.7.</td></tr>
+        <tr><td>Service Account ID</td><td>Yes</td><td>The OpenAI service account ID from Step C.7.</td></tr>
+      </tbody>
+    </table>
+    <p><em>The same step with the federation path selected:</em></p>
+    <img src="../aigw-screenshots/aigw-int-openai-auth-wif.png" alt="The Integration Details step with Workload Identity Federation selected on the Authentication Type control. Seven fields are shown in order: Token Endpoint, Client ID, Client Secret, an optional Scope whose placeholder reads api colon slash slash app-id slash dot default, an optional Audience, Identity Provider ID and Service Account ID. The last two placeholders read Enter OpenAI Identity Provider ID and Enter OpenAI Service Account ID, naming the provider explicitly. The collapsed Optional Fields and Advanced Options sections and the Pricing Adjustments toggle sit below." loading="lazy">
+    <div class="callout callout-note">
+      <div class="callout-title">The last two fields are the provider-specific ones</div>
+      <p>The first five fields are generic OAuth fields and appear on the OAuth card as well. Only Identity Provider ID and Service Account ID are labeled for OpenAI, and those two are what turn a generic client credentials token into an OpenAI service account token.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>All five required fields hold values and <strong>Next: Choose Workspace</strong> is active. The exchange is not tested until the first call, so finish the wizard and go to <a href="#first-call">Make the first model call</a>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Create the same integration through the Admin API</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The federation fields have Admin API equivalents, which suits a customer building integrations from a pipeline rather than from the wizard. Send <code>provider_auth_type</code> inside <code>configurations</code> on Create Integration, and send no <code>key</code>: a federation integration has no provider API key.</p>
+    <table>
+      <thead>
+        <tr><th style="width:34%">Field</th><th style="width:14%">Required</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>provider_auth_type</code></td><td>Yes</td><td><code>wif</code></td></tr>
+        <tr><td><code>wif_identity_source</code></td><td>No</td><td><code>configuredIdp</code>, the default and the only supported value</td></tr>
+        <tr><td><code>oauth_token_endpoint</code></td><td>Yes</td><td>The identity provider token endpoint</td></tr>
+        <tr><td><code>oauth_client_id</code></td><td>Yes</td><td>The identity provider client ID</td></tr>
+        <tr><td><code>oauth_client_secret</code></td><td>Yes</td><td>The identity provider client secret</td></tr>
+        <tr><td><code>oauth_scope</code></td><td>No</td><td>Scope for the token request</td></tr>
+        <tr><td><code>oauth_audience</code></td><td>No</td><td><code>audience</code> parameter for the token request</td></tr>
+        <tr><td><code>openai_identity_provider_id</code></td><td>Yes</td><td>The OpenAI Workload Identity Provider ID</td></tr>
+        <tr><td><code>openai_service_account_id</code></td><td>Yes</td><td>The OpenAI service account ID</td></tr>
+        <tr><td><code>openai_organization</code>, <code>openai_project</code></td><td>No</td><td>Sent as the <code>OpenAI-Organization</code> and <code>OpenAI-Project</code> headers</td></tr>
+      </tbody>
+    </table>
+    <div class="code-block">
+      <pre><code class="language-json">{
+  "name": "OpenAI (WIF)",
+  "ai_provider_id": "open-ai",
+  "configurations": {
+    "provider_auth_type": "wif",
+    "wif_identity_source": "configuredIdp",
+    "oauth_token_endpoint": "https://login.microsoftonline.com/&lt;tenant-id&gt;/oauth2/v2.0/token",
+    "oauth_client_id": "&lt;client-id&gt;",
+    "oauth_client_secret": "&lt;client-secret&gt;",
+    "oauth_scope": "api://&lt;api-app-client-id&gt;/.default",
+    "openai_identity_provider_id": "&lt;identity-provider-id&gt;",
+    "openai_service_account_id": "&lt;service-account-id&gt;"
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The created integration appears in the Strata Cloud Manager integration list with the name you sent, and opening it shows Workload Identity Federation selected with the same field values.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="wif-hardening">Hardening the federation path</h3>
+
+<ul>
+  <li><strong>One client per integration</strong> &mdash; a dedicated identity provider client application and a dedicated OpenAI service account for each integration and each environment.</li>
+  <li><strong>Exact subject matching</strong> &mdash; match <code>sub</code> exactly, with no wildcard and no prefix.</li>
+  <li><strong>Least privilege on the provider side</strong> &mdash; set the mapping Permissions to what the gateway needs rather than leaving them open.</li>
+  <li><strong>Secret reference for the client secret</strong> &mdash; hold it in the vault and rotate it on a schedule, which also invalidates the token cache.</li>
+  <li><strong>Revocation by mapping</strong> &mdash; disable the OpenAI mapping to cut access. Cached tokens expire within 15 minutes.</li>
+</ul>
+
+<!-- ── Provision ──────────────────────────────────────────────── -->
+<h2 id="provision">Provision the integration and set the model allowlist</h2>
+
+<p>Steps 3 and 4 of the wizard do not change with the provider, so <a href="../configuration/integrations.html">configuration chapter 9</a> owns them in full: which workspaces receive the integration, the per-workspace budget and rate limits, and whether the catalog exposes an allowlist or everything the provider offers. Two OpenAI-specific points apply while you work through them.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3 &mdash; Finish the wizard and note the model reference format</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>On <strong>Workspace Provisioning</strong>, select the workspaces that should receive the integration and set their budget and rate limits.</li>
+      <li>On <strong>Model Provisioning</strong>, enable the OpenAI models the customer approved.</li>
+      <li>Save the integration.</li>
+    </ol>
+    <p>Callers reference an OpenAI model through this integration as <code>@&lt;slug&gt;/&lt;model-name&gt;</code>, for example <code>@openai-prod/gpt-4.1</code>. The model name is OpenAI's own, unlike Azure OpenAI where the caller names a deployment.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Allow All Models includes models OpenAI has not released yet</div>
+      <p>OpenAI ships new flagship models regularly, and on Allow All each one becomes callable by every provisioned workspace at its own price with no action from anyone. On an allowlist the same release is invisible until someone adds it. Budget and rate limits also cannot be edited once set, so decide the numbers before saving.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Open a provisioned workspace and confirm the provider appears in its model catalog showing only the models you enabled. The count should match the approved list exactly.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── First call ─────────────────────────────────────────────── -->
+<!-- shared:begin id="aigw-int-model-provisioning"
+     vars='{"providerName": "Open AI"}' -->
+<!-- Generated by sync-shared-content.js from docs/shared/snippets/aigw-int-model-provisioning.html. Do not edit between the markers; edit the snippet and re-run the script. -->
+<p>Step 4 of the wizard decides which models this integration exposes. The header reads <strong>Select Models to Provision</strong>, and the count beside <strong>Models</strong> is everything Open AI publishes through the gateway. A tenant capture showed 389. Workspaces see only what is enabled here, so this list is the allowlist.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Enable the approved models</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Use <strong>Search...</strong> to find each approved model by name.</li>
+      <li>Set the toggle on each model card to on. The toggle sits in the top right of the card.</li>
+      <li>Leave every other model off.</li>
+    </ol>
+    <p><strong>Select All</strong> and <strong>Deselect All</strong> sit above the list. On a list of several hundred models, start from <strong>Deselect All</strong> and add what was approved, rather than starting from everything and removing what was not.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">The expensive models are enabled by the same click as the cheap ones</div>
+      <p>Nothing in this list distinguishes a model that costs cents from one that costs dollars for the same prompt. Budgets and rate limits are set per workspace in step 3, so they cap spend without capping which model spends it. The allowlist is the only control that decides that, and it is set here and nowhere else.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Every approved model shows an enabled toggle, and the count of enabled models matches the list the customer approved.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Decide what happens to models released later</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Below the model list is a toggle reading <strong>Automatically enable new models from this provider</strong>, described as making new models from the provider available on this integration. It is off by default.</p>
+    <p>Leaving it off means a model released next month is unavailable until someone enables it. Turning it on means that model is callable the day it ships, under the budgets already in place, with no review.</p>
+    <div class="callout callout-note">
+      <div class="callout-title">Off suits a governed tenant, on suits a lab</div>
+      <p>An organization that approves models through a review process wants this off, because the toggle quietly bypasses that process. A team that wants the newest model the day it lands wants it on. Record which was chosen and why, because the setting is invisible until an unexpected model appears in the logs.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The toggle reflects a decision somebody made, rather than the default nobody looked at.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Set per-model pricing, where the published rate is wrong</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Each model card carries a <strong>Set Pricing</strong> button. It opens a drawer titled <strong>Update Base Model</strong> on the right of the page.</p>
+    <p>The drawer opens with <strong>Add custom pricing for this model?</strong> switched off, explained as using default public model pricing from the base model when nothing is specified, with fine tuned models using public fine tuned model pricing. Leave it off and the gateway costs the model at the published public rate.</p>
+    <p>Switch it on and the drawer accepts:</p>
+    <table>
+      <thead>
+        <tr><th style="width:26%">Field</th><th>What it takes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Input Cost</td><td>The rate charged for input tokens.</td></tr>
+        <tr><td>Output Cost</td><td>The rate charged for output tokens.</td></tr>
+        <tr><td>Cache Pricing</td><td>A JSON object with a <code>price</code> under <code>cache_write_input_token</code> and under <code>cache_read_input_token</code>. The field is prefilled with an example showing <code>3.75</code> and <code>0.3</code>.</td></tr>
+        <tr><td>Pricing Adjustments</td><td>A separate toggle, off by default, alongside the cost fields.</td></tr>
+        <tr><td>Custom Host (Optional)</td><td>An endpoint to route this model to, instead of the provider default. The placeholder reads <code>https://your-custom-endpoint.com</code>.</td></tr>
+        <tr><td>Custom Headers (Optional)</td><td>Header and value pairs, added with <strong>+ Add Header</strong> and removed with the bin icon beside each row.</td></tr>
+      </tbody>
+    </table>
+    <p>Close the drawer with <strong>Apply</strong>, or with <strong>Cancel</strong> to discard it.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Custom pricing changes the reported cost, not the invoice</div>
+      <p>These figures drive what the gateway reports in analytics and what it counts against a budget. The provider still bills its own rate. Entering a negotiated rate here makes internal reporting match the contract; entering a wrong number makes every budget and every cost report wrong in the same direction, and nothing in the console flags the discrepancy.</p>
+    </div>
+    <div class="callout callout-note">
+      <div class="callout-title">Custom Host and Custom Headers are per model</div>
+      <p>Both sit on the individual model rather than the integration, so two models under one integration can route to different upstreams and send different headers. A model-level header overrides an integration-level header of the same name.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Each model that needed a negotiated rate shows custom pricing applied, and every model left alone still reports the public rate. A later test call produces a cost figure consistent with the rate entered here.</p>
+    </div>
+  </div>
+</div>
+
+<p><em>Step 4 with the Update Base Model drawer open on one model:</em></p>
+<img src="../aigw-screenshots/aigw-int-model-provisioning-pricing.png" alt="The Model Provisioning step of the Add LLM Integration wizard. The left pane is headed Select Models to Provision and shows a searchable list headed Models (389), with Select All and Deselect All links above cards for individual models, each card carrying a Set Pricing button and an enable toggle. Below the list a toggle reads Automatically enable new models from this provider, switched off. A drawer on the right titled Update Base Model shows an Add custom pricing for this model question switched off, then Input Cost, Output Cost, a Cache Pricing JSON box containing cache_write_input_token and cache_read_input_token prices, a Pricing Adjustments toggle, a Custom Host field and a Custom Headers field with an Add Header link. Cancel and Apply buttons sit at the bottom, and a Create Integration button sits at the bottom of the page behind the drawer." loading="lazy">
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Create the integration</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Click <strong>Create Integration</strong> at the bottom of the page.</li>
+    </ol>
+    <p>This is the first point at which the gateway stores anything. Everything before it was a form.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The integration appears on the <strong>Connected</strong> tab of the Integrations page, carrying the name and slug you set in step 2. Saving proves the form was accepted. It does not prove the credential works, which is what the first model call tests.</p>
+    </div>
+  </div>
+</div>
+<!-- shared:end -->
+
+<h2 id="first-call">Make the first model call</h2>
+
+<p>Nothing up to this point has been tested. One request exercises the whole chain: the workspace key, the integration, the credential or the token exchange behind it, and the model allowlist. Run it before the session ends.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.1 &mdash; Send one request with curl</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Use the workspace API key from <a href="../configuration/workspaces.html">configuration chapter 8</a> and name a model the allowlist permits. The slug in the model field tells the gateway which integration to use, so no provider header and no OpenAI key belong in this request.</p>
+    <div class="code-block">
+      <pre><code class="language-bash">GATEWAY_URL=&lt;gateway base URL&gt;
+PORTKEY_API_KEY=&lt;workspace API key&gt;
+
+curl "$GATEWAY_URL/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "x-portkey-api-key: $PORTKEY_API_KEY" \
+  -d '{
+    "model": "@openai-prod/gpt-4.1",
+    "messages": [{"role": "user", "content": "Reply with the single word ready."}]
+  }'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Export the key first so it stays out of shell history. A client that sends a bare model name instead of the slug needs the header <code>x-portkey-provider: @openai-prod</code>, and the <a href="../ai-gateway-client-apps.html">client applications page</a> lists which tools behave that way.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A completion comes back, and the gateway log entry for the request shows a non-zero token count and a cost figure. A zero token count on a non-streaming request means the integration is reaching a different model than you think. Anything other than a completion goes to <a href="#troubleshooting">Troubleshooting</a>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 4.2 &mdash; Repeat the call from the OpenAI SDK</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The curl request proves the gateway works. This one proves an application needs three changed values and no code changes, which is the demonstration the application team asks for.</p>
+    <div class="code-block">
+      <pre><code class="language-python">from openai import OpenAI
+
+client = OpenAI(
+    base_url="&lt;gateway base URL&gt;/v1",
+    api_key="&lt;workspace API key&gt;",
+)
+
+response = client.chat.completions.create(
+    model="@openai-prod/gpt-4.1",
+    messages=[{"role": "user", "content": "Reply with the single word ready."}],
+)
+
+print(response.choices[0].message.content)
+print(response.usage)</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>A streaming caller adds <code>stream_options</code> alongside <code>stream</code>, or the gateway records the request at zero cost:</p>
+    <div class="code-block">
+      <pre><code class="language-python">stream = client.chat.completions.create(
+    model="@openai-prod/gpt-4.1",
+    messages=[{"role": "user", "content": "Reply with the single word ready."}],
+    stream=True,
+    stream_options={"include_usage": True},
+)</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The script prints the completion text and a usage object with non-zero prompt and completion tokens. Run the streaming variant too and confirm the gateway log for that request also carries a token count.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Troubleshooting ────────────────────────────────────────── -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<div class="callout callout-danger">
+  <div class="callout-title">The caller sees the OAuth error code and nothing else</div>
+  <p>On the OAuth and federation paths the gateway returns only the standard error code, such as <code>invalid_client</code>. The full identity provider or OpenAI response stays in the gateway logs and never reaches the caller. A consultant debugging from the client side is working blind by design, so read the gateway log for the failing request before changing any configuration, and work the tables below against it.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Federation errors &mdash; the two hops and what each one rejects</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th style="width:34%">Error</th><th style="width:26%">Cause</th><th>Fix</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>OAuth token acquisition failed: invalid client credentials</code></td>
+          <td>The identity provider rejected the client ID or the secret</td>
+          <td>Check the secret value and its expiry date. On Okta, confirm the application allows <code>client_secret_post</code>.</td>
+        </tr>
+        <tr>
+          <td><code>OAuth token endpoint returned 400 (invalid_scope)</code></td>
+          <td>The scope is not allowed for this client</td>
+          <td>On Entra use <code>api://&lt;id&gt;/.default</code>. On Okta add the scope to the access policy rule.</td>
+        </tr>
+        <tr>
+          <td><code>OpenAI WIF token exchange failed: subject token rejected</code></td>
+          <td>OpenAI rejected the JWT, or no mapping matched</td>
+          <td>Compare <code>iss</code> and <code>aud</code> against the Workload Identity Provider and <code>sub</code> against the mapping, using the output of Step C.4. Confirm exactly one mapping is enabled.</td>
+        </tr>
+        <tr>
+          <td><code>WIF config incomplete: ... required</code></td>
+          <td>A provider field is empty</td>
+          <td>Fill both Identity Provider ID and Service Account ID.</td>
+        </tr>
+        <tr>
+          <td><code>Invalid or unsafe URL</code></td>
+          <td>The token endpoint is private or uses HTTP</td>
+          <td>Use the public HTTPS endpoint, or add the host to the gateway egress allowlist.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warning">
+      <div class="callout-title">A configuration that worked yesterday and fails today</div>
+      <p>Three things expire or change on this path: the identity provider client secret, the Entra signing keys behind discovery, and the set of enabled mappings. Check the secret expiry date first, then check whether a second mapping was added, because the second one breaks the first.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>After the fix, Step C.4 still prints the expected claims and the first call in Step 4.1 returns a completion. A second failure with the same error means the value you changed was not the one in the token.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>API key path failures &mdash; where the request stops</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th style="width:36%">Outcome</th><th>Means</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Authentication rejected at the gateway</td><td>The workspace API key is wrong, or it lacks the completions permission. This fails before the integration is reached.</td></tr>
+        <tr><td>Gateway error fetching the secret</td><td>The secret reference path or the vault permission is wrong. The key itself has not been tried yet.</td></tr>
+        <tr><td>OpenAI rejects the credential</td><td>The secret resolved but holds the wrong value, or the wrong key inside a multi-value secret. Re-create the platform key if it may have been revoked.</td></tr>
+        <tr><td>Model not found or not permitted</td><td>The model is not on the allowlist, or the integration is not provisioned to the workspace the key belongs to.</td></tr>
+        <tr><td>HTTP <code>400</code> naming an inline element</td><td>Saved-only mode is enabled and the request passed an inline provider or config. Reference a saved resource instead.</td></tr>
+        <tr><td>HTTP <code>446</code></td><td>A guardrail denied the request. The integration is working and the content failed a check.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The same request succeeds after the single change the table points at. If two changes were needed, one of them was unnecessary and should be reverted before the configuration is handed over.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Cost and usage look wrong &mdash; three causes</span>
+  </div>
+  <div class="collapsible-body">
+    <table>
+      <thead>
+        <tr><th style="width:36%">Symptom</th><th>Cause</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Zero tokens and zero cost on requests that clearly ran</td><td>The caller sets <code>stream: true</code> without <code>stream_options: {include_usage: true}</code>. The budget is not seeing this spend.</td></tr>
+        <tr><td>Spend appears under the wrong OpenAI organization</td><td>The key owner belongs to more than one organization and Organization ID was left empty.</td></tr>
+        <tr><td>Spend appears under the wrong OpenAI project</td><td>Project ID was left empty, or the platform key was created in a different project.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A streaming request logs a non-zero token count, and the OpenAI platform shows the usage under the organization and project the integration names.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Gaps ───────────────────────────────────────────────────── -->
+<h2 id="gaps">Not yet verified in a tenant</h2>
+
+<p>The provider picker and all three authentication cards were captured from a live tenant on 2026-11-17. These items were not, and each one is flagged where it appears above.</p>
+
+<ul>
+  <li><strong>Optional Fields</strong> &mdash; the section was captured collapsed on all three paths. Organization ID and Project ID are expected to live there and the placement is unconfirmed.</li>
+  <li><strong>Advanced Options</strong> &mdash; captured collapsed on all three paths, contents unknown.</li>
+  <li><strong>Grab API Key</strong> &mdash; the link beside the API Key label. Whether it deep-links to the OpenAI platform or opens a secret picker is unknown.</li>
+  <li><strong>Endpoint Type</strong> &mdash; documented as a Public or Private choice on step 3 of the wizard, and not visible in the captured screens. Whether the field still exists, and where, is open.</li>
+  <li><strong>Pricing Adjustments</strong> &mdash; the toggle appears on all three OpenAI paths, default off. Whether it behaves identically across providers has not been checked.</li>
+  <li><strong>The OAuth client credentials path end to end</strong> &mdash; the fields are captured, and what OpenAI accepts on that path is not documented by any source this site holds.</li>
+</ul>
+
+<p>The remaining open items for the other three providers are listed on the <a href="index.html#gaps">provider integrations hub</a>.</p>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>
