@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>Remote MCP | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#scope" data-section="scope">What this covers</a>
+    <a href="#difference" data-section="difference">How this differs from the MCP Gateway</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#gaps" data-section="gaps">Not yet verified</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">MCP Gateway</a>
+  <span class="sep">|</span>
+  Remote MCP
+</div>
+
+<div class="article">
+
+<h1>Remote MCP</h1>
+<p class="subtitle">The AI Gateway feature that lets a model provider use MCP tools during inference, the two places those tools can run, the @portkey-mcp prefix that keeps execution inside your own environment, and the security consequences of letting the provider run the tool instead</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">All MCP Guides</a>
+  <a href="registry.html" class="cloud-link">MCP Registry</a>
+  <a href="remote-mcp.html" class="cloud-link">Remote MCP</a>
+  <a href="observability.html" class="cloud-link">Observability</a>
+  <a href="troubleshooting.html" class="cloud-link">Troubleshooting</a>
+  <a href="../configuration/mcp-gateway.html" class="cloud-link">Configuration Chapter 10</a>
+  <a href="../integrations/index.html" class="cloud-link">Provider Integrations</a>
+</div>
+
+<!-- ── Scope ──────────────────────────────────────────────────── -->
+<h2 id="scope">What this covers</h2>
+
+<p>Remote MCP is not the MCP Gateway. The MCP Gateway proxies an MCP client, such as an IDE or an agent framework, to an MCP server that an administrator registered. Remote MCP sits on the inference path instead: an application sends a model request to the AI Gateway, the request names MCP tools, and the model calls those tools while it is answering. The two features share the letters MCP and nothing else about their surface, their configuration or their audience.</p>
+
+<p>This page covers the inference-path feature. It sets out the two places an MCP tool can execute, the request fields and the beta header that choose between them, how a request reaches a server that already exists in the <a href="registry.html">MCP Registry</a>, and the case where a private server leaves only one option open.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:18%">Feature</th><th style="width:30%">What it connects</th><th style="width:26%">Where it is configured</th><th>Where to read it</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>MCP Gateway</td>
+      <td>An MCP client to a registered MCP server, over a gateway connection URL.</td>
+      <td>The MCP Registry tab, then the server's own tabs.</td>
+      <td><a href="registry.html">MCP Registry</a> and <a href="../configuration/mcp-gateway.html">configuration chapter 10</a>.</td>
+    </tr>
+    <tr>
+      <td>Remote MCP</td>
+      <td>A model provider to MCP tools, during a single inference request.</td>
+      <td>The body and headers of the model request. No console form.</td>
+      <td>This page.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>A reader who arrived here looking for the registry, the Add MCP Server wizard, tool provisioning or client connection URLs wants <a href="registry.html">MCP Registry</a> or <a href="../configuration/mcp-gateway.html">configuration chapter 10</a>. Neither of those pages describes anything on this one.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Not verified in a tenant</div>
+  <p>Every other page in this set was written against screenshots of a live console. This one was written from vendor documentation only, and no request on this page was sent against a tenant. Read <a href="#gaps">Not yet verified</a> before presenting any of it as observed behavior.</p>
+</div>
+
+<!-- ── Difference ─────────────────────────────────────────────── -->
+<h2 id="difference">How this differs from the MCP Gateway</h2>
+
+<h3 id="modes">Where the tool runs</h3>
+
+<p>A remote MCP request executes its tools in one of two places, and the request body decides which. Gateway execution runs the tool inside your own environment and is selected with the <code>@portkey-mcp</code> prefix. Provider execution hands the model provider a <code>server_url</code> and lets the provider's own infrastructure call the server.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:22%">Property</th><th style="width:39%">Gateway execution, <code>@portkey-mcp</code></th><th>Provider execution, <code>server_url</code></th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Where tools run</td>
+      <td>Within your own VPC.</td>
+      <td>On provider servers.</td>
+    </tr>
+    <tr>
+      <td>Data exposure</td>
+      <td>MCP credentials stay in your environment.</td>
+      <td>Tokens may reach provider training data and audit pipelines.</td>
+    </tr>
+    <tr>
+      <td>User attribution</td>
+      <td>Attributed through your service or user API key.</td>
+      <td>None.</td>
+    </tr>
+    <tr>
+      <td>Audit and logging</td>
+      <td>Executions are logged and auditable.</td>
+      <td>No execution logging and no security controls.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>The three rows below the first are the reason a customer cares. Under provider execution the credential the server needs travels to the provider, and the tokens exchanged with that server may reach provider training data and provider audit pipelines. No per-user attribution is recorded, so a tool call cannot be traced back to the person whose request triggered it. No execution logging exists, so the gateway's own <a href="observability.html">observability</a> surfaces show the model call without the tool calls that happened inside it.</p>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Provider execution removes the controls the gateway exists to apply</div>
+  <p>A tool executed on provider infrastructure passes through none of the gateway's logging, none of its guardrails and none of its attribution. An organization that adopted the AI Gateway to get an auditable record of model use loses that record for every tool call made this way, while the model call itself still appears in the logs and looks complete.</p>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Provider execution against Anthropic</div>
+  <p>Anthropic gates its own MCP client behind the header <code>anthropic-beta: mcp-client-2025-04-04</code> and takes the servers in an <code>mcp_servers</code> array. Each entry carries:</p>
+  <ul>
+    <li><code>type</code> &mdash; <code>url</code> is the only supported value.</li>
+    <li><code>url</code> &mdash; must start with <code>https</code>.</li>
+    <li><code>name</code> &mdash; unique per request, and the value that identifies the server in <code>mcp_tool_call</code> blocks.</li>
+    <li><code>tool_configuration</code> &mdash; optional, holding <code>enabled</code> and <code>allowed_tools</code>.</li>
+    <li><code>authorization_token</code> &mdash; optional.</li>
+  </ul>
+  <p>Responses add two content block types, <code>mcp_tool_use</code> and <code>mcp_tool_result</code>. Everything in the right-hand column of the table above applies to this path.</p>
+</div>
+
+<h3 id="invoke">Gateway execution</h3>
+
+<p>Two things select gateway execution: a beta header on the request, and a prefix on the server name inside the tool definition.</p>
+
+<ul>
+  <li><strong>The header</strong> &mdash; <code>x-portkey-beta: server-side-mcp-2026-06-01</code> on every request that uses the feature.</li>
+  <li><strong>The prefix</strong> &mdash; <code>@portkey-mcp/</code> in front of the server name, on <code>server_label</code> for the Responses API or on <code>mcp_server_name</code> for the Messages API.</li>
+</ul>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Three fields are ignored once the prefix is present</div>
+  <p>With <code>@portkey-mcp/</code> on the server name, the gateway ignores <code>server_description</code>, <code>server_url</code> and <code>require_approval</code> if the request passes them. A request that carries both the prefix and a <code>server_url</code> is accepted, and the <code>server_url</code> has no effect. Removing those three fields from the body makes the request say what it does.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 1 &mdash; Call a tool through the gateway on the Responses API</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The tool definition is an ordinary Responses API MCP tool with one change: the server label carries the prefix. The provider slug travels in <code>x-portkey-provider</code> and the model field holds a bare model name, which is the same pattern an ordinary model call uses.</p>
+    <div class="code-block">
+      <pre><code class="language-bash">curl --location 'https://api.portkey.ai/v1/responses' \
+--header 'Content-Type: application/json' \
+--header 'x-portkey-provider: @your-provider-slug' \
+--header 'x-portkey-api-key: $PORTKEY_API_KEY' \
+--header 'x-portkey-beta: server-side-mcp-2026-06-01' \
+--data-raw '{
+    "model": "gpt-5.5",
+    "tools": [
+        {
+            "type": "mcp",
+            "server_label": "@portkey-mcp/your-mcp-server-label",
+            "allowed_tools": ["tool_name_1", "tool_name_2"]
+        }
+    ],
+    "input": "what is portkey gateway"
+}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Export <code>PORTKEY_API_KEY</code> first so the value stays out of shell history. <code>https://api.portkey.ai</code> is the SaaS host; a self-hosted deployment substitutes its own gateway base URL. <code>allowed_tools</code> is optional, and omitting it exposes every tool the server offers, so name the tools explicitly when the model should reach only some of them.</p>
+    <p>Dropping the <code>@portkey-mcp/</code> prefix and supplying a <code>server_url</code> instead moves execution to the provider and loses every property in the left column of the table above.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A response comes back and the tool call appears in the gateway's own logs with the user or service identity attached. A response that answers without calling the tool, or a tool call absent from the logs, means the request reached the provider-execution path. Re-read the request for a missing <code>x-portkey-beta</code> header or a missing <code>@portkey-mcp/</code> prefix, in that order.</p>
+    </div>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 2 &mdash; Call the same tool on the Messages API</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The Messages API carries the prefixed name twice: on <code>name</code> inside <code>mcp_servers</code>, and on <code>mcp_server_name</code> inside the <code>tools</code> object. The beta header is identical to the Responses API call.</p>
+    <div class="code-block">
+      <pre><code class="language-bash">curl --location 'https://api.portkey.ai/v1/messages' \
+--header 'Content-Type: application/json' \
+--header 'x-portkey-api-key: $PORTKEY_API_KEY' \
+--header 'x-portkey-beta: server-side-mcp-2026-06-01' \
+--data-raw '{
+    "messages": [
+        { "role": "user", "content": "what is Portkey-AI gateway repository?" }
+    ],
+    "model": "@anthropic/claude-haiku-4-5",
+    "max_tokens": 10000,
+    "mcp_servers": [
+        {
+            "type": "url",
+            "url": "https://aigw.portkey.ai/m/server-name/mcp",
+            "name": "@portkey-mcp/deepwiki"
+        }
+    ],
+    "tools": {
+        "type": "mcp_toolset",
+        "mcp_server_name": "@portkey-mcp/deepwiki",
+        "default_config": { "enabled": true },
+        "configs": { "specific_tool_name": { "enabled": true } }
+    },
+    "stream": false
+}'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The vendor example includes <code>url</code> and also states that <code>url</code> is not required when <code>@portkey-mcp</code> is in use, which matches the three fields the prefix already overrides. Leave it out for a gateway-executed call and the request still names the server through the prefixed <code>name</code>.</p>
+    <p><code>default_config</code> sets the enabled state every tool inherits, and <code>configs</code> overrides it for one named tool. The rest of the body stays the provider's own, and the gateway does not change it, which is the behavior the <a href="../integrations/anthropic.html">Anthropic integration page</a> documents for a plain model call on this path.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The response contains the tool result and the gateway logs show a tool call of the same shape the Responses API produced in Step 1. A <code>400</code> naming <code>mcp_server_name</code> means the field went into the wrong place in the body; a successful response with no logged tool call means the prefix did not take effect.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="registry-servers">Reaching a server that is already in the registry</h3>
+
+<p>A server registered in the <a href="registry.html">MCP Registry</a> is also reachable by its gateway connection URL, named in <code>server_url</code>. The credential that authorizes the call depends on how that server authenticates. Header-based and no-auth servers take the Portkey API key inside <code>headers</code>. OAuth servers take the user's token in <code>authorization</code>.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">These two bodies carry no prefix, so they follow the provider-execution column</div>
+  <p>The vendor examples below set <code>server_label</code> to a plain name and pass <code>server_url</code>, <code>server_description</code> and <code>require_approval</code>, all of which the <code>@portkey-mcp/</code> prefix would override. Sending them as written therefore accepts the right-hand column of the comparison table in <a href="#modes">Where the tool runs</a>. Prefix <code>server_label</code> to keep execution on the gateway.</p>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Step 3 &mdash; Authorize the call against a registry server</span>
+  </div>
+  <div class="collapsible-body">
+    <p>For a server registered with the <code>Headers</code> authentication option or with <code>None</code>, pass the Portkey API key as <code>x-portkey-api-key</code> inside the tool's <code>headers</code> object. The key appears twice in the request: once as a transport header on the HTTP call, and once inside the tool definition.</p>
+    <div class="code-block">
+      <pre><code class="language-json">{
+  "model": "@OPENAI_PROVIDER/gpt-4.1",
+  "tools": [
+    {
+      "type": "mcp",
+      "server_label": "dmcp",
+      "server_description": "deepwiki mcp",
+      "server_url": "https://aigw.portkey.ai/m/deepwiki/mcp",
+      "headers": { "x-portkey-api-key": "{{PORTKEY_API_KEY}}" },
+      "require_approval": "never"
+    }
+  ],
+  "input": "what is portkey gateway"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>For a server registered with <code>OAuth 2.1</code>, the body is identical except that <code>authorization</code> replaces the <code>headers</code> object.</p>
+    <div class="code-block">
+      <pre><code class="language-json">{
+  "model": "@OPENAI_PROVIDER/gpt-4.1",
+  "tools": [
+    {
+      "type": "mcp",
+      "server_label": "dmcp",
+      "server_description": "deepwiki mcp",
+      "server_url": "https://aigw.portkey.ai/m/deepwiki/mcp",
+      "authorization": "{{OAUTH_TOKEN}}",
+      "require_approval": "never"
+    }
+  ],
+  "input": "what is portkey gateway"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Which of the two shapes applies is decided by the Authentication option chosen when the server was registered, and <a href="registry.html#oauth21">the registry page</a> sets out all four options and what each one exposes. A server registered as <code>OAuth 2.1</code> is per-user, so the token belongs to the person the request is made for and a shared value does not substitute for it.</p>
+    <div class="callout callout-danger">
+      <div class="callout-title">The Responses API stores neither the header values nor the URL path</div>
+      <p>It discards the value of every string in the <code>headers</code> object, and it discards the path portion of <code>server_url</code> in responses, so <code>example.com/mcp</code> comes back as <code>example.com</code>. Nothing is retained between calls. Send the full <code>server_url</code> path and every header the server needs on every single request, because a second call that relies on the first having registered them reaches the server unauthenticated or reaches the wrong path.</p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Not verified in a tenant</div>
+      <p>Whether the key used here must also carry the <code>mcp.invoke</code> permission was not established. That permission is required for tool calls made through the MCP Gateway, as <a href="registry.html#oauth21">the registry page</a> records, and nothing read for this page states whether the inference path applies the same check. Grant it before testing, then remove it to find out.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The tool returns data the server could only produce for an authorized caller. A <code>401</code> means the credential went into the wrong field for the server's authentication option: move a header-shaped value into <code>headers</code>, or an OAuth token into <code>authorization</code>. A <code>404</code> against a URL that works elsewhere means the <code>/mcp</code> path was dropped on a retry.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="private">Private servers</h3>
+
+<p>A model provider can only call a server its own infrastructure can route to. A server behind a corporate firewall, bound to localhost, or published on a private network with no public DNS record is unreachable from provider infrastructure, whatever the request body says. Provider execution against such a server fails at the provider end, and no change to the credential or the tool definition fixes it.</p>
+
+<p>Gateway execution is therefore the only option for a private server, rather than the better of two. The gateway runs inside your environment and reaches the server over the same network path any internal client would use.</p>
+
+<h3 id="upstream">Providers without remote MCP execution</h3>
+
+<p>Several upstream providers do not support executing MCP tools remotely at all. Amazon Bedrock and Google Vertex AI are the named cases. A request that asks one of them to call an MCP server has nothing to call it with, so the feature would be unavailable to every application routed to those providers.</p>
+
+<p>The <code>@portkey-mcp</code> prefix answers that by moving execution off the provider entirely. The gateway performs the tool call and returns the result into the model exchange, so an application written against the Responses API or the Messages API uses MCP tools with a provider that has no MCP support of its own, and the application code does not change when the model behind the slug changes.</p>
+
+<!-- ── Gaps ───────────────────────────────────────────────────── -->
+<h2 id="gaps">Not yet verified</h2>
+
+<p>The rest of this set rests on screenshots of a live console captured on 2026-11-18. This page does not. Every statement above came from the vendor's remote MCP documentation, last modified 2026-08-06 and read on 2026-11-18. No request was sent against a tenant, and no console surface for the feature was opened, because the feature has none.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Not verified in a tenant</div>
+  <ul>
+    <li><strong>Every request on this page</strong> &mdash; the bodies are reproduced from the vendor documentation rather than composed, and none of them was sent against a tenant or produced an observed response.</li>
+    <li><strong>The beta header is dated</strong> &mdash; <code>server-side-mcp-2026-06-01</code> names a beta whose shape the vendor can change, and a later date string implies a later contract. Re-read the vendor page before relying on any field above in production code.</li>
+    <li><strong>What the logs record for a gateway-executed tool call</strong> &mdash; the table states that executions are logged and auditable. Which fields appear, and whether they match the per-request metadata on the <a href="observability.html">observability page</a>, was not confirmed.</li>
+    <li><strong>The <code>mcp.invoke</code> permission on the inference path</strong> &mdash; required for MCP Gateway tool calls, unestablished for remote MCP.</li>
+    <li><strong>Error behavior</strong> &mdash; what a request returns when the beta header is absent but the prefix is present, and the reverse, was not observed. The status codes named in the verification blocks above are the expected shapes rather than captured responses.</li>
+    <li><strong>The provider list</strong> &mdash; Amazon Bedrock and Google Vertex AI are named as providers without remote MCP execution. Whether other providers behind the gateway share that limitation was not checked.</li>
+  </ul>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

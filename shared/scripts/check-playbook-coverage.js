@@ -106,6 +106,12 @@ const EXEMPT = {
     'Provider integration pages are alternatives, not a sequence; AI Gateway delivery planning is a separate object awaiting a product-defined path',
   'docs/guides/ai-gateway/integrations/bedrock.html':
     'Provider integration pages are alternatives, not a sequence; AI Gateway delivery planning is a separate object awaiting a product-defined path',
+  /* Same position as the provider integration set above: the MCP pages are
+   * reference depth behind configuration chapter 10 rather than a delivery
+   * sequence of their own, and AI Gateway delivery planning is being built as
+   * one independent object covering gateway deployment overall. */
+  'docs/guides/ai-gateway/mcp/registry.html':
+    'Reference depth behind configuration chapter 10; AI Gateway delivery planning is a separate object awaiting a product-defined path',
 };
 
 // ── Survey ───────────────────────────────────────────────────────────────────

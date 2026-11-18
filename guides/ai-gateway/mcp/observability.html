@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>MCP Observability | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#scope" data-section="scope">What this covers</a>
+    <a href="#logs" data-section="logs">Tool call logs</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#gaps" data-section="gaps">Not yet verified</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">MCP Gateway</a>
+  <span class="sep">|</span>
+  MCP Observability
+</div>
+
+<div class="article">
+
+<h1>MCP Observability</h1>
+<p class="subtitle">What the gateway records for every MCP tool call without any setup, the metadata fields that attribute a call to a person, a team and a key, how to filter the log view while debugging a reported failure, and what the source material does not answer about retention, export and redaction</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">All MCP Guides</a>
+  <a href="registry.html" class="cloud-link">MCP Registry</a>
+  <a href="remote-mcp.html" class="cloud-link">Remote MCP</a>
+  <a href="observability.html" class="cloud-link">Observability</a>
+  <a href="troubleshooting.html" class="cloud-link">Troubleshooting</a>
+  <a href="../configuration/mcp-gateway.html" class="cloud-link">Configuration Chapter 10</a>
+  <a href="../integrations/index.html" class="cloud-link">Provider Integrations</a>
+</div>
+
+<!-- ── Scope ──────────────────────────────────────────────────── -->
+<h2 id="scope">What this covers</h2>
+
+<p>Every request that passes through the MCP Gateway is logged automatically. No agent is installed, no exporter is configured, no logging profile is attached, and no setting has to be switched on first. A server registered this morning is producing tool call records as soon as the first client calls it.</p>
+
+<p>That changes what an administrator has to do. The work here is reading and filtering what already exists rather than instrumenting anything, and the first question a customer asks is usually what the gateway captured rather than how to make it capture.</p>
+
+<p>This page documents the record itself: the fields on a tool call, the metadata attached to every request, the filters that find one call among thousands, and the procedure for taking a reported failure down to a cause.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">What the neighboring pages own</div>
+  <ul>
+    <li><strong>Registering a server</strong> &mdash; <a href="registry.html">MCP Registry and the Add MCP Server wizard</a> covers the registry, the two-step wizard and all four authentication options, field by field.</li>
+    <li><strong>The configuration procedure</strong> &mdash; <a href="../configuration/mcp-gateway.html">Configuration chapter 10</a> is the short path through the whole feature, including the identity forwarding step this page refers to.</li>
+    <li><strong>Credentials and attribution on the model side</strong> &mdash; <a href="../integrations/identity-and-clients.html">Identity and clients</a> explains why a given call logs a person or logs a workspace. The metadata fields below are the same argument seen from the logging end.</li>
+  </ul>
+</div>
+
+<!-- ── Logs ───────────────────────────────────────────────────── -->
+<h2 id="logs">Tool call logs</h2>
+
+<h3 id="captured">What a tool call records</h3>
+
+<p>Nine fields are captured per request. Six of them answer who called what and how it went; two of them hold the content of the call.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:22%">Field</th><th>What it holds</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Tool</td><td>The name of the tool that was invoked.</td></tr>
+    <tr><td>Parameters</td><td>The full request payload, meaning every argument the calling agent constructed for the tool.</td></tr>
+    <tr><td>Response</td><td>The full response data the MCP server returned.</td></tr>
+    <tr><td>User</td><td>The person the call attributes to, where the credential carried one.</td></tr>
+    <tr><td>Team</td><td>The team the caller belongs to.</td></tr>
+    <tr><td>Timestamp</td><td>When the call was made.</td></tr>
+    <tr><td>Latency</td><td>How long the call took.</td></tr>
+    <tr><td>Status</td><td>Whether the call succeeded or failed.</td></tr>
+    <tr><td>MCP Server</td><td>The registered server the tool belongs to.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">Tool arguments are logged in full</div>
+  <p>Parameters is the complete request payload and Response is the complete response data. A tool that takes a customer record, a file path, a database query or a support ticket body as an argument puts that value into the log, and a tool that returns records returns them into the log as well. Raise this before a customer connects a server that touches regulated data, because the capture happens by default and nothing on the registration form mentions it.</p>
+  <p>Whether the capture can be narrowed, disabled or redacted for a given server is not answered by the source material behind this page. <a href="#gaps">Not yet verified</a> records that as an open question rather than as a product limitation.</p>
+</div>
+
+<h3 id="where">Where to look and how to filter</h3>
+
+<p>Tool calls appear under <strong>Logs</strong>, alongside the model requests the same gateway handled. Six filters narrow the list: MCP server, team, user, tool name, time range and status. Clicking an entry opens the exact parameters that were sent, the response that came back, and a timing breakdown for the call.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Open the log view and narrow it to one server</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Start wide and remove rows. A filter set that returns nothing is as often a wrong workspace or a wrong time range as it is an absent call.</p>
+    <ol>
+      <li>Confirm the workspace selector at the top left names the workspace the call was made in. A tool call logged in one workspace is not visible from another.</li>
+      <li>Go to <strong>AI Security</strong> &rarr; <strong>AI Gateway</strong> &rarr; <strong>Observability</strong> &rarr; <strong>Logs</strong>.</li>
+      <li>Set the time range to a window that contains the call. The view opens on a recent window, so a call from yesterday is filtered out before you have typed anything.</li>
+      <li>Filter by MCP server to leave only calls against the server in question.</li>
+      <li>Add a tool name, a user, a team or a status to reach a single entry.</li>
+      <li>Click the entry to open the parameters, the response and the timing breakdown.</li>
+    </ol>
+    <p><em>The Logs view with MCP tool calls and model requests in one list. This capture is from an earlier session in the dark theme, and the red box is an annotation added at capture time rather than part of the product:</em></p>
+    <img src="../aigw-screenshots/aigw-mcp-observability-logs.png" alt="The Observability page in Strata Cloud Manager with the Logs tab active, captured in the dark theme. A workspace selector reading main_airs_workspace sits at the top left beside a breadcrumb of AI Security, AI Gateway, Observability and Logs. The page title Observability carries the subtitle AI Gateway Observability and three tabs reading Analytics, Logs and Exports. A Search Filter box spans the width of the view, with a Last 24 hours time range picker, a Logs and Traces toggle and a filter icon on the right. The table has seven columns: Timestamp, Model, Path, User, Tokens (Cost), Status and Score. Rows naming claude-opus-5 with a Path of Message and token counts in the tens of thousands are interleaved with rows naming context7 that have no Path value and token counts of a few hundred or zero. A red annotation box rings one context7 row timestamped Aug 18, 12:51:01 AM. The User column is empty on every row." loading="lazy">
+    <div class="callout callout-warning">
+      <div class="callout-title">Not verified in a tenant</div>
+      <p>The capture shows the list view rather than an opened entry, and its columns are the shared ones: Timestamp, Model, Path, User, Tokens (Cost), Status and Score. The nine tool call fields in the table above come from the product documentation, and which of them appear as columns against which appear only inside an opened entry was not observed. The <strong>Analytics</strong> and <strong>Exports</strong> tabs beside Logs were not opened either.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The filtered list holds at least one row naming the MCP server you filtered on, and clicking it shows the parameters sent and the response received. An empty list after a call that definitely succeeded means the workspace selector or the time range is wrong, so widen both before concluding the call was not logged.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="analytics">Aggregate analytics</h3>
+
+<p>Beyond individual records, the gateway reports aggregates across tool calls:</p>
+
+<ul>
+  <li><strong>Requests over time</strong> &mdash; call volume across a window.</li>
+  <li><strong>Requests by server</strong> &mdash; which registered servers carry the traffic.</li>
+  <li><strong>Requests by team</strong> &mdash; which teams are using tools.</li>
+  <li><strong>Requests by user</strong> &mdash; which individuals are using them.</li>
+  <li><strong>Error rates</strong> &mdash; the proportion of calls that fail.</li>
+  <li><strong>Latency percentiles</strong> &mdash; the response time distribution rather than an average.</li>
+  <li><strong>Most used tools</strong> &mdash; which tools account for the volume.</li>
+</ul>
+
+<p>Two of these change a rollout conversation. Requests by server shows a registered server that nobody calls, which is a candidate for removal rather than for more provisioning. Most used tools shows the handful of tools worth guardrailing first, which <a href="../configuration/mcp-gateway.html#guardrails">chapter 10</a> covers.</p>
+
+<h3 id="metadata">Request metadata</h3>
+
+<p>Nine metadata fields ride on every request, for calls authenticated with an API key and for calls authenticated through OAuth alike. These are the fields that make a tool call attributable to somebody rather than merely visible.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:26%">Field</th><th>What it carries</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>organisation_id</code></td><td>Identifier of the organization the call belongs to.</td></tr>
+    <tr><td><code>organisation_name</code></td><td>Display name of that organization.</td></tr>
+    <tr><td><code>workspace_id</code></td><td>Identifier of the workspace the call was made in.</td></tr>
+    <tr><td><code>workspace_name</code></td><td>Display name of that workspace.</td></tr>
+    <tr><td><code>workspace_slug</code></td><td>Slug form of the workspace, which is the value URLs and configuration files carry.</td></tr>
+    <tr><td><code>user_id</code></td><td>The individual the call attributes to, where the credential identified one.</td></tr>
+    <tr><td><code>api_key_id</code></td><td>The gateway API key that made the call.</td></tr>
+    <tr><td><code>mcp_server_id</code></td><td>The registered MCP server the tool belongs to.</td></tr>
+    <tr><td><code>mcp.auth.type</code></td><td>How the caller authenticated, with the value <code>api_key</code> or <code>Bearer</code>.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-note">
+  <div class="callout-title">The field names keep the vendor's British spelling</div>
+  <p>The first two fields are <code>organisation_id</code> and <code>organisation_name</code> as the product emits them. Query them with that spelling. An analytics job that looks for an organization field with a letter z finds nothing and reports no results rather than an error.</p>
+</div>
+
+<p>Five things become possible once these fields are on every record:</p>
+
+<ul>
+  <li><strong>Per-user usage tracking</strong> &mdash; which individuals call which tools, from <code>user_id</code>.</li>
+  <li><strong>Per-team cost allocation</strong> &mdash; tool usage grouped by the team the caller belongs to.</li>
+  <li><strong>Compliance auditing</strong> &mdash; a record of who invoked what, when, against which server.</li>
+  <li><strong>Chargeback reporting</strong> &mdash; usage rolled up by workspace, from <code>workspace_id</code> and <code>workspace_slug</code>.</li>
+  <li><strong>Authentication flow analysis</strong> &mdash; the split between key-authenticated and OAuth-authenticated traffic, from <code>mcp.auth.type</code>.</li>
+</ul>
+
+<div class="callout callout-warning">
+  <div class="callout-title">A shared Service key gives you the workspace and not the person</div>
+  <p><code>api_key_id</code> and <code>user_id</code> are how a tool call is attributed, and <code>user_id</code> is only populated when the credential carried an identity. A Service key is tied to nobody, so a team sharing one produces records that resolve to the workspace while every individual behind it is indistinguishable. That is the same behavior <a href="../integrations/identity-and-clients.html#two-credentials">Identity and clients</a> describes on the model side, and the fix is the same: issue User keys where per-person attribution is a requirement, and decide it before the keys are distributed, because a key type cannot be changed after issue.</p>
+  <p>Per-user OAuth servers force the question. A server registered with <code>OAuth 2.1</code> cannot be called with a Service key at all, as <a href="registry.html#oauth21">the OAuth 2.1 section</a> sets out, so every call against one carries a person.</p>
+</div>
+
+<h3 id="debugging">Debugging a reported failure</h3>
+
+<p>A user reports that an agent cannot do something. The log view turns that into a specific field on a specific record.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Take a reported failure down to a cause</span>
+  </div>
+  <div class="collapsible-body">
+    <ol>
+      <li>Filter the log view by the user who reported the problem, and set the time range around the window they described.</li>
+      <li>Add the MCP server, and the tool name where they named one, to reduce the list further.</li>
+      <li>Find the failing request by its status.</li>
+      <li>Open the entry and read the parameters that were sent and the response that came back.</li>
+      <li>Match the symptom against the table below and read the field that answers it.</li>
+    </ol>
+    <table>
+      <thead>
+        <tr><th style="width:34%">Symptom</th><th>What to read on the entry</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>The tool returns errors</td><td>The response data, which carries the error message the MCP server itself produced. That message belongs to the server, so the fix is usually on the server rather than in the gateway configuration.</td></tr>
+        <tr><td>The tool returns the wrong results</td><td>The parameters the agent sent. The agent constructs them, and a plausible wrong argument produces a successful call with a useless answer.</td></tr>
+        <tr><td>Responses are slow</td><td>The latency breakdown, which separates time spent inside the MCP server from time spent on the network.</td></tr>
+        <tr><td>Access is denied</td><td>The user and team on the entry, checked against the tool permissions configured for that server.</td></tr>
+      </tbody>
+    </table>
+    <p>Access denials have a second source that the log entry does not show. A tool that is disabled on the server's Capabilities tab never reaches a permission check, because it does not exist for the caller to invoke. <a href="../configuration/mcp-gateway.html#capabilities">Chapter 10</a> covers that tab, and <a href="../configuration/mcp-gateway.html#access">the access provisioning step</a> covers the three levels a denial can come from.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>You can name which of the four symptoms applies and point at the field on the entry that says so. A failure that matches none of them, or a report with no corresponding log entry at all, did not reach the gateway, which moves the investigation to the client configuration and to <a href="troubleshooting.html">MCP troubleshooting</a>.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="forwarding">Forwarding identity to the MCP server</h3>
+
+<p>Gateway logs attribute every call correctly on their own. The MCP server behind the gateway sees only the gateway unless user context is forwarded to it, and forwarding changes four things at the server:</p>
+
+<ul>
+  <li><strong>Server-side logging</strong> &mdash; the server records its own entries with the gateway context attached.</li>
+  <li><strong>Server-side access control</strong> &mdash; the server enforces its own per-user rules rather than treating every caller as the gateway.</li>
+  <li><strong>Personalization</strong> &mdash; the server tailors a response to the individual who asked.</li>
+  <li><strong>Attribution of actions</strong> &mdash; an action the tool performs is recorded against a person in whatever system the server writes to.</li>
+</ul>
+
+<p>The procedure belongs to <a href="../configuration/mcp-gateway.html#identity">chapter 10, step 3</a>, which sets out the methods available and which kind of server each one suits. Configure it there rather than from this page.</p>
+
+<h3 id="correlation">Correlating tool calls with model output</h3>
+
+<p>Model requests and tool calls are recorded in the same dashboard, and traces span both. A tool call can therefore be read next to the model output that triggered it, which is what an investigation into an agent's behavior needs: the argument a tool received is a consequence of the completion that produced it, and reading either one alone leaves the cause out of frame.</p>
+
+<p>The capture above shows the interleaving. Rows naming a model and rows naming an MCP server sit in one chronological list, with a <strong>Logs</strong> and <strong>Traces</strong> toggle at the top right of the view.</p>
+
+<!-- ── Gaps ───────────────────────────────────────────────────── -->
+<h2 id="gaps">Not yet verified</h2>
+
+<p>This page is derived from product documentation rather than reproduced in a tenant, and that is a weaker footing than its neighbor. <a href="registry.html">MCP Registry and the Add MCP Server wizard</a> documents forms that were captured from a live console on 2026-11-18, so its field names, placeholders and defaults are what the product draws. The field lists, the filters and the aggregate metrics on this page are what the documentation states. The one screenshot here shows the log list view and the tabs around it, and nothing further was opened.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Not verified in a tenant</div>
+  <ul>
+    <li><strong>Log retention</strong> &mdash; how long a tool call record is kept is not stated by the source. Do not quote a retention period to a customer with a records requirement.</li>
+    <li><strong>Log export</strong> &mdash; whether MCP tool call logs can be exported, in what format, and on what schedule. An <strong>Exports</strong> tab is visible beside <strong>Logs</strong> in the capture, and whether it covers tool calls as well as model requests was not confirmed.</li>
+    <li><strong>Redacting or disabling the payload capture</strong> &mdash; whether the Parameters and Response fields can be turned off, truncated or masked for a server whose tools handle sensitive values. Customers ask this early, and the source answers neither way, so confirm it in the tenant before a server touching regulated data is registered.</li>
+    <li><strong>The log entry layout</strong> &mdash; which of the nine captured fields render as columns and which appear only inside an opened entry, and what the timing breakdown separates the latency into.</li>
+    <li><strong>Where the aggregates live</strong> &mdash; the metrics listed under <a href="#analytics">Aggregate analytics</a> are named by the documentation, and the <strong>Analytics</strong> tab was not opened to confirm which chart sits where.</li>
+  </ul>
+</div>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

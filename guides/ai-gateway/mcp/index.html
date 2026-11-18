@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>MCP Gateway | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#scope" data-section="scope">What this covers</a>
+    <a href="#model" data-section="model">Client, gateway, server</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Choosing a path</div>
+    <a href="#auth-paths" data-section="auth-paths">Authentication options</a>
+    <a href="#server-type" data-section="server-type">Streamable HTTP or SSE</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Pages</div>
+    <a href="#pages" data-section="pages">The guides</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#gaps" data-section="gaps">Not yet verified</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  MCP Gateway
+</div>
+
+<div class="article">
+
+<h1>MCP Gateway</h1>
+<p class="subtitle">Putting the gateway between an MCP client and the MCP servers it calls, so that credentials, access and tool-call logging are held in one place rather than configured per agent</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">All MCP Guides</a>
+  <a href="registry.html" class="cloud-link">MCP Registry</a>
+  <a href="remote-mcp.html" class="cloud-link">Remote MCP</a>
+  <a href="observability.html" class="cloud-link">Observability</a>
+  <a href="troubleshooting.html" class="cloud-link">Troubleshooting</a>
+  <a href="../configuration/mcp-gateway.html" class="cloud-link">Configuration Chapter 10</a>
+  <a href="../integrations/index.html" class="cloud-link">Provider Integrations</a>
+</div>
+
+<!-- ── Scope ──────────────────────────────────────────────────── -->
+<h2 id="scope">What this covers</h2>
+
+<p>The MCP Gateway proxies MCP clients to MCP servers. A client authenticates once to the gateway, and the gateway injects the upstream credential, checks whether that user may reach the requested server and tool, and logs the call. Connecting agents directly to servers instead means every agent carries its own credential for every server.</p>
+
+<p>This set is the depth behind <a href="../configuration/mcp-gateway.html">configuration chapter 10</a>. Chapter 10 is the shortest path from nothing to a working tool call. These pages carry the registry form field by field, the four authentication options and what each one costs you, the separate Remote MCP feature, what the logs hold, and the failure modes with their fixes.</p>
+
+<div class="callout callout-note">
+  <div class="callout-title">Where each thing lives</div>
+  <table>
+    <thead><tr><th style="width:34%">Topic</th><th>Covered in</th></tr></thead>
+    <tbody>
+      <tr><td>Registry and the Add MCP Server form</td><td><a href="registry.html">MCP Registry</a>, in this set</td></tr>
+      <tr><td>Tool provisioning, identity forwarding, rate limits, guardrails, the three access levels</td><td><a href="../configuration/mcp-gateway.html">Configuration chapter 10</a></td></tr>
+      <tr><td>Model providers rather than tool servers</td><td><a href="../integrations/index.html">Provider integrations</a></td></tr>
+      <tr><td>Which credential a client holds, and how a user is identified</td><td><a href="../integrations/identity-and-clients.html">Identity and client configuration</a></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="model">Client, gateway, server</h2>
+
+<p>Two authentication hops carry every tool call, and keeping them apart is the difference between a five-minute fix and an afternoon.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:22%">Hop</th><th style="width:30%">What authenticates</th><th>Configured where</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Client to gateway</td><td>A gateway API key, or an OAuth or identity provider login</td><td>Security Keys, covered by <a href="../integrations/identity-and-clients.html">identity and client configuration</a></td></tr>
+    <tr><td>Gateway to MCP server</td><td>Whichever option the registry entry selects</td><td><a href="registry.html">The registry entry</a></td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Most authorization errors come from the second hop</div>
+  <p>A client usually reports a generic failure, so the message you see describes the hop that did not fail. Check the gateway to server configuration first. <a href="troubleshooting.html">Troubleshooting</a> is organized around that assumption.</p>
+</div>
+
+<h2 id="auth-paths">Authentication options</h2>
+
+<p>The registry form offers four, under a control labeled simply <strong>Authentication</strong>. Two of them take no fields at all, for opposite reasons.</p>
+
+<table>
+  <thead>
+    <tr><th style="width:24%">Option</th><th style="width:38%">Fields</th><th>Use when</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>OAuth 2.1</code></td><td>None. Each user signs in to the upstream service themselves.</td><td>Each person needs their own upstream account, as with a personal GitHub or Slack</td></tr>
+    <tr><td><code>OAuth Client Credentials</code></td><td>Token Endpoint, Client ID, Client Secret, Scope</td><td>One machine identity serves everyone</td></tr>
+    <tr><td><code>None</code></td><td>None. The server is open.</td><td>Public servers that require no credential</td></tr>
+    <tr><td><code>Headers</code></td><td>Header and value pairs</td><td>The server takes a static API key or token in a header</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-danger">
+  <div class="callout-title">A Service key cannot drive an OAuth 2.1 server</div>
+  <p><code>OAuth 2.1</code> is per-user, so the request must arrive carrying a user identity. A Service gateway key is tied to nobody and there is no user to sign in, so the call fails. The other three options work with either key type.</p>
+  <p>The key type is chosen when the key is created and cannot be converted afterwards, so this decision precedes the registry entry rather than following it. The <a href="../integrations/identity-and-clients.html">identity and client guide</a> covers the Service against User choice, and <a href="registry.html#oauth21">the OAuth 2.1 section</a> carries the full compatibility table.</p>
+</div>
+
+<h2 id="server-type">Streamable HTTP or SSE</h2>
+
+<p>A separate control from authentication, with two options. <code>Streamable HTTP</code> is selected by default and the form recommends it for most integrations. <code>SSE</code> is the older server-sent events transport, for servers that only speak it.</p>
+
+<p>The server decides this, not you. Pick what the server implements, and change it only when a connection fails in a way that points at the transport. <a href="registry.html#server-type">The registry page</a> shows both states.</p>
+
+<h2 id="pages">The guides</h2>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>MCP Registry &mdash; the form, field by field</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The only page in this set captured from a live console. The registry and its filters, the two-step Add MCP Server wizard, all four authentication options with their fields, the Streamable HTTP against SSE choice, passthrough headers and how they differ from header authentication, and the three Advanced Settings boxes including the one whose format silently breaks the other.</p>
+    <p><a href="registry.html">Open the registry guide</a></p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Remote MCP &mdash; a different feature with the same name</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Not the MCP Gateway. Remote MCP is the AI Gateway letting a model provider use MCP tools during inference, and it splits into gateway execution and provider execution. The choice decides where tools run, whether credentials leave your environment, and whether anything is logged at all.</p>
+    <p><a href="remote-mcp.html">Open the remote MCP guide</a></p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Observability &mdash; what a tool call leaves behind</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Every MCP request is logged with no setup. What each entry holds including the full parameters and response, how to filter, the metadata fields that make per-user and per-team attribution possible, and a debugging flow that starts from the user who reported the problem.</p>
+    <p><a href="observability.html">Open the observability guide</a></p>
+  </div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Troubleshooting &mdash; organized by symptom</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Status code triage, the API key type that looks like a permissions fault, gateway URL mistakes, the named OAuth failures including servers that reject dynamic client registration, stale cached configuration, hourly reconnects on Google servers, and the self-hosted port routing fault that answers with an AI Gateway error.</p>
+    <p><a href="troubleshooting.html">Open troubleshooting</a></p>
+  </div>
+</div>
+
+<h2 id="gaps">Not yet verified</h2>
+
+<p>The confidence behind these pages is not uniform, and the difference matters when quoting any of it to a customer.</p>
+
+<table>
+  <thead><tr><th style="width:30%">Page</th><th style="width:22%">Basis</th><th>What that means</th></tr></thead>
+  <tbody>
+    <tr><td><a href="registry.html">MCP Registry</a></td><td>Live tenant</td><td>Field labels, placeholders and control order are transcribed from the console</td></tr>
+    <tr><td><a href="remote-mcp.html">Remote MCP</a></td><td>Documentation</td><td>Nothing exercised; the beta header carries a date and the feature may move</td></tr>
+    <tr><td><a href="observability.html">Observability</a></td><td>Documentation, one capture</td><td>The log list view is captured; the per-request field list is documented</td></tr>
+    <tr><td><a href="troubleshooting.html">Troubleshooting</a></td><td>Documentation</td><td>No failure was reproduced; error strings are quoted from the vendor help center</td></tr>
+  </tbody>
+</table>
+
+<p>Open across the set, each a question a tenant session would settle:</p>
+
+<ul>
+  <li>Whether the <strong>Status</strong> column probes the server or only reflects configuration state. A registry showing green for an unreachable server tells a very different operational story.</li>
+  <li>What the <strong>Type</strong> column and its filter describe.</li>
+  <li>Whether the gateway contacts the token endpoint when an OAuth client credentials entry is saved, or only on first use.</li>
+  <li>Log retention, whether tool-call logs can be exported, and whether the parameter and response capture can be redacted for a sensitive tool.</li>
+  <li>Budgets and rate limits, named in the step 2 subtitle with no visible control on the captured form.</li>
+</ul>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

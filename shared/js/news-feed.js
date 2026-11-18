@@ -39,6 +39,34 @@ var NEWS_ITEMS = [
   {
     badge: "New",
     date: "2026-11-18",
+    title: "MCP Registry and the Add MCP Server wizard, read from a live tenant",
+    href: "guides/ai-gateway/mcp/registry.html",
+    tags: "The two-step wizard captured from the console, not four steps like the LLM integration wizard because an MCP server exposes tools rather than models, Four authentication options, OAuth 2.1 and OAuth Client Credentials and None and Headers, OAuth 2.1 takes no fields because it is per-user and each user signs in to the upstream service, A shared Service key cannot drive an OAuth 2.1 server so the key type decides whether the option works at all, The API key needs the mcp.invoke permission, Streamable HTTP against SSE, Passthrough headers are forwarded on every request and are a different control from the Headers authentication type, The three Advanced Settings boxes and the nesting mistake that silently falls back to Dynamic Client Registration"
+  },
+  {
+    badge: "New",
+    date: "2026-11-18",
+    title: "MCP Gateway troubleshooting, organized by symptom",
+    href: "guides/ai-gateway/mcp/troubleshooting.html",
+    tags: "Authentication happens in two places and most authorization errors come from the gateway to server hop even when the client shows a generic failure, Status code triage for 401 and 403 and 404 and 500, The API key type that looks like a permissions fault, Servers that reject dynamic client registration including Snowflake and anything behind Okta or Entra, invalid_scope and the protected resource mismatch, Stale cached configuration after a change, Google servers asking for reconnection every hour without access_type offline, The self-hosted port routing fault that answers with an AI Gateway error during client registration"
+  },
+  {
+    badge: "New",
+    date: "2026-11-18",
+    title: "Remote MCP, a different feature that shares the name",
+    href: "guides/ai-gateway/mcp/remote-mcp.html",
+    tags: "Not the MCP Gateway, this is the AI Gateway letting a model provider use MCP tools during inference, Two execution modes, gateway execution with the at portkey-mcp prefix against provider execution with a direct server URL, The choice decides where tools run and whether credentials leave your environment and whether anything is logged, Provider execution has no per-user attribution and no execution logging, A private MCP server cannot be reached by the provider at all so gateway execution is the only option, The Responses API discards header values and the server URL path so both must be resent every request"
+  },
+  {
+    badge: "New",
+    date: "2026-11-18",
+    title: "MCP observability: what a tool call leaves behind",
+    href: "guides/ai-gateway/mcp/observability.html",
+    tags: "Every MCP request is logged automatically with no setup, Each entry holds the tool and the full parameters and the full response and the user and team and latency and status, Tool arguments can carry sensitive values and they are logged, Filter by server and team and user and tool name and time range and status, The metadata fields that make per-user and per-team attribution possible, A debugging flow that starts from the user who reported the problem, Traces span LLM calls and tool use so a tool call can be correlated with the model output that triggered it"
+  },
+  {
+    badge: "New",
+    date: "2026-11-18",
     title: "Identity and client configuration: the half the provider guides do not cover",
     href: "guides/ai-gateway/integrations/identity-and-clients.html",
     tags: "Two credentials cross every request and the provider guides only document one of them, The model provider sees one principal per integration however many people are behind it, Attribution and budgets and revocation all live inside the gateway and stop at its egress, Three attribution levels, a Service workspace key attributes to the workspace and a User key to a named member and a validated JWT to the user, The three values an application changes, base URL and gateway key and the at-slug model reference, The OpenAI SDK wants slash v1 and the Anthropic SDK does not because it adds its own path, One integration credential is one provider-side rate limit bucket and gateway limits divide that ceiling rather than raising it, A personal provider key is a test credential and not a design"

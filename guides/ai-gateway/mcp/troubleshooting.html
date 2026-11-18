@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'">
+<title>MCP Troubleshooting | AI Gateway | PAN Implementation Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../shared/css/pan-guides.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+  <a href="../../../index.html" class="logo">
+    <span class="accent">IMPLEMENTATION</span> GUIDES
+    <span class="header-section-title">AI Gateway</span>
+  </a>
+  <nav class="header-nav">
+    <a href="../../../index.html">Home</a>
+    <a href="../index.html">AI Gateway</a>
+    <button class="header-search-btn" onclick="openSearch()">
+      <svg viewBox="0 0 20 20" width="14" height="14"><path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z" fill="currentColor"/></svg>
+      Search <kbd>&#8984;K</kbd>
+    </button>
+  </nav>
+</header>
+<nav class="global-nav" data-base-path="../../.."></nav>
+
+<div class="layout">
+<div class="sidebar-backdrop"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Overview</div>
+    <a href="#scope" data-section="scope">What this covers</a>
+    <a href="#failures" data-section="failures">Common failures</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Reference</div>
+    <a href="#gaps" data-section="gaps">Not yet verified</a>
+  </div>
+</aside>
+
+<main class="main-content">
+
+<div class="breadcrumb">
+  <a href="../../../index.html">Home</a>
+  <span class="sep">|</span>
+  <a href="../index.html">AI Gateway</a>
+  <span class="sep">|</span>
+  <a href="index.html">MCP Gateway</a>
+  <span class="sep">|</span>
+  MCP Troubleshooting
+</div>
+
+<div class="article">
+
+<h1>MCP Troubleshooting</h1>
+<p class="subtitle">Status code triage for MCP Gateway, the API key type that blocks per-user OAuth without saying so, the Advanced Settings box that swallows a pre-registered OAuth client, token lifetimes and hourly reconnects, and the port routing that breaks a self-hosted gateway</p>
+
+<div class="cloud-links">
+  <a href="index.html" class="cloud-link">All MCP Guides</a>
+  <a href="registry.html" class="cloud-link">MCP Registry</a>
+  <a href="remote-mcp.html" class="cloud-link">Remote MCP</a>
+  <a href="observability.html" class="cloud-link">Observability</a>
+  <a href="troubleshooting.html" class="cloud-link">Troubleshooting</a>
+  <a href="../configuration/mcp-gateway.html" class="cloud-link">Configuration Chapter 10</a>
+  <a href="../integrations/index.html" class="cloud-link">Provider Integrations</a>
+</div>
+
+<!-- ── Scope ──────────────────────────────────────────────────── -->
+<h2 id="scope">What this covers</h2>
+
+<p>MCP Gateway authenticates in two places. A client authenticates to the gateway with a gateway API key, and the gateway authenticates to the MCP server with whatever that server requires. Most messages that read as an authorization failure come from the second hop, even when the client shows nothing more specific than a connection error. Check the gateway-to-server hop first, then the client-to-gateway hop.</p>
+
+<p>The sections below are organized by symptom. Each one names the error as a client or the gateway reports it, states the cause, and gives the correction. Registration procedure stays on <a href="registry.html">MCP Registry and the Add MCP Server wizard</a>, which documents every field on the form as a tenant renders it, and on <a href="../configuration/mcp-gateway.html">configuration chapter 10</a>, which is the short path through the whole feature.</p>
+
+<div class="callout callout-warning">
+  <div class="callout-title">Documentation-derived, not reproduced in a tenant</div>
+  <p>Everything on this page is transcribed from the vendor help-center page for MCP Gateway troubleshooting, last modified 2026-10-01. No failure here was reproduced in a tenant and no error string was observed in a console, which ranks this page below <a href="registry.html">the registry page</a>, whose fields, defaults and labels come from screenshots of a live tenant. Read <a href="#gaps">Not yet verified</a> before quoting an error string to a customer.</p>
+</div>
+
+<!-- ── Failures ───────────────────────────────────────────────── -->
+<h2 id="failures">Common failures</h2>
+
+<p>Start with the status code, because it separates a credential problem from a routing problem in one step. Work down the remaining sections only when the code and the first check do not resolve it.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Triage by status code</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Four responses cover most failures. Read the code the client reports, then take the first check in the matching row before changing anything on the registration.</p>
+    <table>
+      <thead>
+        <tr><th style="width:22%">Status</th><th style="width:34%">Meaning</th><th>First check</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>401</code></td>
+          <td>The token is missing or expired, or the upstream server wants a sign-in.</td>
+          <td>Re-authenticate the client and complete the server sign-in.</td>
+        </tr>
+        <tr>
+          <td><code>403</code></td>
+          <td>The call authenticated and is not allowed.</td>
+          <td>Check the workspace and the server slug in the URL, and check that the key holds access to that server. See <a href="#url">The gateway URL</a>.</td>
+        </tr>
+        <tr>
+          <td><code>404</code></td>
+          <td>No such server.</td>
+          <td>Check the slug, and check that the server is provisioned to this workspace.</td>
+        </tr>
+        <tr>
+          <td><code>500</code> with <code>Unable to verify user access</code></td>
+          <td>The gateway could not confirm who is calling.</td>
+          <td>Check the API key type. See <a href="#keytype">Access denied and the API key type</a>.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">A 500 here is a configuration answer, not a gateway fault</div>
+      <p>The string <code>Unable to verify user access</code> arrives as a server error and reports a mismatch between the key type and the server's authentication option. Raising a support case on the 500 alone sends the case down the wrong path, so read the key type first.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The failing call reproduces on demand and returns one status code every time. A call that returns a different code on each attempt points at a stale cached connection instead of a configuration fault, which <a href="#cache">Configuration changes not taking effect</a> covers.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="keytype">Access denied and the API key type</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Access denied, 500 Unable to verify user access, or a tool call refused on a key that works for models</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Two separate properties of the gateway API key cause this symptom, and both look like a permissions problem on the server.</p>
+    <p>The first is the permission. A gateway API key that calls models successfully is refused on a tool call when it does not carry <code>mcp.invoke</code>. Set the permission on the key under <strong>Settings</strong> &rarr; <strong>API Keys</strong>. <a href="../configuration/mcp-gateway.html#connect">Chapter 10</a> names the same permission as <strong>MCP Invoke</strong>.</p>
+    <p>The second is the key type, and it is the higher-value check of the two because nothing in the message mentions it.</p>
+    <table>
+      <thead>
+        <tr><th style="width:44%">MCP server authentication</th><th style="width:28%">Service key</th><th>User key</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>None, Custom Headers, Client Credentials</td><td>Works</td><td>Works</td></tr>
+        <tr><td><strong>OAuth 2.1, per-user</strong></td><td><strong>Does not work</strong></td><td>Works</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-danger">
+      <div class="callout-title">A Service key cannot drive an OAuth 2.1 server</div>
+      <p>A Service key belongs to no person, and per-user OAuth has nobody to sign in. A call made with a Service key against a server registered as <code>OAuth 2.1</code> fails, and the symptom reads as a permissions problem on the server while the cause sits on the key. Issue a User key instead. The key type is fixed at issue, so moving a consumer from a Service key to a User key means a new key and a redeploy of whatever holds it.</p>
+      <p><a href="../integrations/identity-and-clients.html#two-credentials">Identity and clients</a> sets out the Service and User distinction in full, and <a href="registry.html#oauth21">OAuth 2.1 on the registry page</a> shows the registration side of the same constraint.</p>
+    </div>
+    <ol>
+      <li>Open the key under <strong>Settings</strong> &rarr; <strong>API Keys</strong> and confirm that <code>mcp.invoke</code> is present.</li>
+      <li>Read the key type on the same page.</li>
+      <li>Open the server in the <strong>MCP Registry</strong> and read its Authentication option.</li>
+      <li>Issue a User key where the two disagree, and update the client configuration to use it.</li>
+    </ol>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The same tool call that returned <code>Unable to verify user access</code> now returns a tool result, and the call appears under <strong>Logs</strong> attributed to the signed-in user rather than to a service identity. A call that still fails on a User key carrying <code>mcp.invoke</code> has a second cause, so return to <a href="#failures">the status code table</a>.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="url">The gateway URL</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>403 or 404 on connect, with the slug or the workspace wrong in the URL</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The managed gateway endpoint follows one pattern, and the only variable in it is the registry slug.</p>
+    <div class="code-block">
+      <pre><code>https://aigw.portkey.ai/m/{slug}/mcp</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The client sends the gateway API key as a bearer token on the same connection:</p>
+    <div class="code-block">
+      <pre><code>{
+  "mcpServers": {
+    "portkey": {
+      "url": "https://aigw.portkey.ai/m/{server-slug}/mcp",
+      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
+    }
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The value in <code>{slug}</code> is the <strong>Slug</strong> field set on the registration form, and it is never a UUID. A UUID pasted into that position produces a <code>404</code> every time. <a href="registry.html#details">Step 1 of the Add MCP Server wizard</a> sets the slug.</p>
+    <p>A <code>403</code> or a <code>404</code> has three usual causes:</p>
+    <ul>
+      <li><strong>A wrong slug</strong> &mdash; the registry row holds the authoritative value. Copy it rather than retyping it.</li>
+      <li><strong>A server not provisioned to the workspace</strong> &mdash; the server exists in the organization registry and no workspace toggle was enabled for it. <a href="registry.html#provision">Workspace provisioning</a> is where that is set.</li>
+      <li><strong>A key from a different workspace</strong> &mdash; the key authenticates and carries no access to the server in the workspace named in the URL.</li>
+    </ul>
+    <div class="callout callout-warning">
+      <div class="callout-title">Two endpoint patterns appear in the vendor material</div>
+      <p>The help-center troubleshooting page gives <code>https://aigw.portkey.ai/m/{slug}/mcp</code>, and both <a href="../configuration/mcp-gateway.html#connect">chapter 10</a> and <a href="registry.html#first-call">the registry page</a> give <code>https://aigw.portkey.ai/m/{server-slug}/mcp</code>. The <code>/m/</code> prefix is the documented form for a gateway running in unified mode, which suggests the two describe different deployments. Copy the connection URL the workspace MCP page shows for your own tenant instead of choosing between them.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The client completes a connection and lists the server's enabled tools. A connection that succeeds and lists nothing is a Capabilities setting rather than a URL fault, and <a href="../configuration/mcp-gateway.html#capabilities">chapter 10</a> covers it.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="dcr">Incompatible auth server</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Incompatible auth server: does not support dynamic client registration</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Per-user OAuth registers the gateway as an OAuth client automatically. Snowflake, and anything fronted by Okta or Entra ID, rejects automatic registration and returns this error. The correction is to pre-register an OAuth client with the service by hand and supply its credentials to the gateway.</p>
+    <ol>
+      <li>Create an OAuth client in the identity provider or the service's own admin console.</li>
+      <li>Set its redirect URI to <code>https://aigw.portkey.ai/m/oauth/upstream-callback</code> exactly. A self-hosted gateway uses its own host, covered in <a href="#selfhosted">Self-hosted gateways</a>.</li>
+      <li>Record the issuer, client ID, client secret, authorization endpoint, token endpoint and the scope the service requires.</li>
+      <li>Open the server in the <strong>MCP Registry</strong>, expand <strong>Advanced Settings</strong>, and paste the wrapped object into <strong>Advanced Configuration</strong>.</li>
+    </ol>
+    <div class="code-block">
+      <pre><code>{
+  "oauth_metadata": {
+    "issuer": "https://&lt;your-idp&gt;/...",
+    "client_id": "YOUR_CLIENT_ID",
+    "client_secret": "YOUR_CLIENT_SECRET",
+    "redirect_uri": "https://aigw.portkey.ai/m/oauth/upstream-callback",
+    "authorization_endpoint": "https://&lt;your-idp&gt;/.../authorize",
+    "token_endpoint": "https://&lt;your-idp&gt;/.../token",
+    "scope": "&lt;the exact scope you need&gt;"
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-danger">
+      <div class="callout-title">Advanced Configuration and OAuth Metadata take different shapes</div>
+      <p><strong>Advanced Configuration</strong> merges its top-level keys into the integration configuration, so OAuth metadata goes into that box wrapped as <code>{"oauth_metadata": { ... }}</code>. <strong>OAuth Metadata</strong> stores its contents as the OAuth metadata directly, so that box takes the inner object only, starting at <code>"issuer"</code>, with no wrapper.</p>
+      <p>Paste the wrapped object into the <strong>OAuth Metadata</strong> box and the whole structure nests one level too deep. The gateway then finds no <code>client_id</code>, falls back to Dynamic Client Registration without reporting it, and the original error repeats while the form shows credentials that look correct. The two boxes sit next to each other under <a href="registry.html#advanced">Advanced Settings</a>, and neither carries helper text or a placeholder.</p>
+    </div>
+    <p>The inner object, for the <strong>OAuth Metadata</strong> box:</p>
+    <div class="code-block">
+      <pre><code>{
+  "issuer": "https://&lt;your-idp&gt;/...",
+  "client_id": "YOUR_CLIENT_ID",
+  "client_secret": "YOUR_CLIENT_SECRET",
+  "redirect_uri": "https://aigw.portkey.ai/m/oauth/upstream-callback",
+  "authorization_endpoint": "https://&lt;your-idp&gt;/.../authorize",
+  "token_endpoint": "https://&lt;your-idp&gt;/.../token",
+  "scope": "&lt;the exact scope you need&gt;"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A user reconnecting the server reaches the identity provider's own sign-in page instead of the registration error, and the authorization URL in the browser address bar carries the <code>client_id</code> you pre-registered. A repeat of the registration error after saving means the credentials landed in the wrong box, so move them and reconnect again.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="scope-error">invalid_scope at sign-in</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>invalid_scope, or a sign-in that asks for the wrong permissions</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The identity provider rejects a scope that does not exist, and it also rejects a scope that exists and is not allowed for the application. Both produce the same error at the authorization step, before any tool runs.</p>
+    <ol>
+      <li>Start a sign-in from the client and stop at the identity provider's page.</li>
+      <li>Read the <code>scope=</code> parameter in the browser address bar.</li>
+      <li>Compare it character for character against the scopes the service publishes.</li>
+      <li>Confirm in the identity provider that the pre-registered application is allowed to request each one.</li>
+      <li>Correct the <code>scope</code> value in <strong>Advanced Configuration</strong> or in the <strong>Scope</strong> field on the registration form, depending on which authentication option the server uses.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">Scope lives in two places on the form</div>
+      <p><code>OAuth Client Credentials</code> exposes its own optional <strong>Scope</strong> field, documented under <a href="registry.html#oauth-cc">OAuth client credentials</a>. Per-user OAuth has no such field, so its scope comes from the metadata object described under <a href="#dcr">Incompatible auth server</a>.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The sign-in reaches the consent screen, and the permissions listed on that screen match what the server needs to do its work. A consent screen asking for more than the server needs means the scope string is too broad and should be narrowed before the connection is handed to users.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="resource">Protected resource mismatch</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Protected resource ... does not match expected ...</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The server publishes the exact resource identifier it expects, and the registered URL has to match it. The registered URL is almost always missing its path, and that path is almost always <code>/mcp</code>.</p>
+    <p>Ask the server for the value it expects:</p>
+    <div class="code-block">
+      <pre><code>curl https://&lt;server&gt;/.well-known/oauth-protected-resource</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <ol>
+      <li>Read the <code>resource</code> value out of the response.</li>
+      <li>Open the server in the <strong>MCP Registry</strong>.</li>
+      <li>Set the <strong>URL</strong> field to that value exactly, including its path and excluding any trailing slash the response does not carry.</li>
+      <li>Save, then have a user disconnect and reconnect.</li>
+    </ol>
+    <div class="callout callout-warning">
+      <div class="callout-title">URL and Slug are different fields</div>
+      <p><strong>URL</strong> is the MCP server's own endpoint and <strong>Slug</strong> is the short identifier that forms the client connection URL. They sit on the same row of the form, and <a href="registry.html#details">step 1 of the wizard</a> covers the distinction. Editing the slug to fix a resource mismatch breaks every client configuration and does not change what the gateway sends upstream.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <strong>URL</strong> field in the registry reads back identical to the <code>resource</code> value returned by the <code>curl</code> above, and a fresh sign-in completes without the mismatch error.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="cache">Configuration changes not taking effect</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A corrected registration behaves as it did before the correction</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Configuration and upstream connections are both cached for a short period, and an established connection can keep using the values it was created with. A correct edit therefore produces no visible change for a while.</p>
+    <ol>
+      <li>Wait, then retry the call. A short cache interval clears on its own.</li>
+      <li>Disconnect the server in the client, reconnect, and complete the sign-in again. This drops the stale upstream connection.</li>
+      <li>Confirm that the integration you edited sits in the same workspace the client connects through. An edit applied to a server in another workspace saves cleanly and changes nothing for that client.</li>
+    </ol>
+    <div class="callout callout-note">
+      <div class="callout-title">A new slug as a diagnostic</div>
+      <p>A server registered under a brand new slug always picks up the current configuration, with no cache to clear and no connection to drop. Use that to establish whether the edit itself was wrong or whether a cached value is hiding a correct edit. Treat it as a test rather than as the repair, because every client configuration has to change with the slug.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A reconnected client shows the behavior the edit intended, such as the new scope on the consent screen or the new tool in the listing. The same result on a throwaway slug and not on the original one confirms a cached connection, so disconnect and reconnect the original rather than editing it further.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="reconnect">Frequent reconnects</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Users sign in again roughly every hour</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Access tokens last about 1 hour and refresh tokens last about 30 days. The gateway refreshes an access token automatically while it holds a refresh token, so a connection that survives the first hour normally lasts a month. A connection that dies every hour has no refresh token behind it.</p>
+    <p>Google is the common case. A Google authorization server returns a refresh token only when the authorization request carries <code>access_type=offline</code>, and it omits the parameter unless the client asks for it. Add the parameters to the OAuth metadata for the server:</p>
+    <div class="code-block">
+      <pre><code>"authorization_params": {
+  "access_type": "offline",
+  "prompt": "consent"
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>The <code>authorization_params</code> key sits alongside the other OAuth metadata keys shown under <a href="#dcr">Incompatible auth server</a>, inside the <code>oauth_metadata</code> object when the <strong>Advanced Configuration</strong> box is used.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Existing connections have to be rebuilt by each user</div>
+      <p>Connections created before the change hold no refresh token, and adding the parameters does not retrofit one. Each user has to disconnect and reconnect. <code>prompt: consent</code> is part of the fix rather than an extra: Google skips the consent screen for a user who already granted access, and a skipped consent screen returns no refresh token even with <code>access_type=offline</code> present.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>A user who reconnects sees the Google consent screen again, and that user's connection survives past the first hour without a further sign-in prompt. A user who reconnects without seeing a consent screen still has no refresh token, so revoke the application's access in that user's Google account and reconnect.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="discovery">OAuth discovery returns 404</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>A client cannot discover the OAuth endpoints</span>
+  </div>
+  <div class="collapsible-body">
+    <p>Discovery reads two well-known documents from two different hosts, and a <code>404</code> on either one stops the sign-in before it starts. Run both checks and note which host fails.</p>
+    <p>On the gateway host:</p>
+    <div class="code-block">
+      <pre><code>curl -i https://&lt;gateway-host&gt;/.well-known/oauth-authorization-server</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>On the MCP server itself:</p>
+    <div class="code-block">
+      <pre><code>curl -i https://&lt;server&gt;/.well-known/oauth-protected-resource</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>A <code>404</code> from the server means the server does not publish the document, and the server owner has to add it. A <code>404</code> from the gateway host on a self-hosted deployment usually means the request never reached the MCP Gateway process, covered under <a href="#selfhosted">Self-hosted gateways</a>.</p>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>Both commands return <code>200</code> with a JSON body. The gateway document names an authorization endpoint and a token endpoint, and the server document carries the <code>resource</code> value that the registered URL has to match.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="selfhosted">Self-hosted gateways</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Invalid API Key. Error Code: 03, or OAuth failing only on a self-hosted gateway</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A self-hosted deployment changes four things that a managed tenant hides, and each one has its own failure.</p>
+    <ul>
+      <li><strong>The client URL</strong> &mdash; it uses your own host, as <code>https://&lt;host&gt;/{slug}/mcp</code>.</li>
+      <li><strong>The OAuth callback</strong> &mdash; it becomes <code>https://&lt;host&gt;/oauth/upstream-callback</code>, and every upstream OAuth app has to register that value instead of the managed one.</li>
+      <li><strong><code>MCP_GATEWAY_BASE_URL</code></strong> &mdash; it has to hold the public gateway URL with its scheme and no path. A wrong value breaks OAuth and discovery. The process reads it at startup, so a change needs a pod restart.</li>
+      <li><strong>Ingress</strong> &mdash; it has to forward the <code>Host</code> header, because the gateway builds discovery and callback URLs from it.</li>
+    </ul>
+    <p>Port routing is the fourth and the one that produces the most misleading error. Which mode the deployment runs in decides the answer.</p>
+    <table>
+      <thead>
+        <tr><th style="width:24%">Mode</th><th style="width:20%">Ports</th><th>Routing</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>SERVER_MODE=unified</code></td>
+          <td>One shared port</td>
+          <td>Needs gateway <strong>2.20.0</strong> or later. The client URL becomes <code>https://&lt;host&gt;/m/{slug}/mcp</code>, and <code>/.well-known/*</code> and <code>/oauth/*</code> stay at the root rather than moving under <code>/m</code>.</td>
+        </tr>
+        <tr>
+          <td><code>SERVER_MODE=all</code> or <code>mcp</code></td>
+          <td>MCP Gateway on <strong>8788</strong>, AI Gateway on <strong>8787</strong></td>
+          <td>Every path on the MCP host routes to 8788. That includes <code>/.well-known/*</code> and <code>/oauth/*</code>, not only <code>/{slug}/mcp</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout callout-danger">
+      <div class="callout-title">Invalid API Key. Error Code: 03 is the AI Gateway answering for the MCP Gateway</div>
+      <p>That string during client registration means a request meant for port 8788 reached port 8787. The AI Gateway received a request it does not serve, read the bearer token as one of its own API keys, and rejected it. The message names a key and the fault is in the ingress rule, so no amount of key regeneration changes it. Route the whole MCP host to 8788.</p>
+    </div>
+    <p>Confirm which process answers a well-known path:</p>
+    <div class="code-block">
+      <pre><code>curl -i https://&lt;host&gt;/.well-known/oauth-authorization-server</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Then read the ports the service exposes and the paths the ingress sends to them:</p>
+    <div class="code-block">
+      <pre><code>kubectl -n &lt;namespace&gt; get svc -o wide
+kubectl -n &lt;namespace&gt; describe ingress &lt;ingress-name&gt;
+kubectl -n &lt;namespace&gt; set env deployment/&lt;deployment&gt; --list | grep -E 'SERVER_MODE|MCP_GATEWAY_BASE_URL'</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">Restart after changing MCP_GATEWAY_BASE_URL</div>
+      <p>The value is read once at startup. A corrected environment variable on a running pod leaves the old value in effect, which presents as a fix that did nothing.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <code>curl</code> returns <code>200</code> with the OAuth authorization server document, and the URLs inside it carry your public host rather than an internal service name or <code>localhost</code>. A client then registers without <code>Invalid API Key. Error Code: 03</code>.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="externalauth">External Auth Configuration returns 403</h3>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>403 on saving or using external_auth_config</span>
+  </div>
+  <div class="collapsible-body">
+    <p>The <strong>External Auth Configuration</strong> box maps to <code>external_auth_config</code>, which has the gateway broker your identity provider directly. The capability is restricted to self-hosted and enterprise deployments, and a managed SaaS tenant returns <code>403</code> for it. The 403 reports the plan and the deployment type rather than a fault in the JSON.</p>
+    <p>On managed SaaS, use <code>oauth_metadata</code> with a pre-registered OAuth client instead. <a href="#dcr">Incompatible auth server</a> carries the procedure and the worked example, and it reaches the same outcome for every case that does not need the gateway to broker the identity provider itself.</p>
+    <div class="callout callout-warning">
+      <div class="callout-title">Three boxes, three different contracts</div>
+      <p><strong>OAuth Metadata</strong> takes the inner metadata object. <strong>Advanced Configuration</strong> takes a wrapper whose top-level keys merge into the integration configuration. <strong>External Auth Configuration</strong> takes <code>external_auth_config</code> and is unavailable on SaaS. <a href="registry.html#advanced">Advanced settings</a> shows all three as the tenant renders them, with no helper text on any of them.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>The <strong>External Auth Configuration</strong> box is empty, the pre-registered client sits in <strong>Advanced Configuration</strong> under an <code>oauth_metadata</code> key, and a user sign-in completes without a <code>403</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-title">Collect this before opening a support case</div>
+  <ul>
+    <li><strong>Workspace ID</strong> &mdash; the workspace the client connects through, not the organization.</li>
+    <li><strong>Server slug</strong> &mdash; the value from the <strong>Slug</strong> column of the registry.</li>
+    <li><strong>The full error message and its <code>request_id</code></strong> &mdash; copied verbatim, including the trailing identifier that lets support find the call.</li>
+    <li><strong>The MCP client in use</strong> &mdash; the product and its version, because clients differ in how they drive the OAuth flow.</li>
+  </ul>
+</div>
+
+<!-- ── Gaps ───────────────────────────────────────────────────── -->
+<h2 id="gaps">Not yet verified</h2>
+
+<p>No failure on this page was reproduced in a tenant. The content is transcribed from the vendor help-center page for MCP Gateway troubleshooting, which ranks below the console captures that back <a href="registry.html">the registry page</a>. Treat every error string here as a quotation from documentation rather than as an observation.</p>
+
+<ul>
+  <li><strong>The source page was last modified 2026-10-01</strong> &mdash; error strings drift between releases, so match on the shape of a message rather than on an exact comparison when triaging.</li>
+  <li><strong>Two endpoint patterns</strong> &mdash; the help-center page gives <code>https://aigw.portkey.ai/m/{slug}/mcp</code> and chapter 10 gives <code>https://aigw.portkey.ai/m/{server-slug}/mcp</code>. Which applies to a given tenant was not established, so copy the URL the workspace MCP page shows.</li>
+  <li><strong>Where <code>authorization_params</code> nests</strong> &mdash; the source states the keys and their values and does not show the surrounding object. The placement shown under <a href="#reconnect">Frequent reconnects</a> follows the metadata example and was not confirmed.</li>
+  <li><strong>The <code>kubectl</code> checks</strong> &mdash; the commands under <a href="#selfhosted">Self-hosted gateways</a> are ordinary Kubernetes inspection commands written for this page. The vendor source states the ports, the modes and the version floor, and it publishes no diagnostic commands of its own.</li>
+  <li><strong>Cache intervals</strong> &mdash; the source describes configuration and connection caching as brief and gives no duration, so no wait time is stated under <a href="#cache">Configuration changes not taking effect</a>.</li>
+  <li><strong>The Advanced Settings boxes in a tenant</strong> &mdash; the formats described here come from the help-center page. The captured tenant showed all three boxes empty and carrying no helper text, placeholder or validation, as <a href="registry.html#advanced">Advanced settings</a> records.</li>
+</ul>
+
+</div><!-- .article -->
+</main>
+</div><!-- .layout -->
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&uarr;</button>
+
+<script src="../../../shared/js/pan-guides.js"></script>
+<script src="../../../shared/js/lunr.min.js"></script>
+<script src="../../../shared/js/search.js"></script>
+</body>
+</html>

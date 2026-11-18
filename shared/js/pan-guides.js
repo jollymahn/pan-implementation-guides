@@ -615,6 +615,7 @@ const GLOBAL_NAV_GROUPS = [
       // provider guides are carried on the hub with the auth-path matrix that
       // explains which paths each provider actually offers.
       { t: 'Provider Integrations', h: 'guides/ai-gateway/integrations/index.html' },
+      { t: 'MCP Gateway Guides', h: 'guides/ai-gateway/mcp/index.html' },
       { t: 'Connectivity Reference', h: 'guides/ai-gateway/connectivity.html' },
       { t: 'Flow Diagrams', h: 'guides/ai-gateway/diagrams/flow-diagrams-review.html' },
       { t: 'Agent Identity with Entra ID', h: 'guides/ai-gateway/agent-identity-entra.html' },

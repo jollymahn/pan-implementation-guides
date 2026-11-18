@@ -140,6 +140,7 @@ var CATALOG = [
       { t: 'Customer readiness', h: 'guides/ai-gateway/ai-gateway-readiness.html', note: 'What the customer brings to kickoff' },
       { t: 'Model provider prerequisites', h: 'guides/ai-gateway/ai-gateway-model-prerequisites.html', note: 'What to prepare per provider' },
       { t: 'Provider integrations', h: 'guides/ai-gateway/integrations/index.html', note: 'OpenAI, Anthropic, Azure, Bedrock' },
+      { t: 'MCP Gateway guides', h: 'guides/ai-gateway/mcp/index.html', note: 'Registry, auth, remote MCP' },
       { t: 'Client applications', h: 'guides/ai-gateway/ai-gateway-client-apps.html', note: 'Which tools can be routed, and how' },
       { t: 'Scaling and upgrading', h: 'guides/ai-gateway/hybrid-scaling-and-upgrade.html', note: 'Safe upgrade, rollback, recovery' },
       { t: 'Fault tolerance', h: 'guides/ai-gateway/hybrid-fault-tolerance.html', note: 'What breaks it, and what does not' },
