@@ -97,7 +97,7 @@
 
 <p>This page documents the MCP Registry and the Add MCP Server wizard field by field, as a Strata Cloud Manager tenant renders them. The screenshots were captured on 2026-11-18, so the labels, the placeholders, the defaults and the order of the controls are what the product draws rather than what a product page describes.</p>
 
-<p>Registering a server is the first of several decisions before a developer can call a tool through the gateway. <a href="../configuration/mcp-gateway.html">Configuration chapter 10</a> owns the rest, and it stays the short path through the whole feature. This page is the depth behind its first step.</p>
+<p>Registering a server is the first of several decisions before a developer can call a tool through the gateway. This page carries registration end to end, from the empty registry through to a client connected and calling a tool, and does not stop partway. <a href="../configuration/mcp-gateway.html">Configuration chapter 10</a> is the short path through the whole feature, including tool provisioning and the access levels that sit beyond registration. Read it for the wider sequence, not to finish anything started here.</p>
 
 <div class="callout callout-note">
   <div class="callout-title">What chapter 10 owns, and where</div>
@@ -326,6 +326,11 @@
 </div>
 
 <!-- ── OAuth 2.1 ──────────────────────────────────────────────── -->
+<figure class="diagram">
+  <img src="../diagrams/aigw-mcp-oauth21.svg" alt="Flow diagram of the OAuth 2.1 authentication mode. The working path runs left to right in five steps: Alice calls a tool with a User key, the gateway finds no token for her and starts an authorization flow, Alice signs in on the upstream service consent screen, a token is stored against her with an access token lasting about an hour and a refresh token about thirty days, and the server sees Alice herself. Below, a panel shows the same call failing with a Service key because no user identity arrives, a panel covers services that refuse dynamic client registration, and a third panel contrasts the Advanced Configuration box which takes a wrapped oauth_metadata object against the OAuth Metadata box which takes the inner object only." loading="lazy">
+  <figcaption>Why the form asks for nothing: the user signs in, so there is no operator-supplied credential to store.</figcaption>
+</figure>
+
 <h2 id="oauth21">OAuth 2.1</h2>
 
 <p>The <strong>Authentication</strong> section is described as <code>Select how your MCP client authenticates with the server.</code> and holds four radio cards. <code>OAuth 2.1</code> is the leftmost card and the default selection.</p>
@@ -612,7 +617,38 @@
 
 <p>A saved registration proves that the form was accepted. It does not prove that the URL is reachable, that the transport matches, or that the credential works. Each of those is tested by a client connecting and calling a tool.</p>
 
-<p>Two things also have to be true before a developer can connect, and neither is set in this wizard. The tools have to be enabled on the server's <a href="../configuration/mcp-gateway.html#capabilities">Capabilities tab</a>, and the person or the key has to hold access under the <a href="../configuration/mcp-gateway.html#access">three access levels</a>.</p>
+<p>Two things also have to be true before a developer can connect, and neither is set in the wizard. The tools have to be enabled on the server's Capabilities tab, which is the step below, and the person or the key has to hold access under the three access levels that <a href="../configuration/mcp-gateway.html#access">chapter 10</a> describes.</p>
+
+<div class="collapsible">
+  <div class="collapsible-header">
+    <span class="chevron">&#9654;</span>
+    <span>Enable the tools the server may expose</span>
+  </div>
+  <div class="collapsible-body">
+    <p>A server exposes tools, resources and prompts. Reaching the server and being allowed to call everything on it are two different decisions, and the Capabilities tab is where the second one is made. It appears after the server is created, so it is not part of the wizard.</p>
+    <ol>
+      <li>Open the server from the registry and select the <strong>Capabilities</strong> tab.</li>
+      <li>Toggle individual tools, or use <strong>Enable All</strong> and <strong>Disable All</strong> for bulk changes.</li>
+    </ol>
+    <table>
+      <thead>
+        <tr><th style="width:40%">Set at</th><th style="width:30%">By</th><th>Scope</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>MCP Registry &rarr; server &rarr; Capabilities</td><td>Org Admins and Owners</td><td>Organization-wide</td></tr>
+        <tr><td>MCP &rarr; server &rarr; Capabilities</td><td>Workspace Managers and Admins</td><td>That workspace only</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-note">
+      <div class="callout-title">A disabled tool is hidden, not merely refused</div>
+      <p>A disabled capability does not appear in tool listings at all, so an agent never learns it exists and will not plan around it. Called directly by something that already knew the name, it returns an error. That combination is what makes this usable for blocking a destructive operation rather than only discouraging it.</p>
+    </div>
+    <div class="callout callout-success">
+      <div class="callout-title">Verification</div>
+      <p>List the tools from a connected client. The disabled ones are absent from the response rather than greyed out, and the count matches the tools you enabled.</p>
+    </div>
+  </div>
+</div>
 
 <div class="collapsible">
   <div class="collapsible-header">
@@ -620,7 +656,7 @@
     <span>Hand the registration to a client</span>
   </div>
   <div class="collapsible-body">
-    <p><a href="../configuration/mcp-gateway.html#connect">Chapter 10, Make the first tool call</a> carries the procedure in full: copying the connection URL from the workspace MCP page, the client configuration for an interactive OAuth session, the client configuration for a non-interactive API key, and the <code>mcp.invoke</code> permission that key needs. Work through it there rather than improvising from this page.</p>
+    <p>A client needs two values and nothing else. There is no model reference, because the client discovers the tools from the server.</p>
     <p>The endpoint is built from the slug set in step 1.1, and the slug is the registry slug rather than a UUID:</p>
     <div class="code-block">
       <pre><code>https://aigw.portkey.ai/m/{server-slug}/mcp</code></pre>
@@ -632,18 +668,41 @@
       <p>Portkey's own documentation gives <code>mcp.portkey.ai/{slug}/mcp</code>, on a host dedicated to MCP. This site uses <code>aigw.portkey.ai</code> throughout, with a path prefix per service: <code>/v1</code> for model calls, <code>/m/</code> for MCP, and <code>/agent/</code> for the agent gateway. That single-host shape is what the vendor calls unified mode, and it is the form every other page in this guide family uses.</p>
       <p>Both forms appear in the wild, so the practical rule is to copy the connection URL from the server's own page in the registry rather than typing either one from memory. If the URL you are handed uses a different host from the examples here, the URL wins.</p>
     </div>
-    <p>A client takes the same value with a bearer token:</p>
+    <p>There are two shapes the client configuration can take, and the choice decides who the call is attributed to.</p>
+
+    <p><strong>Option A, no credential in the file.</strong> Give the client the URL alone:</p>
     <div class="code-block">
       <pre><code class="language-json">{
   "mcpServers": {
-    "portkey": {
-      "url": "https://aigw.portkey.ai/m/{server-slug}/mcp",
-      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
+    "internal-docs": {
+      "url": "https://aigw.portkey.ai/m/&lt;server-slug&gt;/mcp"
     }
   }
 }</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
+    <p>On first use the client prompts for authentication through OAuth 2.1 with PKCE, then stores and refreshes the session. This is the right default for a person working interactively in Claude Desktop, Claude Code, Cursor or VS Code, because there is no key to create, rotate or leak, and the call attributes to that person.</p>
+
+    <p><strong>Option B, an API key.</strong> For callers that cannot complete an interactive sign-in:</p>
+    <div class="code-block">
+      <pre><code class="language-json">{
+  "mcpServers": {
+    "internal-docs": {
+      "url": "https://aigw.portkey.ai/m/&lt;server-slug&gt;/mcp",
+      "headers": { "Authorization": "Bearer &lt;API_KEY&gt;" }
+    }
+  }
+}</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <p>Pipelines, backend services and scheduled agents take this path. Substitute the whole placeholder including the angle brackets: a URL that still contains <code>&lt;server-slug&gt;</code> returns a 404 that reads as a missing server.</p>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">The key needs MCP Invoke, and the failure arrives late</div>
+      <p>A workspace key that works perfectly for model calls is refused here unless <code>mcp.invoke</code> was enabled on it. The refusal arrives as an authorization error on the first tool call rather than at connection time, which sends people to check the server configuration instead of the key. Check the key before debugging anything else.</p>
+      <p>The key type matters too. A <strong>Service</strong> key cannot drive a server whose <a href="#oauth21">Authentication is <code>OAuth 2.1</code></a>, because that mode is per user and a Service key carries no user to sign in. Use a <strong>User</strong> key, or Option A.</p>
+    </div>
+
     <p>The fixed OAuth callback for any upstream OAuth app is <code>https://aigw.portkey.ai/m/oauth/upstream-callback</code>, and it has to match that value exactly.</p>
     <div class="callout callout-note">
       <div class="callout-title">Chapter 10 shows the self-hosted unified-mode URL</div>
