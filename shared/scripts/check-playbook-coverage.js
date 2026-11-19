@@ -66,24 +66,33 @@ const EXEMPT = {
     'Generates POV documents at run time and is unlisted',
   /* The AI Gateway configuration set is one engagement split across 13
    * chapters for readability. Scoping a single chapter would produce 13
-   * part-estimates nobody can add up, so the set carries one playbook at its
-   * hub once every chapter publishes. Each chapter is listed here as it lands. */
+   * part-estimates nobody can add up, so no chapter carries a playbook of its
+   * own. Each chapter is listed here as it lands.
+   *
+   * An earlier version of this comment promised one playbook at the set's hub
+   * once every chapter published. That promise is withdrawn, for the same
+   * reason it was withdrawn for the provider integration set below: AI Gateway
+   * delivery planning is being built as one independent object covering
+   * gateway deployment overall, and it is waiting on a product-defined
+   * deployment path. Exempt here means not planned from these chapters, not
+   * pending from them, so nothing in the repo is owed an artifact no one has
+   * committed to writing. Revisit when that path is defined. */
   'docs/guides/ai-gateway/configuration/authentication-identity.html':
-    'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
+    'One chapter of the AI Gateway configuration set; AI Gateway delivery planning is a separate object awaiting a product-defined path',
   'docs/guides/ai-gateway/configuration/security-access-control.html':
-    'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
+    'One chapter of the AI Gateway configuration set; AI Gateway delivery planning is a separate object awaiting a product-defined path',
   'docs/guides/ai-gateway/configuration/organization-properties.html':
-    'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
+    'One chapter of the AI Gateway configuration set; AI Gateway delivery planning is a separate object awaiting a product-defined path',
   'docs/guides/ai-gateway/configuration/guardrails.html':
-    'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
+    'One chapter of the AI Gateway configuration set; AI Gateway delivery planning is a separate object awaiting a product-defined path',
   'docs/guides/ai-gateway/configuration/plugins.html':
-    'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
+    'One chapter of the AI Gateway configuration set; AI Gateway delivery planning is a separate object awaiting a product-defined path',
   'docs/guides/ai-gateway/configuration/workspaces.html':
-    'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
+    'One chapter of the AI Gateway configuration set; AI Gateway delivery planning is a separate object awaiting a product-defined path',
   'docs/guides/ai-gateway/configuration/integrations.html':
-    'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
+    'One chapter of the AI Gateway configuration set; AI Gateway delivery planning is a separate object awaiting a product-defined path',
   'docs/guides/ai-gateway/configuration/mcp-gateway.html':
-    'One chapter of the AI Gateway configuration set; the set carries a single playbook at its hub',
+    'One chapter of the AI Gateway configuration set; AI Gateway delivery planning is a separate object awaiting a product-defined path',
   /* The provider integration pages are alternatives rather than a sequence: a
    * customer connects the providers it actually uses, so per-page playbooks
    * would produce five part-estimates of which any engagement spends two or
